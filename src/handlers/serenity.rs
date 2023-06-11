@@ -2,7 +2,7 @@ use crate::{
     commands::{
         autopause::*, clear::*, leave::*, manage_sources::*, now_playing::*, pause::*, play::*,
         queue::*, remove::*, repeat::*, resume::*, seek::*, shuffle::*, skip::*, stop::*,
-        summon::*, version::*, voteskip::*,
+        summon::*, version::*, volume::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
     errors::ParrotError,
@@ -82,6 +82,11 @@ impl SerenityHandler {
     async fn create_commands(&self, ctx: &Context) -> Vec<Command> {
         Command::set_global_application_commands(&ctx.http, |commands| {
             commands
+                .create_application_command(|command| {
+                    command
+                        .name("volume")
+                        .description("retrieve or set the volume")
+                })
                 .create_application_command(|command| {
                     command
                         .name("autopause")
@@ -325,7 +330,7 @@ impl SerenityHandler {
 
         match command_name {
             "autopause" | "clear" | "leave" | "pause" | "remove" | "repeat" | "resume" | "seek"
-            | "shuffle" | "skip" | "stop" | "voteskip" => {
+            | "shuffle" | "skip" | "stop" | "voteskip" | "volume" => {
                 match check_voice_connections(&guild, &user_id, &bot_id) {
                     Connection::User(_) | Connection::Neither => Err(ParrotError::NotConnected),
                     Connection::Bot(bot_channel_id) => {
@@ -359,6 +364,7 @@ impl SerenityHandler {
         }?;
 
         match command_name {
+            "volume" => volume(ctx, command).await,
             "autopause" => autopause(ctx, command).await,
             "clear" => clear(ctx, command).await,
             "leave" => leave(ctx, command).await,

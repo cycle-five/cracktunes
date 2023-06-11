@@ -15,4 +15,5 @@ pub mod skip;
 pub mod stop;
 pub mod summon;
 pub mod version;
+pub mod volume;
 pub mod voteskip;
