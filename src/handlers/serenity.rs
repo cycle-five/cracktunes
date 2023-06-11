@@ -328,6 +328,13 @@ impl SerenityHandler {
         let user_id = command.user.id;
         let bot_id = ctx.cache.current_user_id();
 
+        tracing::info!(
+            "Running command {} for user {} in guild {}",
+            command_name,
+            user_id,
+            guild_id
+        );
+
         match command_name {
             "autopause" | "clear" | "leave" | "pause" | "remove" | "repeat" | "resume" | "seek"
             | "shuffle" | "skip" | "stop" | "voteskip" | "volume" => {
