@@ -8,6 +8,7 @@ pub async fn volume(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
 ) -> Result<(), ParrotError> {
+    tracing::info!("volume");
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();

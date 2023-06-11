@@ -85,7 +85,14 @@ impl SerenityHandler {
                 .create_application_command(|command| {
                     command
                         .name("volume")
-                        .description("retrieve or set the volume")
+                        .description("Set the volume")
+                        .create_option(|option| {
+                                option
+                                    .name("percent")
+                                    .description("The volume to set")
+                                    .kind(CommandOptionType::Integer)
+                                    .required(true)
+                        })
                 })
                 .create_application_command(|command| {
                     command

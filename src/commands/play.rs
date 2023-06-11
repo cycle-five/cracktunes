@@ -281,6 +281,7 @@ pub async fn play(
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
+    queue.iter().for_each(|t| t.set_volume(0.05).unwrap());
     drop(handler);
 
     match queue.len().cmp(&1) {
