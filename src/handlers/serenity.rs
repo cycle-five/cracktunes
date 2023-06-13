@@ -6,10 +6,7 @@ use crate::{
     },
     connection::{check_voice_connections, Connection},
     errors::ParrotError,
-    guild::{
-        self,
-        settings::{GuildSettings, GuildSettingsMap},
-    },
+    guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
     utils::create_response_text,
