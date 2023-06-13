@@ -1,9 +1,11 @@
-use crate::{errors::ParrotError, utils::create_embed_response};
+use crate::{
+    errors::ParrotError,
+    utils::{create_embed_response, create_now_playing_embed},
+};
 use serenity::{
-    builder::CreateEmbed, client::Context,
+    client::Context,
     model::application::interaction::application_command::ApplicationCommandInteraction,
 };
-use songbird::tracks::TrackHandle;
 
 pub async fn grab(
     ctx: &Context,
@@ -13,17 +15,28 @@ pub async fn grab(
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();
-    let user = interaction.user.create_dm_channel(&ctx.http).await?;
+    let channel = interaction.user.create_dm_channel(&ctx.http).await?;
+    let handler = call.lock().await;
+
+    match handler.queue().current() {
+        Some(track_handle) => {
+            // let track = track_handle.get_info().await.unwrap();
+            let embed = create_now_playing_embed(&track_handle).await;
+            create_embed_response(&ctx.http, interaction, embed).await?;
+            //return Ok(());
+        }
+        None => {
+            channel
+                .say(&ctx.http, "Nothing playing!")
+                .await
+                .expect("Error sending message");
+            //return Ok(());
+        }
+    }
+
+    interaction
+        .delete_original_interaction_response(&ctx.http)
+        .await?;
 
     return Ok(());
-
-    // let embed = create_volume_embed(old_volume, new_volume);
-
-    // create_embed_response(&ctx.http, interaction, embed).await
-}
-
-pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("Volume changed from {}% to {}%", old, new));
-    embed
 }

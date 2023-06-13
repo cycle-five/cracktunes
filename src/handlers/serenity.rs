@@ -1,7 +1,7 @@
 use crate::{
     commands::{
-        autopause::*, clear::*, leave::*, manage_sources::*, now_playing::*, pause::*, play::*,
-        queue::*, remove::*, repeat::*, resume::*, seek::*, shuffle::*, skip::*, stop::*,
+        autopause::*, clear::*, grab::*, leave::*, manage_sources::*, now_playing::*, pause::*,
+        play::*, queue::*, remove::*, repeat::*, resume::*, seek::*, shuffle::*, skip::*, stop::*,
         summon::*, version::*, volume::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
@@ -84,6 +84,11 @@ impl SerenityHandler {
             commands
                 .create_application_command(|command| {
                     command
+                        .name("grab")
+                        .description("Grabs the current track, and has the bot DM it to you")
+                })
+                .create_application_command(|command| {
+                    command
                         .name("volume")
                         .description("Set the volume")
                         .create_option(|option| {
@@ -91,7 +96,7 @@ impl SerenityHandler {
                                     .name("percent")
                                     .description("The volume to set")
                                     .kind(CommandOptionType::Integer)
-                                    .required(true)
+                                    .required(false)
                         })
                 })
                 .create_application_command(|command| {
@@ -344,7 +349,7 @@ impl SerenityHandler {
 
         match command_name {
             "autopause" | "clear" | "leave" | "pause" | "remove" | "repeat" | "resume" | "seek"
-            | "shuffle" | "skip" | "stop" | "voteskip" | "volume" => {
+            | "shuffle" | "skip" | "stop" | "voteskip" | "volume" | "grab" => {
                 match check_voice_connections(&guild, &user_id, &bot_id) {
                     Connection::User(_) | Connection::Neither => Err(ParrotError::NotConnected),
                     Connection::Bot(bot_channel_id) => {
@@ -378,6 +383,7 @@ impl SerenityHandler {
         }?;
 
         match command_name {
+            "grab" => grab(ctx, command).await,
             "volume" => volume(ctx, command).await,
             "autopause" => autopause(ctx, command).await,
             "clear" => clear(ctx, command).await,
