@@ -23,14 +23,12 @@ pub async fn grab(
             // let track = track_handle.get_info().await.unwrap();
             let embed = create_now_playing_embed(&track_handle).await;
             create_embed_response(&ctx.http, interaction, embed).await?;
-            //return Ok(());
         }
         None => {
             channel
                 .say(&ctx.http, "Nothing playing!")
                 .await
                 .expect("Error sending message");
-            //return Ok(());
         }
     }
 

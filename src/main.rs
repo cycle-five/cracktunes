@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut parrot = Client::default().await?;
     if let Err(why) = parrot.start().await {
-        println!("Fatality! Parrot crashed because: {:?}", why);
+        tracing::error!("Fatality! CrackTunes crashed because: {:?}", why);
     };
 
     Ok(())

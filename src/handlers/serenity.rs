@@ -6,11 +6,15 @@ use crate::{
     },
     connection::{check_voice_connections, Connection},
     errors::ParrotError,
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::{
+        self,
+        settings::{GuildSettings, GuildSettingsMap},
+    },
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
     utils::create_response_text,
 };
+use chrono::offset::Utc;
 use serenity::{
     async_trait,
     client::{Context, EventHandler},
@@ -21,12 +25,18 @@ use serenity::{
         },
         gateway::Ready,
         id::GuildId,
-        prelude::{Activity, VoiceState},
+        prelude::{Activity, ChannelId, VoiceState},
     },
     prelude::Mentionable,
 };
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 
-pub struct SerenityHandler;
+pub struct SerenityHandler {
+    pub is_loop_running: std::sync::atomic::AtomicBool,
+}
 
 #[async_trait]
 impl EventHandler for SerenityHandler {
@@ -34,8 +44,8 @@ impl EventHandler for SerenityHandler {
         println!("🦜 {} is connected!", ready.user.name);
 
         // sets parrot activity status message to /play
-        let activity = Activity::listening("/play");
-        ctx.set_activity(activity).await;
+        // let activity = Activity::listening("/play");
+        // ctx.set_activity(activity).await;
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth().await;
@@ -75,6 +85,61 @@ impl EventHandler for SerenityHandler {
         }
 
         update_queue_messages(&ctx.http, &ctx.data, &[], guild_id).await;
+    }
+
+    // We use the cache_ready event just in case some cache operation is required in whatever use
+    // case you have for this.
+    async fn cache_ready(&self, ctx: Context, guilds: Vec<GuildId>) {
+        tracing::info!("Cache built successfully!");
+
+        // it's safe to clone Context, but Arc is cheaper for this use case.
+        // Untested claim, just theoretically. :P
+        let ctx = Arc::new(ctx);
+
+        // We need to check that the loop is not already running when this event triggers,
+        // as this event triggers every time the bot enters or leaves a guild, along every time the
+        // ready shard event triggers.
+        //
+        // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
+        // we don't have one due to self being an immutable reference.
+        if !self.is_loop_running.load(Ordering::Relaxed) {
+            // We have to clone the Arc, as it gets moved into the new thread.
+            let ctx1 = Arc::clone(&ctx);
+            // tokio::spawn creates a new green thread that can run in parallel with the rest of
+            // the application.
+            tokio::spawn(async move {
+                loop {
+                    // We clone Context again here, because Arc is owned, so it moves to the
+                    // new function.
+                    log_system_load(Arc::clone(&ctx1)).await;
+                    tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+                }
+            });
+
+            // And of course, we can run more than one thread at different timings.
+            let ctx2 = Arc::clone(&ctx);
+            tokio::spawn(async move {
+                loop {
+                    set_status_to_current_time(Arc::clone(&ctx2)).await;
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
+
+            let ctx3 = Arc::clone(&ctx);
+            tokio::spawn(async move {
+                loop {
+                    // We clone Context again here, because Arc is owned, so it moves to the
+                    // new function.
+                    for guild_id in &guilds {
+                        check_camera_status(Arc::clone(&ctx3), *guild_id).await;
+                    }
+                    tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+                }
+            });
+
+            // Now that the loop is running, we set the bool to true
+            self.is_loop_running.swap(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -430,5 +495,68 @@ impl SerenityHandler {
         create_response_text(&ctx.http, interaction, &format!("{err}"))
             .await
             .expect("failed to create response");
+    }
+}
+
+async fn log_system_load(ctx: Arc<Context>) {
+    let cpu_load = sys_info::loadavg().unwrap();
+    let mem_use = sys_info::mem_info().unwrap();
+
+    // We can use ChannelId directly to send a message to a specific channel; in this case, the
+    // message would be sent to the #testing channel on the discord server.
+    let message = ChannelId(1112603333182640158)
+        .send_message(&ctx, |m| {
+            m.embed(|e| {
+                e.title("System Resource Load")
+                    .field(
+                        "CPU Load Average",
+                        format!("{:.2}%", cpu_load.one * 10.0),
+                        false,
+                    )
+                    .field(
+                        "Memory Usage",
+                        format!(
+                            "{:.2} MB Free out of {:.2} MB",
+                            mem_use.free as f32 / 1000.0,
+                            mem_use.total as f32 / 1000.0
+                        ),
+                        false,
+                    )
+            })
+        })
+        .await;
+    if let Err(why) = message {
+        tracing::error!("Error sending message: {:?}", why);
+    };
+}
+
+async fn set_status_to_current_time(ctx: Arc<Context>) {
+    let current_time = Utc::now();
+    let formatted_time = current_time.to_rfc2822();
+
+    ctx.set_activity(Activity::playing(&formatted_time)).await;
+}
+
+async fn check_camera_status(ctx: Arc<Context>, guild_id: GuildId) {
+    let guild = match guild_id.to_guild_cached(&ctx.cache) {
+        Some(guild) => guild,
+        None => {
+            tracing::error!("Guild not found in cache");
+            return;
+        }
+    };
+
+    let voice_states = guild.voice_states;
+
+    for (user_id, voice_state) in voice_states {
+        if let Some(channel_id) = voice_state.channel_id {
+            let camera_status = if voice_state.self_video { "on" } else { "off" };
+            tracing::warn!(
+                "User {} is connected to voice channel {} with camera {}",
+                user_id,
+                channel_id,
+                camera_status
+            );
+        }
     }
 }

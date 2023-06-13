@@ -26,7 +26,9 @@ impl Client {
         let gateway_intents = GatewayIntents::non_privileged();
 
         let client = serenity::Client::builder(token, gateway_intents)
-            .event_handler(SerenityHandler)
+            .event_handler(SerenityHandler {
+                is_loop_running: false.into(),
+            })
             .application_id(application_id)
             .register_songbird()
             .await?;
