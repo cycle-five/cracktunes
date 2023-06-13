@@ -16,10 +16,11 @@ use crate::{
         edit_response, get_human_readable_timestamp,
     },
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    builder::CreateEmbed, client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
-    prelude::Mutex,
+    builder::CreateEmbed,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+    Mutex,
 };
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};

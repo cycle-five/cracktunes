@@ -1,7 +1,10 @@
-use serenity::model::gateway::GatewayIntents;
+use crate::Error;
+use poise::serenity_prelude as serenity;
 use songbird::serenity::SerenityInit;
 
-use std::{collections::HashMap, env, error::Error};
+//use self::serenity::model::gateway::GatewayIntents;
+use self::serenity::GatewayIntents;
+use std::{collections::HashMap, env};
 
 use crate::{
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
@@ -13,12 +16,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn default() -> Result<Client, Box<dyn Error>> {
+    pub async fn default() -> Result<Client, Error> {
         let token = env::var("DISCORD_TOKEN").expect("Fatality! DISCORD_TOKEN not set!");
         Client::new(token).await
     }
 
-    pub async fn new(token: String) -> Result<Client, Box<dyn Error>> {
+    pub async fn new(token: String) -> Result<Client, Error> {
         let application_id = env::var("DISCORD_APP_ID")
             .expect("Fatality! DISCORD_APP_ID not set!")
             .parse()?;

@@ -1,8 +1,9 @@
+use poise::serenity_prelude as serenity;
 use serenity::{
     async_trait,
     http::Http,
     model::id::GuildId,
-    prelude::{Mutex, RwLock, TypeMap},
+    {Mutex, RwLock, TypeMap},
 };
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
@@ -60,6 +61,7 @@ impl EventHandler for ModifyQueueHandler {
         drop(handler);
 
         update_queue_messages(&self.http, &self.ctx_data, &queue, self.guild_id).await;
+
         None
     }
 }

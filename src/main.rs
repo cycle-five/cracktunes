@@ -1,11 +1,19 @@
 use parrot::client::Client;
-use std::error::Error;
+//use std::error::Error;
 
 use std::sync::Arc;
 use tracing_subscriber::{filter, prelude::*};
 
+//use poise::serenity_prelude as serenity;
+//use crate::{Context, Error};
+type Error = Box<dyn std::error::Error + Send + Sync>;
+//type Context<'a> = poise::Context<'a, Data, Error>;
+// // User data, which is stored and accessible in all command invocations
+pub struct Data {}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+//async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 

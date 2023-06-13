@@ -2,9 +2,9 @@ use crate::{
     errors::ParrotError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
     utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 

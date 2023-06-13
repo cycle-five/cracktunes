@@ -2,9 +2,9 @@ use crate::{
     errors::ParrotError,
     utils::{create_embed_response, create_now_playing_embed},
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 
 pub async fn grab(

@@ -6,9 +6,9 @@ use crate::{
         DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
     },
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
     builder::{CreateComponents, CreateInputText},
-    client::Context,
     collector::ModalInteractionCollectorBuilder,
     futures::StreamExt,
     model::{
@@ -18,6 +18,7 @@ use serenity::{
             interaction::InteractionResponseType,
         },
     },
+    Context,
 };
 
 pub async fn allow(

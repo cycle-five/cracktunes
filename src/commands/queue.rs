@@ -8,9 +8,9 @@ use crate::{
     },
     utils::get_human_readable_timestamp,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
     builder::{CreateButton, CreateComponents, CreateEmbed},
-    client::Context,
     futures::StreamExt,
     model::{
         application::{
@@ -22,7 +22,7 @@ use serenity::{
         channel::Message,
         id::GuildId,
     },
-    prelude::{RwLock, TypeMap},
+    Context, {RwLock, TypeMap},
 };
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{

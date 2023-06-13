@@ -6,9 +6,10 @@ use crate::{
     utils::create_embed_response,
     utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    builder::CreateEmbed, client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    builder::CreateEmbed,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use songbird::tracks::TrackHandle;
 use std::cmp::min;

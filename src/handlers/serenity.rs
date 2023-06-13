@@ -12,9 +12,9 @@ use crate::{
     utils::create_response_text,
 };
 use chrono::offset::Utc;
+use poise::serenity_prelude as serenity;
 use serenity::{
     async_trait,
-    client::{Context, EventHandler},
     model::{
         application::command::{Command, CommandOptionType},
         application::interaction::{
@@ -24,7 +24,7 @@ use serenity::{
         id::GuildId,
         prelude::{Activity, ChannelId, VoiceState},
     },
-    prelude::Mentionable,
+    Mentionable, {Context, EventHandler},
 };
 use std::{
     sync::{atomic::Ordering, Arc},

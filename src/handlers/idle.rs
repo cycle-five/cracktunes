@@ -1,3 +1,4 @@
+use poise::serenity_prelude as serenity;
 use serenity::{
     async_trait, http::Http,
     model::application::interaction::application_command::ApplicationCommandInteraction,

@@ -273,6 +273,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b750cb3417fd1b327431a470f388520309479ab0bf5e323505daf0290cd3850"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "109c1ca6e6b7f82cc233a97004ea8ed7ca123a9af07a8230878fcfda9b158bf0"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4aab4dbc9f7611d8b55048a3a16d2d010c2c8334e46304b40ac1cc14bf3b48e"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "dashmap"
 version = "5.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -693,6 +728,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
+
+[[package]]
 name = "idna"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,12 +1068,12 @@ dependencies = [
  "chrono",
  "dotenv",
  "lazy_static",
+ "poise",
  "rand",
  "regex",
  "rspotify",
  "serde",
  "serde_json",
- "serenity",
  "songbird",
  "sys-info",
  "tokio",
@@ -1110,6 +1151,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4714e10f30cab023005adce048f2d30dd4ac4f093662abf2220855655ef8f90"
 dependencies = [
  "pnet_base",
+]
+
+[[package]]
+name = "poise"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d591af1c934c29adda172665f69b837e642d4fee85598baffb95dd98110467d"
+dependencies = [
+ "async-trait",
+ "derivative",
+ "futures-core",
+ "futures-util",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "poise_macros",
+ "regex",
+ "serenity",
+ "tokio",
+]
+
+[[package]]
+name = "poise_macros"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40270099e1527efae99fdc0609d397e76310b529d4980ad38ab14d81803ca0fa"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1519,6 +1591,7 @@ dependencies = [
  "bitflags",
  "bytes",
  "cfg-if",
+ "chrono",
  "dashmap",
  "flate2",
  "futures",
@@ -1674,6 +1747,12 @@ dependencies = [
  "futures-util",
  "loom",
 ]
+
+[[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strum"

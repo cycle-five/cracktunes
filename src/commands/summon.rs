@@ -5,12 +5,12 @@ use crate::{
     messaging::message::ParrotMessage,
     utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
     model::{
         application::interaction::application_command::ApplicationCommandInteraction, id::ChannelId,
     },
-    prelude::Mentionable,
+    Context, Mentionable,
 };
 use songbird::{Event, TrackEvent};
 use std::time::Duration;

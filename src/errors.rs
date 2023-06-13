@@ -3,8 +3,9 @@ use crate::messaging::messages::{
     FAIL_NO_VOICE_CONNECTION, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, QUEUE_IS_EMPTY,
     TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
 };
+use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
-use serenity::{model::mention::Mention, prelude::SerenityError};
+use serenity::{model::mention::Mention, SerenityError};
 use songbird::input::error::Error as InputError;
 use std::fmt::{Debug, Display};
 use std::{error::Error, fmt};

@@ -2,10 +2,10 @@ use crate::{
     errors::ParrotError, handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage, utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use rand::Rng;
 use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 
 pub async fn shuffle(

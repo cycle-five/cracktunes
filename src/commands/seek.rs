@@ -4,9 +4,9 @@ use crate::{
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
     utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use std::time::Duration;
 

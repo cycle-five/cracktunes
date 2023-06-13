@@ -1,7 +1,7 @@
 use crate::{errors::ParrotError, messaging::message::ParrotMessage, utils::create_response};
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 
 pub async fn version(

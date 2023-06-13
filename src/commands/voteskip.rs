@@ -6,12 +6,12 @@ use crate::{
     messaging::message::ParrotMessage,
     utils::create_response,
 };
+use poise::serenity_prelude as serenity;
 use serenity::{
-    client::Context,
     model::{
         application::interaction::application_command::ApplicationCommandInteraction, id::GuildId,
     },
-    prelude::{Mentionable, RwLock, TypeMap},
+    Context, {Mentionable, RwLock, TypeMap},
 };
 use std::{collections::HashSet, sync::Arc};
 
