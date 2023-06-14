@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
     utils::create_response,
     Error,
@@ -20,8 +20,8 @@ pub async fn pause(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
-    verify(queue.pause(), ParrotError::Other("Failed to pause"))?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
+    verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
     create_response(&ctx.http, interaction, ParrotMessage::Pause).await
 }

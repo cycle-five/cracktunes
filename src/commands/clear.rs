@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     utils::create_response,
@@ -21,7 +21,7 @@ pub async fn clear(
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
 
-    verify(queue.len() > 1, ParrotError::QueueEmpty)?;
+    verify(queue.len() > 1, CrackedError::QueueEmpty)?;
 
     handler.queue().modify_queue(|v| {
         v.drain(1..);

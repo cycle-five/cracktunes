@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
     utils::create_response,
     Error,
@@ -29,7 +29,7 @@ pub async fn skip(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
     let tracks_to_skip = min(to_skip, queue.len());
 
@@ -71,7 +71,7 @@ pub async fn create_skip_response(
 
 pub async fn force_skip_top_track(
     handler: &MutexGuard<'_, Call>,
-) -> Result<Vec<TrackHandle>, ParrotError> {
+) -> Result<Vec<TrackHandle>, CrackedError> {
     // this is an odd sequence of commands to ensure the queue is properly updated
     // apparently, skipping/stopping a track takes a while to remove it from the queue
     // also, manually removing tracks doesn't trigger the next track to play

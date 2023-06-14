@@ -14,7 +14,7 @@ use std::fmt;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
-pub enum ParrotError {
+pub enum CrackedError {
     Other(&'static str),
     QueueEmpty,
     NotInRange(&'static str, isize, isize, isize),
@@ -32,18 +32,18 @@ pub enum ParrotError {
     Poise(Error),
 }
 
-/// `ParrotError` implements the [`Debug`] and [`Display`] traits
+/// `CrackedError` implements the [`Debug`] and [`Display`] traits
 /// meaning it implements the [`std::error::Error`] trait.
 /// This just makes it explicit.
-impl std::error::Error for ParrotError {}
+impl std::error::Error for CrackedError {}
 
-unsafe impl Send for ParrotError {}
+unsafe impl Send for CrackedError {}
 
-unsafe impl Sync for ParrotError {}
+unsafe impl Sync for CrackedError {}
 
-/// Implementation of the [`Display`] trait for the [`ParrotError`] enum.
+/// Implementation of the [`Display`] trait for the [`CrackedError`] enum.
 /// Errors are formatted with this and then sent as responses to the interaction.
-impl Display for ParrotError {
+impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Other(msg) => f.write_str(msg),
@@ -83,10 +83,10 @@ impl Display for ParrotError {
     }
 }
 
-/// Implementation of the [`PartialEq`] trait for the [`ParrotError`] enum.
+/// Implementation of the [`PartialEq`] trait for the [`CrackedError`] enum.
 /// For some enum variants, values are considered equal when their inner values
 /// are equal and for others when they are of the same type.
-impl PartialEq for ParrotError {
+impl PartialEq for CrackedError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Other(l0), Self::Other(r0)) => l0 == r0,
@@ -105,22 +105,22 @@ impl PartialEq for ParrotError {
     }
 }
 
-/// Provides an implementation to convert a [`std::io::Error`] to a [`ParrotError`].
-impl From<std::io::Error> for ParrotError {
+/// Provides an implementation to convert a [`std::io::Error`] to a [`CrackedError`].
+impl From<std::io::Error> for CrackedError {
     fn from(err: std::io::Error) -> Self {
         Self::IO(err)
     }
 }
 
-/// Provides an implementation to convert a [`serde_json::Error`] to a [`ParrotError`].
-impl From<serde_json::Error> for ParrotError {
+/// Provides an implementation to convert a [`serde_json::Error`] to a [`CrackedError`].
+impl From<serde_json::Error> for CrackedError {
     fn from(err: serde_json::Error) -> Self {
         Self::Serde(err)
     }
 }
 
-/// Provides an implementation to convert a [`SerenityError`] to a [`ParrotError`].
-impl From<SerenityError> for ParrotError {
+/// Provides an implementation to convert a [`SerenityError`] to a [`CrackedError`].
+impl From<SerenityError> for CrackedError {
     fn from(err: SerenityError) -> Self {
         match err {
             SerenityError::NotInRange(param, value, lower, upper) => {
@@ -132,14 +132,14 @@ impl From<SerenityError> for ParrotError {
     }
 }
 
-/// Provides an implementation to convert a rspotify [`ClientError`] to a [`ParrotError`].
-impl From<RSpotifyClientError> for ParrotError {
-    fn from(err: RSpotifyClientError) -> ParrotError {
-        ParrotError::RSpotify(err)
+/// Provides an implementation to convert a rspotify [`ClientError`] to a [`CrackedError`].
+impl From<RSpotifyClientError> for CrackedError {
+    fn from(err: RSpotifyClientError) -> CrackedError {
+        CrackedError::RSpotify(err)
     }
 }
 
-impl From<Error> for ParrotError {
+impl From<Error> for CrackedError {
     fn from(err: Error) -> Self {
         Self::Poise(err)
     }
@@ -187,7 +187,7 @@ where
 
 /// Verifies if a value is true (or equivalent).
 /// Returns an [`Err`] with the given error or the value wrapped in [`Ok`].
-pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: ParrotError) -> Result<K, ParrotError> {
+pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K, CrackedError> {
     if verifiable.to_bool() {
         Ok(verifiable.unpack())
     } else {

@@ -10,7 +10,7 @@ use std::{
     path::Path,
 };
 
-use crate::errors::ParrotError;
+use crate::errors::CrackedError;
 
 const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
@@ -46,7 +46,7 @@ impl GuildSettings {
         }
     }
 
-    pub fn load_if_exists(&mut self) -> Result<(), ParrotError> {
+    pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
         if !Path::new(&path).exists() {
             return Ok(());
@@ -54,7 +54,7 @@ impl GuildSettings {
         self.load()
     }
 
-    pub fn load(&mut self) -> Result<(), ParrotError> {
+    pub fn load(&mut self) -> Result<(), CrackedError> {
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
         let file = OpenOptions::new().read(true).open(path)?;
         let reader = BufReader::new(file);
@@ -62,7 +62,7 @@ impl GuildSettings {
         Ok(())
     }
 
-    pub fn save(&self) -> Result<(), ParrotError> {
+    pub fn save(&self) -> Result<(), CrackedError> {
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
 

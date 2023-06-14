@@ -25,7 +25,18 @@ pub async fn volume(
     };
 
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let call = match manager.get(guild_id) {
+        Some(call) => call,
+        None => {
+            create_embed_response_poise(
+                &ctx,
+                "I need to be in a voice channel before you can do that.".to_string(),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
     let old_ctx = ctx.serenity_context();
 
     let to_set = match level {

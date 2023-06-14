@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
     utils::create_response,
     Error,
@@ -20,10 +20,10 @@ pub async fn resume(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying.into())?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying.into())?;
     verify(
         queue.resume(),
-        ParrotError::Other("Failed resuming track").into(),
+        CrackedError::Other("Failed resuming track").into(),
     )?;
 
     create_response(&ctx.http, interaction, ParrotMessage::Resume).await

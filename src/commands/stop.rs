@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     utils::create_response,
@@ -21,7 +21,7 @@ pub async fn stop(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     queue.stop();
 
     // refetch the queue after modification

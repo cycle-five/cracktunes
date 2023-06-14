@@ -5,7 +5,7 @@ use self::serenity::{
 };
 use crate::{
     commands::skip::force_skip_top_track,
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
@@ -87,7 +87,7 @@ pub async fn play(
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") => {
                 let spotify = SPOTIFY.lock().await;
-                let spotify = verify(spotify.as_ref(), ParrotError::Other(SPOTIFY_AUTH_FAILED))?;
+                let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                 Some(Spotify::extract(spotify, url).await?)
             }
             Some(other) => {
@@ -149,7 +149,7 @@ pub async fn play(
 
     let query_type = verify(
         query_type,
-        ParrotError::Other("Something went wrong while parsing your query!"),
+        CrackedError::Other("Something went wrong while parsing your query!"),
     )?;
 
     // reply with a temporary message while we fetch the source
@@ -169,7 +169,7 @@ pub async fn play(
             QueryType::PlaylistLink(url) => {
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(ParrotError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
 
                 for url in urls.iter() {
                     let queue =
@@ -193,7 +193,7 @@ pub async fn play(
             QueryType::PlaylistLink(url) => {
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(ParrotError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
 
                 for (idx, url) in urls.into_iter().enumerate() {
                     let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
@@ -222,7 +222,7 @@ pub async fn play(
             QueryType::PlaylistLink(url) => {
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(ParrotError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
 
                 let mut insert_idx = 1;
 
@@ -260,7 +260,7 @@ pub async fn play(
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(ParrotError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
 
                 for url in urls.into_iter() {
                     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
@@ -396,15 +396,15 @@ async fn create_queued_embed(
     embed
 }
 
-async fn get_track_source(query_type: QueryType) -> Result<Restartable, ParrotError> {
+async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedError> {
     match query_type {
         QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true)
             .await
-            .map_err(ParrotError::TrackFail),
+            .map_err(CrackedError::TrackFail),
 
         QueryType::Keywords(query) => YouTubeRestartable::ytdl_search(query, true)
             .await
-            .map_err(ParrotError::TrackFail),
+            .map_err(CrackedError::TrackFail),
 
         _ => unreachable!(),
     }
@@ -413,7 +413,7 @@ async fn get_track_source(query_type: QueryType) -> Result<Restartable, ParrotEr
 async fn enqueue_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
-) -> Result<Vec<TrackHandle>, ParrotError> {
+) -> Result<Vec<TrackHandle>, CrackedError> {
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let source = get_track_source(query_type.clone()).await?;
 
@@ -427,7 +427,7 @@ async fn insert_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
     idx: usize,
-) -> Result<Vec<TrackHandle>, ParrotError> {
+) -> Result<Vec<TrackHandle>, CrackedError> {
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
@@ -439,7 +439,7 @@ async fn insert_track(
 
     verify(
         idx > 0 && idx <= queue_size,
-        ParrotError::NotInRange("index", idx as isize, 1, queue_size as isize),
+        CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
     enqueue_track(call, query_type).await?;
@@ -461,7 +461,7 @@ async fn rotate_tracks(
 
     verify(
         handler.queue().len() > 2,
-        ParrotError::Other("cannot rotate queues smaller than 3 tracks"),
+        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
     )?;
 
     handler.queue().modify_queue(|queue| {

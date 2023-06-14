@@ -1,7 +1,7 @@
 use self::serenity::{model::id::ChannelId, Mentionable};
 use crate::{
     connection::get_voice_channel_for_user,
-    errors::ParrotError,
+    errors::CrackedError,
     handlers::{IdleHandler, TrackEndHandler},
     messaging::message::ParrotMessage,
     utils::{get_guild_id, get_user_id},
@@ -30,7 +30,7 @@ pub async fn summon(
                 if send_reply {
                     ctx.say("You are not in a voice channel!").await?;
                 }
-                return Err(ParrotError::WrongVoiceChannel.into());
+                return Err(CrackedError::WrongVoiceChannel.into());
             }
         },
     };
@@ -42,7 +42,7 @@ pub async fn summon(
         if has_current_connection && send_reply {
             // bot is in another channel
             let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
-            return Err(ParrotError::AlreadyConnected(bot_channel_id.mention()).into());
+            return Err(CrackedError::AlreadyConnected(bot_channel_id.mention()).into());
         }
     }
 

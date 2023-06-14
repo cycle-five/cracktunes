@@ -18,7 +18,7 @@ use crate::{
         version::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
-    errors::ParrotError,
+    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     //poise_commands::volume::volume,
@@ -58,7 +58,7 @@ impl EventHandler for SerenityHandler {
         };
 
         if let Err(err) = self.run_command(&ctx, &mut command).await {
-            self.handle_error(&ctx, &mut command, ParrotError::Poise(err))
+            self.handle_error(&ctx, &mut command, CrackedError::Poise(err))
                 .await
         }
     }
@@ -413,11 +413,11 @@ impl SerenityHandler {
             "autopause" | "clear" | "leave" | "pause" | "remove" | "repeat" | "resume" | "seek"
             | "shuffle" | "skip" | "stop" | "voteskip" | "volume" | "grab" => {
                 match check_voice_connections(&guild, &user_id, &bot_id) {
-                    Connection::User(_) | Connection::Neither => Err(ParrotError::NotConnected),
+                    Connection::User(_) | Connection::Neither => Err(CrackedError::NotConnected),
                     Connection::Bot(bot_channel_id) => {
-                        Err(ParrotError::AuthorDisconnected(bot_channel_id.mention()))
+                        Err(CrackedError::AuthorDisconnected(bot_channel_id.mention()))
                     }
-                    Connection::Separate(_, _) => Err(ParrotError::WrongVoiceChannel),
+                    Connection::Separate(_, _) => Err(CrackedError::WrongVoiceChannel),
                     _ => Ok(()),
                 }
             }
@@ -425,20 +425,20 @@ impl SerenityHandler {
                 match check_voice_connections(&guild, &user_id, &bot_id) {
                     Connection::User(_) => Ok(()),
                     Connection::Bot(_) if command_name == "summon" => {
-                        Err(ParrotError::AuthorNotFound)
+                        Err(CrackedError::AuthorNotFound)
                     }
                     Connection::Bot(_) if command_name != "summon" => {
-                        Err(ParrotError::WrongVoiceChannel)
+                        Err(CrackedError::WrongVoiceChannel)
                     }
                     Connection::Separate(bot_channel_id, _) => {
-                        Err(ParrotError::AlreadyConnected(bot_channel_id.mention()))
+                        Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
                     }
-                    Connection::Neither => Err(ParrotError::AuthorNotFound),
+                    Connection::Neither => Err(CrackedError::AuthorNotFound),
                     _ => Ok(()),
                 }
             }
             "np" | "queue" => match check_voice_connections(&guild, &user_id, &bot_id) {
-                Connection::User(_) | Connection::Neither => Err(ParrotError::NotConnected),
+                Connection::User(_) | Connection::Neither => Err(CrackedError::NotConnected),
                 _ => Ok(()),
             },
             _ => Ok(()),
@@ -493,7 +493,7 @@ impl SerenityHandler {
         &self,
         ctx: &Context,
         interaction: &mut ApplicationCommandInteraction,
-        err: ParrotError,
+        err: CrackedError,
     ) {
         create_response_text(&ctx.http, interaction, &format!("{err}"))
             .await

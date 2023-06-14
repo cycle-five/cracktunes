@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
     utils::create_response,
@@ -26,10 +26,10 @@ pub async fn seek(
     let mut units_iter = timestamp_str.split(':');
 
     let minutes = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let minutes = verify(minutes, ParrotError::Other(FAIL_MINUTES_PARSING).into())?;
+    let minutes = verify(minutes, CrackedError::Other(FAIL_MINUTES_PARSING).into())?;
 
     let seconds = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let seconds = verify(seconds, ParrotError::Other(FAIL_SECONDS_PARSING).into())?;
+    let seconds = verify(seconds, CrackedError::Other(FAIL_SECONDS_PARSING).into())?;
 
     let timestamp = minutes * 60 + seconds;
 
@@ -37,7 +37,7 @@ pub async fn seek(
     let track = handler
         .queue()
         .current()
-        .ok_or(ParrotError::Other("No track playing"))?;
+        .ok_or(CrackedError::Other("No track playing"))?;
     drop(handler);
 
     track.seek_time(Duration::from_secs(timestamp)).unwrap();

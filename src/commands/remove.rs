@@ -3,7 +3,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     messaging::messages::REMOVED_QUEUE,
@@ -45,14 +45,14 @@ pub async fn remove(
     let queue_len = queue.len();
     let remove_until = min(remove_until, queue_len.saturating_sub(1));
 
-    verify(queue_len > 1, ParrotError::QueueEmpty)?;
+    verify(queue_len > 1, CrackedError::QueueEmpty)?;
     verify(
         remove_index < queue_len,
-        ParrotError::NotInRange("index", remove_index as isize, 1, queue_len as isize),
+        CrackedError::NotInRange("index", remove_index as isize, 1, queue_len as isize),
     )?;
     verify(
         remove_until >= remove_index,
-        ParrotError::NotInRange(
+        CrackedError::NotInRange(
             "until",
             remove_until as isize,
             remove_index as isize,

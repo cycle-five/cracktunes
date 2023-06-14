@@ -7,7 +7,7 @@ use self::serenity::{
 use crate::{
     commands::skip::{create_skip_response, force_skip_top_track},
     connection::get_voice_channel_for_user,
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::ParrotMessage,
     utils::create_response,
@@ -32,7 +32,7 @@ pub async fn voteskip(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
     let mut data = ctx.data.write().await;
     let cache_map = data.get_mut::<GuildCacheMap>().unwrap();

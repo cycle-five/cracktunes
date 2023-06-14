@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::ParrotError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
+    errors::CrackedError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
     utils::create_response, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -33,6 +33,6 @@ pub async fn repeat(
         Ok(_) if !was_looping => {
             create_response(&ctx.http, interaction, ParrotMessage::LoopEnable).await
         }
-        _ => Err(ParrotError::Other(FAIL_LOOP).into()),
+        _ => Err(CrackedError::Other(FAIL_LOOP).into()),
     }
 }

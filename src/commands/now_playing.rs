@@ -2,7 +2,7 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::ParrotError,
+    errors::CrackedError,
     utils::{create_embed_response, create_now_playing_embed},
     Error,
 };
@@ -20,7 +20,7 @@ pub async fn now_playing(
     let track = handler
         .queue()
         .current()
-        .ok_or(ParrotError::NothingPlaying)?;
+        .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
     create_embed_response(&ctx.http, interaction, embed).await
