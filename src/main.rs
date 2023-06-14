@@ -88,7 +88,7 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![poise_commands::help()], //, commands::vote(), commands::getvotes()],
+        commands: vec![poise_commands::help(), poise_commands::chatgpt::chatgpt()],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),

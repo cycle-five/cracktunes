@@ -1,4 +1,4 @@
 pub mod chatgpt;
 pub mod help;
 
-pub use help::*;
+pub use help::help;

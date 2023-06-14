@@ -12,7 +12,7 @@ pub async fn help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
-            extra_text_at_bottom: "This is a friendly crack smoking cracktunes that plays music.",
+            extra_text_at_bottom: "This is a friendly crack smoking parrot that plays music.",
             ..Default::default()
         },
     )

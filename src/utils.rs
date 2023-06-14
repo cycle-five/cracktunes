@@ -9,7 +9,7 @@ use self::serenity::{
     },
     Error,
 };
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
@@ -158,4 +158,17 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
+}
+
+/// Checks that a message successfully sent; if not, then logs why to stdout.
+pub fn check_msg(result: Result<Message, Error>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
+}
+
+pub fn check_reply(result: Result<ReplyHandle, Error>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
 }

@@ -44,7 +44,7 @@ impl EventHandler for SerenityHandler {
         *SPOTIFY.lock().await = Spotify::auth().await;
 
         // creates the global application commands
-        self.create_commands(&ctx).await;
+        //self.create_commands(&ctx).await;
 
         // loads serialized guild settings
         self.load_guilds_settings(&ctx, &ready).await;
@@ -387,7 +387,7 @@ impl SerenityHandler {
         // get songbird voice client
         let manager = songbird::get(ctx).await.unwrap();
 
-        // cracktunes might have been disconnected manually
+        // parrot might have been disconnected manually
         if let Some(call) = manager.get(guild.id) {
             let mut handler = call.lock().await;
             if handler.current_connection().is_none() {

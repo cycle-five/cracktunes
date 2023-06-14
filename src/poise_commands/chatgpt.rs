@@ -1,18 +1,20 @@
-use crate::{Context, Error};
+use crate::{utils::check_reply, Context, Error};
 use chatgpt::prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder};
 use url::Url;
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn chatgpt(
     ctx: Context<'_>,
-    #[description = "Specific command to show help about"]
-    #[autocomplete = "poise::builtins::autocomplete_command"]
-    query: Option<String>,
+    #[rest]
+    #[description = "Query text to send to the model."]
+    msg: String,
 ) -> Result<(), Error> {
     tracing::info!(target: "commands", "chatgpt called");
     let key = std::env::var("OPENAI_KEY").expect("Expected an OpenAI key in the environment");
 
-    let content = query.unwrap();
+    ctx.defer().await?;
+
+    let content = msg;
     tracing::info!("{:?}", content);
     // Creating a new ChatGPT client.
     // Note that it requires an API key, and uses
@@ -31,14 +33,14 @@ pub async fn chatgpt(
         .engine(ChatGPTEngine::Gpt35Turbo)
         .build()
         .unwrap();
-    tracing::trace!("{:?}", config);
+    tracing::info!("{:?}", config);
     // .top_p(1.0)
     // .frequency_penalty(0.5)
     // .presence_penalty(0.0)
     // .max_tokens(150)
     let client = ChatGPT::new_with_config(key, config)?;
 
-    tracing::trace!("Client created.");
+    tracing::info!("Client created.");
 
     // Sending a message and getting the completion
     let response = client.send_message(content).await.map_or_else(
@@ -49,8 +51,10 @@ pub async fn chatgpt(
         |k| k.message().content.clone(),
     );
 
-    tracing::trace!("Response received: {:?}", response);
+    tracing::info!("Response received: {:?}", response);
 
-    ctx.send(|b| b.content(response).reply(true)).await?;
+    //check_msg(msg.reply(&ctx, response).await);
+    check_reply(ctx.send(|m| m.content(response).reply(true)).await);
+
     Ok(())
 }
