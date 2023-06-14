@@ -1,22 +1,15 @@
-use parrot::{
+use cracktunes::{
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
     handlers::SerenityHandler,
     poise_commands, Data,
 };
-//use std::error::Error;
-
+use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use songbird::serenity::SerenityInit;
 use std::{collections::HashMap, env::var, sync::Arc, time::Duration};
 use tracing_subscriber::{filter, prelude::*};
-
-use poise::{serenity_prelude as serenity, FrameworkBuilder};
-//use crate::{Context, Error};
 type Error = Box<dyn std::error::Error + Send + Sync>;
-//type Context<'a> = poise::Context<'a, Data, Error>;
-// // User data, which is stored and accessible in all command invocations
-//pub struct Data {}
 
 #[tokio::main]
-//async fn main() -> Result<(), Box<dyn Error>> {
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
@@ -58,15 +51,7 @@ async fn main() -> Result<(), Error> {
 
     tracing::warn!("Hello, world!");
 
-    //let parrot_builder = Client::client_builder().await?;
-
     let framework = poise_framework();
-    // poise_start(parrot_builder).await;
-    // let mut parrot = Client::default().await?;
-
-    // if let Err(why) = parrot.start().await {
-    //     tracing::error!("Fatality! CrackTunes crashed because: {:?}", why);
-    // };
     let framework = framework.build().await?;
 
     let client = framework.client();
@@ -99,10 +84,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-use songbird::serenity::SerenityInit;
-
-//async fn poise_start(_client_builder: serenity::ClientBuilder) {
-fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
+fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {

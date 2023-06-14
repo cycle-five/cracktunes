@@ -1,6 +1,6 @@
 [package]
-name = "parrot"
-version = "1.6.0"
+name = "cracktunes"
+version = "0.1.0"
 authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
 edition = "2018"
 description = "A Discord music bot built in Rust"
@@ -9,6 +9,7 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [dependencies]
+chatgpt_rs = "1.1.10"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
 rand = "0.8.5"
@@ -47,4 +48,4 @@ version = "0.5.5"
 
 [dependencies.tokio]
 version = "1.28.2"
-features = ["macros", "rt-multi-thread"]
+features = ["macros", "rt-multi-thread", "signal"]

@@ -46,6 +46,10 @@ pub async fn volume(
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
-    embed.description(format!("Volume changed from {}% to {}%", old, new));
+    embed.description(format!(
+        "Volume changed from {}% to {}%",
+        old * 100.0,
+        new * 100.0
+    ));
     embed
 }

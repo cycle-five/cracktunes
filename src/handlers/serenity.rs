@@ -38,11 +38,7 @@ pub struct SerenityHandler {
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("🦜 {} is connected!", ready.user.name);
-
-        // sets parrot activity status message to /play
-        // let activity = Activity::listening("/play");
-        // ctx.set_activity(activity).await;
+        tracing::info!("{} is connected!", ready.user.name);
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth().await;
@@ -152,7 +148,7 @@ impl SerenityHandler {
                 .create_application_command(|command| {
                     command
                         .name("volume")
-                        .description("Set the volume")
+                        .description("Get or set the volume")
                         .create_option(|option| {
                                 option
                                     .name("percent")
@@ -391,7 +387,7 @@ impl SerenityHandler {
         // get songbird voice client
         let manager = songbird::get(ctx).await.unwrap();
 
-        // parrot might have been disconnected manually
+        // cracktunes might have been disconnected manually
         if let Some(call) = manager.get(guild.id) {
             let mut handler = call.lock().await;
             if handler.current_connection().is_none() {
