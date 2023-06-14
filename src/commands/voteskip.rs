@@ -11,6 +11,7 @@ use crate::{
     guild::cache::GuildCacheMap,
     messaging::message::ParrotMessage,
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use std::{collections::HashSet, sync::Arc};
@@ -18,7 +19,7 @@ use std::{collections::HashSet, sync::Arc};
 pub async fn voteskip(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let bot_channel_id = get_voice_channel_for_user(
         &ctx.cache.guild(guild_id).unwrap(),

@@ -2,14 +2,14 @@ use self::serenity::{
     builder::CreateEmbed,
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
-use crate::{errors::ParrotError, utils::create_embed_response};
+use crate::{utils::create_embed_response, Error};
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 
 pub async fn volume(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     tracing::info!("volume");
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();

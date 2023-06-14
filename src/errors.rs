@@ -139,6 +139,12 @@ impl From<RSpotifyClientError> for ParrotError {
     }
 }
 
+impl From<Error> for ParrotError {
+    fn from(err: Error) -> Self {
+        Self::Poise(err)
+    }
+}
+
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.
 pub trait Verifiable<T> {

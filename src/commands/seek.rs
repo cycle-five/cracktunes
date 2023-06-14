@@ -6,6 +6,7 @@ use crate::{
     messaging::message::ParrotMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use std::time::Duration;
@@ -13,7 +14,7 @@ use std::time::Duration;
 pub async fn seek(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();
@@ -25,10 +26,10 @@ pub async fn seek(
     let mut units_iter = timestamp_str.split(':');
 
     let minutes = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let minutes = verify(minutes, ParrotError::Other(FAIL_MINUTES_PARSING))?;
+    let minutes = verify(minutes, ParrotError::Other(FAIL_MINUTES_PARSING).into())?;
 
     let seconds = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let seconds = verify(seconds, ParrotError::Other(FAIL_SECONDS_PARSING))?;
+    let seconds = verify(seconds, ParrotError::Other(FAIL_SECONDS_PARSING).into())?;
 
     let timestamp = minutes * 60 + seconds;
 
@@ -36,7 +37,7 @@ pub async fn seek(
     let track = handler
         .queue()
         .current()
-        .ok_or(ParrotError::NothingPlaying)?;
+        .ok_or(ParrotError::Other("No track playing"))?;
     drop(handler);
 
     track.seek_time(Duration::from_secs(timestamp)).unwrap();

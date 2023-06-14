@@ -54,6 +54,7 @@ pub async fn chatgpt(
     tracing::info!("Response received: {:?}", response);
 
     //check_msg(msg.reply(&ctx, response).await);
+    // check_reply(ctx.send(|m| m.content(response).reply(true)).await);
     check_reply(ctx.send(|m| m.content(response).reply(true)).await);
 
     Ok(())

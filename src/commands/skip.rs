@@ -5,6 +5,7 @@ use crate::{
     errors::{verify, ParrotError},
     messaging::message::ParrotMessage,
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call};
@@ -14,7 +15,7 @@ use tokio::sync::MutexGuard;
 pub async fn skip(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();
@@ -45,7 +46,7 @@ pub async fn create_skip_response(
     interaction: &mut ApplicationCommandInteraction,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     match handler.queue().current() {
         Some(track) => {
             create_response(

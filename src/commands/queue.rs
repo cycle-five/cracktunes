@@ -14,7 +14,6 @@ use self::serenity::{
     Context, {RwLock, TypeMap},
 };
 use crate::{
-    errors::ParrotError,
     guild::cache::GuildCacheMap,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::{
@@ -22,6 +21,7 @@ use crate::{
         QUEUE_PAGE_OF, QUEUE_UP_NEXT,
     },
     utils::get_human_readable_timestamp,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
@@ -39,7 +39,7 @@ const EMBED_TIMEOUT: u64 = 3600;
 pub async fn queue(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();

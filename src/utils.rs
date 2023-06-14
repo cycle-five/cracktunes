@@ -7,20 +7,20 @@ use self::serenity::{
         },
         channel::Message,
     },
-    Error,
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::{errors::ParrotError, messaging::message::ParrotMessage};
+use crate::{messaging::message::ParrotMessage, Error};
+use poise::serenity_prelude::SerenityError;
 
 pub async fn create_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     message: ParrotMessage,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
     create_embed_response(http, interaction, embed).await
@@ -30,7 +30,7 @@ pub async fn create_response_text(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     content: &str,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(content);
     create_embed_response(http, interaction, embed).await
@@ -40,7 +40,7 @@ pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     message: ParrotMessage,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
     edit_embed_response(http, interaction, embed).await
@@ -50,7 +50,7 @@ pub async fn edit_response_text(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     content: &str,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(content);
     edit_embed_response(http, interaction, embed).await
@@ -60,7 +60,7 @@ pub async fn create_embed_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     embed: CreateEmbed,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     match interaction
         .create_interaction_response(&http, |response| {
             response
@@ -72,16 +72,16 @@ pub async fn create_embed_response(
     {
         Ok(val) => Ok(val),
         Err(err) => match err {
-            ParrotError::Serenity(Error::Http(ref e)) => match &**e {
+            serenity::Error::Http(ref e) => match &**e {
                 HttpError::UnsuccessfulRequest(req) => match req.error.code {
                     40060 => edit_embed_response(http, interaction, embed)
                         .await
                         .map(|_| ()),
-                    _ => Err(err),
+                    _ => Err(Box::new(err)),
                 },
-                _ => Err(err),
+                _ => Err(Box::new(err)),
             },
-            _ => Err(err),
+            _ => Err(Box::new(err)),
         },
     }
 }
@@ -90,7 +90,7 @@ pub async fn edit_embed_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     embed: CreateEmbed,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     interaction
         .edit_original_interaction_response(&http, |message| message.content(" ").add_embed(embed))
         .await
@@ -167,7 +167,7 @@ pub fn check_msg(result: Result<Message, Error>) {
     }
 }
 
-pub fn check_reply(result: Result<ReplyHandle, Error>) {
+pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
     }

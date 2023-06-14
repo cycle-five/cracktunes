@@ -4,13 +4,14 @@ use self::serenity::{
 use crate::{
     errors::ParrotError,
     utils::{create_embed_response, create_now_playing_embed},
+    Error,
 };
 use poise::serenity_prelude as serenity;
 
 pub async fn now_playing(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();

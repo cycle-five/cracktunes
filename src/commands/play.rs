@@ -20,6 +20,7 @@ use crate::{
         compare_domains, create_now_playing_embed, create_response, edit_embed_response,
         edit_response, get_human_readable_timestamp,
     },
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
@@ -47,7 +48,7 @@ pub enum QueryType {
 pub async fn play(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let args = interaction.data.options.clone();
     let first_arg = args.first().unwrap();
 

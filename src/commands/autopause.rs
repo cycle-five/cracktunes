@@ -2,17 +2,17 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::ParrotError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::message::ParrotMessage,
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 
 pub async fn autopause(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let mut data = ctx.data.write().await;
     let settings = data.get_mut::<GuildSettingsMap>().unwrap();

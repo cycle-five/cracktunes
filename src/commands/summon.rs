@@ -10,6 +10,7 @@ use crate::{
     handlers::{IdleHandler, TrackEndHandler},
     messaging::message::ParrotMessage,
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::{Event, TrackEvent};
@@ -19,7 +20,7 @@ pub async fn summon(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
     send_reply: bool,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let guild = ctx.cache.guild(guild_id).unwrap();
 
@@ -34,7 +35,7 @@ pub async fn summon(
         if has_current_connection && send_reply {
             // bot is in another channel
             let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
-            return Err(ParrotError::AlreadyConnected(bot_channel_id.mention()));
+            return Err(ParrotError::AlreadyConnected(bot_channel_id.mention()).into());
         }
     }
 

@@ -23,6 +23,7 @@ use crate::{
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
     utils::create_response_text,
+    Error,
 };
 use chrono::offset::Utc;
 use poise::serenity_prelude as serenity;
@@ -56,7 +57,8 @@ impl EventHandler for SerenityHandler {
         };
 
         if let Err(err) = self.run_command(&ctx, &mut command).await {
-            self.handle_error(&ctx, &mut command, err).await
+            self.handle_error(&ctx, &mut command, ParrotError::Poise(err))
+                .await
         }
     }
 
@@ -137,7 +139,7 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-    async fn create_commands(&self, ctx: &Context) -> Vec<Command> {
+    async fn _create_commands(&self, ctx: &Context) -> Vec<Command> {
         Command::set_global_application_commands(&ctx.http, |commands| {
             commands
                 .create_application_command(|command| {
@@ -378,7 +380,7 @@ impl SerenityHandler {
         &self,
         ctx: &Context,
         command: &mut ApplicationCommandInteraction,
-    ) -> Result<(), ParrotError> {
+    ) -> Result<(), Error> {
         let command_name = command.data.name.as_str();
 
         let guild_id = command.guild_id.unwrap();

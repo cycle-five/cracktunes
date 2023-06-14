@@ -9,6 +9,7 @@ use crate::{
     messaging::messages::REMOVED_QUEUE,
     utils::create_embed_response,
     utils::create_response,
+    Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
@@ -17,7 +18,7 @@ use std::cmp::min;
 pub async fn remove(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();

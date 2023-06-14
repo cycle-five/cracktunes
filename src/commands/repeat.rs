@@ -3,7 +3,7 @@ use self::serenity::{
 };
 use crate::{
     errors::ParrotError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
-    utils::create_response,
+    utils::create_response, Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::tracks::{LoopState, TrackHandle};
@@ -11,7 +11,7 @@ use songbird::tracks::{LoopState, TrackHandle};
 pub async fn repeat(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();
@@ -33,6 +33,6 @@ pub async fn repeat(
         Ok(_) if !was_looping => {
             create_response(&ctx.http, interaction, ParrotMessage::LoopEnable).await
         }
-        _ => Err(ParrotError::Other(FAIL_LOOP)),
+        _ => Err(ParrotError::Other(FAIL_LOOP).into()),
     }
 }

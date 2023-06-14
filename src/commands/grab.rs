@@ -2,15 +2,15 @@ use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
 use crate::{
-    errors::ParrotError,
     utils::{create_embed_response, create_now_playing_embed},
+    Error,
 };
 use poise::serenity_prelude as serenity;
 
 pub async fn grab(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     tracing::info!("grab");
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
