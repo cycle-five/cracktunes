@@ -78,11 +78,11 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
-            println!("Error in command `{}`: {:?}", ctx.command().name, error,);
+            tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                println!("Error while handling error: {}", e)
+                tracing::error!("Error while handling error: {}", e)
             }
         }
     }
@@ -95,7 +95,7 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![poise_commands::help::help2()], //, commands::vote(), commands::getvotes()],
+        commands: vec![poise_commands::help2()], //, commands::vote(), commands::getvotes()],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
@@ -110,13 +110,13 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
         /// This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                println!("Executing command {}...", ctx.command().qualified_name);
+                tracing::info!("Executing command {}...", ctx.command().qualified_name);
             })
         },
         /// This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                println!("Executed command {}!", ctx.command().qualified_name);
+                tracing::info!("Executed command {}!", ctx.command().qualified_name);
             })
         },
         /// Every command invocation must pass this check to continue execution
@@ -133,7 +133,7 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
         skip_checks_for_owners: false,
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
-                println!("Got an event in event handler: {:?}", event.name());
+                tracing::info!("Got an event in event handler: {:?}", event.name());
                 Ok(())
             })
         },
@@ -154,7 +154,7 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
         )
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
-                println!("Logged in as {}", _ready.user.name);
+                tracing::info!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     is_loop_running: false.into(),
