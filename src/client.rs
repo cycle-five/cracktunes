@@ -3,7 +3,7 @@ use poise::serenity_prelude as serenity;
 use songbird::serenity::SerenityInit;
 
 //use self::serenity::model::gateway::GatewayIntents;
-use serenity::GatewayIntents;
+use self::serenity::GatewayIntents;
 use std::{collections::HashMap, env, sync::atomic::AtomicBool};
 
 use crate::{

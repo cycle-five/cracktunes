@@ -1,3 +1,9 @@
+use self::serenity::{
+    model::{
+        application::interaction::application_command::ApplicationCommandInteraction, id::ChannelId,
+    },
+    Context, Mentionable,
+};
 use crate::{
     connection::get_voice_channel_for_user,
     errors::ParrotError,
@@ -6,12 +12,6 @@ use crate::{
     utils::create_response,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    model::{
-        application::interaction::application_command::ApplicationCommandInteraction, id::ChannelId,
-    },
-    Context, Mentionable,
-};
 use songbird::{Event, TrackEvent};
 use std::time::Duration;
 

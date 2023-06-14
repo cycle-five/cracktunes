@@ -21,14 +21,22 @@ async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
-    //oauth2_callback=debug,tower_http=debug
-    // A layer that logs events to a file.
-    let file = std::fs::File::create("debug.log");
-    let file = match file {
+    // A layer that logs up to debug events.
+    let debug_file = std::fs::File::create("debug.log");
+    let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
     };
-    let debug_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(file));
+    let debug_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file));
+
+    //oauth2_callback=debug,tower_http=debug
+    // A layer that logs events to a file.
+    let trace_file = std::fs::File::create("trace.log");
+    let trace_file = match trace_file {
+        Ok(file) => file,
+        Err(error) => panic!("Error: {:?}", error),
+    };
+    let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
     tracing_subscriber::registry()
         .with(
             stdout_log
@@ -37,6 +45,9 @@ async fn main() -> Result<(), Error> {
                 // Combine the filtered `stdout_log` layer with the
                 // `debug_log` layer, producing a new `Layered` layer.
                 .and_then(debug_log)
+                .with_filter(filter::LevelFilter::DEBUG)
+                // Combine with trace layer
+                .and_then(trace_log)
                 // Add a filter to *both* layers that rejects spans and
                 // events whose targets start with `metrics`.
                 .with_filter(filter::filter_fn(|metadata| {
@@ -95,7 +106,7 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![poise_commands::help2()], //, commands::vote(), commands::getvotes()],
+        commands: vec![poise_commands::help()], //, commands::vote(), commands::getvotes()],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
@@ -122,6 +133,7 @@ fn poise_framework() -> FrameworkBuilder<parrot::Data, Error> {
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
+                tracing::info!("Checking command {}...", ctx.command().qualified_name);
                 if ctx.author().id == 123456789 {
                     return Ok(false);
                 }

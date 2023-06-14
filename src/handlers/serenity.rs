@@ -1,3 +1,16 @@
+use self::serenity::{
+    async_trait,
+    model::{
+        application::command::{Command, CommandOptionType},
+        application::interaction::{
+            application_command::ApplicationCommandInteraction, Interaction,
+        },
+        gateway::Ready,
+        id::GuildId,
+        prelude::{Activity, ChannelId, VoiceState},
+    },
+    Mentionable, {Context, EventHandler},
+};
 use crate::{
     commands::{
         autopause::*, clear::*, grab::*, leave::*, manage_sources::*, now_playing::*, pause::*,
@@ -13,19 +26,6 @@ use crate::{
 };
 use chrono::offset::Utc;
 use poise::serenity_prelude as serenity;
-use serenity::{
-    async_trait,
-    model::{
-        application::command::{Command, CommandOptionType},
-        application::interaction::{
-            application_command::ApplicationCommandInteraction, Interaction,
-        },
-        gateway::Ready,
-        id::GuildId,
-        prelude::{Activity, ChannelId, VoiceState},
-    },
-    Mentionable, {Context, EventHandler},
-};
 use std::{
     sync::{atomic::Ordering, Arc},
     time::Duration,
@@ -358,10 +358,10 @@ impl SerenityHandler {
     }
 
     async fn load_guilds_settings(&self, ctx: &Context, ready: &Ready) {
-        println!("[INFO] Loading guilds' settings");
+        tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
-            println!("[DEBUG] Loading guild settings for {:?}", guild);
+            tracing::debug!("[DEBUG] Loading guild settings for {:?}", guild);
             let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
             let guild_settings = settings
@@ -369,9 +369,10 @@ impl SerenityHandler {
                 .or_insert_with(|| GuildSettings::new(guild.id));
 
             if let Err(err) = guild_settings.load_if_exists() {
-                println!(
+                tracing::error!(
                     "[ERROR] Failed to load guild {} settings due to {}",
-                    guild.id, err
+                    guild.id,
+                    err
                 );
             }
         }

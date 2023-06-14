@@ -1,12 +1,12 @@
+use self::serenity::{
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+};
 use crate::{
     errors::ParrotError, handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage, utils::create_response,
 };
 use poise::serenity_prelude as serenity;
 use rand::Rng;
-use serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 
 pub async fn shuffle(
     ctx: &Context,

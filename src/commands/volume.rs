@@ -1,9 +1,9 @@
-use crate::{errors::ParrotError, utils::create_embed_response};
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     builder::CreateEmbed,
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
+use crate::{errors::ParrotError, utils::create_embed_response};
+use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 
 pub async fn volume(

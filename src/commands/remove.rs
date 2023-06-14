@@ -1,3 +1,7 @@
+use self::serenity::{
+    builder::CreateEmbed,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+};
 use crate::{
     errors::{verify, ParrotError},
     handlers::track_end::update_queue_messages,
@@ -7,10 +11,6 @@ use crate::{
     utils::create_response,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    builder::CreateEmbed,
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 use songbird::tracks::TrackHandle;
 use std::cmp::min;
 

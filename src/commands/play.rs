@@ -1,3 +1,8 @@
+use self::serenity::{
+    builder::CreateEmbed,
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+    Mutex,
+};
 use crate::{
     commands::{skip::force_skip_top_track, summon::summon},
     errors::{verify, ParrotError},
@@ -17,11 +22,6 @@ use crate::{
     },
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    builder::CreateEmbed,
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-    Mutex,
-};
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use url::Url;

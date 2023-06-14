@@ -1,10 +1,10 @@
+use self::serenity::async_trait;
 use crate::{
     commands::play::{Mode, QueryType},
     sources::ffmpeg::ffmpeg,
 };
 use poise::serenity_prelude as serenity;
 use serde_json::Value;
-use serenity::async_trait;
 use songbird::input::{
     error::{Error as SongbirdError, Result as SongbirdResult},
     restartable::Restart,

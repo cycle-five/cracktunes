@@ -1,3 +1,4 @@
+use self::serenity::{model::mention::Mention, SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
     FAIL_NO_VOICE_CONNECTION, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, QUEUE_IS_EMPTY,
@@ -6,7 +7,6 @@ use crate::messaging::messages::{
 use crate::Error;
 use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
-use serenity::{model::mention::Mention, SerenityError};
 use songbird::input::error::Error as InputError;
 use std::fmt::{Debug, Display};
 //use std::{error::Error, fmt};

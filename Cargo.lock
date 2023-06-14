@@ -1074,6 +1074,7 @@ dependencies = [
  "rspotify",
  "serde",
  "serde_json",
+ "serenity",
  "songbird",
  "sys-info",
  "tokio",

@@ -1,10 +1,10 @@
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     async_trait,
     http::Http,
     model::id::GuildId,
     {Mutex, RwLock, TypeMap},
 };
+use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 

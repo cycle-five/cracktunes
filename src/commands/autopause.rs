@@ -1,3 +1,6 @@
+use self::serenity::{
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+};
 use crate::{
     errors::ParrotError,
     guild::settings::{GuildSettings, GuildSettingsMap},
@@ -5,9 +8,6 @@ use crate::{
     utils::create_response,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 
 pub async fn autopause(
     ctx: &Context,

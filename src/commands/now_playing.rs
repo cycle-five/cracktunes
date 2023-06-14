@@ -1,11 +1,11 @@
+use self::serenity::{
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+};
 use crate::{
     errors::ParrotError,
     utils::{create_embed_response, create_now_playing_embed},
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 
 pub async fn now_playing(
     ctx: &Context,

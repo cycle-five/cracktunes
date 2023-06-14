@@ -1,13 +1,4 @@
-use crate::{
-    errors::ParrotError,
-    guild::settings::{GuildSettings, GuildSettingsMap},
-    messaging::messages::{
-        DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
-        DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
-    },
-};
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     builder::{CreateComponents, CreateInputText},
     collector::ModalInteractionCollectorBuilder,
     futures::StreamExt,
@@ -20,6 +11,15 @@ use serenity::{
     },
     Context,
 };
+use crate::{
+    errors::ParrotError,
+    guild::settings::{GuildSettings, GuildSettingsMap},
+    messaging::messages::{
+        DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
+        DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
+    },
+};
+use poise::serenity_prelude as serenity;
 
 pub async fn allow(
     ctx: &Context,

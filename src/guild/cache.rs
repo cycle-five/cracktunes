@@ -3,14 +3,14 @@ use std::{
     sync::Arc,
 };
 
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     model::{
         channel::Message,
         id::{GuildId, UserId},
     },
     RwLock, TypeMapKey,
 };
+use poise::serenity_prelude as serenity;
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
 

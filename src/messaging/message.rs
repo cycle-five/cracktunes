@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
+use self::serenity::model::mention::Mention;
 use poise::serenity_prelude as serenity;
-use serenity::model::mention::Mention;
 
 use crate::messaging::messages::*;
 

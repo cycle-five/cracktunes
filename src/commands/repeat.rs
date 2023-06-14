@@ -1,11 +1,11 @@
+use self::serenity::{
+    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
+};
 use crate::{
     errors::ParrotError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
     utils::create_response,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 use songbird::tracks::{LoopState, TrackHandle};
 
 pub async fn repeat(

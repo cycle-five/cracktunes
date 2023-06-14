@@ -1,15 +1,4 @@
-use crate::{
-    errors::ParrotError,
-    guild::cache::GuildCacheMap,
-    handlers::track_end::ModifyQueueHandler,
-    messaging::messages::{
-        QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
-        QUEUE_PAGE_OF, QUEUE_UP_NEXT,
-    },
-    utils::get_human_readable_timestamp,
-};
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     builder::{CreateButton, CreateComponents, CreateEmbed},
     futures::StreamExt,
     model::{
@@ -24,6 +13,17 @@ use serenity::{
     },
     Context, {RwLock, TypeMap},
 };
+use crate::{
+    errors::ParrotError,
+    guild::cache::GuildCacheMap,
+    handlers::track_end::ModifyQueueHandler,
+    messaging::messages::{
+        QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
+        QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+    },
+    utils::get_human_readable_timestamp,
+};
+use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
     cmp::{max, min},

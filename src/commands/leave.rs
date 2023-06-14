@@ -1,8 +1,8 @@
-use crate::{errors::ParrotError, messaging::message::ParrotMessage, utils::create_response};
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     model::application::interaction::application_command::ApplicationCommandInteraction, Context,
 };
+use crate::{errors::ParrotError, messaging::message::ParrotMessage, utils::create_response};
+use poise::serenity_prelude as serenity;
 
 pub async fn leave(
     ctx: &Context,

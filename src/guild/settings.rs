@@ -1,7 +1,7 @@
+use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
-use serenity::{model::id::GuildId, TypeMapKey};
 use std::{
     collections::{HashMap, HashSet},
     env,

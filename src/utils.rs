@@ -1,5 +1,4 @@
-use poise::serenity_prelude as serenity;
-use serenity::{
+use self::serenity::{
     builder::CreateEmbed,
     http::{Http, HttpError},
     model::{
@@ -10,6 +9,7 @@ use serenity::{
     },
     Error,
 };
+use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
