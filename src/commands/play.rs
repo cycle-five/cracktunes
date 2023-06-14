@@ -4,7 +4,7 @@ use self::serenity::{
     Mutex,
 };
 use crate::{
-    commands::{skip::force_skip_top_track, summon::summon},
+    commands::skip::force_skip_top_track,
     errors::{verify, ParrotError},
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
@@ -12,6 +12,7 @@ use crate::{
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
     },
+    //poise_commands::summon::summon,
     sources::{
         spotify::{Spotify, SPOTIFY},
         youtube::{YouTube, YouTubeRestartable},
@@ -78,7 +79,7 @@ pub async fn play(
     let manager = songbird::get(ctx).await.unwrap();
 
     // try to join a voice channel if not in one just yet
-    summon(ctx, interaction, false).await?;
+    //summon().slash_action.unwrap().await?;
     let call = manager.get(guild_id).unwrap();
 
     // determine whether this is a link or a query string

@@ -1,32 +1,39 @@
-use self::serenity::{
-    model::{
-        application::interaction::application_command::ApplicationCommandInteraction, id::ChannelId,
-    },
-    Context, Mentionable,
-};
+use self::serenity::{model::id::ChannelId, Mentionable};
 use crate::{
     connection::get_voice_channel_for_user,
     errors::ParrotError,
     handlers::{IdleHandler, TrackEndHandler},
     messaging::message::ParrotMessage,
-    utils::create_response,
-    Error,
+    utils::{get_guild_id, get_user_id},
+    Context, Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::{Event, TrackEvent};
 use std::time::Duration;
 
+#[poise::command(slash_command, prefix_command)]
 pub async fn summon(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-    send_reply: bool,
+    ctx: Context<'_>,
+    #[description = "Channel id to join"] channel_id_str: Option<String>,
+    #[description = "Send a reply to the user"] send_reply: bool,
 ) -> Result<(), Error> {
-    let guild_id = interaction.guild_id.unwrap();
-    let guild = ctx.cache.guild(guild_id).unwrap();
+    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let user_id = get_user_id(&ctx);
 
-    let manager = songbird::get(ctx).await.unwrap();
-    let channel_opt = get_voice_channel_for_user(&guild, &interaction.user.id);
-    let channel_id = channel_opt.unwrap();
+    let channel_id = match channel_id_str {
+        Some(id) => ChannelId(id.parse::<u64>().unwrap()),
+        None => match get_voice_channel_for_user(&guild, &user_id) {
+            Some(channel_id) => channel_id,
+            None => {
+                if send_reply {
+                    ctx.say("You are not in a voice channel!").await?;
+                }
+                return Err(ParrotError::WrongVoiceChannel.into());
+            }
+        },
+    };
 
     if let Some(call) = manager.get(guild.id) {
         let handler = call.lock().await;
@@ -51,9 +58,10 @@ pub async fn summon(
         handler.add_global_event(
             Event::Periodic(Duration::from_secs(1), None),
             IdleHandler {
-                http: ctx.http.clone(),
-                manager,
-                interaction: interaction.clone(),
+                http: ctx.serenity_context().http.clone(),
+                manager: manager.clone(),
+                channel_id,
+                guild_id: Some(guild_id),
                 limit: 60 * 10,
                 count: Default::default(),
             },
@@ -64,20 +72,19 @@ pub async fn summon(
             TrackEndHandler {
                 guild_id: guild.id,
                 call: call.clone(),
-                ctx_data: ctx.data.clone(),
+                ctx_data: ctx.serenity_context().data.clone(),
             },
         );
     }
 
     if send_reply {
-        return create_response(
-            &ctx.http,
-            interaction,
+        ctx.say(
             ParrotMessage::Summon {
                 mention: channel_id.mention(),
-            },
+            }
+            .to_string(),
         )
-        .await;
+        .await?;
     }
 
     Ok(())

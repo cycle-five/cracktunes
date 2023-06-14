@@ -8,13 +8,22 @@ use self::serenity::{
         channel::Message,
     },
 };
-use poise::{serenity_prelude as serenity, ReplyHandle};
+//use ::serenity::http::CacheHttp;
+use poise::{
+    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, ReplyHandle,
+};
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::{messaging::message::ParrotMessage, Error};
+use crate::{messaging::message::ParrotMessage, Context, Error};
 use poise::serenity_prelude::SerenityError;
+
+pub async fn create_response_poise(ctx: &Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+    let message_str = format!("{message}");
+
+    create_embed_response_poise(&ctx, message_str).await
+}
 
 pub async fn create_response(
     http: &Arc<Http>,
@@ -54,6 +63,15 @@ pub async fn edit_response_text(
     let mut embed = CreateEmbed::default();
     embed.description(content);
     edit_embed_response(http, interaction, embed).await
+}
+
+pub async fn create_embed_response_poise(
+    ctx: &Context<'_>,
+    message_str: String,
+) -> Result<(), Error> {
+    ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
+        .await?;
+    Ok(())
 }
 
 pub async fn create_embed_response(
@@ -172,3 +190,53 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
         tracing::error!("Error sending message: {:?}", why);
     }
 }
+
+pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => Some(x.clone()),
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        },
+        Context::Prefix(_) => None,
+    }
+}
+
+pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.guild_id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.guild_id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.guild_id,
+    }
+}
+
+pub fn get_user_id(ctx: &Context) -> serenity::UserId {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.author.id,
+    }
+}
+
+pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.channel_id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.channel_id,
+    }
+}
+
+// pub fn reply_poise(ctx: &Context, content: String) -> Result<Message, Error> {
+//     //ctx.reply(content)
+//     match ctx {
+//         Context::Application(app_ctx) => match app_ctx.interaction {
+//             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
+//         },
+//         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
+//     }
+// }

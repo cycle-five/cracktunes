@@ -15,12 +15,13 @@ use crate::{
     commands::{
         autopause::*, clear::*, grab::*, leave::*, manage_sources::*, now_playing::*, pause::*,
         play::*, queue::*, remove::*, repeat::*, resume::*, seek::*, shuffle::*, skip::*, stop::*,
-        summon::*, version::*, volume::*, voteskip::*,
+        version::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
     errors::ParrotError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
+    //poise_commands::volume::volume,
     sources::spotify::{Spotify, SPOTIFY},
     utils::create_response_text,
     Error,
@@ -445,7 +446,10 @@ impl SerenityHandler {
 
         match command_name {
             "grab" => grab(ctx, command).await,
-            "volume" => volume(ctx, command).await,
+            "volume" => {
+                tracing::error!("volume not implemented here");
+                Ok(())
+            }
             "autopause" => autopause(ctx, command).await,
             "clear" => clear(ctx, command).await,
             "leave" => leave(ctx, command).await,
@@ -461,7 +465,10 @@ impl SerenityHandler {
             "shuffle" => shuffle(ctx, command).await,
             "skip" => skip(ctx, command).await,
             "stop" => stop(ctx, command).await,
-            "summon" => summon(ctx, command, true).await,
+            "summon" => {
+                tracing::error!("summon not implemented here");
+                Ok(())
+            }
             "version" => version(ctx, command).await,
             "voteskip" => voteskip(ctx, command).await,
             _ => unreachable!(),

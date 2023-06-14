@@ -1,5 +1,5 @@
 use self::serenity::builder::CreateEmbed;
-use crate::utils::create_embed_response;
+use crate::utils::{create_embed_response, create_embed_response_poise};
 use crate::{Context, Error};
 use ::serenity::http::CacheHttp;
 use poise::{serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction};
@@ -12,7 +12,18 @@ pub async fn volume(
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
     tracing::info!("volume");
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            create_embed_response_poise(
+                &ctx,
+                "I need to be in a voice channel before you can do that.".to_string(),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
     let old_ctx = ctx.serenity_context();
