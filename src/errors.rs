@@ -3,12 +3,14 @@ use crate::messaging::messages::{
     FAIL_NO_VOICE_CONNECTION, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, QUEUE_IS_EMPTY,
     TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
 };
+use crate::Error;
 use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
 use serenity::{model::mention::Mention, SerenityError};
 use songbird::input::error::Error as InputError;
 use std::fmt::{Debug, Display};
-use std::{error::Error, fmt};
+//use std::{error::Error, fmt};
+use std::fmt;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -27,12 +29,17 @@ pub enum ParrotError {
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
+    Poise(Error),
 }
 
 /// `ParrotError` implements the [`Debug`] and [`Display`] traits
 /// meaning it implements the [`std::error::Error`] trait.
 /// This just makes it explicit.
-impl Error for ParrotError {}
+impl std::error::Error for ParrotError {}
+
+unsafe impl Send for ParrotError {}
+
+unsafe impl Sync for ParrotError {}
 
 /// Implementation of the [`Display`] trait for the [`ParrotError`] enum.
 /// Errors are formatted with this and then sent as responses to the interaction.
@@ -71,6 +78,7 @@ impl Display for ParrotError {
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::Serde(err) => f.write_str(&format!("{err}")),
+            Self::Poise(err) => f.write_str(&format!("{err}")),
         }
     }
 }

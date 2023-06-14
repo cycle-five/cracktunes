@@ -26,22 +26,24 @@ chrono = "0.4.26"
 version = "0.3.2"
 features = ["builtin-queue", "yt-dlp"]
 
-[dependencies.poise]
-version = "0.5.5"
-
 # [dependencies.serenity]
 # version = "0.11.5"
 # default-features = false
 # features = [
+#   "builder",
 #   "cache",
 #   "collector",
 #   "client",
 #   "gateway",
 #   "model",
+#   "utils",
 #   "rustls_backend",
 #   "unstable_discord_api",
 #   "voice",
 # ]
+
+[dependencies.poise]
+version = "0.5.5"
 
 [dependencies.tokio]
 version = "1.28.2"
