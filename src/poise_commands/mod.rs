@@ -4,6 +4,7 @@ pub mod leave;
 pub mod pause;
 pub mod play;
 pub mod resume;
+pub mod stop;
 pub mod summon;
 pub mod volume;
 
@@ -13,5 +14,6 @@ pub use leave::*;
 pub use pause::*;
 pub use play::*;
 pub use resume::*;
+pub use stop::*;
 pub use summon::*;
 pub use volume::*;

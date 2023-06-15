@@ -14,7 +14,7 @@ use self::serenity::{
 use crate::{
     commands::{
         autopause::*, clear::*, grab::*, manage_sources::*, now_playing::*, queue::*, remove::*,
-        shuffle::*, skip::*, stop::*, version::*, voteskip::*,
+        shuffle::*, skip::*, version::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
     errors::CrackedError,
@@ -486,7 +486,12 @@ impl SerenityHandler {
             }
             "shuffle" => shuffle(ctx, command).await,
             "skip" => skip(ctx, command).await,
-            "stop" => stop(ctx, command).await,
+            "stop" => {
+                tracing::error!("summon not implemented here");
+                Ok(())
+                //stop(ctx, command).await,
+            }
+
             "summon" => {
                 tracing::error!("summon not implemented here");
                 Ok(())
