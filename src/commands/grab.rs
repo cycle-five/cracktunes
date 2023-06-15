@@ -1,9 +1,7 @@
-use self::serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
+use self::serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use crate::{
     utils::{create_embed_response, create_now_playing_embed},
-    Error,
+    Context, Error,
 };
 use poise::serenity_prelude as serenity;
 

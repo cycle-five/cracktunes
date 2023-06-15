@@ -1,22 +1,17 @@
-use self::serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    utils::create_response,
-    Error,
+    utils::{create_response, get_interaction},
+    Context, Error,
 };
-use poise::serenity_prelude as serenity;
 use std::time::Duration;
 
-pub async fn seek(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), Error> {
+#[poise::command(prefix_command, slash_command)]
+pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
+    let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let args = interaction.data.options.clone();
@@ -43,8 +38,8 @@ pub async fn seek(
     track.seek_time(Duration::from_secs(timestamp)).unwrap();
 
     create_response(
-        &ctx.http,
-        interaction,
+        &ctx.serenity_context().http,
+        &mut interaction,
         ParrotMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },

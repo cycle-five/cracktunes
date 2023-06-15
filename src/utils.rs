@@ -22,7 +22,7 @@ use poise::serenity_prelude::SerenityError;
 pub async fn create_response_poise(ctx: &Context<'_>, message: ParrotMessage) -> Result<(), Error> {
     let message_str = format!("{message}");
 
-    create_embed_response_poise(&ctx, message_str).await
+    create_embed_response_str(&ctx, message_str).await
 }
 
 pub async fn create_response(
@@ -80,13 +80,32 @@ pub async fn edit_response_text(
     edit_embed_response(http, interaction, embed).await
 }
 
-pub async fn create_embed_response_poise(
+pub async fn create_embed_response_str(
     ctx: &Context<'_>,
     message_str: String,
 ) -> Result<(), Error> {
     ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
         .await?;
     Ok(())
+}
+
+pub async fn create_embed_response_poise(
+    ctx: Context<'_>,
+    embed: CreateEmbed,
+) -> Result<(), Error> {
+    match get_interaction(ctx) {
+        Some(mut interaction) => {
+            return create_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
+                .await;
+        }
+        None => {
+            ctx.defer().await?;
+            let mut interaction = get_interaction(ctx).unwrap();
+
+            return create_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
+                .await;
+        }
+    }
 }
 
 pub async fn create_embed_response(

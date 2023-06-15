@@ -78,11 +78,9 @@ pub async fn play(
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
-            create_embed_response_poise(
-                &ctx,
-                "I need to be in a voice channel before you can do that.".to_string(),
-            )
-            .await?;
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -91,11 +89,9 @@ pub async fn play(
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            create_embed_response_poise(
-                &ctx,
-                "I need to be in a voice channel before you can do that.".to_string(),
-            )
-            .await?;
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };

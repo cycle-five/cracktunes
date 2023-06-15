@@ -89,11 +89,22 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
         commands: vec![
-            poise_commands::volume(),
-            poise_commands::summon(),
-            poise_commands::help(),
             poise_commands::chatgpt(),
+            poise_commands::clear(),
+            poise_commands::help(),
+            poise_commands::leave(),
+            poise_commands::now_playing(),
+            poise_commands::pause(),
             poise_commands::play(),
+            poise_commands::remove(),
+            poise_commands::repeat(),
+            poise_commands::resume(),
+            poise_commands::seek(),
+            poise_commands::skip(),
+            poise_commands::stop(),
+            poise_commands::summon(),
+            poise_commands::version(),
+            poise_commands::volume(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
@@ -122,9 +133,10 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
         command_check: Some(|ctx| {
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.author().id == 123456789 {
-                    return Ok(false);
-                }
+                // let authorized_ids = vec![976966669169733672];
+                // if authorized_ids.iter().any(|x| *x == ctx.author().id.0) {
+                //     return Ok(true);
+                // }
                 Ok(true)
             })
         }),

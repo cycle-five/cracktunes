@@ -1,6 +1,6 @@
 use self::serenity::async_trait;
 use crate::{
-    poise_commands::play::{Mode, QueryType},
+    commands::play::{Mode, QueryType},
     sources::ffmpeg::ffmpeg,
 };
 use poise::serenity_prelude as serenity;

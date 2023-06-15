@@ -39,7 +39,7 @@ pub async fn summon(
         let handler = call.lock().await;
         let has_current_connection = handler.current_connection().is_some();
 
-        if has_current_connection && send_reply.unwrap_or_else(|| false) {
+        if has_current_connection && send_reply.unwrap_or_else(|| true) {
             // bot is in another channel
             let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
             return Err(CrackedError::AlreadyConnected(bot_channel_id.mention()).into());
@@ -77,7 +77,7 @@ pub async fn summon(
         );
     }
 
-    if send_reply.unwrap_or_else(|| false) {
+    if send_reply.unwrap_or_else(|| true) {
         ctx.say(
             ParrotMessage::Summon {
                 mention: channel_id.mention(),

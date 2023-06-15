@@ -1,4 +1,5 @@
 use self::serenity::builder::CreateEmbed;
+use crate::errors::CrackedError;
 use crate::utils::{create_embed_response, create_embed_response_poise};
 use crate::{Context, Error};
 use ::serenity::http::CacheHttp;
@@ -15,11 +16,9 @@ pub async fn volume(
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
-            create_embed_response_poise(
-                &ctx,
-                "I need to be in a voice channel before you can do that.".to_string(),
-            )
-            .await?;
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -28,11 +27,9 @@ pub async fn volume(
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            create_embed_response_poise(
-                &ctx,
-                "I need to be in a voice channel before you can do that.".to_string(),
-            )
-            .await?;
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };

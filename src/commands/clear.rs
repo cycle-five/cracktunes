@@ -1,21 +1,17 @@
-use self::serenity::{
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
-    utils::create_response,
-    Error,
+    utils::{create_response, get_interaction},
+    Context, Error,
 };
-use poise::serenity_prelude as serenity;
 
-pub async fn clear(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), Error> {
+#[poise::command(prefix_command, slash_command)]
+pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
+    let mut interaction = get_interaction(ctx).unwrap();
+
     let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
@@ -31,7 +27,18 @@ pub async fn clear(
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    create_response(&ctx.http, interaction, ParrotMessage::Clear).await?;
-    update_queue_messages(&ctx.http, &ctx.data, &queue, guild_id).await;
+    create_response(
+        &ctx.serenity_context().http,
+        &mut interaction,
+        ParrotMessage::Clear,
+    )
+    .await?;
+    update_queue_messages(
+        &ctx.serenity_context().http,
+        &ctx.serenity_context().data,
+        &queue,
+        guild_id,
+    )
+    .await;
     Ok(())
 }

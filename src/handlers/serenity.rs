@@ -12,10 +12,7 @@ use self::serenity::{
     Mentionable, {Context, EventHandler},
 };
 use crate::{
-    commands::{
-        autopause::*, clear::*, grab::*, manage_sources::*, now_playing::*, queue::*, remove::*,
-        shuffle::*, skip::*, version::*, voteskip::*,
-    },
+    commands::{manage_sources::*, shuffle::*},
     connection::{check_voice_connections, Connection},
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
@@ -443,20 +440,40 @@ impl SerenityHandler {
         }?;
 
         match command_name {
-            "grab" => grab(ctx, command).await,
+            "grab" => {
+                //grab(ctx, command).await,
+                tracing::error!("pause not implemented here");
+                Ok(())
+            }
             "volume" => {
                 tracing::error!("volume not implemented here");
                 Ok(())
             }
-            "autopause" => autopause(ctx, command).await,
-            "clear" => clear(ctx, command).await,
+            "autopause" => {
+                tracing::error!("autopause not implemented here");
+                Ok(())
+                //autopause(ctx, command).await,
+            }
+            "clear" => {
+                tracing::error!("clear not implemented here");
+                Ok(())
+                //clear(ctx, command).await,
+            }
             "leave" => {
-                tracing::error!("pause not implemented here");
+                tracing::error!("leave not implemented here");
                 Ok(())
                 //leave(ctx, command).await,
             }
-            "managesources" => allow(ctx, command).await,
-            "np" => now_playing(ctx, command).await,
+            "managesources" => {
+                tracing::error!("pause not implemented here");
+                Ok(())
+                //allow(ctx, command).await,
+            }
+            "np" => {
+                tracing::error!("np not implemented here");
+                Ok(())
+                //now_playing(ctx, command).await,
+            }
             "pause" => {
                 tracing::error!("pause not implemented here");
                 Ok(())
@@ -467,10 +484,18 @@ impl SerenityHandler {
                 Ok(())
                 //play(ctx, command).await,
             }
-            "queue" => queue(ctx, command).await,
-            "remove" => remove(ctx, command).await,
+            "queue" => {
+                tracing::error!("queue not implemented here");
+                Ok(())
+                //queue(ctx, command).await,
+            }
+            "remove" => {
+                tracing::error!("remove not implemented here");
+                Ok(())
+                //remove(ctx, command).await,
+            }
             "repeat" => {
-                tracing::error!("resume not implemented here");
+                tracing::error!("repeat not implemented here");
                 Ok(())
                 //repeat(ctx, command).await,
             }
@@ -484,11 +509,19 @@ impl SerenityHandler {
                 Ok(())
                 //seek(ctx, command).await
             }
-            "shuffle" => shuffle(ctx, command).await,
-            "skip" => skip(ctx, command).await,
-            "stop" => {
+            "shuffle" => {
                 tracing::error!("summon not implemented here");
                 Ok(())
+                //shuffle(ctx, command).await,
+            }
+            "skip" => {
+                tracing::error!("summon not implemented here");
+                Ok(())
+                //skip(ctx, command).await,
+            }
+            "stop" => {
+                tracing::error!("summon not implemented here");
+                return Ok(());
                 //stop(ctx, command).await,
             }
 
@@ -496,8 +529,17 @@ impl SerenityHandler {
                 tracing::error!("summon not implemented here");
                 Ok(())
             }
-            "version" => version(ctx, command).await,
-            "voteskip" => voteskip(ctx, command).await,
+            "version" => {
+                tracing::error!("version not implemented here");
+                Ok(())
+                //version(ctx, command).await,
+            }
+
+            "voteskip" => {
+                tracing::error!("version not implemented here");
+                Ok(())
+                //voteskip(ctx, command).await,
+            }
             _ => unreachable!(),
         }
     }
@@ -568,6 +610,7 @@ async fn set_status_to_current_time(ctx: Arc<Context>) {
 }
 
 async fn check_camera_status(ctx: Arc<Context>, guild_id: GuildId) {
+    ctx.data.read().await;
     let guild = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => guild,
         None => {

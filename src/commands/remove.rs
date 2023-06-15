@@ -1,41 +1,30 @@
-use self::serenity::{
-    builder::CreateEmbed,
-    model::application::interaction::application_command::ApplicationCommandInteraction, Context,
-};
+use self::serenity::builder::CreateEmbed;
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     messaging::messages::REMOVED_QUEUE,
-    utils::create_embed_response,
-    utils::create_response,
-    Error,
+    utils::create_embed_response_poise,
+    utils::{create_response_poise, get_guild_id},
+    Context, Error,
 };
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 use std::cmp::min;
 
+#[poise::command(prefix_command, slash_command)]
 pub async fn remove(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
+    ctx: Context<'_>,
+    #[description = "Start index in the track queue to remove"] b_index: usize,
+    #[description = "End index in the track queue to remove"] e_index: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let guild_id = get_guild_id(&ctx).unwrap();
+    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
-    let args = interaction.data.options.clone();
-
-    let remove_index = args
-        .first()
-        .unwrap()
-        .value
-        .as_ref()
-        .unwrap()
-        .as_u64()
-        .unwrap() as usize;
-
-    let remove_until = match args.get(1) {
-        Some(arg) => arg.value.as_ref().unwrap().as_u64().unwrap() as usize,
+    let remove_index = b_index;
+    let remove_until = match e_index {
+        Some(arg) => arg,
         None => remove_index,
     };
 
@@ -72,12 +61,19 @@ pub async fn remove(
 
     if remove_until == remove_index {
         let embed = create_remove_enqueued_embed(track).await;
-        create_embed_response(&ctx.http, interaction, embed).await?;
+        //create_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
+        create_embed_response_poise(ctx, embed).await?;
     } else {
-        create_response(&ctx.http, interaction, ParrotMessage::RemoveMultiple).await?;
+        create_response_poise(&ctx, ParrotMessage::RemoveMultiple).await?;
     }
 
-    update_queue_messages(&ctx.http, &ctx.data, &queue, guild_id).await;
+    update_queue_messages(
+        &ctx.serenity_context().http,
+        &ctx.serenity_context().data,
+        &queue,
+        guild_id,
+    )
+    .await;
     Ok(())
 }
 
