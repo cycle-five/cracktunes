@@ -610,7 +610,6 @@ async fn set_status_to_current_time(ctx: Arc<Context>) {
 }
 
 async fn check_camera_status(ctx: Arc<Context>, guild_id: GuildId) {
-    ctx.data.read().await;
     let guild = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => guild,
         None => {

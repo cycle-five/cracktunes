@@ -2,7 +2,6 @@ use std::sync::atomic::AtomicBool;
 
 pub mod client;
 pub mod commands;
-pub mod commands;
 pub mod connection;
 pub mod errors;
 pub mod guild;

@@ -1,7 +1,8 @@
 use cracktunes::{
+    commands,
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
     handlers::SerenityHandler,
-    poise_commands, Data,
+    Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use songbird::serenity::SerenityInit;
@@ -89,22 +90,22 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
         commands: vec![
-            poise_commands::chatgpt(),
-            poise_commands::clear(),
-            poise_commands::help(),
-            poise_commands::leave(),
-            poise_commands::now_playing(),
-            poise_commands::pause(),
-            poise_commands::play(),
-            poise_commands::remove(),
-            poise_commands::repeat(),
-            poise_commands::resume(),
-            poise_commands::seek(),
-            poise_commands::skip(),
-            poise_commands::stop(),
-            poise_commands::summon(),
-            poise_commands::version(),
-            poise_commands::volume(),
+            commands::chatgpt(),
+            commands::clear(),
+            commands::help(),
+            commands::leave(),
+            commands::now_playing(),
+            commands::pause(),
+            commands::play(),
+            commands::remove(),
+            commands::repeat(),
+            commands::resume(),
+            commands::seek(),
+            commands::skip(),
+            commands::stop(),
+            commands::summon(),
+            commands::version(),
+            commands::volume(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
@@ -133,10 +134,18 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
         command_check: Some(|ctx| {
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                // let authorized_ids = vec![976966669169733672];
-                // if authorized_ids.iter().any(|x| *x == ctx.author().id.0) {
-                //     return Ok(true);
-                // }
+                let mut auth = HashMap::<u64, Vec<u64>>::new();
+                auth.insert(960879716259233794, vec![1063503001936994396]);
+                let roll = auth.get(&ctx.guild_id().unwrap().0);
+
+                match roll {
+                    Some(roll) => {
+                        if roll.iter().any(|x| *x == ctx.author().id.0) {
+                            return Ok(true);
+                        }
+                    }
+                    None => return Ok(false),
+                }
                 Ok(true)
             })
         }),
