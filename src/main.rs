@@ -93,6 +93,7 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
             poise_commands::summon(),
             poise_commands::help(),
             poise_commands::chatgpt(),
+            poise_commands::play(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),

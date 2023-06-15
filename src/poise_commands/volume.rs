@@ -74,16 +74,12 @@ pub async fn volume(
     };
 
     let handler = call.lock().await;
-
     let new_volume = to_set.unwrap() as f32 / 100.0;
-
     let track_handle: TrackHandle = handler.queue().current().expect("No track playing");
-
     let old_volume = track_handle.get_info().await.unwrap().volume;
-
     track_handle.set_volume(new_volume).unwrap();
-
     let embed = create_volume_embed(old_volume, new_volume);
+
     match ctx {
         Context::Prefix(prefix_ctx) => {
             prefix_ctx
@@ -93,7 +89,6 @@ pub async fn volume(
                     embed.0.get("description").unwrap().to_string(),
                 )
                 .await?;
-            // create_embed_response(&Arc::new(*old_ctx.http()), , embed).await?;
             Ok(())
         }
         Context::Application(app_ctx) => match app_ctx.interaction {

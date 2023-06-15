@@ -13,15 +13,13 @@ use self::serenity::{
 };
 use crate::{
     commands::{
-        autopause::*, clear::*, grab::*, leave::*, manage_sources::*, now_playing::*, pause::*,
-        play::*, queue::*, remove::*, repeat::*, resume::*, seek::*, shuffle::*, skip::*, stop::*,
-        version::*, voteskip::*,
+        autopause::*, clear::*, grab::*, manage_sources::*, now_playing::*, queue::*, remove::*,
+        shuffle::*, skip::*, stop::*, version::*, voteskip::*,
     },
     connection::{check_voice_connections, Connection},
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
-    //poise_commands::volume::volume,
     sources::spotify::{Spotify, SPOTIFY},
     utils::create_response_text,
     Error,
@@ -452,16 +450,40 @@ impl SerenityHandler {
             }
             "autopause" => autopause(ctx, command).await,
             "clear" => clear(ctx, command).await,
-            "leave" => leave(ctx, command).await,
+            "leave" => {
+                tracing::error!("pause not implemented here");
+                Ok(())
+                //leave(ctx, command).await,
+            }
             "managesources" => allow(ctx, command).await,
             "np" => now_playing(ctx, command).await,
-            "pause" => pause(ctx, command).await,
-            "play" | "superplay" => play(ctx, command).await,
+            "pause" => {
+                tracing::error!("pause not implemented here");
+                Ok(())
+                //pause(ctx, command).await,
+            }
+            "play" | "superplay" => {
+                tracing::error!("play not implemented here");
+                Ok(())
+                //play(ctx, command).await,
+            }
             "queue" => queue(ctx, command).await,
             "remove" => remove(ctx, command).await,
-            "repeat" => repeat(ctx, command).await,
-            "resume" => resume(ctx, command).await,
-            "seek" => seek(ctx, command).await,
+            "repeat" => {
+                tracing::error!("resume not implemented here");
+                Ok(())
+                //repeat(ctx, command).await,
+            }
+            "resume" => {
+                tracing::error!("resume not implemented here");
+                Ok(())
+                //resume(ctx, command).await,
+            }
+            "seek" => {
+                tracing::error!("seek not implemented here");
+                Ok(())
+                //seek(ctx, command).await
+            }
             "shuffle" => shuffle(ctx, command).await,
             "skip" => skip(ctx, command).await,
             "stop" => stop(ctx, command).await,

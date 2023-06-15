@@ -46,9 +46,6 @@ features = [
 [dependencies.poise]
 version = "0.5.5"
 default-features = true
-# chrono = ["serenity/chrono"]
-# cache = ["serenity/cache"]
-# time = ["serenity/time"]
 
 [dependencies.tokio]
 version = "1.28.2"

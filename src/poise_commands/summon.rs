@@ -15,7 +15,7 @@ use std::time::Duration;
 pub async fn summon(
     ctx: Context<'_>,
     #[description = "Channel id to join"] channel_id_str: Option<String>,
-    #[description = "Send a reply to the user"] send_reply: bool,
+    #[description = "Send a reply to the user"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();
     let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
@@ -27,7 +27,7 @@ pub async fn summon(
         None => match get_voice_channel_for_user(&guild, &user_id) {
             Some(channel_id) => channel_id,
             None => {
-                if send_reply {
+                if send_reply.unwrap_or_else(|| false) {
                     ctx.say("You are not in a voice channel!").await?;
                 }
                 return Err(CrackedError::WrongVoiceChannel.into());
@@ -39,7 +39,7 @@ pub async fn summon(
         let handler = call.lock().await;
         let has_current_connection = handler.current_connection().is_some();
 
-        if has_current_connection && send_reply {
+        if has_current_connection && send_reply.unwrap_or_else(|| false) {
             // bot is in another channel
             let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
             return Err(CrackedError::AlreadyConnected(bot_channel_id.mention()).into());
@@ -77,7 +77,7 @@ pub async fn summon(
         );
     }
 
-    if send_reply {
+    if send_reply.unwrap_or_else(|| false) {
         ctx.say(
             ParrotMessage::Summon {
                 mention: channel_id.mention(),

@@ -45,6 +45,21 @@ pub async fn create_response_text(
     create_embed_response(http, interaction, embed).await
 }
 
+pub async fn edit_response_poise(
+    ctx: Context<'_>,
+    message: ParrotMessage,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(mut interaction) => {
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{message}"));
+            return edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
+                .await;
+        }
+        None => return Err(Box::new(SerenityError::Other("No interaction found"))),
+    }
+}
+
 pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
@@ -113,6 +128,21 @@ pub async fn edit_embed_response(
         .edit_original_interaction_response(&http, |message| message.content(" ").add_embed(embed))
         .await
         .map_err(Into::into)
+}
+
+pub async fn edit_embed_response_poise(
+    ctx: Context<'_>,
+    embed: CreateEmbed,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(interaction) => interaction
+            .edit_original_interaction_response(&ctx.serenity_context().http, |message| {
+                message.content(" ").add_embed(embed)
+            })
+            .await
+            .map_err(Into::into),
+        None => return Err(Box::new(SerenityError::Other("No interaction found"))),
+    }
 }
 
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
