@@ -4,7 +4,6 @@ use crate::{
     utils::{create_response, get_interaction},
     Context, Error,
 };
-use poise::serenity_prelude as serenity;
 #[poise::command(slash_command, prefix_command)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

@@ -12,7 +12,6 @@ use self::serenity::{
     Mentionable, {Context, EventHandler},
 };
 use crate::{
-    commands::{manage_sources::*, shuffle::*},
     connection::{check_voice_connections, Connection},
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},

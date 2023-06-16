@@ -1,4 +1,3 @@
-use self::serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use crate::{
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,

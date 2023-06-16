@@ -45,14 +45,14 @@ pub enum QueryType {
 #[poise::command(slash_command, prefix_command)]
 pub async fn play(
     ctx: Context<'_>,
-    #[description = "Play mode"] mode: String,
+    #[description = "Play mode"] mode: Option<String>,
     #[rest]
     #[description = "song link or search query."]
     msg: String,
 ) -> Result<(), Error> {
     tracing::info!(target: "commands", "play called {}", msg);
 
-    let mode = match mode.as_str() {
+    let mode = match mode.unwrap_or("next".to_string()).as_str() {
         "next" => Mode::Next,
         "all" => Mode::All,
         "reverse" => Mode::Reverse,
@@ -61,18 +61,6 @@ pub async fn play(
         _ => Mode::End,
     };
 
-    // let url = match mode {
-    //     Mode::End => first_arg.value.as_ref().unwrap().as_str().unwrap(),
-    //     _ => first_arg
-    //         .options
-    //         .first()
-    //         .unwrap()
-    //         .value
-    //         .as_ref()
-    //         .unwrap()
-    //         .as_str()
-    //         .unwrap(),
-    // };
     let url = msg.as_str();
 
     let guild_id = match ctx.guild_id() {

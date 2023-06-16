@@ -134,19 +134,29 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
         command_check: Some(|ctx| {
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                let mut auth = HashMap::<u64, Vec<u64>>::new();
-                auth.insert(960879716259233794, vec![1063503001936994396]);
-                let roll = auth.get(&ctx.guild_id().unwrap().0);
+                let mut auth = HashMap::<u64, u64>::new();
+                auth.insert(960879716259233794, 1063503001936994396);
+                auth.insert(1085994168704303204, 1119055622877483048);
+                let guild = auth.get(&ctx.guild_id().unwrap().0);
 
-                match roll {
+                let user_roles = ctx
+                    .author_member()
+                    .await
+                    .unwrap()
+                    .roles
+                    .iter()
+                    .map(|x| x.0)
+                    .collect::<Vec<_>>();
+
+                match guild {
                     Some(roll) => {
-                        if roll.iter().any(|x| *x == ctx.author().id.0) {
+                        if user_roles.iter().any(|x| *x == *roll) {
                             return Ok(true);
                         }
+                        return Ok(false);
                     }
                     None => return Ok(false),
-                }
-                Ok(true)
+                };
             })
         }),
         /// Enforce command checks even for owners (enforced by default)
