@@ -4,7 +4,6 @@ use crate::{
     utils::{create_response, get_interaction},
     Context, Error,
 };
-use poise::serenity_prelude as serenity;
 use rand::Rng;
 
 #[poise::command(prefix_command, slash_command)]

@@ -55,18 +55,20 @@ pub async fn create_response_text(
     create_embed_response(http, interaction, embed).await
 }
 
-pub async fn edit_response_poise(
-    ctx: Context<'_>,
-    message: ParrotMessage,
-) -> Result<Message, Error> {
+pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+    let mut embed = CreateEmbed::default();
+    embed.description(format!("{message}"));
+
     match get_interaction(ctx) {
         Some(mut interaction) => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{message}"));
-            return edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
-                .await;
+            let res =
+                edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await;
+            return res.map(|_| ());
         }
-        None => return Err(Box::new(SerenityError::Other("No interaction found"))),
+        None => {
+            return create_embed_response_poise(ctx, embed).await;
+            //return Err(Box::new(SerenityError::Other("No interaction found"))),
+        }
     }
 }
 
@@ -109,11 +111,10 @@ pub async fn create_embed_response_poise(
                 .await;
         }
         None => {
-            ctx.defer().await?;
-            let mut interaction = get_interaction(ctx).unwrap();
-
-            return create_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
-                .await;
+            //ctx.defer().await?;
+            //let mut interaction = get_interaction(ctx).unwrap();
+            let asdf = format!("{:?}", embed);
+            return create_embed_response_str(&ctx, asdf).await;
         }
     }
 }

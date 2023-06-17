@@ -27,7 +27,7 @@ pub async fn summon(
         None => match get_voice_channel_for_user(&guild, &user_id) {
             Some(channel_id) => channel_id,
             None => {
-                if send_reply.unwrap_or_else(|| false) {
+                if send_reply.unwrap_or_else(|| true) {
                     ctx.say("You are not in a voice channel!").await?;
                 }
                 return Err(CrackedError::WrongVoiceChannel.into());

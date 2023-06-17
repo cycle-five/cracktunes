@@ -1,10 +1,10 @@
-use crate::Error;
+use crate::{Data, Error};
 use poise::serenity_prelude as serenity;
 use songbird::serenity::SerenityInit;
 
 //use self::serenity::model::gateway::GatewayIntents;
 use self::serenity::GatewayIntents;
-use std::{collections::HashMap, env, sync::atomic::AtomicBool};
+use std::{collections::HashMap, env};
 
 use crate::{
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
@@ -31,14 +31,16 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
+        let data = Data {
+            bot_settings: Default::default(),
+        };
+        // let data = Arc::new(data);
 
         let client = //serenity::Client::builder(token, gateway_intents)
             client_builder
             .token(token)
             .intents(gateway_intents)
-            .event_handler(SerenityHandler {
-                is_loop_running: AtomicBool::default(),
-            })
+            .event_handler(SerenityHandler {is_loop_running: false.into(), data})
             .application_id(application_id)
             .register_songbird();
 
@@ -51,10 +53,13 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
-
+        let data = Data {
+            bot_settings: Default::default(),
+        };
         let client = serenity::Client::builder(token, gateway_intents)
             .event_handler(SerenityHandler {
                 is_loop_running: false.into(),
+                data,
             })
             .application_id(application_id)
             .register_songbird()

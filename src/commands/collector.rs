@@ -1,4 +1,4 @@
-use crate::{utils::get_interaction, Context, Error};
+use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Boop the bot!

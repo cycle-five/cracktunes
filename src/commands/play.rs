@@ -42,15 +42,40 @@ pub enum QueryType {
     PlaylistLink(String),
 }
 
+/// Get the guild name (guild-only)
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.say(format!(
+        "The name of this guild is: {}",
+        ctx.partial_guild().await.unwrap().name
+    ))
+    .await?;
+
+    Ok(())
+}
+// while let Some(mci) = serenity::CollectComponentInteraction::new(ctx)
+//     .author_id(ctx.author().id)
+//     .channel_id(ctx.channel_id())
+//     .timeout(std::time::Duration::from_secs(120))
+//     .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
+//     .await
+
 #[poise::command(slash_command, prefix_command)]
 pub async fn play(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
     #[rest]
     #[description = "song link or search query."]
-    msg: String,
+    msg: Option<String>,
 ) -> Result<(), Error> {
-    tracing::info!(target: "commands", "play called {}", msg);
+    tracing::info!(target: "commands", "play called {}", msg.as_deref().unwrap_or("nothing"));
+
+    if msg.is_none() {
+        let mut embed = CreateEmbed::default();
+        embed.description(format!("{}", CrackedError::Other("No query provided!")));
+        create_embed_response_poise(ctx, embed).await?;
+        return Ok(());
+    }
 
     let mode = match mode.unwrap_or("next".to_string()).as_str() {
         "next" => Mode::Next,
@@ -61,6 +86,7 @@ pub async fn play(
         _ => Mode::End,
     };
 
+    let msg = msg.unwrap();
     let url = msg.as_str();
 
     let guild_id = match ctx.guild_id() {
@@ -384,6 +410,7 @@ pub async fn play(
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
+                    //FIXME: asdfasdf
                     get_interaction(ctx)
                         .unwrap()
                         .edit_original_interaction_response(

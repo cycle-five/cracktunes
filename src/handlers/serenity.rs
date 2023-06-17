@@ -1,39 +1,35 @@
 use self::serenity::{
     async_trait,
     model::{
-        application::command::{Command, CommandOptionType},
-        application::interaction::{
-            application_command::ApplicationCommandInteraction, Interaction,
-        },
         gateway::Ready,
         id::GuildId,
         prelude::{Activity, ChannelId, VoiceState},
     },
-    Mentionable, {Context, EventHandler},
+    {Context as SerenityContext, EventHandler},
 };
 use crate::{
-    connection::{check_voice_connections, Connection},
-    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::create_response_text,
-    Error,
+    BotConfig, Data,
 };
 use chrono::offset::Utc;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, Channel, UserId};
 use std::{
+    collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
-    time::Duration,
 };
+use tokio::time::{Duration, Instant};
 
 pub struct SerenityHandler {
+    pub data: Data,
     pub is_loop_running: std::sync::atomic::AtomicBool,
+    // pub config: Arc<BotConfig>,
 }
 
 #[async_trait]
 impl EventHandler for SerenityHandler {
-    async fn ready(&self, ctx: Context, ready: Ready) {
+    async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
         // attempts to authenticate to spotify
@@ -46,18 +42,23 @@ impl EventHandler for SerenityHandler {
         self.load_guilds_settings(&ctx, &ready).await;
     }
 
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let Interaction::ApplicationCommand(mut command) = interaction else {
-            return;
-        };
+    // async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+    //     let Interaction::ApplicationCommand(mut command) = interaction else {
+    //         return;
+    //     };
 
-        if let Err(err) = self.run_command(&ctx, &mut command).await {
-            self.handle_error(&ctx, &mut command, CrackedError::Poise(err))
-                .await
-        }
-    }
+    //     if let Err(err) = self.run_command(&ctx, &mut command).await {
+    //         self.handle_error(&ctx, &mut command, CrackedError::Poise(err))
+    //             .await
+    //     }
+    // }
 
-    async fn voice_state_update(&self, ctx: Context, _old: Option<VoiceState>, new: VoiceState) {
+    async fn voice_state_update(
+        &self,
+        ctx: SerenityContext,
+        _old: Option<VoiceState>,
+        new: VoiceState,
+    ) {
         // do nothing if this is a voice update event for a user, not a bot
         if new.user_id != ctx.cache.current_user_id() {
             return;
@@ -79,12 +80,22 @@ impl EventHandler for SerenityHandler {
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
-    async fn cache_ready(&self, ctx: Context, guilds: Vec<GuildId>) {
+    async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully!");
 
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
+        // let config = Arc::clone(&self.config);
+        let config = self.data.bot_settings.clone();
+
+        // let shard_manager = (*self.shard_manager.lock().unwrap()).clone().unwrap();
+        // let framework_data = poise::FrameworkContext {
+        //     bot_id: serenity::UserId(846453852164587620),
+        //     options: &self.options,
+        //     user_data: &(),
+        //     shard_manager: &shard_manager,
+        // };
 
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
@@ -92,7 +103,9 @@ impl EventHandler for SerenityHandler {
         //
         // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
         // we don't have one due to self being an immutable reference.
-        if !self.is_loop_running.load(Ordering::Relaxed) {
+        if !self.is_loop_running.load(Ordering::Relaxed)
+            && config.video_status_poll_interval.is_some()
+        {
             // We have to clone the Arc, as it gets moved into the new thread.
             let ctx1 = Arc::clone(&ctx);
             // tokio::spawn creates a new green thread that can run in parallel with the rest of
@@ -101,8 +114,8 @@ impl EventHandler for SerenityHandler {
                 loop {
                     // We clone Context again here, because Arc is owned, so it moves to the
                     // new function.
-                    log_system_load(Arc::clone(&ctx1)).await;
-                    tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+                    log_system_load(ctx1.clone(), config.clone()).await;
+                    tokio::time::sleep(config.video_status_poll_interval.unwrap()).await;
                 }
             });
 
@@ -116,14 +129,52 @@ impl EventHandler for SerenityHandler {
             });
 
             let ctx3 = Arc::clone(&ctx);
+            let config = self.data.bot_settings.clone();
             tokio::spawn(async move {
+                let conf_guilds = config
+                    .cam_kick
+                    .iter()
+                    .map(|x| x.guild_id)
+                    .collect::<HashSet<_>>();
+                let mut cam_status = HashMap::<UserId, (String, Instant)>::new();
                 loop {
                     // We clone Context again here, because Arc is owned, so it moves to the
                     // new function.
+                    // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
+                    let mut cams = vec![];
                     for guild_id in &guilds {
-                        check_camera_status(Arc::clone(&ctx3), *guild_id).await;
+                        if conf_guilds.contains(guild_id) {
+                            cams.extend(check_camera_status(Arc::clone(&ctx3), *guild_id).await);
+                        }
                     }
-                    tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+
+                    for cam in cams.iter() {
+                        if let Some(status) = cam_status.get(&(*cam).0) {
+                            if status.0 != *&(*cam).1 {
+                                tracing::info!(
+                                    "Camera status changed for user {} to {}",
+                                    status.0,
+                                    cam.1
+                                );
+                                cam_status.insert((*cam).0, ((*cam).1.clone(), (*cam).2.clone()));
+                            } else if status.0 == "off"
+                                && status.1.elapsed() > Duration::from_secs(20)
+                            {
+                                let user = (*cam).0.to_user(&ctx3.http).await.unwrap();
+                                tracing::warn!(
+                                    "User {} has been cammed down for {} seconds",
+                                    user.name,
+                                    status.1.elapsed().as_secs()
+                                );
+                                cam_status.insert((*cam).0, ((*cam).1.clone(), status.1.clone()));
+                            }
+                        }
+                    }
+                    cam_status = cams
+                        .iter()
+                        .map(|x| (x.0, (x.1.clone(), x.2)))
+                        .collect::<HashMap<_, (_, _)>>();
+                    tokio::time::sleep(Duration::from_secs(1 * config.cam_kick[0].poll_secs)).await;
                 }
             });
 
@@ -134,223 +185,223 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-    async fn _create_commands(&self, ctx: &Context) -> Vec<Command> {
-        Command::set_global_application_commands(&ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command
-                        .name("grab")
-                        .description("Grabs the current track, and has the bot DM it to you")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("volume")
-                        .description("Get or set the volume")
-                        .create_option(|option| {
-                                option
-                                    .name("percent")
-                                    .description("The volume to set")
-                                    .kind(CommandOptionType::Integer)
-                                    .required(false)
-                        })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("autopause")
-                        .description("Toggles whether to pause after a song ends")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("clear")
-                        .description("Clears the queue")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("leave")
-                        .description("Leave the voice channel the bot is connected to")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("managesources")
-                        .description("Manage streaming from different sources")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("np")
-                        .description("Displays information about the current track")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("pause")
-                        .description("Pauses the current track")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("play")
-                        .description("Add a track to the queue")
-                        .create_option(|option| {
-                                option
-                                    .name("query")
-                                    .description("The media to play")
-                                    .kind(CommandOptionType::String)
-                                    .required(true)
-                        })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("superplay")
-                        .description("Add a track to the queue in a special way")
-                        .create_option(|option| {
-                            option
-                                .name("next")
-                                .description("Add a track to be played up next")
-                                .kind(CommandOptionType::SubCommand)
-                                .create_sub_option(|option| {
-                                    option
-                                        .name("query")
-                                        .description("The media to play")
-                                        .kind(CommandOptionType::String)
-                                        .required(true)
-                                })
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("jump")
-                                .description("Instantly plays a track, skipping the current one")
-                                .kind(CommandOptionType::SubCommand)
-                                .create_sub_option(|option| {
-                                    option.name("query")
-                                    .description("The media to play")
-                                    .kind(CommandOptionType::String)
-                                    .required(true)
-                                })
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("all")
-                                .description("Add all tracks if the URL refers to a video and a playlist")
-                                .kind(CommandOptionType::SubCommand)
-                                .create_sub_option(|option| {
-                                    option
-                                        .name("query")
-                                        .description("The media to play")
-                                        .kind(CommandOptionType::String)
-                                        .required(true)
-                                })
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("reverse")
-                                .description("Add a playlist to the queue in reverse order")
-                                .kind(CommandOptionType::SubCommand)
-                                .create_sub_option(|option| {
-                                    option
-                                        .name("query")
-                                        .description("The media to play")
-                                        .kind(CommandOptionType::String)
-                                        .required(true)
-                                })
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("shuffle")
-                                .description("Add a playlist to the queue in random order")
-                                .kind(CommandOptionType::SubCommand)
-                                .create_sub_option(|option| {
-                                    option
-                                        .name("query")
-                                        .description("The media to play")
-                                        .kind(CommandOptionType::String)
-                                        .required(true)
-                                })
-                        })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("queue")
-                        .description("Shows the queue")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("remove")
-                        .description("Removes a track from the queue")
-                        .create_option(|option| {
-                            option
-                                .name("index")
-                                .description("Position of the track in the queue (1 is the next track to be played)")
-                                .kind(CommandOptionType::Integer)
-                                .required(true)
-                                .min_int_value(1)
-                        })
-                        .create_option(|option| {
-                            option
-                                .name("until")
-                                .description("Upper range track position to remove a range of tracks")
-                                .kind(CommandOptionType::Integer)
-                                .required(false)
-                                .min_int_value(1)
-                        })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("repeat")
-                        .description("Toggles looping for the current track")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("resume")
-                        .description("Resumes the current track")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("seek")
-                        .description("Seeks current track to the given position")
-                        .create_option(|option| {
-                            option
-                                .name("timestamp")
-                                .description("Timestamp in the format HH:MM:SS")
-                                .kind(CommandOptionType::String)
-                                .required(true)
-                        })
-                })
-                .create_application_command(|command| {
-                    command.name("shuffle").description("Shuffles the queue")
-                })
-                .create_application_command(|command| {
-                    command.name("skip").description("Skips the current track")
-                    .create_option(|option| {
-                        option
-                            .name("to")
-                            .description("Track index to skip to")
-                            .kind(CommandOptionType::Integer)
-                            .required(false)
-                            .min_int_value(1)
-                    })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("stop")
-                        .description("Stops the bot and clears the queue")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("summon")
-                        .description("Summons the bot in your voice channel")
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("version")
-                        .description("Displays the current version")
-                })
-                .create_application_command(|command| {
-                    command.name("voteskip").description("Starts a vote to skip the current track")
-                })
-        })
-        .await
-        .expect("failed to create command")
-    }
+    // async fn _create_commands(&self, ctx: &Context) -> Vec<Command> {
+    //     Command::set_global_application_commands(&ctx.http, |commands| {
+    //         commands
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("grab")
+    //                     .description("Grabs the current track, and has the bot DM it to you")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("volume")
+    //                     .description("Get or set the volume")
+    //                     .create_option(|option| {
+    //                             option
+    //                                 .name("percent")
+    //                                 .description("The volume to set")
+    //                                 .kind(CommandOptionType::Integer)
+    //                                 .required(false)
+    //                     })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("autopause")
+    //                     .description("Toggles whether to pause after a song ends")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("clear")
+    //                     .description("Clears the queue")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("leave")
+    //                     .description("Leave the voice channel the bot is connected to")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("managesources")
+    //                     .description("Manage streaming from different sources")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("np")
+    //                     .description("Displays information about the current track")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("pause")
+    //                     .description("Pauses the current track")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("play")
+    //                     .description("Add a track to the queue")
+    //                     .create_option(|option| {
+    //                             option
+    //                                 .name("query")
+    //                                 .description("The media to play")
+    //                                 .kind(CommandOptionType::String)
+    //                                 .required(true)
+    //                     })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("superplay")
+    //                     .description("Add a track to the queue in a special way")
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("next")
+    //                             .description("Add a track to be played up next")
+    //                             .kind(CommandOptionType::SubCommand)
+    //                             .create_sub_option(|option| {
+    //                                 option
+    //                                     .name("query")
+    //                                     .description("The media to play")
+    //                                     .kind(CommandOptionType::String)
+    //                                     .required(true)
+    //                             })
+    //                     })
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("jump")
+    //                             .description("Instantly plays a track, skipping the current one")
+    //                             .kind(CommandOptionType::SubCommand)
+    //                             .create_sub_option(|option| {
+    //                                 option.name("query")
+    //                                 .description("The media to play")
+    //                                 .kind(CommandOptionType::String)
+    //                                 .required(true)
+    //                             })
+    //                     })
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("all")
+    //                             .description("Add all tracks if the URL refers to a video and a playlist")
+    //                             .kind(CommandOptionType::SubCommand)
+    //                             .create_sub_option(|option| {
+    //                                 option
+    //                                     .name("query")
+    //                                     .description("The media to play")
+    //                                     .kind(CommandOptionType::String)
+    //                                     .required(true)
+    //                             })
+    //                     })
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("reverse")
+    //                             .description("Add a playlist to the queue in reverse order")
+    //                             .kind(CommandOptionType::SubCommand)
+    //                             .create_sub_option(|option| {
+    //                                 option
+    //                                     .name("query")
+    //                                     .description("The media to play")
+    //                                     .kind(CommandOptionType::String)
+    //                                     .required(true)
+    //                             })
+    //                     })
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("shuffle")
+    //                             .description("Add a playlist to the queue in random order")
+    //                             .kind(CommandOptionType::SubCommand)
+    //                             .create_sub_option(|option| {
+    //                                 option
+    //                                     .name("query")
+    //                                     .description("The media to play")
+    //                                     .kind(CommandOptionType::String)
+    //                                     .required(true)
+    //                             })
+    //                     })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("queue")
+    //                     .description("Shows the queue")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("remove")
+    //                     .description("Removes a track from the queue")
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("index")
+    //                             .description("Position of the track in the queue (1 is the next track to be played)")
+    //                             .kind(CommandOptionType::Integer)
+    //                             .required(true)
+    //                             .min_int_value(1)
+    //                     })
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("until")
+    //                             .description("Upper range track position to remove a range of tracks")
+    //                             .kind(CommandOptionType::Integer)
+    //                             .required(false)
+    //                             .min_int_value(1)
+    //                     })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("repeat")
+    //                     .description("Toggles looping for the current track")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("resume")
+    //                     .description("Resumes the current track")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("seek")
+    //                     .description("Seeks current track to the given position")
+    //                     .create_option(|option| {
+    //                         option
+    //                             .name("timestamp")
+    //                             .description("Timestamp in the format HH:MM:SS")
+    //                             .kind(CommandOptionType::String)
+    //                             .required(true)
+    //                     })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command.name("shuffle").description("Shuffles the queue")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command.name("skip").description("Skips the current track")
+    //                 .create_option(|option| {
+    //                     option
+    //                         .name("to")
+    //                         .description("Track index to skip to")
+    //                         .kind(CommandOptionType::Integer)
+    //                         .required(false)
+    //                         .min_int_value(1)
+    //                 })
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("stop")
+    //                     .description("Stops the bot and clears the queue")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("summon")
+    //                     .description("Summons the bot in your voice channel")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command
+    //                     .name("version")
+    //                     .description("Displays the current version")
+    //             })
+    //             .create_application_command(|command| {
+    //                 command.name("voteskip").description("Starts a vote to skip the current track")
+    //             })
+    //     })
+    //     .await
+    //     .expect("failed to create command")
+    // }
 
-    async fn load_guilds_settings(&self, ctx: &Context, ready: &Ready) {
+    async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
@@ -371,179 +422,7 @@ impl SerenityHandler {
         }
     }
 
-    async fn run_command(
-        &self,
-        ctx: &Context,
-        command: &mut ApplicationCommandInteraction,
-    ) -> Result<(), Error> {
-        let command_name = command.data.name.as_str();
-
-        let guild_id = command.guild_id.unwrap();
-        let guild = ctx.cache.guild(guild_id).unwrap();
-
-        // get songbird voice client
-        let manager = songbird::get(ctx).await.unwrap();
-
-        // parrot might have been disconnected manually
-        if let Some(call) = manager.get(guild.id) {
-            let mut handler = call.lock().await;
-            if handler.current_connection().is_none() {
-                handler.leave().await.unwrap();
-            }
-        }
-
-        // fetch the user and the bot's user IDs
-        let user_id = command.user.id;
-        let bot_id = ctx.cache.current_user_id();
-
-        tracing::info!(
-            "Running command {} for user {} in guild {}",
-            command_name,
-            user_id,
-            guild_id
-        );
-
-        match command_name {
-            "autopause" | "clear" | "leave" | "pause" | "remove" | "repeat" | "resume" | "seek"
-            | "shuffle" | "skip" | "stop" | "voteskip" | "volume" | "grab" => {
-                match check_voice_connections(&guild, &user_id, &bot_id) {
-                    Connection::User(_) | Connection::Neither => Err(CrackedError::NotConnected),
-                    Connection::Bot(bot_channel_id) => {
-                        Err(CrackedError::AuthorDisconnected(bot_channel_id.mention()))
-                    }
-                    Connection::Separate(_, _) => Err(CrackedError::WrongVoiceChannel),
-                    _ => Ok(()),
-                }
-            }
-            "play" | "superplay" | "summon" => {
-                match check_voice_connections(&guild, &user_id, &bot_id) {
-                    Connection::User(_) => Ok(()),
-                    Connection::Bot(_) if command_name == "summon" => {
-                        Err(CrackedError::AuthorNotFound)
-                    }
-                    Connection::Bot(_) if command_name != "summon" => {
-                        Err(CrackedError::WrongVoiceChannel)
-                    }
-                    Connection::Separate(bot_channel_id, _) => {
-                        Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
-                    }
-                    Connection::Neither => Err(CrackedError::AuthorNotFound),
-                    _ => Ok(()),
-                }
-            }
-            "np" | "queue" => match check_voice_connections(&guild, &user_id, &bot_id) {
-                Connection::User(_) | Connection::Neither => Err(CrackedError::NotConnected),
-                _ => Ok(()),
-            },
-            _ => Ok(()),
-        }?;
-
-        match command_name {
-            "grab" => {
-                //grab(ctx, command).await,
-                tracing::error!("pause not implemented here");
-                Ok(())
-            }
-            "volume" => {
-                tracing::error!("volume not implemented here");
-                Ok(())
-            }
-            "autopause" => {
-                tracing::error!("autopause not implemented here");
-                Ok(())
-                //autopause(ctx, command).await,
-            }
-            "clear" => {
-                tracing::error!("clear not implemented here");
-                Ok(())
-                //clear(ctx, command).await,
-            }
-            "leave" => {
-                tracing::error!("leave not implemented here");
-                Ok(())
-                //leave(ctx, command).await,
-            }
-            "managesources" => {
-                tracing::error!("pause not implemented here");
-                Ok(())
-                //allow(ctx, command).await,
-            }
-            "np" => {
-                tracing::error!("np not implemented here");
-                Ok(())
-                //now_playing(ctx, command).await,
-            }
-            "pause" => {
-                tracing::error!("pause not implemented here");
-                Ok(())
-                //pause(ctx, command).await,
-            }
-            "play" | "superplay" => {
-                tracing::error!("play not implemented here");
-                Ok(())
-                //play(ctx, command).await,
-            }
-            "queue" => {
-                tracing::error!("queue not implemented here");
-                Ok(())
-                //queue(ctx, command).await,
-            }
-            "remove" => {
-                tracing::error!("remove not implemented here");
-                Ok(())
-                //remove(ctx, command).await,
-            }
-            "repeat" => {
-                tracing::error!("repeat not implemented here");
-                Ok(())
-                //repeat(ctx, command).await,
-            }
-            "resume" => {
-                tracing::error!("resume not implemented here");
-                Ok(())
-                //resume(ctx, command).await,
-            }
-            "seek" => {
-                tracing::error!("seek not implemented here");
-                Ok(())
-                //seek(ctx, command).await
-            }
-            "shuffle" => {
-                tracing::error!("summon not implemented here");
-                Ok(())
-                //shuffle(ctx, command).await,
-            }
-            "skip" => {
-                tracing::error!("summon not implemented here");
-                Ok(())
-                //skip(ctx, command).await,
-            }
-            "stop" => {
-                tracing::error!("summon not implemented here");
-                return Ok(());
-                //stop(ctx, command).await,
-            }
-
-            "summon" => {
-                tracing::error!("summon not implemented here");
-                Ok(())
-            }
-            "version" => {
-                tracing::error!("version not implemented here");
-                Ok(())
-                //version(ctx, command).await,
-            }
-
-            "voteskip" => {
-                tracing::error!("voteskip not implemented here");
-                Ok(())
-                //voteskip(ctx, command).await,
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    async fn self_deafen(&self, ctx: &Context, guild: Option<GuildId>, new: VoiceState) {
+    async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
         let Ok(user) = ctx.http.get_current_user().await else {
             return;
         };
@@ -557,77 +436,96 @@ impl SerenityHandler {
         }
     }
 
-    async fn handle_error(
-        &self,
-        ctx: &Context,
-        interaction: &mut ApplicationCommandInteraction,
-        err: CrackedError,
-    ) {
-        create_response_text(&ctx.http, interaction, &format!("{err}"))
-            .await
-            .expect("failed to create response");
-    }
+    // async fn handle_error(
+    //     &self,
+    //     ctx: &Context,
+    //     interaction: &mut ApplicationCommandInteraction,
+    //     err: CrackedError,
+    // ) {
+    //     create_response_text(&ctx.http, interaction, &format!("{err}"))
+    //         .await
+    //         .expect("failed to create response");
+    // }
 }
 
-async fn log_system_load(ctx: Arc<Context>) {
+async fn log_system_load(ctx: Arc<SerenityContext>, config: BotConfig) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
 
     // We can use ChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
-    let message = ChannelId(1112603333182640158)
-        .send_message(&ctx, |m| {
-            m.embed(|e| {
-                e.title("System Resource Load")
-                    .field(
-                        "CPU Load Average",
-                        format!("{:.2}%", cpu_load.one * 10.0),
-                        false,
-                    )
-                    .field(
-                        "Memory Usage",
-                        format!(
-                            "{:.2} MB Free out of {:.2} MB",
-                            mem_use.free as f32 / 1000.0,
-                            mem_use.total as f32 / 1000.0
-                        ),
-                        false,
-                    )
+    if let Some(chan_id) = config.sys_log_channel_id {
+        let message = ChannelId(chan_id)
+            .send_message(&ctx, |m| {
+                m.embed(|e| {
+                    e.title("System Resource Load")
+                        .field(
+                            "CPU Load Average",
+                            format!("{:.2}%", cpu_load.one * 10.0),
+                            false,
+                        )
+                        .field(
+                            "Memory Usage",
+                            format!(
+                                "{:.2} MB Free out of {:.2} MB",
+                                mem_use.free as f32 / 1000.0,
+                                mem_use.total as f32 / 1000.0
+                            ),
+                            false,
+                        )
+                })
             })
-        })
-        .await;
-    if let Err(why) = message {
-        tracing::error!("Error sending message: {:?}", why);
-    };
+            .await;
+        if let Err(why) = message {
+            tracing::error!("Error sending message: {:?}", why);
+        };
+    } else {
+        tracing::error!("No system log channel set");
+    }
 }
 
-async fn set_status_to_current_time(ctx: Arc<Context>) {
+async fn set_status_to_current_time(ctx: Arc<SerenityContext>) {
     let current_time = Utc::now();
     let formatted_time = current_time.to_rfc2822();
 
     ctx.set_activity(Activity::playing(&formatted_time)).await;
 }
 
-async fn check_camera_status(ctx: Arc<Context>, guild_id: GuildId) {
+async fn check_camera_status(
+    ctx: Arc<SerenityContext>,
+    guild_id: GuildId,
+) -> Vec<(UserId, String, Instant)> {
     let guild = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => guild,
         None => {
             tracing::error!("Guild not found in cache");
-            return;
+            return vec![];
         }
     };
 
     let voice_states = guild.voice_states;
+    let mut cams = vec![];
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
             let camera_status = if voice_state.self_video { "on" } else { "off" };
+            let user = user_id.to_user(&ctx.http).await.unwrap();
+            let channel = channel_id.to_channel(&ctx.http).await.unwrap();
+            cams.push((user.id, camera_status.to_string(), Instant::now()));
             tracing::warn!(
-                "User {} is connected to voice channel {} with camera {}",
-                user_id,
+                "User {} / {} is connected to voice channel {} / {} with camera {}",
+                user.name,
+                user.id,
+                match channel {
+                    Channel::Guild(channel) => channel.name,
+                    Channel::Private(channel) => channel.name(),
+                    Channel::Category(channel) => channel.name,
+                    _ => String::from("unknown"),
+                },
                 channel_id,
-                camera_status
+                camera_status,
             );
         }
     }
+    return cams;
 }
