@@ -535,7 +535,7 @@ impl SerenityHandler {
             }
 
             "voteskip" => {
-                tracing::error!("version not implemented here");
+                tracing::error!("voteskip not implemented here");
                 Ok(())
                 //voteskip(ctx, command).await,
             }

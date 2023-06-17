@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
-    utils::{create_response_poise, get_guild_id},
+    utils::{create_response_poise_text, get_guild_id},
     {Context, Error},
 };
 
@@ -24,7 +24,7 @@ pub async fn resume(
     )?;
 
     if send_reply.unwrap_or_else(|| true) {
-        return create_response_poise(&ctx, ParrotMessage::Resume).await;
+        return create_response_poise_text(&ctx, ParrotMessage::Resume).await;
     }
     return Ok(());
 }

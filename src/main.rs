@@ -90,6 +90,8 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
         commands: vec![
+            commands::autopause(),
+            commands::boop(),
             commands::chatgpt(),
             commands::clear(),
             commands::help(),
@@ -106,6 +108,7 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
             commands::summon(),
             commands::version(),
             commands::volume(),
+            commands::queue(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("~".into()),
@@ -132,32 +135,33 @@ fn poise_framework() -> FrameworkBuilder<cracktunes::Data, Error> {
         },
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
-            Box::pin(async move {
-                tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                let mut auth = HashMap::<u64, u64>::new();
-                auth.insert(960879716259233794, 1063503001936994396);
-                auth.insert(1085994168704303204, 1119055622877483048);
-                let guild = auth.get(&ctx.guild_id().unwrap().0);
+            Box::pin(async move { Ok(true) })
+            // Box::pin(async move {
+            //     tracing::info!("Checking command {}...", ctx.command().qualified_name);
+            //     let mut auth = HashMap::<u64, u64>::new();
+            //     auth.insert(960879716259233794, 1063503001936994396);
+            //     auth.insert(1085994168704303204, 1119055622877483048);
+            //     let guild = auth.get(&ctx.guild_id().unwrap().0);
 
-                let user_roles = ctx
-                    .author_member()
-                    .await
-                    .unwrap()
-                    .roles
-                    .iter()
-                    .map(|x| x.0)
-                    .collect::<Vec<_>>();
+            //     let user_roles = ctx
+            //         .author_member()
+            //         .await
+            //         .unwrap()
+            //         .roles
+            //         .iter()
+            //         .map(|x| x.0)
+            //         .collect::<Vec<_>>();
 
-                match guild {
-                    Some(roll) => {
-                        if user_roles.iter().any(|x| *x == *roll) {
-                            return Ok(true);
-                        }
-                        return Ok(false);
-                    }
-                    None => return Ok(false),
-                };
-            })
+            //     match guild {
+            //         Some(roll) => {
+            //             if user_roles.iter().any(|x| *x == *roll) {
+            //                 return Ok(true);
+            //             }
+            //             return Ok(false);
+            //         }
+            //         None => return Ok(false),
+            //     };
+            // })
         }),
         /// Enforce command checks even for owners (enforced by default)
         /// Set to true to bypass checks, which is useful for testing

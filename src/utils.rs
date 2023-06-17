@@ -19,7 +19,17 @@ use url::Url;
 use crate::{messaging::message::ParrotMessage, Context, Error};
 use poise::serenity_prelude::SerenityError;
 
-pub async fn create_response_poise(ctx: &Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+    let mut embed = CreateEmbed::default();
+    embed.description(format!("{message}"));
+
+    create_embed_response_poise(ctx, embed).await
+}
+
+pub async fn create_response_poise_text(
+    ctx: &Context<'_>,
+    message: ParrotMessage,
+) -> Result<(), Error> {
     let message_str = format!("{message}");
 
     create_embed_response_str(&ctx, message_str).await

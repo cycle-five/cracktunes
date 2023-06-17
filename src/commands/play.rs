@@ -14,7 +14,7 @@ use crate::{
     },
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
-        create_response_poise, edit_embed_response_poise, edit_response_poise,
+        create_response_poise_text, edit_embed_response_poise, edit_response_poise,
         get_human_readable_timestamp, get_interaction,
     },
     Context, Error,
@@ -121,7 +121,7 @@ pub async fn play(
                         domain: other.to_string(),
                     };
 
-                    return create_response_poise(&ctx, message).await;
+                    return create_response_poise_text(&ctx, message).await;
                 }
 
                 YouTube::extract(url)
@@ -143,7 +143,7 @@ pub async fn play(
                     domain: "youtube.com".to_string(),
                 };
 
-                return create_response_poise(&ctx, message).await;
+                return create_response_poise_text(&ctx, message).await;
             }
 
             Some(QueryType::Keywords(url.to_string()))
@@ -157,7 +157,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    create_response_poise(&ctx, ParrotMessage::Search).await?;
+    create_response_poise_text(&ctx, ParrotMessage::Search).await?;
 
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();

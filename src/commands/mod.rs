@@ -1,6 +1,7 @@
 pub mod autopause;
 pub mod chatgpt;
 pub mod clear;
+pub mod collector;
 pub mod help;
 pub mod leave;
 pub mod manage_sources;
@@ -23,6 +24,7 @@ pub mod voteskip;
 pub use self::chatgpt::*;
 pub use autopause::*;
 pub use clear::*;
+pub use collector::*;
 pub use help::*;
 pub use leave::*;
 pub use manage_sources::*;

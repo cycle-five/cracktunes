@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
-    utils::{create_response_poise, get_guild_id},
+    utils::{create_response_poise_text, get_guild_id},
     Context, Error,
 };
 use songbird::{tracks::TrackHandle, Call};
@@ -55,7 +55,7 @@ pub async fn create_skip_response(
 ) -> Result<(), Error> {
     match handler.queue().current() {
         Some(track) => {
-            create_response_poise(
+            create_response_poise_text(
                 &ctx,
                 ParrotMessage::SkipTo {
                     title: track.metadata().title.as_ref().unwrap().to_owned(),
@@ -66,9 +66,9 @@ pub async fn create_skip_response(
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise(&ctx, ParrotMessage::SkipAll).await
+                create_response_poise_text(&ctx, ParrotMessage::SkipAll).await
             } else {
-                create_response_poise(&ctx, ParrotMessage::Skip).await
+                create_response_poise_text(&ctx, ParrotMessage::Skip).await
             }
         }
     }

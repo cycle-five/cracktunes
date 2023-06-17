@@ -8,7 +8,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::ParrotMessage,
-    utils::{create_response_poise, get_guild_id, get_user_id},
+    utils::{create_response_poise_text, get_guild_id, get_user_id},
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -52,7 +52,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         force_skip_top_track(&handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
-        create_response_poise(
+        create_response_poise_text(
             &ctx,
             ParrotMessage::VoteSkip {
                 mention: get_user_id(&ctx).mention(),

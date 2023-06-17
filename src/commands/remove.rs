@@ -5,7 +5,7 @@ use crate::{
     messaging::message::ParrotMessage,
     messaging::messages::REMOVED_QUEUE,
     utils::create_embed_response_poise,
-    utils::{create_response_poise, get_guild_id},
+    utils::{create_response_poise_text, get_guild_id},
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -64,7 +64,7 @@ pub async fn remove(
         //create_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
         create_embed_response_poise(ctx, embed).await?;
     } else {
-        create_response_poise(&ctx, ParrotMessage::RemoveMultiple).await?;
+        create_response_poise_text(&ctx, ParrotMessage::RemoveMultiple).await?;
     }
 
     update_queue_messages(
