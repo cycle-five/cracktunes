@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::Duration};
+use std::fmt::Display;
 
 pub mod client;
 pub mod commands;
@@ -17,7 +17,6 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 // User data, which is stored and accessible in all command invocations
 
-use poise::serenity_prelude::GuildId;
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]

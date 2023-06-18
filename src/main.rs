@@ -1,4 +1,3 @@
-use config_file::FromConfigFile;
 use cracktunes::{
     commands,
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
@@ -7,6 +6,7 @@ use cracktunes::{
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use songbird::serenity::SerenityInit;
+// use config_file::ConfigFile;
 use std::{collections::HashMap, env::var, sync::Arc, time::Duration};
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -53,7 +53,9 @@ async fn main() -> Result<(), Error> {
 
     tracing::warn!("Hello, world!");
 
-    let config = match BotConfig::from_config_file("cracktunes.toml") {
+    use config_file::FromConfigFile;
+
+    let config = match BotConfig::from_config_file("cracktunes.json") {
         Ok(config) => config,
         Err(error) => {
             tracing::warn!("Using default config: {:?}", error);

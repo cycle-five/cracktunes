@@ -233,9 +233,9 @@ dependencies = [
 
 [[package]]
 name = "cmake"
-version = "0.1.48"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8ad8cef104ac57b68b89df3208164d228503abbdce70f6880ffa3d970e7443a"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
 dependencies = [
  "cc",
 ]
@@ -247,6 +247,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df51e72c150781d2c7d4cbcb0b803277caaa80476786994a62961a8f1010dafb"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror",
  "toml",
 ]
@@ -290,6 +291,7 @@ dependencies = [
  "regex",
  "rspotify",
  "serde",
+ "serde_derive",
  "serde_json",
  "serenity",
  "songbird",
@@ -1636,9 +1638,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.96"
+version = "1.0.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
+checksum = "bdf3bf93142acad5821c99197022e170842cdbc1c30482b98750c688c640842a"
 dependencies = [
  "itoa",
  "ryu",

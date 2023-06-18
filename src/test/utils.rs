@@ -1,7 +1,7 @@
 use config_file::FromConfigFile;
-use std::time::Duration;
-
 use poise::serenity_prelude::GuildId;
+use std::{time::Duration};
+
 
 use crate::{utils::get_human_readable_timestamp, BotConfig};
 
@@ -28,13 +28,7 @@ fn test_get_human_readable_timestamp() {
 
 #[test]
 fn test_load_config() {
-    let config = match BotConfig::from_config_file("./../../cracktunes.toml") {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Using default config: {}", error);
-            BotConfig::default()
-        }
-    };
+    let config = BotConfig::from_config_file("./src/test/cracktunes.json").unwrap();
 
     println!("config: {:?}", config);
 
