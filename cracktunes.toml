@@ -1,0 +1,15 @@
+[config]
+video_status_poll_interval = 10
+sys_log_channel_id = 1112603333182640158
+
+[[config.cam_kick]] 
+cammed_down_timeout = 60
+guild_id = 0
+poll_secs = 10
+dc_message = "You have been disconnected from the voice channel for being AFK for too long."
+
+[[config.cam_kick]] 
+cammed_down_timeout = 60
+guild_id = 1
+poll_secs = 10
+dc_message = "You have been disconnected from the voice channel for being AFK for too long."

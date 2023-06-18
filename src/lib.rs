@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 
 pub mod client;
 pub mod commands;
@@ -20,10 +20,10 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 use poise::serenity_prelude::GuildId;
 use serde::Deserialize;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
-    pub cammed_down_timeout: Duration,
-    pub guild_id: GuildId,
+    pub cammed_down_timeout: u64,
+    pub guild_id: u64,
     pub poll_secs: u64,
     pub dc_message: String,
 }
@@ -31,32 +31,63 @@ pub struct CamKickConfig {
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: Duration::from_secs(0),
-            guild_id: GuildId(0),
+            cammed_down_timeout: 0, //Duration::from_secs(0),
+            guild_id: 0,            //GuildId(0),
             poll_secs: 60,
             dc_message: "You have been disconnected for being cammed down for too long."
                 .to_string(),
         }
     }
 }
-#[derive(Deserialize, Clone)]
+
+impl Display for CamKickConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result = String::new();
+        result.push_str(&format!(
+            "cammed_down_timeout: {:?}\n",
+            self.cammed_down_timeout
+        ));
+        result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
+        result.push_str(&format!("poll_secs: {:?}\n", self.poll_secs));
+        result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
+        write!(f, "{}", result)
+    }
+}
+#[derive(Deserialize, Clone, Debug)]
 pub struct BotConfig {
-    pub video_status_poll_interval: Option<Duration>,
+    pub video_status_poll_interval: u64,
     // Cammed down kicking config
     pub cam_kick: Vec<CamKickConfig>,
-    pub sys_log_channel_id: Option<u64>,
+    pub sys_log_channel_id: u64,
 }
 
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
-            video_status_poll_interval: None,
+            video_status_poll_interval: 0,
             cam_kick: vec![],
-            sys_log_channel_id: None,
+            sys_log_channel_id: 0,
         }
     }
 }
-#[derive(Deserialize, Clone)]
+
+impl Display for BotConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result = String::new();
+        result.push_str(&format!(
+            "video_status_poll_interval: {:?}\n",
+            self.video_status_poll_interval
+        ));
+        result.push_str(&format!("cam_kick: {:?}\n", self.cam_kick));
+        result.push_str(&format!(
+            "sys_log_channel_id: {:?}\n",
+            self.sys_log_channel_id
+        ));
+        write!(f, "{}", result)
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
 pub struct Data {
     pub bot_settings: BotConfig,
 }

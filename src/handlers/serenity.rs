@@ -103,9 +103,7 @@ impl EventHandler for SerenityHandler {
         //
         // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
         // we don't have one due to self being an immutable reference.
-        if !self.is_loop_running.load(Ordering::Relaxed)
-            && config.video_status_poll_interval.is_some()
-        {
+        if !self.is_loop_running.load(Ordering::Relaxed) && config.video_status_poll_interval > 0 {
             // We have to clone the Arc, as it gets moved into the new thread.
             let ctx1 = Arc::clone(&ctx);
             // tokio::spawn creates a new green thread that can run in parallel with the rest of
@@ -115,7 +113,8 @@ impl EventHandler for SerenityHandler {
                     // We clone Context again here, because Arc is owned, so it moves to the
                     // new function.
                     log_system_load(ctx1.clone(), config.clone()).await;
-                    tokio::time::sleep(config.video_status_poll_interval.unwrap()).await;
+                    tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
+                        .await;
                 }
             });
 
@@ -143,7 +142,7 @@ impl EventHandler for SerenityHandler {
                     // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
                     let mut cams = vec![];
                     for guild_id in &guilds {
-                        if conf_guilds.contains(guild_id) {
+                        if conf_guilds.contains(guild_id.as_u64()) {
                             cams.extend(check_camera_status(Arc::clone(&ctx3), *guild_id).await);
                         }
                     }
@@ -454,7 +453,8 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: BotConfig) {
 
     // We can use ChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
-    if let Some(chan_id) = config.sys_log_channel_id {
+    if config.sys_log_channel_id > 0 {
+        let chan_id = config.sys_log_channel_id;
         let message = ChannelId(chan_id)
             .send_message(&ctx, |m| {
                 m.embed(|e| {
