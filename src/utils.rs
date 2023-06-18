@@ -10,13 +10,14 @@ use self::serenity::{
 };
 //use ::serenity::http::CacheHttp;
 use poise::{
-    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, ReplyHandle,
+    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
+    ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::{messaging::message::ParrotMessage, Context, Error};
+use crate::{commands::summon, messaging::message::ParrotMessage, Context, Data, Error};
 use poise::serenity_prelude::SerenityError;
 
 pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
@@ -300,3 +301,35 @@ pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
 //         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
 //     }
 // }
+pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, Error>> {
+    match ctx {
+        Context::Application(prefix_ctx) => {
+            let guild_id = prefix_ctx.guild_id().unwrap();
+            let manager = songbird::get(prefix_ctx.serenity_context()).await.unwrap();
+            let call = manager.get(guild_id).unwrap();
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
+            drop(handler);
+
+            if !has_current_connection {
+                return summon().slash_action.unwrap()(prefix_ctx).await;
+            } else {
+                return Ok(());
+            }
+        }
+        Context::Prefix(slash_ctx) => {
+            let guild_id = slash_ctx.guild_id().unwrap();
+            let manager = songbird::get(slash_ctx.serenity_context()).await.unwrap();
+            let call = manager.get(guild_id).unwrap();
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
+            drop(handler);
+
+            if !has_current_connection {
+                return summon().prefix_action.unwrap()(slash_ctx).await;
+            } else {
+                return Ok(());
+            }
+        }
+    }
+}

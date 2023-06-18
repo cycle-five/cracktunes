@@ -1,0 +1,7 @@
+[data]
+bot_settings = []
+
+[bot_settings]
+video_status_poll_interval = 10
+cam_kick = []
+sys_log_channel_id = XXXXXXXXXX

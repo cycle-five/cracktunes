@@ -15,7 +15,7 @@ use crate::{
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise,
-        get_human_readable_timestamp, get_interaction,
+        get_human_readable_timestamp, get_interaction, summon_short,
     },
     Context, Error,
 };
@@ -114,7 +114,16 @@ pub async fn play(
     // let manager = songbird::get(ctx).await.unwrap();
 
     // // try to join a voice channel if not in one just yet
-    // //summon().slash_action.unwrap().await?;
+    // summon().slash_action.unwrap()(&ctx.clone()).await;
+    let _res = match summon_short(ctx.clone()).await {
+        Ok(_) => {}
+        Err(_) => {
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
+            return Ok(());
+        }
+    };
     // let call = manager.get(guild_id).unwrap();
 
     // determine whether this is a link or a query string
