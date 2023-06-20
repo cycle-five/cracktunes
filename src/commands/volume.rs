@@ -1,8 +1,8 @@
-use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::utils::{create_embed_response, create_embed_response_poise};
-use crate::{Context, Error};
-use ::serenity::http::CacheHttp;
+use crate::{Context, Error, Data};
+use self::serenity::builder::CreateEmbed;
+use self::serenity::http::CacheHttp;
 use poise::{serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction};
 use songbird::tracks::TrackHandle;
 use std::borrow::BorrowMut;
@@ -74,11 +74,18 @@ pub async fn volume(
     let new_volume = to_set.unwrap() as f32 / 100.0;
     let track_handle: TrackHandle = handler.queue().current().expect("No track playing");
     let old_volume = track_handle.get_info().await.unwrap().volume;
+
     track_handle.set_volume(new_volume).unwrap();
+    let mut data: &mut Data  = &mut ctx.data().clone();
+    (*data).volume = new_volume;
+
     let embed = create_volume_embed(old_volume, new_volume);
 
     match ctx {
         Context::Prefix(prefix_ctx) => {
+
+            // let desc = create_volume_desc(old_volume, new_volume);
+            // prefix_ctx.channel_id().say(pref)ix_ctx.serenity_context.http(), desc).await?;
             prefix_ctx
                 .msg
                 .reply(
@@ -103,10 +110,14 @@ pub async fn volume(
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
-    embed.description(format!(
+    embed.description(create_volume_desc(old, new));
+    embed
+}
+
+pub fn create_volume_desc(old: f32, new: f32) -> String {
+    return format!(
         "Volume changed from {}% to {}%",
         old * 100.0,
-        new * 100.0
-    ));
-    embed
+        new * 100.0,
+    );
 }

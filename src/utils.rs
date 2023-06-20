@@ -114,7 +114,7 @@ pub async fn create_embed_response_poise(
         None => {
             //ctx.defer().await?;
             //let mut interaction = get_interaction(ctx).unwrap();
-            let asdf = format!("{:?}", embed);
+            let asdf = format!("{:?}", embed.0.get("description").unwrap().to_string());
             return create_embed_response_str(&ctx, asdf).await;
         }
     }

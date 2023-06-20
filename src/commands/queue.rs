@@ -18,7 +18,8 @@ use crate::{
     utils::{get_human_readable_timestamp, get_interaction},
     Context, Error,
 };
-use poise::serenity_prelude::{self as serenity};
+use poise::serenity_prelude::{self as serenity, Interaction};
+use ::serenity::builder;
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
     cmp::{max, min},
@@ -33,7 +34,32 @@ const EMBED_TIMEOUT: u64 = 3600;
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.defer().await?;
+    let _res = ctx.defer().await.unwrap();
+
+    let interaction = get_interaction(ctx).unwrap();
+    tracing::error!("interaction: {:?}", interaction);
+    // ctx.send(|f| f.content("Works for slash and prefix commands")
+    // ).await.unwrap().reply(ctx).create_interaction_response(&ctx.serenity_context().http, |response| {
+    //     response
+    //         .kind(InteractionResponseType::DeferredChannelMessageWithSource)
+    //         .interaction_response_data(|message| {
+    //             message
+    //                 .create_embed(|embed| {
+    //                     embed.description("Loading queue...");
+    //                 })
+    //                 .components(|components| {
+    //                     components.create_action_row(|action_row| {
+    //                         action_row.add_button(
+    //                             CreateButton::default()
+    //                                 .custom_id("test".to_string())
+    //                                 .label("test")
+    //                                 .style(ButtonStyle::Primary)
+    //                                 .to_owned(),
+    //                         )
+    //                     })
+    //                 })
+    //         })
+    // });
     let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
@@ -42,6 +68,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
     drop(handler);
+
+    tracing::error!("tracks: {:?}", tracks);
 
     interaction
         .create_interaction_response(&ctx.serenity_context().http, |response| {
@@ -56,6 +84,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 })
         })
         .await?;
+
+    tracing::error!("past interaction");
 
     let mut message = interaction
         .get_interaction_response(&ctx.serenity_context().http)

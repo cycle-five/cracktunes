@@ -397,7 +397,7 @@ pub async fn play(
     let queue = handler.queue().current_queue();
     queue
         .iter()
-        .for_each(|t| t.set_volume(guild_settings.defualt_volume).unwrap());
+        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
     drop(data);
     drop(handler);
 

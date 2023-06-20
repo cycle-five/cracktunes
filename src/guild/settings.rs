@@ -27,7 +27,7 @@ pub struct GuildSettings {
     pub autopause: bool,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    pub defualt_volume: f32,
+    pub volume: f32,
 }
 
 impl GuildSettings {
@@ -42,7 +42,7 @@ impl GuildSettings {
             autopause: false,
             allowed_domains,
             banned_domains: HashSet::new(),
-            defualt_volume: DEFAULT_VOLUME_LEVEL,
+            volume: DEFAULT_VOLUME_LEVEL,
         }
     }
 
@@ -113,7 +113,7 @@ impl GuildSettings {
     }
 
     pub fn set_default_volume(&mut self, volume: f32) {
-        self.defualt_volume = volume;
+        self.volume = volume;
     }
 }
 

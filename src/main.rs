@@ -55,7 +55,7 @@ async fn main() -> Result<(), Error> {
 
     use config_file::FromConfigFile;
 
-    let config = match BotConfig::from_config_file("cracktunes.json") {
+    let config = match BotConfig::from_config_file("./cracktunes.json") {
         Ok(config) => config,
         Err(error) => {
             tracing::warn!("Using default config: {:?}", error);
@@ -184,9 +184,9 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
         },
         ..Default::default()
     };
-    let config = config.clone();
     let data = Data {
         bot_settings: config.clone(),
+        volume: 0.2
     };
     // let data = Arc::new(data);
     poise::Framework::builder()
@@ -208,6 +208,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     bot_settings: config.clone(),
+                    volume: 0.2
                 })
             })
         })

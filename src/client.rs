@@ -32,7 +32,7 @@ impl Client {
 
         let gateway_intents = GatewayIntents::non_privileged();
         let data = Data {
-            bot_settings: Default::default(),
+            ..Default::default()
         };
         // let data = Arc::new(data);
 
@@ -54,7 +54,7 @@ impl Client {
 
         let gateway_intents = GatewayIntents::non_privileged();
         let data = Data {
-            bot_settings: Default::default(),
+            ..Default::default()
         };
         let client = serenity::Client::builder(token, gateway_intents)
             .event_handler(SerenityHandler {

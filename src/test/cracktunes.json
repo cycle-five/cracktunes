@@ -1,17 +1,18 @@
 {
     "video_status_poll_interval": 30,
     "sys_log_channel_id": 0,
+    "self_deafen": true,
     "cam_kick": [
         {
             "cammed_down_timeout": 60,
             "guild_id": 0,
-            "poll_secs": 10,
+            "channel_id": 10,
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
         },
         {
             "cammed_down_timeout": 60,
             "guild_id": 0,
-            "poll_secs": 10,
+            "channel_id": 10,
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
         }
     ]

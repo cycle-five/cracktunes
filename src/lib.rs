@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use serde::Deserialize;
 
 pub mod client;
 pub mod commands;
@@ -17,22 +18,21 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 // User data, which is stored and accessible in all command invocations
 
-use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
     pub cammed_down_timeout: u64,
     pub guild_id: u64,
-    pub poll_secs: u64,
+    pub channel_id: u64,
     pub dc_message: String,
 }
 
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 0, //Duration::from_secs(0),
+            cammed_down_timeout: 30, //Duration::from_secs(0),
             guild_id: 0,            //GuildId(0),
-            poll_secs: 60,
+            channel_id: 0,          //ChannelId(0),
             dc_message: "You have been disconnected for being cammed down for too long."
                 .to_string(),
         }
@@ -47,7 +47,7 @@ impl Display for CamKickConfig {
             self.cammed_down_timeout
         ));
         result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
-        result.push_str(&format!("poll_secs: {:?}\n", self.poll_secs));
+        result.push_str(&format!("channel_id: {:?}\n", self.channel_id));
         result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
         write!(f, "{}", result)
     }
@@ -58,14 +58,18 @@ pub struct BotConfig {
     // Cammed down kicking config
     pub cam_kick: Vec<CamKickConfig>,
     pub sys_log_channel_id: u64,
+    pub self_deafen: bool,
+    pub volume: f32,
 }
 
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
-            video_status_poll_interval: 0,
+            video_status_poll_interval: 20,
             cam_kick: vec![],
             sys_log_channel_id: 0,
+            self_deafen: true,
+            volume: 0.2,
         }
     }
 }
@@ -82,11 +86,22 @@ impl Display for BotConfig {
             "sys_log_channel_id: {:?}\n",
             self.sys_log_channel_id
         ));
+        result.push_str(&format!("self_deafen: {:?}\n", self.self_deafen));
         write!(f, "{}", result)
     }
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Data {
+    pub volume: f32,
     pub bot_settings: BotConfig,
 }
+
+impl Default for Data {
+    fn default() -> Self {
+        Self {
+            volume: 0.2,
+            bot_settings: Default::default(),
+        }
+    }
+}   
