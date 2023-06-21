@@ -15,5 +15,6 @@
             "channel_id": 10,
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
         }
-    ]
+    ],
+    "volume": 0.5
 }
