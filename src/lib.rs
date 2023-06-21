@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use serde::Deserialize;
+use std::fmt::Display;
 
 pub mod client;
 pub mod commands;
@@ -18,7 +18,6 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 // User data, which is stored and accessible in all command invocations
 
-
 #[derive(Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
     pub cammed_down_timeout: u64,
@@ -31,8 +30,8 @@ impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
             cammed_down_timeout: 30, //Duration::from_secs(0),
-            guild_id: 0,            //GuildId(0),
-            channel_id: 0,          //ChannelId(0),
+            guild_id: 0,             //GuildId(0),
+            channel_id: 0,           //ChannelId(0),
             dc_message: "You have been disconnected for being cammed down for too long."
                 .to_string(),
         }
@@ -104,4 +103,4 @@ impl Default for Data {
             bot_settings: Default::default(),
         }
     }
-}   
+}

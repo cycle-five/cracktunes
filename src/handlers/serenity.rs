@@ -11,7 +11,7 @@ use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig, Data, CamKickConfig,
+    BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
 use poise::serenity_prelude::{self as serenity, Channel, UserId};
@@ -39,9 +39,8 @@ pub struct MyVoiceUserInfo {
 }
 
 struct ChanCacheValue {
-        pub name: String,
+    pub name: String,
 }
-
 
 use config_file::FromConfigFile;
 #[async_trait]
@@ -98,7 +97,7 @@ impl EventHandler for SerenityHandler {
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
-    
+
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
@@ -161,15 +160,17 @@ impl EventHandler for SerenityHandler {
                     .iter()
                     .map(|x| x.guild_id)
                     .collect::<HashSet<_>>();
-                let mut cam_status: HashMap<UserId, MyVoiceUserInfo> = HashMap::<UserId, MyVoiceUserInfo>::new();
-                let channels: HashMap::<u64, &CamKickConfig> = config
+                let mut cam_status: HashMap<UserId, MyVoiceUserInfo> =
+                    HashMap::<UserId, MyVoiceUserInfo>::new();
+                let channels: HashMap<u64, &CamKickConfig> = config
                     .cam_kick
                     .iter()
                     .map(|x| (x.channel_id, x))
                     .collect::<HashMap<_, _>>();
-                conf_guilds.iter().for_each(|x| tracing::error!("Guild: {}", x));
+                conf_guilds
+                    .iter()
+                    .for_each(|x| tracing::error!("Guild: {}", x));
                 loop {
-
                     // We clone Context again here, because Arc is owned, so it moves to the
                     // new function.
                     // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
@@ -195,30 +196,47 @@ impl EventHandler for SerenityHandler {
                                     );
                                     cam_status.insert((*cam).user_id, *cam);
                                 } else {
-                                    tracing::info!(target="Camera", "cur: {}, prev: {}", status.camera_status, *&(*cam).camera_status);
-                                    tracing::info!(target="Camera", "elapsed: {:?}, timeout: {}", status.time_last_cam_change.elapsed(), kick_conf.cammed_down_timeout);
+                                    tracing::info!(
+                                        target = "Camera",
+                                        "cur: {}, prev: {}",
+                                        status.camera_status,
+                                        *&(*cam).camera_status
+                                    );
+                                    tracing::info!(
+                                        target = "Camera",
+                                        "elapsed: {:?}, timeout: {}",
+                                        status.time_last_cam_change.elapsed(),
+                                        kick_conf.cammed_down_timeout
+                                    );
                                     if status.camera_status == false
-                                    && status.time_last_cam_change.elapsed() > Duration::from_secs(kick_conf.cammed_down_timeout)
+                                        && status.time_last_cam_change.elapsed()
+                                            > Duration::from_secs(kick_conf.cammed_down_timeout)
                                     {
-                                        let user = (*cam).user_id.to_user(&ctx3.http).await.unwrap();
+                                        let user =
+                                            (*cam).user_id.to_user(&ctx3.http).await.unwrap();
                                         tracing::warn!(
                                             "User {} has been cammed down for {} seconds",
                                             user.name,
                                             status.time_last_cam_change.elapsed().as_secs()
                                         );
                                         // cam_status.insert((*cam).user_id, cam);
-                                        let guild = (*cam).guild_id.to_guild_cached(&ctx3.cache).unwrap();
+                                        let guild =
+                                            (*cam).guild_id.to_guild_cached(&ctx3.cache).unwrap();
                                         tracing::error!("about to disconnect {:?}", (*cam).user_id);
                                         // let dc_res = guild.member(&ctx3.http, (*cam).user_id)
                                         //     .await;
-                                        let dc_res = guild.member(&ctx3.http, (*cam).user_id)
+                                        let dc_res = guild
+                                            .member(&ctx3.http, (*cam).user_id)
                                             .await
                                             .unwrap()
                                             .edit(&ctx3.http, |m| m.disconnect_member())
                                             .await;
                                         match dc_res {
                                             Ok(_) => {
-                                                tracing::error!("User {} has been disconnected", user.name);
+                                                tracing::error!(
+                                                    "User {} has been disconnected",
+                                                    user.name
+                                                );
                                                 let channel = ChannelId(kick_conf.channel_id);
                                                 let _ = channel
                                                     .send_message(&ctx3.http, |m| {
@@ -231,7 +249,10 @@ impl EventHandler for SerenityHandler {
                                                     .await;
                                             }
                                             Err(err) => {
-                                                tracing::error!("Error disconnecting user: {}", err);
+                                                tracing::error!(
+                                                    "Error disconnecting user: {}",
+                                                    err
+                                                );
                                             }
                                         }
                                         cam_status.remove(&(*cam).user_id);
@@ -251,11 +272,12 @@ impl EventHandler for SerenityHandler {
                     //     .iter()
                     //     .filter(|x| cam_status.get(&x.user_id).is_none())
                     //     .map(|x| *x);
-                        
-                        //.collect::<HashMap<UserId, MyVoiceUserInfo>>();
+
+                    //.collect::<HashMap<UserId, MyVoiceUserInfo>>();
                     tracing::error!("Sleeping");
-                    tokio::time::sleep(Duration::from_secs(1 * config.video_status_poll_interval)).await;
-                };
+                    tokio::time::sleep(Duration::from_secs(1 * config.video_status_poll_interval))
+                        .await;
+                }
             });
 
             // Now that the loop is running, we set the bool to true
@@ -265,7 +287,6 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-
     async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
@@ -388,8 +409,6 @@ async fn check_camera_status(
                 }
             };
             let channel = channel_id.to_channel(&ctx.http).await.unwrap();
-
-            
 
             let info = MyVoiceUserInfo {
                 user_id,

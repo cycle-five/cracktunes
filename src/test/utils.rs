@@ -1,7 +1,6 @@
 use config_file::FromConfigFile;
 use poise::serenity_prelude::GuildId;
-use std::{time::Duration};
-
+use std::time::Duration;
 
 use crate::{utils::get_human_readable_timestamp, BotConfig};
 

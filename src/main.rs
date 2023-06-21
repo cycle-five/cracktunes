@@ -186,7 +186,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
     };
     let data = Data {
         bot_settings: config.clone(),
-        volume: 0.2
+        volume: 0.2,
     };
     // let data = Arc::new(data);
     poise::Framework::builder()
@@ -208,7 +208,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     bot_settings: config.clone(),
-                    volume: 0.2
+                    volume: 0.2,
                 })
             })
         })
