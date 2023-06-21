@@ -7,6 +7,7 @@ use self::serenity::{
         },
         channel::Message,
     },
+    Context as SerenityContext,
 };
 //use ::serenity::http::CacheHttp;
 use poise::{
@@ -17,7 +18,9 @@ use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::{commands::summon, messaging::message::ParrotMessage, Context, Data, Error};
+use crate::{
+    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
+};
 use poise::serenity_prelude::SerenityError;
 
 pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
@@ -331,4 +334,13 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
             }
         }
     }
+}
+pub async fn handle_error(
+    ctx: &SerenityContext,
+    interaction: &mut ApplicationCommandInteraction,
+    err: CrackedError,
+) {
+    create_response_text(&ctx.http, interaction, &format!("{err}"))
+        .await
+        .expect("failed to create response");
 }

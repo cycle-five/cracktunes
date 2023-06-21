@@ -2,6 +2,7 @@ use cracktunes::{
     commands,
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
     handlers::SerenityHandler,
+    utils::{create_response_text, get_interaction},
     BotConfig, Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
@@ -85,6 +86,13 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
+            let mut interaction = get_interaction(ctx).unwrap();
+            let _ = create_response_text(
+                &ctx.serenity_context().http,
+                &mut interaction,
+                &format!("{error}"),
+            )
+            .await;
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {

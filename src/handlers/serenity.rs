@@ -14,7 +14,9 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
-use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
+use poise::serenity_prelude::{
+    self as serenity, Channel, Guild, Member, SerenityError, UserId,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
@@ -206,17 +208,6 @@ impl SerenityHandler {
                 .unwrap();
         }
     }
-
-    // async fn handle_error(
-    //     &self,
-    //     ctx: &Context,
-    //     interaction: &mut ApplicationCommandInteraction,
-    //     err: CrackedError,
-    // ) {
-    //     create_response_text(&ctx.http, interaction, &format!("{err}"))
-    //         .await
-    //         .expect("failed to create response");
-    // }
 }
 
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
