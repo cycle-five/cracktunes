@@ -17,8 +17,8 @@ jobs:
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
-  docker:
-    name: Docker
-    needs: [build, lint]
-    uses: ./.github/workflows/docker.yml
-    secrets: inherit
+  # docker:
+  #   name: Docker
+  #   needs: [build, lint]
+  #   uses: ./.github/workflows/docker.yml
+  #   secrets: inherit
