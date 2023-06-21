@@ -11,7 +11,7 @@ use std::time::Duration;
 pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let args = interaction.data.options.clone();
@@ -21,10 +21,10 @@ pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
     let mut units_iter = timestamp_str.split(':');
 
     let minutes = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let minutes = verify(minutes, CrackedError::Other(FAIL_MINUTES_PARSING).into())?;
+    let minutes = verify(minutes, CrackedError::Other(FAIL_MINUTES_PARSING))?;
 
     let seconds = units_iter.next().and_then(|c| c.parse::<u64>().ok());
-    let seconds = verify(seconds, CrackedError::Other(FAIL_SECONDS_PARSING).into())?;
+    let seconds = verify(seconds, CrackedError::Other(FAIL_SECONDS_PARSING))?;
 
     let timestamp = minutes * 60 + seconds;
 

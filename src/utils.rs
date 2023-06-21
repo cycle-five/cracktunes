@@ -33,7 +33,7 @@ pub async fn create_response_poise_text(
 ) -> Result<(), Error> {
     let message_str = format!("{message}");
 
-    create_embed_response_str(&ctx, message_str).await
+    create_embed_response_str(ctx, message_str).await
 }
 
 pub async fn create_response(
@@ -64,10 +64,10 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Re
         Some(mut interaction) => {
             let res =
                 edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await;
-            return res.map(|_| ());
+            res.map(|_| ())
         }
         None => {
-            return create_embed_response_poise(ctx, embed).await;
+            create_embed_response_poise(ctx, embed).await
             //return Err(Box::new(SerenityError::Other("No interaction found"))),
         }
     }
@@ -108,14 +108,13 @@ pub async fn create_embed_response_poise(
 ) -> Result<(), Error> {
     match get_interaction(ctx) {
         Some(mut interaction) => {
-            return create_embed_response(&ctx.serenity_context().http, &mut interaction, embed)
-                .await;
+            create_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await
         }
         None => {
             //ctx.defer().await?;
             //let mut interaction = get_interaction(ctx).unwrap();
             let asdf = format!("{:?}", embed.0.get("description").unwrap().to_string());
-            return create_embed_response_str(&ctx, asdf).await;
+            create_embed_response_str(&ctx, asdf).await
         }
     }
 }
@@ -172,7 +171,7 @@ pub async fn edit_embed_response_poise(
             })
             .await
             .map_err(Into::into),
-        None => return Err(Box::new(SerenityError::Other("No interaction found"))),
+        None => Err(Box::new(SerenityError::Other("No interaction found"))),
     }
 }
 
@@ -312,9 +311,9 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
             drop(handler);
 
             if !has_current_connection {
-                return summon().slash_action.unwrap()(prefix_ctx).await;
+                summon().slash_action.unwrap()(prefix_ctx).await
             } else {
-                return Ok(());
+                Ok(())
             }
         }
         Context::Prefix(slash_ctx) => {
@@ -326,9 +325,9 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
             drop(handler);
 
             if !has_current_connection {
-                return summon().prefix_action.unwrap()(slash_ctx).await;
+                summon().prefix_action.unwrap()(slash_ctx).await
             } else {
-                return Ok(());
+                Ok(())
             }
         }
     }

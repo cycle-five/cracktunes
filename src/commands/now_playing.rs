@@ -7,7 +7,7 @@ use crate::{
 #[poise::command(prefix_command, slash_command)]
 pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();
-    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;

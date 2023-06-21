@@ -77,7 +77,7 @@ pub async fn volume(
 
     track_handle.set_volume(new_volume).unwrap();
     let mut data: &mut Data = &mut ctx.data().clone();
-    (*data).volume = new_volume;
+    data.volume = new_volume;
 
     let embed = create_volume_embed(old_volume, new_volume);
 
@@ -114,5 +114,5 @@ pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
 }
 
 pub fn create_volume_desc(old: f32, new: f32) -> String {
-    return format!("Volume changed from {}% to {}%", old * 100.0, new * 100.0,);
+    format!("Volume changed from {}% to {}%", old * 100.0, new * 100.0,)
 }

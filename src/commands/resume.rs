@@ -17,14 +17,11 @@ pub async fn resume(
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), CrackedError::NothingPlaying.into())?;
-    verify(
-        queue.resume(),
-        CrackedError::Other("Failed resuming track").into(),
-    )?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
+    verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    if send_reply.unwrap_or_else(|| true) {
-        return create_response_poise_text(&ctx, ParrotMessage::Resume).await;
+    if send_reply.unwrap_or(true) {
+        create_response_poise_text(&ctx, ParrotMessage::Resume).await?
     }
-    return Ok(());
+    Ok(())
 }

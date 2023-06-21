@@ -19,7 +19,7 @@ pub async fn remove(
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();
-    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let remove_index = b_index;

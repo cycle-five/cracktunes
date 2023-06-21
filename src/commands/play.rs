@@ -115,7 +115,7 @@ pub async fn play(
 
     // // try to join a voice channel if not in one just yet
     // summon().slash_action.unwrap()(&ctx.clone()).await;
-    let _res = match summon_short(ctx.clone()).await {
+    match summon_short(ctx).await {
         Ok(_) => {}
         Err(_) => {
             let mut embed = CreateEmbed::default();

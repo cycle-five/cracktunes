@@ -39,10 +39,10 @@ pub struct MyVoiceUserInfo {
 }
 
 struct ChanCacheValue {
+    #[allow(dead_code)]
     pub name: String,
 }
 
-use config_file::FromConfigFile;
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
@@ -101,7 +101,7 @@ impl EventHandler for SerenityHandler {
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
-        let channel_cache = HashMap::<u64, ChanCacheValue>::new();
+        let _channel_cache = HashMap::<u64, ChanCacheValue>::new();
 
         for guildid in guilds.iter() {
             tracing::error!("Guild: {:?}", guildid);
@@ -185,22 +185,22 @@ impl EventHandler for SerenityHandler {
                     let mut new_cams = vec![];
 
                     for cam in cams.iter() {
-                        if let Some(status) = cam_status.get(&(*cam).user_id) {
+                        if let Some(status) = cam_status.get(&cam.user_id) {
                             tracing::error!("Status checking {:?}", status);
                             if let Some(kick_conf) = channels.get(&status.channel_id.0) {
-                                if status.camera_status != *&(*cam).camera_status {
+                                if status.camera_status != cam.camera_status {
                                     tracing::info!(
                                         "Camera status changed for user {} to {}",
                                         status.user_id,
                                         cam.camera_status
                                     );
-                                    cam_status.insert((*cam).user_id, *cam);
+                                    cam_status.insert(cam.user_id, *cam);
                                 } else {
                                     tracing::info!(
                                         target = "Camera",
                                         "cur: {}, prev: {}",
                                         status.camera_status,
-                                        *&(*cam).camera_status
+                                        cam.camera_status
                                     );
                                     tracing::info!(
                                         target = "Camera",
@@ -208,12 +208,11 @@ impl EventHandler for SerenityHandler {
                                         status.time_last_cam_change.elapsed(),
                                         kick_conf.cammed_down_timeout
                                     );
-                                    if status.camera_status == false
+                                    if !status.camera_status
                                         && status.time_last_cam_change.elapsed()
                                             > Duration::from_secs(kick_conf.cammed_down_timeout)
                                     {
-                                        let user =
-                                            (*cam).user_id.to_user(&ctx3.http).await.unwrap();
+                                        let user = cam.user_id.to_user(&ctx3.http).await.unwrap();
                                         tracing::warn!(
                                             "User {} has been cammed down for {} seconds",
                                             user.name,
@@ -221,12 +220,12 @@ impl EventHandler for SerenityHandler {
                                         );
                                         // cam_status.insert((*cam).user_id, cam);
                                         let guild =
-                                            (*cam).guild_id.to_guild_cached(&ctx3.cache).unwrap();
-                                        tracing::error!("about to disconnect {:?}", (*cam).user_id);
+                                            cam.guild_id.to_guild_cached(&ctx3.cache).unwrap();
+                                        tracing::error!("about to disconnect {:?}", cam.user_id);
                                         // let dc_res = guild.member(&ctx3.http, (*cam).user_id)
                                         //     .await;
                                         let dc_res = guild
-                                            .member(&ctx3.http, (*cam).user_id)
+                                            .member(&ctx3.http, cam.user_id)
                                             .await
                                             .unwrap()
                                             .edit(&ctx3.http, |m| m.disconnect_member())
@@ -255,7 +254,7 @@ impl EventHandler for SerenityHandler {
                                                 );
                                             }
                                         }
-                                        cam_status.remove(&(*cam).user_id);
+                                        cam_status.remove(&cam.user_id);
                                     }
                                 }
                             }
@@ -265,7 +264,7 @@ impl EventHandler for SerenityHandler {
                     }
                     let res = new_cams
                         .iter()
-                        .all(|x| cam_status.insert((*x).user_id, **x).is_none());
+                        .all(|x| cam_status.insert(x.user_id, **x).is_none());
                     if !res {
                         tracing::error!("Something failed to insert??!?!");
                     }
@@ -275,7 +274,7 @@ impl EventHandler for SerenityHandler {
 
                     //.collect::<HashMap<UserId, MyVoiceUserInfo>>();
                     tracing::error!("Sleeping");
-                    tokio::time::sleep(Duration::from_secs(1 * config.video_status_poll_interval))
+                    tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
                         .await;
                 }
             });
@@ -434,5 +433,5 @@ async fn check_camera_status(
             );
         }
     }
-    return cams;
+    cams
 }

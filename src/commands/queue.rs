@@ -18,8 +18,7 @@ use crate::{
     utils::{get_human_readable_timestamp, get_interaction},
     Context, Error,
 };
-use ::serenity::builder;
-use poise::serenity_prelude::{self as serenity, Interaction};
+use poise::serenity_prelude::{self as serenity};
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
     cmp::{max, min},
@@ -32,14 +31,14 @@ use std::{
 const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    let _res = ctx.defer().await.unwrap();
+    //ctx.defer().await.unwrap();
 
-    let interaction = get_interaction(ctx).unwrap();
-    tracing::error!("interaction: {:?}", interaction);
+    // let interaction = get_interaction(ctx).unwrap();
+    // tracing::error!("interaction: {:?}", interaction);
     // ctx.send(|f| f.content("Works for slash and prefix commands")
-    // ).await.unwrap().reply(ctx).create_interaction_response(&ctx.serenity_context().http, |response| {
+    // ).await.unwrap().into_message().await?.reply().create_interaction_response(&ctx.serenity_context().http, |response| {
     //     response
     //         .kind(InteractionResponseType::DeferredChannelMessageWithSource)
     //         .interaction_response_data(|message| {

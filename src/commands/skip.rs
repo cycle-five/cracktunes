@@ -17,10 +17,7 @@ pub async fn skip(
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
-    let to_skip = match tracks_to_skip {
-        Some(arg) => arg as usize,
-        None => 1,
-    };
+    let to_skip = tracks_to_skip.unwrap_or(1);
 
     let handler = call.lock().await;
     let queue = handler.queue();

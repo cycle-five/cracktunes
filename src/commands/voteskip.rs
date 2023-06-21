@@ -22,7 +22,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         &ctx.serenity_context().cache.current_user_id(),
     )
     .unwrap();
-    let manager = songbird::get(&ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
