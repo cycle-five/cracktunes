@@ -1,8 +1,8 @@
 {
-    "video_status_poll_interval": 10,
+    "video_status_poll_interval": 0,
     "sys_log_channel_id": 0,
     "authorized_users": [
-       0 
+        0
     ],
     "cam_kick": [
         {

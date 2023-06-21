@@ -151,14 +151,9 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
                     return Ok(true);
                 }
 
-                let user_id = ctx
-                    .author_member()
-                    .await
-                    .unwrap()
-                    .user.id.0;
+                let user_id = ctx.author_member().await.unwrap().user.id.0;
 
                 Ok(ctx.data().bot_settings.authorized_users.contains(&user_id))
-                
             })
         }),
         /// Enforce command checks even for owners (enforced by default)

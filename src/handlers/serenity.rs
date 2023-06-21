@@ -14,7 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
-use poise::serenity_prelude::{self as serenity, Channel, UserId, Guild, Member, SerenityError};
+use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
@@ -165,8 +165,6 @@ impl EventHandler for SerenityHandler {
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
-
-    
 }
 
 impl SerenityHandler {
@@ -322,7 +320,10 @@ async fn check_camera_status(
 
 async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guilds: Vec<GuildId>) {
     tokio::spawn(async move {
-        tracing::trace!(target="cam_status_loop", "Starting camera status check loop");
+        tracing::trace!(
+            target = "cam_status_loop",
+            "Starting camera status check loop"
+        );
         let conf_guilds = config
             .cam_kick
             .iter()
@@ -378,7 +379,8 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                             );
                             if !status.camera_status
                                 && status.time_last_cam_change.elapsed()
-                                    > Duration::from_secs(kick_conf.cammed_down_timeout) {
+                                    > Duration::from_secs(kick_conf.cammed_down_timeout)
+                            {
                                 let user = cam.user_id.to_user(&ctx.http).await.unwrap();
                                 tracing::warn!(
                                     "User {} has been cammed down for {} seconds",
@@ -386,20 +388,16 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                     status.time_last_cam_change.elapsed().as_secs()
                                 );
 
-                                let guild =
-                                    cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
+                                let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
                                 tracing::error!("about to disconnect {:?}", cam.user_id);
 
                                 // WARN: Disconnect the user
                                 // FIXME: Should this not be it's own function?
                                 let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
-                                
+
                                 match dc_res {
                                     Ok(_) => {
-                                        tracing::error!(
-                                            "User {} has been disconnected",
-                                            user.name
-                                        );
+                                        tracing::error!("User {} has been disconnected", user.name);
                                         let channel = ChannelId(kick_conf.channel_id);
                                         let _ = channel
                                             .send_message(&ctx.http, |m| {
@@ -412,10 +410,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                             .await;
                                     }
                                     Err(err) => {
-                                        tracing::error!(
-                                            "Error disconnecting user: {}",
-                                            err
-                                        );
+                                        tracing::error!("Error disconnecting user: {}", err);
                                     }
                                 }
                                 cam_status.remove(&cam.user_id);
@@ -434,13 +429,16 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
             }
 
             tracing::error!("Sleeping");
-            tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
-                .await;
+            tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval)).await;
         }
     });
 }
 
-async fn disconnect_member(ctx: Arc<SerenityContext>, cam: MyVoiceUserInfo, guild: Guild) -> Result<Member, SerenityError> {
+async fn disconnect_member(
+    ctx: Arc<SerenityContext>,
+    cam: MyVoiceUserInfo,
+    guild: Guild,
+) -> Result<Member, SerenityError> {
     guild
         .member(&ctx.http, cam.user_id)
         .await
