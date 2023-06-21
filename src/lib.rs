@@ -54,6 +54,7 @@ impl Display for CamKickConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: u64,
+    pub authorized_users: Vec<u64>,
     // Cammed down kicking config
     pub cam_kick: Vec<CamKickConfig>,
     pub sys_log_channel_id: u64,
@@ -65,6 +66,7 @@ impl Default for BotConfig {
     fn default() -> Self {
         Self {
             video_status_poll_interval: 20,
+            authorized_users: vec![],
             cam_kick: vec![],
             sys_log_channel_id: 0,
             self_deafen: true,
@@ -80,12 +82,14 @@ impl Display for BotConfig {
             "video_status_poll_interval: {:?}\n",
             self.video_status_poll_interval
         ));
+        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
         result.push_str(&format!("cam_kick: {:?}\n", self.cam_kick));
         result.push_str(&format!(
             "sys_log_channel_id: {:?}\n",
             self.sys_log_channel_id
         ));
         result.push_str(&format!("self_deafen: {:?}\n", self.self_deafen));
+        result.push_str(&format!("volume: {:?}\n", self.volume));
         write!(f, "{}", result)
     }
 }

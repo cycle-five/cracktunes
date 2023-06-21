@@ -1,12 +1,14 @@
 {
     "video_status_poll_interval": 10,
     "sys_log_channel_id": 0,
+    "authorized_users": [
+       0 
+    ],
     "cam_kick": [
         {
             "cammed_down_timeout": 29,
             "guild_id": 0,
             "channel_id": 0,
-            "poll_secs": 10,
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
         }
     ],

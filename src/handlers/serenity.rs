@@ -14,7 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
-use poise::serenity_prelude::{self as serenity, Channel, UserId};
+use poise::serenity_prelude::{self as serenity, Channel, UserId, Guild, Member, SerenityError};
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
@@ -107,11 +107,12 @@ impl EventHandler for SerenityHandler {
             tracing::error!("Guild: {:?}", guildid);
         }
 
+        let config = self.data.bot_settings.clone();
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
+        let config = Arc::new(config);
         // let config = Arc::clone(&self.config);
-        let config = self.data.bot_settings.clone();
 
         // let shard_manager = (*self.shard_manager.lock().unwrap()).clone().unwrap();
         // let framework_data = poise::FrameworkContext {
@@ -127,20 +128,23 @@ impl EventHandler for SerenityHandler {
         //
         // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
         // we don't have one due to self being an immutable reference.
-        if !self.is_loop_running.load(Ordering::Relaxed) && config.video_status_poll_interval > 0 {
+        if !self.is_loop_running.load(Ordering::Relaxed) {
             // We have to clone the Arc, as it gets moved into the new thread.
             let ctx1 = Arc::clone(&ctx);
+            let config1 = Arc::clone(&config);
             // tokio::spawn creates a new green thread that can run in parallel with the rest of
             // the application.
-            tokio::spawn(async move {
-                loop {
-                    // We clone Context again here, because Arc is owned, so it moves to the
-                    // new function.
-                    log_system_load(ctx1.clone(), config.clone()).await;
-                    tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
-                        .await;
-                }
-            });
+            if false {
+                tokio::spawn(async move {
+                    loop {
+                        // We clone Context again here, because Arc is owned, so it moves to the
+                        // new function.
+                        log_system_load(ctx1.clone(), config1.clone()).await;
+                        tokio::time::sleep(Duration::from_secs(config1.video_status_poll_interval))
+                            .await;
+                    }
+                });
+            }
 
             // And of course, we can run more than one thread at different timings.
             let ctx2 = Arc::clone(&ctx);
@@ -152,137 +156,17 @@ impl EventHandler for SerenityHandler {
             });
 
             let ctx3 = Arc::clone(&ctx);
-            let config = self.data.bot_settings.clone();
-            tokio::spawn(async move {
-                tracing::error!("Starting camera status check loop");
-                let conf_guilds = config
-                    .cam_kick
-                    .iter()
-                    .map(|x| x.guild_id)
-                    .collect::<HashSet<_>>();
-                let mut cam_status: HashMap<UserId, MyVoiceUserInfo> =
-                    HashMap::<UserId, MyVoiceUserInfo>::new();
-                let channels: HashMap<u64, &CamKickConfig> = config
-                    .cam_kick
-                    .iter()
-                    .map(|x| (x.channel_id, x))
-                    .collect::<HashMap<_, _>>();
-                conf_guilds
-                    .iter()
-                    .for_each(|x| tracing::error!("Guild: {}", x));
-                loop {
-                    // We clone Context again here, because Arc is owned, so it moves to the
-                    // new function.
-                    // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
-                    tracing::error!("Checking camera status for {} guilds", guilds.len());
-                    // Go through all the guilds we have cached and check the camera status
-                    // for all the users we can see in voice channels.
-                    let mut cams = vec![];
-                    for guild_id in &guilds {
-                        cams.extend(check_camera_status(Arc::clone(&ctx3), *guild_id).await);
-                    }
-                    tracing::error!("num cams {}", cams.len());
-                    let mut new_cams = vec![];
 
-                    for cam in cams.iter() {
-                        if let Some(status) = cam_status.get(&cam.user_id) {
-                            tracing::error!("Status checking {:?}", status);
-                            if let Some(kick_conf) = channels.get(&status.channel_id.0) {
-                                if status.camera_status != cam.camera_status {
-                                    tracing::info!(
-                                        "Camera status changed for user {} to {}",
-                                        status.user_id,
-                                        cam.camera_status
-                                    );
-                                    cam_status.insert(cam.user_id, *cam);
-                                } else {
-                                    tracing::info!(
-                                        target = "Camera",
-                                        "cur: {}, prev: {}",
-                                        status.camera_status,
-                                        cam.camera_status
-                                    );
-                                    tracing::info!(
-                                        target = "Camera",
-                                        "elapsed: {:?}, timeout: {}",
-                                        status.time_last_cam_change.elapsed(),
-                                        kick_conf.cammed_down_timeout
-                                    );
-                                    if !status.camera_status
-                                        && status.time_last_cam_change.elapsed()
-                                            > Duration::from_secs(kick_conf.cammed_down_timeout)
-                                    {
-                                        let user = cam.user_id.to_user(&ctx3.http).await.unwrap();
-                                        tracing::warn!(
-                                            "User {} has been cammed down for {} seconds",
-                                            user.name,
-                                            status.time_last_cam_change.elapsed().as_secs()
-                                        );
-                                        // cam_status.insert((*cam).user_id, cam);
-                                        let guild =
-                                            cam.guild_id.to_guild_cached(&ctx3.cache).unwrap();
-                                        tracing::error!("about to disconnect {:?}", cam.user_id);
-                                        // let dc_res = guild.member(&ctx3.http, (*cam).user_id)
-                                        //     .await;
-                                        let dc_res = guild
-                                            .member(&ctx3.http, cam.user_id)
-                                            .await
-                                            .unwrap()
-                                            .edit(&ctx3.http, |m| m.disconnect_member())
-                                            .await;
-                                        match dc_res {
-                                            Ok(_) => {
-                                                tracing::error!(
-                                                    "User {} has been disconnected",
-                                                    user.name
-                                                );
-                                                let channel = ChannelId(kick_conf.channel_id);
-                                                let _ = channel
-                                                    .send_message(&ctx3.http, |m| {
-                                                        m.content(format!(
-                                                            "{} {}",
-                                                            user.mention(),
-                                                            kick_conf.dc_message
-                                                        ))
-                                                    })
-                                                    .await;
-                                            }
-                                            Err(err) => {
-                                                tracing::error!(
-                                                    "Error disconnecting user: {}",
-                                                    err
-                                                );
-                                            }
-                                        }
-                                        cam_status.remove(&cam.user_id);
-                                    }
-                                }
-                            }
-                        } else {
-                            new_cams.push(cam);
-                        }
-                    }
-                    let res = new_cams
-                        .iter()
-                        .all(|x| cam_status.insert(x.user_id, **x).is_none());
-                    if !res {
-                        tracing::error!("Something failed to insert??!?!");
-                    }
-                    //     .iter()
-                    //     .filter(|x| cam_status.get(&x.user_id).is_none())
-                    //     .map(|x| *x);
-
-                    //.collect::<HashMap<UserId, MyVoiceUserInfo>>();
-                    tracing::error!("Sleeping");
-                    tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
-                        .await;
-                }
-            });
+            if config.video_status_poll_interval > 0 {
+                cam_status_loop(ctx3, config.clone(), guilds.clone()).await;
+            }
 
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
+
+    
 }
 
 impl SerenityHandler {
@@ -337,7 +221,7 @@ impl SerenityHandler {
     // }
 }
 
-async fn log_system_load(ctx: Arc<SerenityContext>, config: BotConfig) {
+async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
 
@@ -434,4 +318,133 @@ async fn check_camera_status(
         }
     }
     cams
+}
+
+async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guilds: Vec<GuildId>) {
+    tokio::spawn(async move {
+        tracing::trace!(target="cam_status_loop", "Starting camera status check loop");
+        let conf_guilds = config
+            .cam_kick
+            .iter()
+            .map(|x| x.guild_id)
+            .collect::<HashSet<_>>();
+        let mut cam_status: HashMap<UserId, MyVoiceUserInfo> =
+            HashMap::<UserId, MyVoiceUserInfo>::new();
+        let channels: HashMap<u64, &CamKickConfig> = config
+            .cam_kick
+            .iter()
+            .map(|x| (x.channel_id, x))
+            .collect::<HashMap<_, _>>();
+        conf_guilds
+            .iter()
+            .for_each(|x| tracing::error!("Guild: {}", x));
+        loop {
+            // We clone Context again here, because Arc is owned, so it moves to the
+            // new function.
+            // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
+            tracing::error!("Checking camera status for {} guilds", guilds.len());
+            // Go through all the guilds we have cached and check the camera status
+            // for all the users we can see in voice channels.
+            let mut cams = vec![];
+            for guild_id in &guilds {
+                cams.extend(check_camera_status(Arc::clone(&ctx), *guild_id).await);
+            }
+            tracing::trace!("num cams {}", cams.len());
+            let mut new_cams = vec![];
+
+            for cam in cams.iter() {
+                if let Some(status) = cam_status.get(&cam.user_id) {
+                    tracing::error!("Status checking {:?}", status);
+                    if let Some(kick_conf) = channels.get(&status.channel_id.0) {
+                        if status.camera_status != cam.camera_status {
+                            tracing::info!(
+                                "Camera status changed for user {} to {}",
+                                status.user_id,
+                                cam.camera_status
+                            );
+                            cam_status.insert(cam.user_id, *cam);
+                        } else {
+                            tracing::info!(
+                                target = "Camera",
+                                "cur: {}, prev: {}",
+                                status.camera_status,
+                                cam.camera_status
+                            );
+                            tracing::info!(
+                                target = "Camera",
+                                "elapsed: {:?}, timeout: {}",
+                                status.time_last_cam_change.elapsed(),
+                                kick_conf.cammed_down_timeout
+                            );
+                            if !status.camera_status
+                                && status.time_last_cam_change.elapsed()
+                                    > Duration::from_secs(kick_conf.cammed_down_timeout) {
+                                let user = cam.user_id.to_user(&ctx.http).await.unwrap();
+                                tracing::warn!(
+                                    "User {} has been cammed down for {} seconds",
+                                    user.name,
+                                    status.time_last_cam_change.elapsed().as_secs()
+                                );
+
+                                let guild =
+                                    cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
+                                tracing::error!("about to disconnect {:?}", cam.user_id);
+
+                                // WARN: Disconnect the user
+                                // FIXME: Should this not be it's own function?
+                                let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
+                                
+                                match dc_res {
+                                    Ok(_) => {
+                                        tracing::error!(
+                                            "User {} has been disconnected",
+                                            user.name
+                                        );
+                                        let channel = ChannelId(kick_conf.channel_id);
+                                        let _ = channel
+                                            .send_message(&ctx.http, |m| {
+                                                m.content(format!(
+                                                    "{} {}",
+                                                    user.mention(),
+                                                    kick_conf.dc_message
+                                                ))
+                                            })
+                                            .await;
+                                    }
+                                    Err(err) => {
+                                        tracing::error!(
+                                            "Error disconnecting user: {}",
+                                            err
+                                        );
+                                    }
+                                }
+                                cam_status.remove(&cam.user_id);
+                            }
+                        }
+                    }
+                } else {
+                    new_cams.push(cam);
+                }
+            }
+            let res = new_cams
+                .iter()
+                .all(|x| cam_status.insert(x.user_id, **x).is_none());
+            if !res {
+                tracing::error!("Something failed to insert??!?!");
+            }
+
+            tracing::error!("Sleeping");
+            tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval))
+                .await;
+        }
+    });
+}
+
+async fn disconnect_member(ctx: Arc<SerenityContext>, cam: MyVoiceUserInfo, guild: Guild) -> Result<Member, SerenityError> {
+    guild
+        .member(&ctx.http, cam.user_id)
+        .await
+        .unwrap()
+        .edit(&ctx.http, |m| m.disconnect_member())
+        .await
 }
