@@ -1,5 +1,9 @@
 use serde::Deserialize;
-use std::fmt::Display;
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    sync::{Arc, Mutex},
+};
 
 pub mod client;
 pub mod commands;
@@ -15,7 +19,7 @@ pub mod utils;
 pub mod test;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
+type Context<'a> = poise::Context<'a, Arc<Data>, Error>;
 // User data, which is stored and accessible in all command invocations
 
 #[derive(Deserialize, Clone, Debug)]
@@ -96,15 +100,22 @@ impl Display for BotConfig {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Data {
-    pub volume: f32,
     pub bot_settings: BotConfig,
+    #[serde(skip)]
+    pub volume: Arc<Mutex<f32>>,
+    #[serde(skip)]
+    pub guild_settings_map: Arc<Mutex<HashMap<u64, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_cache_map: Arc<Mutex<HashMap<u64, guild::cache::GuildCache>>>,
 }
 
 impl Default for Data {
     fn default() -> Self {
         Self {
-            volume: 0.2,
+            volume: Arc::new(Mutex::new(0.2)),
             bot_settings: Default::default(),
+            guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

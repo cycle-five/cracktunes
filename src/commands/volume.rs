@@ -6,6 +6,7 @@ use crate::{Context, Data, Error};
 use poise::{serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction};
 use songbird::tracks::TrackHandle;
 use std::borrow::BorrowMut;
+use std::sync::Arc;
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn volume(
@@ -76,8 +77,13 @@ pub async fn volume(
     let old_volume = track_handle.get_info().await.unwrap().volume;
 
     track_handle.set_volume(new_volume).unwrap();
-    let mut data: &mut Data = &mut ctx.data().clone();
-    data.volume = new_volume;
+    // lock the mutex inside of it's own block, so it isn't locked across an await.
+    let _x = {
+        let data: &Arc<Data> = ctx.data();
+        let mut res = data.volume.lock().unwrap();
+        *res = new_volume;
+        *res
+    };
 
     let embed = create_volume_embed(old_volume, new_volume);
 

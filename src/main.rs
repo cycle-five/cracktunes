@@ -78,7 +78,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
+async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
@@ -102,7 +102,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Error> {
+fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
@@ -122,6 +122,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
             commands::seek(),
             commands::skip(),
             commands::stop(),
+            commands::shuffle(),
             commands::summon(),
             commands::version(),
             commands::volume(),
@@ -152,6 +153,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
         },
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
+            //Box::pin(async move {Ok(true)})
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
                 if ctx.data().bot_settings.authorized_users.is_empty() {
@@ -174,17 +176,15 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
         },
         ..Default::default()
     };
-    let data = Data {
-        bot_settings: config.clone(),
-        volume: 0.2,
-    };
-    // let data = Arc::new(data);
+    let data = Arc::new(cracktunes::Data { bot_settings: config, ..Default::default() });
+    let handler_data = data.clone();
+    let setup_data = data;
     poise::Framework::builder()
         .client_settings(|builder| {
             builder
                 .event_handler(SerenityHandler {
                     is_loop_running: false.into(),
-                    data,
+                    data: handler_data,
                 })
                 .register_songbird()
         })
@@ -196,10 +196,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<cracktunes::Data, Erro
             Box::pin(async move {
                 tracing::info!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {
-                    bot_settings: config.clone(),
-                    volume: 0.2,
-                })
+                Ok(setup_data)
             })
         })
         .options(options)

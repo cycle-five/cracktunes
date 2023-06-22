@@ -71,9 +71,9 @@ pub async fn play(
     #[description = "song link or search query."]
     msg: Option<String>,
 ) -> Result<(), Error> {
-    tracing::info!(target: "commands", "play called {}", msg.as_deref().unwrap_or("nothing"));
+    tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
 
-    if msg.is_none() {
+    if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
         embed.description(format!("{}", CrackedError::Other("No query provided!")));
         create_embed_response_poise(ctx, embed).await?;
@@ -94,6 +94,8 @@ pub async fn play(
         None => msg.unwrap(),
     };
     let url = url.as_str();
+
+    tracing::warn!(target: "PLAY", "url: {}", url);
 
     let guild_id = match ctx.guild_id() {
         Some(id) => id,

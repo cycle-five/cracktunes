@@ -303,7 +303,7 @@ pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
 //         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
 //     }
 // }
-pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, Error>> {
+pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Arc<Data>, Error>> {
     match ctx {
         Context::Application(prefix_ctx) => {
             let guild_id = prefix_ctx.guild_id().unwrap();

@@ -4,10 +4,9 @@ use songbird::serenity::SerenityInit;
 
 //use self::serenity::model::gateway::GatewayIntents;
 use self::serenity::GatewayIntents;
-use std::{collections::HashMap, env};
+use std::{env, sync::Arc};
 
 use crate::{
-    guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
     handlers::SerenityHandler,
 };
 
@@ -31,10 +30,7 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
-        let data = Data {
-            ..Default::default()
-        };
-        // let data = Arc::new(data);
+        let data = Arc::new(Data::default());
 
         let client = //serenity::Client::builder(token, gateway_intents)
             client_builder
@@ -53,9 +49,7 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
-        let data = Data {
-            ..Default::default()
-        };
+        let data = Arc::new(Data::default());
         let client = serenity::Client::builder(token, gateway_intents)
             .event_handler(SerenityHandler {
                 is_loop_running: false.into(),
@@ -65,10 +59,10 @@ impl Client {
             .register_songbird()
             .await?;
 
-        let mut data = client.data.write().await;
-        data.insert::<GuildCacheMap>(HashMap::default());
-        data.insert::<GuildSettingsMap>(HashMap::default());
-        drop(data);
+        // let mut data = client.data.write().await;
+        // data.insert::<GuildCacheMap>(HashMap::default());
+        // data.insert::<GuildSettingsMap>(HashMap::default());
+        // drop(data);
 
         Ok(Client { client })
     }

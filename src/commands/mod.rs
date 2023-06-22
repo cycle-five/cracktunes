@@ -1,3 +1,4 @@
+pub mod authorize;
 pub mod autopause;
 pub mod chatgpt;
 pub mod clear;
@@ -22,6 +23,7 @@ pub mod volume;
 pub mod voteskip;
 
 pub use self::chatgpt::*;
+pub use authorize::*;
 pub use autopause::*;
 pub use clear::*;
 pub use collector::*;
