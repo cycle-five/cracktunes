@@ -1,14 +1,16 @@
-use poise::serenity_prelude::Attachment;
-use songbird::input::{
-    error::{Error, Result},
-    Codec, Container, Input, Metadata, Reader,
-};
+use crate::Error;
+use poise::serenity_prelude as prelude;
+use songbird::input::{Codec, Container, Input, Metadata, Reader};
 use std::{
     io::Write,
     process::{Child, Command, Stdio},
 };
 
-pub async fn ffmpeg(mut source: Child, metadata: Metadata, pre_args: &[&str]) -> Result<Input> {
+pub async fn ffmpeg(
+    mut source: Child,
+    metadata: Metadata,
+    pre_args: &[&str],
+) -> Result<Input, Error> {
     let ffmpeg_args = [
         "-i",
         "-", // read from stdout
@@ -23,7 +25,10 @@ pub async fn ffmpeg(mut source: Child, metadata: Metadata, pre_args: &[&str]) ->
         "-",
     ];
 
-    let taken_stdout = source.stdout.take().ok_or(Error::Stdout)?;
+    let taken_stdout = source
+        .stdout
+        .take()
+        .ok_or(songbird::input::error::Error::Stdout)?;
 
     let ffmpeg = Command::new("ffmpeg")
         .args(pre_args)
@@ -46,11 +51,30 @@ pub async fn ffmpeg(mut source: Child, metadata: Metadata, pre_args: &[&str]) ->
     Ok(input)
 }
 
+pub async fn download(url: &str) -> Result<Vec<u8>, Error> {
+    let bytes = reqwest::get(url).await?.bytes().await?;
+    Ok(bytes.to_vec())
+}
+
 pub async fn from_attachment(
-    attachment: Attachment,
+    att: prelude::Attachment,
     metadata: Metadata,
     pre_args: &[&str],
-) -> Result<Input> {
+) -> Result<Input, Error> {
+    let data = att.download().await.unwrap();
+    from_bytes(data, metadata, pre_args).await
+}
+
+pub async fn from_uri(uri: &str, metadata: Metadata, pre_args: &[&str]) -> Result<Input, Error> {
+    let data = download(uri).await.unwrap();
+    from_bytes(data, metadata, pre_args).await
+}
+
+pub async fn from_bytes(
+    data: Vec<u8>,
+    metadata: Metadata,
+    pre_args: &[&str],
+) -> Result<Input, Error> {
     let ffmpeg_args = [
         "-i",
         "-", // read from stdout
@@ -65,7 +89,7 @@ pub async fn from_attachment(
         "-",
     ];
 
-    let bytes = attachment.download().await.unwrap();
+    let bytes = data;
 
     // Command::new()
     // let taken_stdout = source.stdout.take().ok_or(Error::Stdout)?;
@@ -82,7 +106,7 @@ pub async fn from_attachment(
         Ok(writer) => writer,
         Err(x) => {
             tracing::error!(x);
-            return Err(Error::Stdout);
+            return Err(songbird::input::error::Error::Stdout.into());
         }
     };
 

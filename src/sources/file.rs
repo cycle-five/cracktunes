@@ -1,5 +1,6 @@
 use self::serenity::async_trait;
-use crate::commands::play::QueryType;
+use crate::Error;
+use crate::{commands::play::QueryType, errors::CrackedError};
 use ::serenity::json::Value;
 use poise::serenity_prelude as serenity;
 use songbird::input::{
@@ -19,15 +20,14 @@ impl FileSource {
     }
 }
 
-pub struct FileRestable {}
+pub struct FileRestartable {}
 
-impl FileRestable {
+impl FileRestartable {
     pub async fn download<P: AsRef<str> + Send + Clone + Sync + 'static>(
         uri: P,
-        attachment: serenity::Attachment,
         lazy: bool,
     ) -> SongbirdResult<Restartable> {
-        Restartable::new(FileRestarter { attachment, uri }, lazy).await
+        Restartable::new(FileRestarter { uri }, lazy).await
     }
 }
 
@@ -35,7 +35,7 @@ struct FileRestarter<P>
 where
     P: AsRef<str> + Send + Sync,
 {
-    attachment: serenity::Attachment,
+    uri: P,
 }
 
 #[async_trait]
@@ -45,18 +45,25 @@ where
 {
     async fn call_restart(&mut self, time: Option<Duration>) -> SongbirdResult<Input> {
         // let (yt, metadata) = ytdl(self.uri.as_ref()).await?;
-        let attachment = self.attachment.clone();
+        let url = self.uri.as_ref();
 
         let Some(time) = time else {
-            return ffmpeg::from_attachment(attachment, Metadata::default(), &[]).await;
+            //attachment::download().await;
+            //return ffmpeg::from_attachment(attachment, Metadata::default(), &[]).await;
+            return ffmpeg::from_uri(url, Metadata::default(), &[]).await.map_err(|e: Error| Into::<CrackedError>::into(e).into())
         };
 
         let ts = format!("{:.3}", time.as_secs_f64());
-        ffmpeg::from_attachment(attachment, Metadata::default(), &["-ss", &ts]).await
+        ffmpeg::from_uri(url, Metadata::default(), &["-ss", &ts])
+            .await
+            .map_err(|e: Error| Into::<CrackedError>::into(e).into())
     }
 
     async fn lazy_init(&mut self) -> SongbirdResult<(Option<Metadata>, Codec, Container)> {
-        Ok((None, Codec::FloatPcm, Container::Raw))
+        let url = self.uri.as_ref();
+        _file_metadata(url)
+            .await
+            .map(|m| (Some(m), Codec::FloatPcm, Container::Raw))
     }
 }
 

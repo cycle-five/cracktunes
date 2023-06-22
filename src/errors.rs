@@ -7,7 +7,7 @@ use crate::messaging::messages::{
 use crate::Error;
 use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
-use songbird::input::error::Error as InputError;
+use songbird::input::error::{DcaError, Error as InputError};
 use std::fmt::{Debug, Display};
 //use std::{error::Error, fmt};
 use std::fmt;
@@ -29,6 +29,7 @@ pub enum CrackedError {
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
+    Songbird(songbird::input::error::Error),
     Poise(Error),
 }
 
@@ -78,6 +79,7 @@ impl Display for CrackedError {
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::Serde(err) => f.write_str(&format!("{err}")),
+            Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
         }
     }
@@ -104,6 +106,88 @@ impl PartialEq for CrackedError {
         }
     }
 }
+
+impl From<DcaError> for CrackedError {
+    fn from(err: songbird::input::error::DcaError) -> Self {
+        Self::Poise(Box::new(err))
+    }
+}
+
+use audiopus::error::Error as AudiopusError;
+impl From<AudiopusError> for CrackedError {
+    fn from(err: AudiopusError) -> Self {
+        Self::Poise(Box::new(err))
+    }
+}
+
+// impl From<CatcherError> for CrackedError {
+//     fn from(err: CatcherError) -> Self {
+//         Self::Poise(Box::new(err))
+//     }
+//   <songbird::input::error::Error as From<songbird::driver::audiopus::Error>>
+//   <songbird::input::error::Error as From<std::io::Error>>
+//   <songbird::input::error::Error as From<streamcatcher::CatcherError>>
+impl From<CrackedError> for songbird::input::error::Error {
+    fn from(val: CrackedError) -> songbird::input::error::Error {
+        match val {
+            CrackedError::Poise(_) => songbird::input::error::Error::Metadata,
+            CrackedError::Serde(err) => songbird::input::error::Error::Json {
+                error: err,
+                parsed_text: "".to_string(),
+            },
+            CrackedError::IO(err) => songbird::input::error::Error::Io(err),
+            CrackedError::Songbird(err) => err,
+            CrackedError::TrackFail(err) => err,
+            CrackedError::RSpotify(_) => songbird::input::error::Error::Metadata,
+            CrackedError::Serenity(_) => songbird::input::error::Error::Metadata,
+            CrackedError::AlreadyConnected(_) => songbird::input::error::Error::Metadata,
+            CrackedError::NotConnected => songbird::input::error::Error::Metadata,
+            CrackedError::Other(_) => songbird::input::error::Error::Metadata,
+            CrackedError::QueueEmpty => songbird::input::error::Error::Metadata,
+            CrackedError::NotInRange(_, _, _, _) => songbird::input::error::Error::Metadata,
+            CrackedError::AuthorDisconnected(_) => songbird::input::error::Error::Metadata,
+            CrackedError::WrongVoiceChannel => songbird::input::error::Error::Metadata,
+            CrackedError::AuthorNotFound => songbird::input::error::Error::Metadata,
+            _ => songbird::input::error::Error::Metadata,
+        }
+    }
+}
+
+impl From<songbird::input::error::Error> for CrackedError {
+    fn from(err: songbird::input::error::Error) -> Self {
+        match err {
+            songbird::input::error::Error::Json {
+                error,
+                parsed_text: _,
+            } => Self::Poise(error.into()),
+            songbird::input::error::Error::Io(err) => Self::IO(err),
+            songbird::input::error::Error::Metadata => Self::Other("Metadata"),
+            songbird::input::error::Error::Stdout => Self::Other("Stdout"),
+            songbird::input::error::Error::Dca(err) => Self::Poise(Box::new(err)),
+            songbird::input::error::Error::Streams => Self::Other("Streams"),
+            songbird::input::error::Error::Streamcatcher(err) => Self::Poise(Box::new(err)),
+            _ => Self::Other("FAILED"),
+        }
+    }
+}
+
+impl From<Error> for CrackedError {
+    fn from(err: Error) -> Self {
+        CrackedError::Poise(err)
+    }
+}
+
+// impl From<songbird::input::error::Error> for CrackedError {
+//     fn from(err: songbird::input::error::Error) -> CrackedError {
+//         CrackedError::IO(err)
+//     }
+// }
+
+// impl Into<songbird::input::error::Error> for Box<dyn std::error::Error + Send + Sync> {
+//     fn into(self) -> songbird::input::error::Error {
+//         Into<StdError>(self).into()
+//     }
+// }
 
 /// Provides an implementation to convert a [`std::io::Error`] to a [`CrackedError`].
 impl From<std::io::Error> for CrackedError {
@@ -139,11 +223,11 @@ impl From<RSpotifyClientError> for CrackedError {
     }
 }
 
-impl From<Error> for CrackedError {
-    fn from(err: Error) -> Self {
-        Self::Poise(err)
-    }
-}
+// impl From<Error> for CrackedError {
+//     fn from(err: Error) -> Self {
+//         Self::Poise(err)
+//     }
+// }
 
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.
@@ -171,6 +255,15 @@ impl<T> Verifiable<T> for Option<T> {
         self.unwrap()
     }
 }
+
+// impl<T> From<Result<T, songbird::input::error::Error>> for Result<T, CrackedError> {
+//     fn from(err: Result<T, songbird::input::error::Error>) -> Self {
+//         match err {
+//             Ok(x) => Ok(x),
+//             Err(err) => Self::Songbird(err),
+//         }
+//     }
+// }
 
 impl<T, E> Verifiable<T> for Result<T, E>
 where

@@ -9,7 +9,7 @@ use crate::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
     },
     sources::{
-        file::FileRestable,
+        file::FileRestartable,
         spotify::{Spotify, SPOTIFY},
         youtube::{YouTube, YouTubeRestartable},
     },
@@ -535,13 +535,13 @@ async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedE
     match query_type {
         QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true)
             .await
-            .map_err(CrackedError::TrackFail),
+            .map_err(|e| e.into()),
 
         QueryType::Keywords(query) => YouTubeRestartable::ytdl_search(query, true)
             .await
-            .map_err(CrackedError::TrackFail),
+            .map_err(|e| e.into()),
 
-        QueryType::File(file) => FileRestable::download(file.url.to_owned(), file, true)
+        QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
             .await
             .map_err(CrackedError::TrackFail),
         _ => unreachable!(),
