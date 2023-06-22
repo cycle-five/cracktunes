@@ -52,3 +52,6 @@ default-features = true
 [dependencies.tokio]
 version = "1.28.2"
 features = ["macros", "rt-multi-thread", "signal"]
+
+[dependencies.ffprobe]
+git = "https://github.com/cycle-five/ffprobe-rs"

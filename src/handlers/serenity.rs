@@ -14,9 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
-use poise::serenity_prelude::{
-    self as serenity, Channel, Guild, Member, SerenityError, UserId,
-};
+use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},

@@ -9,6 +9,7 @@ use crate::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
     },
     sources::{
+        file::FileRestable,
         spotify::{Spotify, SPOTIFY},
         youtube::{YouTube, YouTubeRestartable},
     },
@@ -40,6 +41,7 @@ pub enum QueryType {
     KeywordList(Vec<String>),
     VideoLink(String),
     PlaylistLink(String),
+    File(serenity::Attachment),
 }
 
 /// Get the guild name (guild-only)
@@ -64,6 +66,7 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn play(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
+    #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
     msg: Option<String>,
@@ -86,8 +89,11 @@ pub async fn play(
         _ => Mode::End,
     };
 
-    let msg = msg.unwrap();
-    let url = msg.as_str();
+    let url = match file.clone() {
+        Some(file) => file.url.as_str().to_owned().to_string(),
+        None => msg.unwrap(),
+    };
+    let url = url.as_str();
 
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
@@ -133,6 +139,10 @@ pub async fn play(
                 let spotify = SPOTIFY.lock().await;
                 let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                 Some(Spotify::extract(spotify, url).await?)
+            }
+            Some("cdn.discordapp.com") => {
+                Some(QueryType::File(file.unwrap()))
+                //ffmpeg::from_attachment(file.unwrap(), Metadata::default(), &[])
             }
             Some(other) => {
                 let mut data = ctx.serenity_context().data.write().await;
@@ -240,9 +250,20 @@ pub async fn play(
                     .await;
                 }
             }
+            QueryType::File(file) => {
+                let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
+                        enqueue_track(&call, &QueryType::File(file)).await?;
+                update_queue_messages(
+                    &ctx.serenity_context().http,
+                    &ctx.serenity_context().data,
+                    &queue,
+                    guild_id,
+                )
+                .await;
+            }
         },
         Mode::Next => match query_type.clone() {
-            QueryType::Keywords(_) | QueryType::VideoLink(_) => {
+            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
                 let queue = insert_track(&call, &query_type, 1).await?;
                 update_queue_messages(
                     &ctx.serenity_context().http,
@@ -283,7 +304,7 @@ pub async fn play(
             }
         },
         Mode::Jump => match query_type.clone() {
-            QueryType::Keywords(_) | QueryType::VideoLink(_) => {
+            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
                 let mut queue = enqueue_track(&call, &query_type).await?;
 
                 if !queue_was_empty {
@@ -520,6 +541,9 @@ async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedE
             .await
             .map_err(CrackedError::TrackFail),
 
+        QueryType::File(file) => FileRestable::download(file.url.to_owned(), file, true)
+            .await
+            .map_err(CrackedError::TrackFail),
         _ => unreachable!(),
     }
 }
