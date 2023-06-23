@@ -41,8 +41,15 @@ pub async fn volume(
         Some(arg) => Some(arg as isize),
         None => {
             let handler = call.lock().await;
-            let track_handle: TrackHandle = handler.queue().current().expect("No track playing");
-            let volume = track_handle.get_info().await.unwrap().volume;
+            let track_handle: Option<TrackHandle> = handler.queue().current();
+            if track_handle.is_none() {
+                let mut embed = CreateEmbed::default();
+                embed.description(format!("{}", CrackedError::NothingPlaying));
+
+                create_embed_response_poise(ctx, embed).await?;
+                return Ok(());
+            }
+            let volume = track_handle.unwrap().get_info().await.unwrap().volume;
             let mut embed = CreateEmbed::default();
             embed.description(format!("Current volume is {}%", volume * 100.0));
             match ctx {

@@ -6,9 +6,7 @@ use songbird::serenity::SerenityInit;
 use self::serenity::GatewayIntents;
 use std::{env, sync::Arc};
 
-use crate::{
-    handlers::SerenityHandler,
-};
+use crate::handlers::SerenityHandler;
 
 pub struct Client {
     client: serenity::Client,

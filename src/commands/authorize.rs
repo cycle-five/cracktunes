@@ -1,6 +1,4 @@
-use crate::{
-    Context, Error,
-};
+use crate::{Context, Error};
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn authorize(
@@ -9,6 +7,7 @@ pub async fn authorize(
 ) -> Result<(), Error> {
     // let guild_id = interaction.guild_id.unwrap();
     let _user = ctx.serenity_context().http.get_user(user_id).await?;
+    ctx.data();
 
     //ctx.data()
 

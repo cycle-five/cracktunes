@@ -14,5 +14,14 @@
         }
     ],
     "self_deafen": true,
-    "volume": 0.5
+    "volume": 0.5,
+    "guild_settings": [{
+        "guild_id": 1112062086164533249,
+        "authorized_users": [
+            976966669169733672
+        ],
+        "autopause": true,
+        "volume": 0.75
+    }],
+    "guild_cache": [{}]
 }

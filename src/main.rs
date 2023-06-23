@@ -176,7 +176,10 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         },
         ..Default::default()
     };
-    let data = Arc::new(cracktunes::Data { bot_settings: config, ..Default::default() });
+    let data = Arc::new(cracktunes::Data {
+        bot_settings: config,
+        ..Default::default()
+    });
     let handler_data = data.clone();
     let setup_data = data;
     poise::Framework::builder()

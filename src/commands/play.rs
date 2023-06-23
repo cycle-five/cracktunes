@@ -35,7 +35,7 @@ pub enum Mode {
     Jump,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum QueryType {
     Keywords(String),
     KeywordList(Vec<String>),
@@ -138,6 +138,7 @@ pub async fn play(
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") => {
+                tracing::error!("spotify: {}", url);
                 let spotify = SPOTIFY.lock().await;
                 let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                 Some(Spotify::extract(spotify, url).await?)
@@ -201,6 +202,8 @@ pub async fn play(
         query_type,
         CrackedError::Other("Something went wrong while parsing your query!"),
     )?;
+
+    tracing::error!("query_type: {:?}", query_type);
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer

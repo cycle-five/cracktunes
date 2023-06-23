@@ -120,13 +120,6 @@ impl From<AudiopusError> for CrackedError {
     }
 }
 
-// impl From<CatcherError> for CrackedError {
-//     fn from(err: CatcherError) -> Self {
-//         Self::Poise(Box::new(err))
-//     }
-//   <songbird::input::error::Error as From<songbird::driver::audiopus::Error>>
-//   <songbird::input::error::Error as From<std::io::Error>>
-//   <songbird::input::error::Error as From<streamcatcher::CatcherError>>
 impl From<CrackedError> for songbird::input::error::Error {
     fn from(val: CrackedError) -> songbird::input::error::Error {
         match val {

@@ -1,5 +1,5 @@
 # Build image
-# Necessary dependencies to build Parrot
+# Necessary dependencies to build CrackTunes
 FROM rust:slim-bullseye as build
 
 RUN apt-get update && apt-get install -y \

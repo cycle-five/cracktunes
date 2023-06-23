@@ -1,3 +1,4 @@
+use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude as serenity;
@@ -21,12 +22,13 @@ lazy_static! {
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub autopause: bool,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
+    pub authorized_users: HashSet<u64>,
     pub volume: f32,
 }
 
@@ -42,6 +44,7 @@ impl GuildSettings {
             autopause: false,
             allowed_domains,
             banned_domains: HashSet::new(),
+            authorized_users: HashSet::new(),
             volume: DEFAULT_VOLUME_LEVEL,
         }
     }
@@ -110,6 +113,26 @@ impl GuildSettings {
             self.allowed_domains.insert(String::from("youtube.com"));
             self.banned_domains.clear();
         }
+    }
+
+    pub fn authorize_user(&mut self, user_id: u64) {
+        if !self.authorized_users.contains(&user_id) {
+            self.authorized_users.insert(user_id);
+        }
+    }
+
+    pub fn deauthorize_user(&mut self, user_id: u64) {
+        if self.authorized_users.contains(&user_id) {
+            self.authorized_users.remove(&user_id);
+        }
+    }
+
+    pub fn check_authorized(&self, user_id: u64) -> bool {
+        self.authorized_users.contains(&user_id)
+    }
+
+    pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.contains(&user_id.0)
     }
 
     pub fn set_default_volume(&mut self, volume: f32) {

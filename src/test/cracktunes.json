@@ -2,6 +2,7 @@
     "video_status_poll_interval": 30,
     "sys_log_channel_id": 0,
     "self_deafen": true,
+    "authorized_users": [],
     "cam_kick": [
         {
             "cammed_down_timeout": 60,
@@ -16,5 +17,7 @@
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
         }
     ],
-    "volume": 0.5
+    "volume": 0.5,
+    "guild_settings": [{}],
+    "guild_cache": [{}]
 }

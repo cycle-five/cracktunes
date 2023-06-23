@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Display,
     sync::{Arc, Mutex},
 };
@@ -22,7 +22,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Arc<Data>, Error>;
 // User data, which is stored and accessible in all command invocations
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
     pub cammed_down_timeout: u64,
     pub guild_id: u64,
@@ -55,7 +55,7 @@ impl Display for CamKickConfig {
         write!(f, "{}", result)
     }
 }
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: u64,
     pub authorized_users: Vec<u64>,
@@ -98,12 +98,13 @@ impl Display for BotConfig {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Data {
     pub bot_settings: BotConfig,
-    #[serde(skip)]
+    // TODO: Make this a HashMap, pointing to a settings struct containiong
+    // user priviledges, etc
+    pub authorized_users: HashSet<u64>,
     pub volume: Arc<Mutex<f32>>,
-    #[serde(skip)]
     pub guild_settings_map: Arc<Mutex<HashMap<u64, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<u64, guild::cache::GuildCache>>>,
@@ -112,8 +113,9 @@ pub struct Data {
 impl Default for Data {
     fn default() -> Self {
         Self {
-            volume: Arc::new(Mutex::new(0.2)),
             bot_settings: Default::default(),
+            authorized_users: Default::default(),
+            volume: Arc::new(Mutex::new(0.2)),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
         }

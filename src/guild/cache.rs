@@ -1,8 +1,3 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-
 use self::serenity::{
     model::{
         channel::Message,
@@ -11,6 +6,10 @@ use self::serenity::{
     RwLock, TypeMapKey,
 };
 use poise::serenity_prelude as serenity;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
 

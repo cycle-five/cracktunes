@@ -75,3 +75,18 @@ Within the project folder, simply run the following:
 docker build -t cracktunes .
 docker run -d --env-file .env cracktunes
 ```
+
+### Objectives
+
+## 0.2.0
+- [x] Play music from YouTube
+- [x] Play music from Spotify (kind of...)
+- [] Play music from HTTP URLs
+- [] Play music from local files
+
+## 0.3.0
+- [] Play music from SoundCloud (placeholder)
+
+...and more!
+## 1.0.0
+- [] RTChris' Demuxer
