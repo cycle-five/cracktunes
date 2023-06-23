@@ -25,7 +25,7 @@ use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use url::Url;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Mode {
     End,
     Next,
@@ -213,9 +213,12 @@ pub async fn play(
     let queue_was_empty = handler.queue().is_empty();
     drop(handler);
 
+    tracing::error!("mode: {:?}", mode);
+
     match mode {
         Mode::End => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) => {
+                tracing::error!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let queue = enqueue_track(&call, &query_type).await?;
                 update_queue_messages(
                     &ctx.serenity_context().http,
@@ -226,6 +229,7 @@ pub async fn play(
                 .await;
             }
             QueryType::PlaylistLink(url) => {
+                tracing::error!("Mode::End, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
@@ -243,6 +247,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
+                tracing::error!("Mode::End, QueryType::KeywordList");
                 for keywords in keywords_list.iter() {
                     let queue =
                         enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
@@ -256,6 +261,7 @@ pub async fn play(
                 }
             }
             QueryType::File(file) => {
+                tracing::error!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
                         enqueue_track(&call, &QueryType::File(file)).await?;
                 update_queue_messages(
@@ -269,6 +275,9 @@ pub async fn play(
         },
         Mode::Next => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+                tracing::error!(
+                    "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
+                );
                 let queue = insert_track(&call, &query_type, 1).await?;
                 update_queue_messages(
                     &ctx.serenity_context().http,
@@ -279,6 +288,7 @@ pub async fn play(
                 .await;
             }
             QueryType::PlaylistLink(url) => {
+                tracing::error!("Mode::Next, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
@@ -295,6 +305,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
+                tracing::error!("Mode::Next, QueryType::KeywordList");
                 for (idx, keywords) in keywords_list.into_iter().enumerate() {
                     let queue =
                         insert_track(&call, &QueryType::Keywords(keywords), idx + 1).await?;
@@ -310,6 +321,9 @@ pub async fn play(
         },
         Mode::Jump => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+                tracing::error!(
+                    "Mode::Jump, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
+                );
                 let mut queue = enqueue_track(&call, &query_type).await?;
 
                 if !queue_was_empty {
@@ -326,6 +340,7 @@ pub async fn play(
                 .await;
             }
             QueryType::PlaylistLink(url) => {
+                tracing::error!("Mode::Jump, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
@@ -352,6 +367,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
+                tracing::error!("Mode::Jump, QueryType::KeywordList");
                 let mut insert_idx = 1;
 
                 for (i, keywords) in keywords_list.into_iter().enumerate() {
@@ -376,6 +392,7 @@ pub async fn play(
         },
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
+                tracing::error!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
@@ -392,6 +409,9 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
+                tracing::error!(
+                    "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
+                );
                 for keywords in keywords_list.into_iter() {
                     let queue = enqueue_track(&call, &QueryType::Keywords(keywords)).await?;
                     update_queue_messages(
@@ -566,6 +586,8 @@ async fn enqueue_track(
     Ok(handler.queue().current_queue())
 }
 
+// FIXME: This is broken when the first thing that is done no the server is add a playflist from soptify
+// it break ons the third insertion.
 async fn insert_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
@@ -574,6 +596,7 @@ async fn insert_track(
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
+    tracing::error!("queue_size: {}, idx: {}", queue_size, idx);
 
     if queue_size <= 1 {
         let queue = enqueue_track(call, query_type).await?;

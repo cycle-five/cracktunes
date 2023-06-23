@@ -85,6 +85,7 @@ docker run -d --env-file .env cracktunes
 - [] Play music from local files
 
 ## 0.3.0
+- [] Database Schema
 - [] Play music from SoundCloud (placeholder)
 
 ...and more!

@@ -107,6 +107,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
         commands: vec![
+            commands::authorize(),
             commands::autopause(),
             commands::boop(),
             commands::chatgpt(),
@@ -161,8 +162,9 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                 }
 
                 let user_id = ctx.author_member().await.unwrap().user.id.0;
+                let guild_id = ctx.guild_id().unwrap();
 
-                Ok(ctx.data().bot_settings.authorized_users.contains(&user_id))
+                Ok(ctx.data().guild_settings_map.lock().unwrap().get(guild_id.as_u64()).unwrap().authorized_users.contains(&user_id))
             })
         }),
         /// Enforce command checks even for owners (enforced by default)

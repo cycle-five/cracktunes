@@ -71,32 +71,24 @@ impl EventHandler for SerenityHandler {
     // }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
-        let user_id = msg.author.id;
-        let guild_id = msg.guild_id.unwrap();
-        let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+        // let user_id = msg.author.id;
+        let guild_id = match msg.guild_id {
+            Some(guild_id) => guild_id,
+            None => {
+                tracing::error!("No guild id found??!");
+                GuildId(0)
+                // return
+            }
+        };
+        // let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
 
-        let name = msg.author.name.clone();
-        let guild_name = guild.name;
-        let content = msg.content.clone();
-        let channel_name = msg.channel_id.name(&ctx).await.unwrap();
-
-        // _ = serde_json::to_writer(
-        //     std::fs::File::create("message.json").unwrap(),
-        //     &msg,
-        // ).unwrap();
+        // let name = msg.author.name.clone();
+        // let guild_name = guild.name;
+        // let content = msg.content.clone();
+        // let channel_name = msg.channel_id.name(&ctx).await.unwrap();
 
         let serde_msg = serde_json::to_string(&msg).unwrap();
-
-        tracing::warn!(
-            "message: {} / {} / {} / {} / {} / {}",
-            user_id,
-            guild_id,
-            name,
-            guild_name,
-            content,
-            channel_name,
-        );
-        tracing::warn!("serde_msg: {}", serde_msg);
+        tracing::trace!(target = "notifications", "serde_msg: {}", serde_msg);
     }
 
     async fn voice_state_update(
