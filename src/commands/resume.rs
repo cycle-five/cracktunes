@@ -5,7 +5,7 @@ use crate::{
     {Context, Error},
 };
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn resume(
     ctx: Context<'_>,
     #[description = "Resume the currently playing track"] send_reply: Option<bool>,

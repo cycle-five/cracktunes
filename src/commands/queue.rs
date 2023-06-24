@@ -31,7 +31,7 @@ use std::{
 const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
-#[poise::command(slash_command)]
+#[poise::command(slash_command, guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     //ctx.defer().await.unwrap();
 

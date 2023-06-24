@@ -14,7 +14,7 @@ use crate::{
 use poise::serenity_prelude as serenity;
 use std::{collections::HashSet, sync::Arc};
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();
     let bot_channel_id = get_voice_channel_for_user(

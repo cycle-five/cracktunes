@@ -4,7 +4,7 @@ use crate::{
     utils::{create_response, get_interaction},
     Context, Error,
 };
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();

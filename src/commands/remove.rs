@@ -12,7 +12,7 @@ use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 use std::cmp::min;
 
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn remove(
     ctx: Context<'_>,
     #[description = "Start index in the track queue to remove"] b_index: usize,

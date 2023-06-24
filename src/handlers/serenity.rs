@@ -125,7 +125,7 @@ impl EventHandler for SerenityHandler {
         let _channel_cache = HashMap::<u64, ChanCacheValue>::new();
 
         for guildid in guilds.iter() {
-            tracing::error!("Guild: {:?}", guildid);
+            tracing::info!("Guild: {:?}", guildid);
         }
 
         let config = self.data.bot_settings.clone();
@@ -193,7 +193,7 @@ impl SerenityHandler {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
-            tracing::debug!("[DEBUG] Loading guild settings for {:?}", guild);
+            tracing::info!("[DEBUG] Loading guild settings for {:?}", guild);
             let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
             let guild_settings = settings

@@ -8,7 +8,7 @@ use songbird::tracks::TrackHandle;
 use std::borrow::BorrowMut;
 use std::sync::Arc;
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,

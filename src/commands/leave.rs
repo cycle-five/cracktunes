@@ -3,7 +3,7 @@ use crate::{
     Context, Error,
 };
 
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();

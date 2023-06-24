@@ -11,7 +11,7 @@ use poise::serenity_prelude as serenity;
 use songbird::{Event, TrackEvent};
 use std::time::Duration;
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn summon(
     ctx: Context<'_>,
     #[description = "Channel id to join"] channel_id_str: Option<String>,

@@ -62,7 +62,7 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 //     .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
 //     .await
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn play(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,

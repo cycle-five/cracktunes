@@ -8,7 +8,7 @@ use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;
 use tokio::sync::MutexGuard;
 
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn skip(
     ctx: Context<'_>,
     #[description = "Number of tracks to skip"] tracks_to_skip: Option<usize>,

@@ -18,7 +18,7 @@ use crate::{
 };
 use poise::serenity_prelude as serenity;
 
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
     let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();

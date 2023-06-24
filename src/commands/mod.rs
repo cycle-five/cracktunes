@@ -21,6 +21,7 @@ pub mod summon;
 pub mod version;
 pub mod volume;
 pub mod voteskip;
+pub mod ping;
 
 pub use self::chatgpt::*;
 pub use authorize::*;
@@ -33,6 +34,7 @@ pub use manage_sources::*;
 pub use now_playing::*;
 pub use pause::*;
 pub use play::*;
+pub use ping::*;
 pub use queue::*;
 pub use remove::*;
 pub use repeat::*;
