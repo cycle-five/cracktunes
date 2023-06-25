@@ -1,6 +1,6 @@
 use cracktunes::{
     commands,
-    guild::{cache::GuildCacheMap, settings::{GuildSettingsMap, GuildSettings}},
+    guild::{cache::GuildCacheMap, settings::{GuildSettingsMap}},
     handlers::SerenityHandler,
     utils::{create_response_text, get_interaction},
     BotConfig, Data,

@@ -47,7 +47,7 @@ pub async fn summon(
     }
 
     // join the channel
-    manager.join(guild.id, channel_id).await.1.unwrap();
+    manager.join(guild.id, channel_id).await.1?;
 
     // unregister existing events and register idle notifier
     if let Some(call) = manager.get(guild.id) {

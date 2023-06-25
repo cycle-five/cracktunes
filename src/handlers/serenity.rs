@@ -17,7 +17,7 @@ use chrono::offset::Utc;
 use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
 use std::{
     collections::{HashMap, HashSet},
-    sync::{atomic::Ordering, Arc},
+    sync::{atomic::Ordering, Arc, Mutex},
 };
 use tokio::time::{Duration, Instant};
 
@@ -57,6 +57,10 @@ impl EventHandler for SerenityHandler {
 
         // loads serialized guild settings
         self.load_guilds_settings(&ctx, &ready).await;
+
+        // These are the guild settings defined in the config file.
+        // Should they always override the ones in the database?
+        self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone()).await;
     }
 
     // async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -70,9 +74,9 @@ impl EventHandler for SerenityHandler {
     //     }
     // }
 
-    async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
+    async fn message(&self, _ctx: SerenityContext, msg: serenity::Message) {
         // let user_id = msg.author.id;
-        let guild_id = match msg.guild_id {
+        let _guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
                 tracing::error!("No guild id found??!");
@@ -189,11 +193,26 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
+    async fn merge_guild_settings(&self, ctx: &SerenityContext, _ready: &Ready, new_settings: Arc<Mutex<HashMap<u64, GuildSettings>>>) {
+        tracing::info!("Loading guilds' settings");
+        let mut data = ctx.data.write().await;
+
+        let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+        let new_settings = new_settings.lock().unwrap();
+
+        for (key, value) in new_settings.iter() {
+            match settings.insert(GuildId(*key), value.clone()) {
+                Some(_) => tracing::info!("Guild {} settings overwritten", key),
+                None => tracing::info!("Guild {} settings did not exist", key),
+            }
+        }
+    }
+
     async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
-            tracing::info!("[DEBUG] Loading guild settings for {:?}", guild);
+            tracing::info!("[INFO] Loading guild settings for {:?}", guild);
             let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
             let guild_settings = settings
@@ -452,7 +471,7 @@ async fn disconnect_member(
     guild
         .member(&ctx.http, cam.user_id)
         .await
-        .unwrap()
+        .expect("Member not found")
         .edit(&ctx.http, |m| m.disconnect_member())
         .await
 }
