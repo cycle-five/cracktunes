@@ -1,6 +1,6 @@
 use cracktunes::{
     commands,
-    guild::{cache::GuildCacheMap, settings::{GuildSettingsMap}},
+    guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
     handlers::SerenityHandler,
     utils::{create_response_text, get_interaction},
     BotConfig, Data,
@@ -166,20 +166,30 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                 let user_id = ctx.author_member().await.unwrap().user.id.0;
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
-                if ctx.data().bot_settings.authorized_users.contains(&ctx.author().id.0) {
+                if ctx
+                    .data()
+                    .bot_settings
+                    .authorized_users
+                    .contains(&ctx.author().id.0)
+                {
                     return Ok(true);
                 }
 
-                ctx.data().guild_settings_map.lock().unwrap().get(guild_id.as_u64()).map_or_else(
-                    || {
-                        tracing::info!("Guild not found in guild settings map");
-                        Ok(false)
-                    },
-                    |guild_settings| {
-                        tracing::info!("Guild found in guild settings map");
-                        Ok(guild_settings.authorized_users.contains(&user_id))
-                    },
-                )
+                ctx.data()
+                    .guild_settings_map
+                    .lock()
+                    .unwrap()
+                    .get(guild_id.as_u64())
+                    .map_or_else(
+                        || {
+                            tracing::info!("Guild not found in guild settings map");
+                            Ok(false)
+                        },
+                        |guild_settings| {
+                            tracing::info!("Guild found in guild settings map");
+                            Ok(guild_settings.authorized_users.contains(&user_id))
+                        },
+                    )
             })
         }),
         /// Enforce command checks even for owners (enforced by default)

@@ -60,7 +60,8 @@ impl EventHandler for SerenityHandler {
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
-        self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone()).await;
+        self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
+            .await;
     }
 
     // async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -193,7 +194,12 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-    async fn merge_guild_settings(&self, ctx: &SerenityContext, _ready: &Ready, new_settings: Arc<Mutex<HashMap<u64, GuildSettings>>>) {
+    async fn merge_guild_settings(
+        &self,
+        ctx: &SerenityContext,
+        _ready: &Ready,
+        new_settings: Arc<Mutex<HashMap<u64, GuildSettings>>>,
+    ) {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
 

@@ -1,4 +1,4 @@
-use crate::{Context, Error, errors::CrackedError};
+use crate::{errors::CrackedError, Context, Error};
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn authorize(
@@ -12,7 +12,7 @@ pub async fn authorize(
     data.guild_settings_map
         .lock()
         .unwrap()
-        .get_mut(&guild_id.as_u64())
+        .get_mut(guild_id.as_u64())
         .expect("Failed to get guild settings map")
         .authorized_users
         .insert(id);
@@ -28,16 +28,17 @@ pub async fn deauthorize(
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
-    let res = data.guild_settings_map
+    let res = data
+        .guild_settings_map
         .lock()
         .unwrap()
-        .get_mut(&guild_id.as_u64())
+        .get_mut(guild_id.as_u64())
         .expect("Failed to get guild settings map")
         .authorized_users
         .remove(&id);
 
-    if res { 
-       Ok(())
+    if res {
+        Ok(())
     } else {
         Err(CrackedError::Other("User did not exist in authorized list").into())
     }
