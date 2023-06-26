@@ -107,6 +107,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
         commands: vec![
+            commands::admin(),
             commands::authorize(),
             commands::deauthorize(),
             commands::autopause(),

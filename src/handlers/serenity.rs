@@ -124,7 +124,10 @@ impl EventHandler for SerenityHandler {
                 "unknown?!?".to_string()
             }
         };
-        tracing::info!("VoiceStateUpdate: {} {}", user, voice_state_diff_str(old, &new));
+
+        let guild = new.guild_id.unwrap().to_guild_cached(&ctx.cache).unwrap();
+
+        tracing::info!("VoiceStateUpdate: {} / {} / {}", user, guild.name, voice_state_diff_str(old, &new));
 
         let guild_id = new.guild_id.unwrap();
         let guild_settings_map = self.data.guild_settings_map.lock().unwrap().clone();

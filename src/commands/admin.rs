@@ -1,5 +1,23 @@
 use crate::{errors::CrackedError, Context, Error};
 
+
+/// Admin commands.
+#[poise::command(
+    prefix_command,
+    slash_command,
+    subcommands("authorize", "deauthorize"),
+    owners_only,
+    ephemeral
+)]
+pub async fn admin(
+    _ctx: Context<'_>,
+) -> Result<(), Error> {
+
+    tracing::warn!("Admin command called");
+
+    Ok(())
+}
+
 /// Authorize a user to use the bot.
 #[poise::command(prefix_command, slash_command)]
 pub async fn authorize(

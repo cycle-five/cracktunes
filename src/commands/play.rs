@@ -581,7 +581,7 @@ async fn enqueue_track(
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let source = get_track_source(query_type.clone()).await?;
 
-    let mut handler = call.lock().await;
+    let mut handler = call.lock().await.clone();
     handler.enqueue_source(source.into());
 
     Ok(handler.queue().current_queue())

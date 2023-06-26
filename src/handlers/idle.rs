@@ -21,7 +21,6 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        // TODO: Premium feature, no timeout?
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
@@ -38,17 +37,50 @@ impl EventHandler for IdleHandler {
             return None;
         }
 
-        let guild_id = self.guild_id?;
-        let guild_settings= self.data.guild_settings_map.lock().unwrap().clone();
-        let guild_settings = guild_settings.get(&guild_id.0)?;
-
-        if guild_settings.timeout > Duration::from_secs(0) && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
+        if self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
+            let guild_id = self.guild_id?;
 
             if self.manager.remove(guild_id).await.is_ok() {
-                self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
+                self.channel_id
+                    .say(&self.http, IDLE_ALERT)
+                    .await
+                    .unwrap();
             }
         }
 
         None
     }
+    // async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+    //     // TODO: Premium feature, no timeout?
+    //     tracing::warn!("IdleHandler::act called");
+    //     let EventContext::Track(track_list) = ctx else {
+    //         return None;
+    //     };
+
+    //     // looks like the track list isn't ordered here, so the first track in the list isn't
+    //     // guaranteed to be the first track in the actual queue, so search the entire list
+    //     let bot_is_playing = track_list
+    //         .iter()
+    //         .any(|track| matches!(track.0.playing, PlayMode::Play));
+
+    //     // if there's a track playing, then reset the counter
+    //     if bot_is_playing {
+    //         self.count.store(0, Ordering::Relaxed);
+    //         return None;
+    //     }
+
+    //     let guild_id = self.guild_id?;
+    //     let guild_settings= self.data.guild_settings_map.lock().unwrap().clone();
+    //     let guild_settings = guild_settings.get(&guild_id.0)?;
+
+    //     if guild_settings.timeout > Duration::from_secs(0) && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
+
+    //         tracing::warn!("IdleHandler::act: bot is idle, disconnecting");
+    //         if self.manager.remove(guild_id).await.is_ok() {
+    //             self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
+    //         }
+    //     }
+
+    //     None
+    // }
 }
