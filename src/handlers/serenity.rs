@@ -96,25 +96,44 @@ impl EventHandler for SerenityHandler {
         tracing::trace!(target = "notifications", "serde_msg: {}", serde_msg);
     }
 
+
     async fn voice_state_update(
         &self,
         ctx: SerenityContext,
-        _old: Option<VoiceState>,
+        old: Option<VoiceState>,
         new: VoiceState,
     ) {
         // do nothing if this is a voice update event for a user, not a bot
-        if new.user_id != ctx.cache.current_user_id() {
-            return;
-        }
+        // if new.user_id != ctx.cache.current_user_id() {
+        //     return;
+        // }
+        
+        let user = match UserId::from(new.user_id).to_user(&ctx.http).await {
+            Ok(user) => user.name,
+            Err(err) => {
+                tracing::error!("Error getting user: {}", err);
+                "unknown?!?".to_string()
+            }
+        };
+        tracing::info!("VoiceStateUpdate: {} {}", user, voice_state_diff_str(old, &new));
 
-        if new.channel_id.is_some() {
+        let guild_id = new.guild_id.unwrap();
+        let guild_settings_map = self.data.guild_settings_map.lock().unwrap().clone();
+        let self_deafen = match guild_settings_map.get(&guild_id.0) {
+            Some(guild_settings) => guild_settings.self_deafen,
+            None => {
+                // tracing::error!("Guild {} settings not found", guild_id);
+                true
+            }
+        };
+
+        if new.channel_id.is_some() && !self_deafen {
             return self.self_deafen(&ctx, new.guild_id, new).await;
         }
 
         let manager = songbird::get(&ctx).await.unwrap();
-        let guild_id = new.guild_id.unwrap();
 
-        if manager.get(guild_id).is_some() {
+        if new.user_id != ctx.cache.current_user_id() && manager.get(guild_id).is_some() {
             manager.remove(guild_id).await.ok();
         }
 
@@ -480,4 +499,105 @@ async fn disconnect_member(
         .expect("Member not found")
         .edit(&ctx.http, |m| m.disconnect_member())
         .await
+}
+
+fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
+    let old = match old {
+        Some(old) => old,
+        None => {
+            return format!(
+                "channel_id: (none) -> {:?}
+                deaf: (none) -> {:?}
+                guild_id: (none) -> {:?}
+                member: (none) -> {:?}
+                mute: (none) -> {:?}
+                self_deaf: (none) -> {:?}
+                self_mute: (none) -> {:?}
+                self_stream: (none) -> {:?}
+                self_video: (none) -> {:?}
+                session_id: (none) -> {:?}
+                suppress: (none) -> {:?}
+                token: (none) -> {:?}
+                user_id: (none) -> {:?}
+                request_to_speak_timestamp: (none) -> {:?}",
+                new.channel_id, new.deaf, new.guild_id, new.mute, new.member, new.self_deaf, new.self_mute,
+                new.self_stream, new.self_video, new.session_id, new.suppress, new.token, new.user_id, new.request_to_speak_timestamp
+            );
+        }
+    };
+    let mut result = String::new();
+    if old.channel_id != new.channel_id {
+        result.push_str(&format!(
+            "channel_id: {:?} -> {:?}\n",
+            old.channel_id, new.channel_id
+        ));
+    }
+    if old.deaf != new.deaf {
+        result.push_str(&format!("deaf: {:?} -> {:?}\n", old.deaf, new.deaf));
+    }
+    if old.mute != new.mute {
+        result.push_str(&format!("mute: {:?} -> {:?}\n", old.mute, new.mute));
+    }
+    if old.guild_id != new.guild_id{
+        result.push_str(&format!(
+            "guild_id: {:?} -> {:?}\n",
+            old.guild_id, new.guild_id
+        ));
+    }
+
+    if old.self_deaf != new.self_deaf {
+        result.push_str(&format!(
+            "self_deaf: {:?} -> {:?}\n",
+            old.self_deaf, new.self_deaf
+        ));
+    }
+    if old.self_mute != new.self_mute {
+        result.push_str(&format!(
+            "self_mute: {:?} -> {:?}\n",
+            old.self_mute, new.self_mute
+        ));
+    }
+    if old.self_stream != new.self_stream {
+        result.push_str(&format!(
+            "self_stream: {:?} -> {:?}\n",
+            old.self_stream, new.self_stream
+        ));
+    }
+    if old.self_video != new.self_video {
+        result.push_str(&format!(
+            "self_video: {:?} -> {:?}\n",
+            old.self_video, new.self_video
+        ));
+    }
+    if old.session_id != new.session_id {
+        result.push_str(&format!(
+            "session_id: {:?} -> {:?}\n",
+            old.session_id, new.session_id
+        ));
+    }
+    if old.suppress != new.suppress {
+        result.push_str(&format!(
+            "suppress: {:?} -> {:?}\n",
+            old.suppress, new.suppress
+        ));
+    }
+    if old.token!= new.token {
+        result.push_str(&format!(
+            "token: {:?} -> {:?}\n",
+            old.token, new.token
+        ));
+    }
+    if old.user_id != new.user_id {
+        result.push_str(&format!(
+            "user_id : {:?} -> {:?}\n",
+            old.user_id, new.user_id
+        ));
+    }
+    if old.request_to_speak_timestamp != new.request_to_speak_timestamp{
+        result.push_str(&format!(
+            "request_to_speak: {:?} -> {:?}\n",
+            old.request_to_speak_timestamp, new.request_to_speak_timestamp,
+        ));
+    }
+    result
 }
