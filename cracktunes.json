@@ -18,7 +18,8 @@
             976966669169733672
         ],
         "autopause": false,
-        "volume": 0.2
+        "volume": 0.2,
+        "timeout": 0
     }],
     "guild_cache": [{}]
 }

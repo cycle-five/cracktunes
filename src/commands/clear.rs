@@ -6,6 +6,7 @@ use crate::{
     Context, Error,
 };
 
+/// Clear the queue.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

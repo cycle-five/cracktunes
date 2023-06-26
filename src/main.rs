@@ -7,7 +7,7 @@ use cracktunes::{
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use songbird::serenity::SerenityInit;
-use std::{collections::HashMap, env::var, sync::Arc, time::Duration};
+use std::{collections::{HashMap}, env::var, sync::Arc, time::Duration};
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -159,21 +159,18 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             //Box::pin(async move {Ok(true)})
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.data().bot_settings.authorized_users.is_empty() {
+                if ctx.data().bot_settings.authorized_users.is_empty() ||
+                    ctx
+                        .data()
+                        .bot_settings
+                        .authorized_users
+                        .contains(&ctx.author().id.0) {
                     return Ok(true);
                 }
 
                 let user_id = ctx.author_member().await.unwrap().user.id.0;
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
-                if ctx
-                    .data()
-                    .bot_settings
-                    .authorized_users
-                    .contains(&ctx.author().id.0)
-                {
-                    return Ok(true);
-                }
 
                 ctx.data()
                     .guild_settings_map
@@ -197,7 +194,12 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         skip_checks_for_owners: false,
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
-                tracing::info!("Got an event in event handler: {:?}", event.name());
+                // let guild_settings_map = data.guild_settings_map.lock().unwrap().clone();
+                let dont_log = vec!["VoiceStateUpdate", "Message"];
+
+                if !dont_log.contains(&event.name()) {
+                    tracing::info!("Got an event in event handler: {:?}", event.name());
+                }
                 Ok(())
             })
         },

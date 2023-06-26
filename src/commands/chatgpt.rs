@@ -2,6 +2,7 @@ use crate::{utils::check_reply, Context, Error};
 use chatgpt::prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder};
 use url::Url;
 
+/// Talk with chatgpt.
 #[poise::command(slash_command, prefix_command)]
 pub async fn chatgpt(
     ctx: Context<'_>,

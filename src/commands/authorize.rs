@@ -1,5 +1,6 @@
 use crate::{errors::CrackedError, Context, Error};
 
+/// Authorize a user to use the bot.
 #[poise::command(prefix_command, slash_command)]
 pub async fn authorize(
     ctx: Context<'_>,
@@ -20,6 +21,7 @@ pub async fn authorize(
     Ok(())
 }
 
+/// Deauthorize a user from using the bot.
 #[poise::command(prefix_command, slash_command)]
 pub async fn deauthorize(
     ctx: Context<'_>,

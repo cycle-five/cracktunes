@@ -1,14 +1,15 @@
 use self::serenity::{async_trait, http::Http};
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::PlayMode, Event, EventContext, EventHandler, Songbird};
-use std::sync::{
+use std::{sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
-};
+}, time::Duration};
 
-use crate::messaging::messages::IDLE_ALERT;
+use crate::{messaging::messages::IDLE_ALERT, Data};
 
 pub struct IdleHandler {
+    pub data: Arc<Data>,
     pub http: Arc<Http>,
     pub manager: Arc<Songbird>,
     pub channel_id: serenity::ChannelId,
@@ -37,8 +38,11 @@ impl EventHandler for IdleHandler {
             return None;
         }
 
-        if self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
-            let guild_id = self.guild_id?;
+        let guild_id = self.guild_id?;
+        let guild_settings= self.data.guild_settings_map.lock().unwrap().clone();
+        let guild_settings = guild_settings.get(&guild_id.0)?;
+
+        if guild_settings.timeout > Duration::from_secs(0) && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
 
             if self.manager.remove(guild_id).await.is_ok() {
                 self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();

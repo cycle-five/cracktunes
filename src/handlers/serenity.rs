@@ -75,9 +75,9 @@ impl EventHandler for SerenityHandler {
     //     }
     // }
 
-    async fn message(&self, _ctx: SerenityContext, msg: serenity::Message) {
+    async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
         // let user_id = msg.author.id;
-        let _guild_id = match msg.guild_id {
+        let guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
                 tracing::error!("No guild id found??!");
@@ -85,15 +85,24 @@ impl EventHandler for SerenityHandler {
                 // return
             }
         };
-        // let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
 
-        // let name = msg.author.name.clone();
-        // let guild_name = guild.name;
-        // let content = msg.content.clone();
-        // let channel_name = msg.channel_id.name(&ctx).await.unwrap();
+        if guild_id.0 != 0 {
+            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+            let name = msg.author.name.clone();
+            let guild_name = guild.name;
+            let content = msg.content.clone();
+            let channel_name = msg.channel_id.name(&ctx).await.unwrap();
+            tracing::info!(
+                "Message: {} / {} / {} / {}",
+                name,
+                guild_name,
+                channel_name,
+                content
+            );
+        }
 
         let serde_msg = serde_json::to_string(&msg).unwrap();
-        tracing::trace!(target = "notifications", "serde_msg: {}", serde_msg);
+        tracing::trace!(target = "events_serde", "serde_msg: {}", serde_msg);
     }
 
 
@@ -131,11 +140,11 @@ impl EventHandler for SerenityHandler {
             return self.self_deafen(&ctx, new.guild_id, new).await;
         }
 
-        let manager = songbird::get(&ctx).await.unwrap();
+        // let manager = songbird::get(&ctx).await.unwrap();
 
-        if new.user_id != ctx.cache.current_user_id() && manager.get(guild_id).is_some() {
-            manager.remove(guild_id).await.ok();
-        }
+        // if new.user_id != ctx.cache.current_user_id() && manager.get(guild_id).is_some() {
+        //     manager.remove(guild_id).await.ok();
+        // }
 
         update_queue_messages(&ctx.http, &ctx.data, &[], guild_id).await;
     }
@@ -505,24 +514,25 @@ fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {
-            return format!(
-                "channel_id: (none) -> {:?}
-                deaf: (none) -> {:?}
-                guild_id: (none) -> {:?}
-                member: (none) -> {:?}
-                mute: (none) -> {:?}
-                self_deaf: (none) -> {:?}
-                self_mute: (none) -> {:?}
-                self_stream: (none) -> {:?}
-                self_video: (none) -> {:?}
-                session_id: (none) -> {:?}
-                suppress: (none) -> {:?}
-                token: (none) -> {:?}
-                user_id: (none) -> {:?}
-                request_to_speak_timestamp: (none) -> {:?}",
-                new.channel_id, new.deaf, new.guild_id, new.mute, new.member, new.self_deaf, new.self_mute,
-                new.self_stream, new.self_video, new.session_id, new.suppress, new.token, new.user_id, new.request_to_speak_timestamp
-            );
+            return format!("{} / {} / {}", new.member.as_ref().unwrap().user.name, new.guild_id.unwrap().0, new.channel_id.unwrap().0);
+            // return format!(
+            //     "channel_id: (none) -> {:?}
+            //     deaf: (none) -> {:?}
+            //     guild_id: (none) -> {:?}
+            //     member: (none) -> {:?}
+            //     mute: (none) -> {:?}
+            //     self_deaf: (none) -> {:?}
+            //     self_mute: (none) -> {:?}
+            //     self_stream: (none) -> {:?}
+            //     self_video: (none) -> {:?}
+            //     session_id: (none) -> {:?}
+            //     suppress: (none) -> {:?}
+            //     token: (none) -> {:?}
+            //     user_id: (none) -> {:?}
+            //     request_to_speak_timestamp: (none) -> {:?}",
+            //     new.channel_id, new.deaf, new.guild_id, new.mute, new.member, new.self_deaf, new.self_mute,
+            //     new.self_stream, new.self_video, new.session_id, new.suppress, new.token, new.user_id, new.request_to_speak_timestamp
+            // );
         }
     };
     let mut result = String::new();

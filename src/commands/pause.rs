@@ -5,6 +5,7 @@ use crate::{
     {Context, Error},
 };
 
+/// Pause the current track.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn pause(
     ctx: Context<'_>,

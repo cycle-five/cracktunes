@@ -62,6 +62,7 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 //     .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
 //     .await
 
+/// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn play(
     ctx: Context<'_>,
@@ -465,7 +466,7 @@ pub async fn play(
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
-                    //FIXME: asdfasdf
+                    //FIXME: Also do this without application command
                     get_interaction(ctx)
                         .unwrap()
                         .edit_original_interaction_response(

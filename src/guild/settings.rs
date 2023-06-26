@@ -3,6 +3,7 @@ use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -31,6 +32,7 @@ pub struct GuildSettings {
     pub authorized_users: HashSet<u64>,
     pub volume: f32,
     pub self_deafen: bool,
+    pub timeout: Duration,
 }
 
 impl GuildSettings {
@@ -48,6 +50,7 @@ impl GuildSettings {
             authorized_users: HashSet::new(),
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
+            timeout: Duration::from_secs(5 * 60),
         }
     }
 
