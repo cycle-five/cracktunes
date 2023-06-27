@@ -1,6 +1,5 @@
 use crate::{errors::CrackedError, Context, Error};
 
-
 /// Admin commands.
 #[poise::command(
     prefix_command,
@@ -9,10 +8,7 @@ use crate::{errors::CrackedError, Context, Error};
     owners_only,
     ephemeral
 )]
-pub async fn admin(
-    _ctx: Context<'_>,
-) -> Result<(), Error> {
-
+pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
     Ok(())

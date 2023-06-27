@@ -1,15 +1,24 @@
+use ::serenity::cache::Settings;
 use cracktunes::{
     commands,
-    guild::{cache::GuildCacheMap, settings::{GuildSettingsMap, GuildSettings}},
+    guild::{
+        cache::GuildCacheMap,
+        settings::{GuildSettings, GuildSettingsMap},
+    },
     handlers::SerenityHandler,
     utils::{create_response_text, get_interaction},
     BotConfig, Data,
 };
 use ctrlc;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
-use ::serenity::cache::Settings;
 use songbird::serenity::SerenityInit;
-use std::{collections::HashMap, env::var, sync::{Arc, Mutex}, time::Duration, process::exit};
+use std::{
+    collections::HashMap,
+    env::var,
+    process::exit,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -163,18 +172,18 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             //Box::pin(async move {Ok(true)})
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.data().bot_settings.authorized_users.is_empty() ||
-                    ctx
+                if ctx.data().bot_settings.authorized_users.is_empty()
+                    || ctx
                         .data()
                         .bot_settings
                         .authorized_users
-                        .contains(&ctx.author().id.0) {
+                        .contains(&ctx.author().id.0)
+                {
                     return Ok(true);
                 }
 
                 let user_id = ctx.author_member().await.unwrap().user.id.0;
                 let guild_id = ctx.guild_id().unwrap_or_default();
-
 
                 ctx.data()
                     .guild_settings_map
@@ -218,13 +227,19 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     let save_data = data.clone();
     ctrlc::set_handler(move || {
         tracing::warn!("Received Ctrl-C, shutting down...");
-        save_data.guild_settings_map.lock().unwrap().iter().for_each(|(k, v)| {
-            tracing::warn!("Saving Guild: {}", k);
-            v.save().expect("Error saving guild settings");
-        });
+        save_data
+            .guild_settings_map
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|(k, v)| {
+                tracing::warn!("Saving Guild: {}", k);
+                v.save().expect("Error saving guild settings");
+            });
 
         exit(0);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     let handler_data = data.clone();
     let setup_data = data;
@@ -252,5 +267,4 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         .intents(
             serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
         )
-
 }

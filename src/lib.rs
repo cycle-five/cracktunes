@@ -64,7 +64,7 @@ pub struct BotConfig {
     pub sys_log_channel_id: u64,
     pub self_deafen: bool,
     pub volume: f32,
-    pub guild_settings_map: Vec<guild::settings::GuildSettings>, 
+    pub guild_settings_map: Vec<guild::settings::GuildSettings>,
 }
 
 impl Default for BotConfig {
@@ -96,7 +96,10 @@ impl Display for BotConfig {
         ));
         result.push_str(&format!("self_deafen: {:?}\n", self.self_deafen));
         result.push_str(&format!("volume: {:?}\n", self.volume));
-        result.push_str(&format!("guild_settings_map: {:?}\n", self.guild_settings_map));
+        result.push_str(&format!(
+            "guild_settings_map: {:?}\n",
+            self.guild_settings_map
+        ));
         write!(f, "{}", result)
     }
 }

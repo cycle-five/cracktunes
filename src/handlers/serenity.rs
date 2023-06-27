@@ -239,11 +239,7 @@ impl SerenityHandler {
                 .or_insert_with(|| GuildSettings::new(guild.id));
 
             if let Err(err) = guild_settings.load_if_exists() {
-                tracing::error!(
-                    "Failed to load guild {} settings due to {}",
-                    guild.id,
-                    err
-                );
+                tracing::error!("Failed to load guild {} settings due to {}", guild.id, err);
             }
         }
     }
@@ -499,7 +495,12 @@ fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {
-            return format!("{} / {} / {}", new.member.as_ref().unwrap().user.name, new.guild_id.unwrap().0, new.channel_id.unwrap().0);
+            return format!(
+                "{} / {} / {}",
+                new.member.as_ref().unwrap().user.name,
+                new.guild_id.unwrap().0,
+                new.channel_id.unwrap().0
+            );
             // return format!(
             //     "channel_id: (none) -> {:?}
             //     deaf: (none) -> {:?}
@@ -533,7 +534,7 @@ fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     if old.mute != new.mute {
         result.push_str(&format!("mute: {:?} -> {:?}\n", old.mute, new.mute));
     }
-    if old.guild_id != new.guild_id{
+    if old.guild_id != new.guild_id {
         result.push_str(&format!(
             "guild_id: {:?} -> {:?}\n",
             old.guild_id, new.guild_id
@@ -576,11 +577,8 @@ fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
             old.suppress, new.suppress
         ));
     }
-    if old.token!= new.token {
-        result.push_str(&format!(
-            "token: {:?} -> {:?}\n",
-            old.token, new.token
-        ));
+    if old.token != new.token {
+        result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
     }
     if old.user_id != new.user_id {
         result.push_str(&format!(
@@ -588,7 +586,7 @@ fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
             old.user_id, new.user_id
         ));
     }
-    if old.request_to_speak_timestamp != new.request_to_speak_timestamp{
+    if old.request_to_speak_timestamp != new.request_to_speak_timestamp {
         result.push_str(&format!(
             "request_to_speak: {:?} -> {:?}\n",
             old.request_to_speak_timestamp, new.request_to_speak_timestamp,
