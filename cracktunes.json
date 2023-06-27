@@ -1,9 +1,7 @@
 {
     "video_status_poll_interval": 120,
     "sys_log_channel_id": 0,
-    "authorized_users": [
-        285219649921220608
-    ],
+    "authorized_users": [],
     "cam_kick": [
         {
             "cammed_down_timeout": 0,
@@ -15,12 +13,9 @@
     "self_deafen": true,
     "volume": 0.2,
     "guild_settings_map": [{
-        "guild_id": 1112062086164533249,
-        "authorized_users": [
-            976966669169733672,
-            285219649921220608
-        ],
-        "allowed_domains": [],
+        "guild_id": 0,
+        "authorized_users": [],
+        "allowed_domains": ["youtube.com"],
         "banned_domains": [],
         "autopause": false,
         "self_deafen": true,
