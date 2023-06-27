@@ -30,6 +30,8 @@ pub struct GuildSettings {
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
     pub volume: f32,
+    pub self_deafen: bool,
+    pub timeout: Duration,
 }
 
 impl GuildSettings {
@@ -46,6 +48,8 @@ impl GuildSettings {
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
             volume: DEFAULT_VOLUME_LEVEL,
+            self_deafen: true,
+            timeout: Duration::from_secs(5 * 60),
         }
     }
 
@@ -82,6 +86,10 @@ impl GuildSettings {
 
     pub fn toggle_autopause(&mut self) {
         self.autopause = !self.autopause;
+    }
+
+    pub fn toggle_self_deafen(&mut self) {
+        self.self_deafen = !self.self_deafen;
     }
 
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {

@@ -4,6 +4,7 @@ use crate::{
     Context, Error,
 };
 
+/// Get the currently playing track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();

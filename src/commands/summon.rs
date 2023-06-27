@@ -11,6 +11,7 @@ use poise::serenity_prelude as serenity;
 use songbird::{Event, TrackEvent};
 use std::time::Duration;
 
+/// Summon the bot to a voice channel.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn summon(
     ctx: Context<'_>,

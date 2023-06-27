@@ -6,6 +6,7 @@ use crate::{
     Context, Error,
 };
 
+/// Stop the current track.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();

@@ -18,6 +18,7 @@ use crate::{
 };
 use poise::serenity_prelude as serenity;
 
+/// Manage the domains that are allowed or banned.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
     let interaction = get_interaction(ctx).unwrap();

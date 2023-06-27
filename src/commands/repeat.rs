@@ -7,6 +7,7 @@ use crate::{
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
+/// Toggle looping of the current track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

@@ -107,6 +107,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
         commands: vec![
+            commands::admin(),
             commands::authorize(),
             commands::deauthorize(),
             commands::autopause(),
@@ -159,21 +160,18 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             //Box::pin(async move {Ok(true)})
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.data().bot_settings.authorized_users.is_empty() {
+                if ctx.data().bot_settings.authorized_users.is_empty() ||
+                    ctx
+                        .data()
+                        .bot_settings
+                        .authorized_users
+                        .contains(&ctx.author().id.0) {
                     return Ok(true);
                 }
 
                 let user_id = ctx.author_member().await.unwrap().user.id.0;
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
-                if ctx
-                    .data()
-                    .bot_settings
-                    .authorized_users
-                    .contains(&ctx.author().id.0)
-                {
-                    return Ok(true);
-                }
 
                 ctx.data()
                     .guild_settings_map

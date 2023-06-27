@@ -6,6 +6,7 @@ use crate::{
 };
 use rand::Rng;
 
+/// Shuffle the current queue.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

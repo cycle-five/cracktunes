@@ -20,7 +20,6 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        // TODO: Premium feature, no timeout?
         let EventContext::Track(track_list) = ctx else {
             return None;
         };

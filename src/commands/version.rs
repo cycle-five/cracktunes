@@ -4,6 +4,7 @@ use crate::{
     Context, Error,
 };
 
+/// Get the current version of the bot.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

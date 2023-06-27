@@ -14,6 +14,7 @@ use crate::{
 use poise::serenity_prelude as serenity;
 use std::{collections::HashSet, sync::Arc};
 
+/// Vote to skip the current track
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = get_guild_id(&ctx).unwrap();

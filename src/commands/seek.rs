@@ -7,6 +7,7 @@ use crate::{
 };
 use std::time::Duration;
 
+/// Seek to a specific timestamp in the current track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
     let mut interaction = get_interaction(ctx).unwrap();

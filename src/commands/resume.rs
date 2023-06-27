@@ -5,6 +5,7 @@ use crate::{
     {Context, Error},
 };
 
+/// Resume the current track.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn resume(
     ctx: Context<'_>,
