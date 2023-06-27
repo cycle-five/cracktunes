@@ -18,6 +18,6 @@
         }
     ],
     "volume": 0.5,
-    "guild_settings": [{}],
-    "guild_cache": [{}]
+    "guild_settings_map": [],
+    "guild_cache": []
 }
