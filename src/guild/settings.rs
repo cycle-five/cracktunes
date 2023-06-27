@@ -3,6 +3,7 @@ use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -31,7 +32,7 @@ pub struct GuildSettings {
     pub authorized_users: HashSet<u64>,
     pub volume: f32,
     pub self_deafen: bool,
-    pub timeout: Duration,
+    pub timeout: u32,
 }
 
 impl GuildSettings {
@@ -49,7 +50,7 @@ impl GuildSettings {
             authorized_users: HashSet::new(),
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
-            timeout: Duration::from_secs(5 * 60),
+            timeout: 5 * 60,
         }
     }
 
@@ -70,6 +71,7 @@ impl GuildSettings {
     }
 
     pub fn save(&self) -> Result<(), CrackedError> {
+        tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
 

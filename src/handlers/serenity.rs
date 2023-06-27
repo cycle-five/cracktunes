@@ -56,10 +56,12 @@ impl EventHandler for SerenityHandler {
         //self.data.bot_settings = BotConfig::from_config_file("cracktunes.json").unwrap();
 
         // loads serialized guild settings
+        tracing::warn!("Loading guilds' settings");
         self.load_guilds_settings(&ctx, &ready).await;
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
+        tracing::warn!("Merging guilds' settings");
         self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
             .await;
     }
@@ -209,11 +211,13 @@ impl SerenityHandler {
         _ready: &Ready,
         new_settings: Arc<Mutex<HashMap<u64, GuildSettings>>>,
     ) {
-        tracing::info!("Loading guilds' settings");
+        tracing::warn!("in merge_guild_settings");
         let mut data = ctx.data.write().await;
 
         let settings = data.get_mut::<GuildSettingsMap>().unwrap();
         let new_settings = new_settings.lock().unwrap();
+
+        tracing::warn!("new_settings len: {:?}", new_settings.len());
 
         for (key, value) in new_settings.iter() {
             match settings.insert(GuildId(*key), value.clone()) {
@@ -227,7 +231,7 @@ impl SerenityHandler {
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
-            tracing::info!("[INFO] Loading guild settings for {:?}", guild);
+            tracing::info!("Loading guild settings for {:?}", guild);
             let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
             let guild_settings = settings
@@ -236,7 +240,7 @@ impl SerenityHandler {
 
             if let Err(err) = guild_settings.load_if_exists() {
                 tracing::error!(
-                    "[ERROR] Failed to load guild {} settings due to {}",
+                    "Failed to load guild {} settings due to {}",
                     guild.id,
                     err
                 );

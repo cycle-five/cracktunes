@@ -1,13 +1,15 @@
 use cracktunes::{
     commands,
-    guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
+    guild::{cache::GuildCacheMap, settings::{GuildSettingsMap, GuildSettings}},
     handlers::SerenityHandler,
     utils::{create_response_text, get_interaction},
     BotConfig, Data,
 };
+use ctrlc;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use ::serenity::cache::Settings;
 use songbird::serenity::SerenityInit;
-use std::{collections::HashMap, env::var, sync::Arc, time::Duration};
+use std::{collections::HashMap, env::var, sync::{Arc, Mutex}, time::Duration, process::exit};
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -62,6 +64,7 @@ async fn main() -> Result<(), Error> {
             BotConfig::default()
         }
     };
+    tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
     let framework = framework.build().await?;
 
@@ -201,10 +204,28 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         },
         ..Default::default()
     };
+    let guild_settings_map = config
+        .guild_settings_map
+        .iter()
+        .map(|gs| (*gs.guild_id.as_u64(), gs.clone()))
+        .collect::<HashMap<u64, GuildSettings>>();
     let data = Arc::new(cracktunes::Data {
         bot_settings: config,
+        guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         ..Default::default()
     });
+
+    let save_data = data.clone();
+    ctrlc::set_handler(move || {
+        tracing::warn!("Received Ctrl-C, shutting down...");
+        save_data.guild_settings_map.lock().unwrap().iter().for_each(|(k, v)| {
+            tracing::warn!("Saving Guild: {}", k);
+            v.save().expect("Error saving guild settings");
+        });
+
+        exit(0);
+    }).expect("Error setting Ctrl-C handler");
+
     let handler_data = data.clone();
     let setup_data = data;
     poise::Framework::builder()
@@ -231,4 +252,5 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         .intents(
             serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
         )
+
 }

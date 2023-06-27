@@ -1,10 +1,12 @@
 {
-    "video_status_poll_interval": 0,
+    "video_status_poll_interval": 120,
     "sys_log_channel_id": 0,
-    "authorized_users": [],
+    "authorized_users": [
+        285219649921220608
+    ],
     "cam_kick": [
         {
-            "cammed_down_timeout": 29,
+            "cammed_down_timeout": 0,
             "guild_id": 0,
             "channel_id": 0,
             "dc_message": "You have been disconnected from the voice channel for not having a camera on."
@@ -12,12 +14,16 @@
     ],
     "self_deafen": true,
     "volume": 0.2,
-    "guild_settings": [{
+    "guild_settings_map": [{
         "guild_id": 1112062086164533249,
         "authorized_users": [
-            976966669169733672
+            976966669169733672,
+            285219649921220608
         ],
+        "allowed_domains": [],
+        "banned_domains": [],
         "autopause": false,
+        "self_deafen": true,
         "volume": 0.2,
         "timeout": 0
     }],
