@@ -491,6 +491,7 @@ async fn disconnect_member(
         .await
 }
 
+#[allow(dead_code)]
 fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,

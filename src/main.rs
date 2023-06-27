@@ -1,4 +1,3 @@
-use ::serenity::cache::Settings;
 use cracktunes::{
     commands,
     guild::{
@@ -9,7 +8,6 @@ use cracktunes::{
     utils::{create_response_text, get_interaction},
     BotConfig, Data,
 };
-use ctrlc;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use songbird::serenity::SerenityInit;
 use std::{
