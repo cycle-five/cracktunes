@@ -64,7 +64,7 @@ async fn main() -> Result<(), Error> {
 
     use config_file::FromConfigFile;
 
-    let config = match BotConfig::from_config_file("./cracktunes.json") {
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
         Ok(config) => config,
         Err(error) => {
             tracing::warn!("Using default config: {:?}", error);
@@ -77,7 +77,6 @@ async fn main() -> Result<(), Error> {
 
     let client = framework.client();
     let mut data = client.data.write().await;
-    //let mut data = ctx.serenity_context().data.write().await;
     data.insert::<GuildCacheMap>(HashMap::default());
     data.insert::<GuildSettingsMap>(HashMap::default());
     drop(data);
