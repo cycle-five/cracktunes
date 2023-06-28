@@ -122,6 +122,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             commands::deauthorize(),
             commands::autopause(),
             commands::boop(),
+            commands::coinflip(),
             commands::chatgpt(),
             commands::clear(),
             commands::help(),
