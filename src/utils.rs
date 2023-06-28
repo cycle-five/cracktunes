@@ -7,9 +7,11 @@ use self::serenity::{
         },
         channel::Message,
     },
-    Context as SerenityContext,
+    Context as SerenityContext, SerenityError,
 };
-//use ::serenity::http::CacheHttp;
+use crate::{
+    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
+};
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
     ReplyHandle,
@@ -17,11 +19,6 @@ use poise::{
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
-
-use crate::{
-    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
-};
-use poise::serenity_prelude::SerenityError;
 
 pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();

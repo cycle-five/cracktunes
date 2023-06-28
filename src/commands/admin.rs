@@ -5,8 +5,8 @@ use crate::{errors::CrackedError, Context, Error};
     prefix_command,
     slash_command,
     subcommands("authorize", "deauthorize"),
-    owners_only,
-    ephemeral
+    ephemeral,
+    owners_only
 )]
 pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
@@ -15,7 +15,7 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
@@ -36,7 +36,7 @@ pub async fn authorize(
 }
 
 /// Deauthorize a user from using the bot.
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
 pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,

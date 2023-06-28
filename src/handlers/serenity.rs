@@ -11,6 +11,7 @@ use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
+    utils::get_guild_id,
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
@@ -64,6 +65,16 @@ impl EventHandler for SerenityHandler {
         tracing::warn!("Merging guilds' settings");
         self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
             .await;
+
+        self.data
+            .guild_settings_map
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|(k, v)| {
+                tracing::warn!("Saving Guild: {}", k);
+                v.save().expect("Error saving guild settings");
+            });
     }
 
     // async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -82,7 +93,7 @@ impl EventHandler for SerenityHandler {
         let guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
-                tracing::error!("No guild id found??!");
+                tracing::warn!("Non-gateway message received: {:?}", msg);
                 GuildId(0)
                 // return
             }
