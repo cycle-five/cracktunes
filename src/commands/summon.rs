@@ -79,13 +79,22 @@ pub async fn summon(
     }
 
     if send_reply.unwrap_or(true) {
-        ctx.say(
-            ParrotMessage::Summon {
-                mention: channel_id.mention(),
-            }
-            .to_string(),
-        )
+        let text = ParrotMessage::Summon {
+            mention: channel_id.mention(),
+        }
+        .to_string();
+        ctx.send(|m| {
+            m.ephemeral = true;
+            m.content(text)
+        })
         .await?;
+        // ctx.say(
+        //     ParrotMessage::Summon {
+        //         mention: channel_id.mention(),
+        //     }
+        //     .to_string(),
+        // )
+        // .await?;
     }
 
     Ok(())
