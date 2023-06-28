@@ -11,7 +11,6 @@ use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::get_guild_id,
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
