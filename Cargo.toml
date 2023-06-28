@@ -5,7 +5,7 @@ authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
 edition = "2018"
 description = "A Discord music bot built on Rust and Crack."
 repository = "https://github.com/cycle-five/cracktunes"
-license = "MIT"
+license = "Commercial"
 keywords = ["discord", "music-bot", "rust"]
 
 [dependencies]
@@ -53,7 +53,7 @@ version = "0.5.5"
 default-features = true
 
 [dependencies.tokio]
-version = "1.28.2"
+version = "1.29.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.ffprobe]
