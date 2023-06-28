@@ -18,7 +18,7 @@ COPY . .
 RUN cargo build --release --locked
 
 # Release image
-# Necessary dependencies to run Parrot
+# Necessary dependencies to run CrackTunes
 FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y python3-pip ffmpeg

@@ -1,12 +1,9 @@
+use self::serenity::GatewayIntents;
+use crate::handlers::SerenityHandler;
 use crate::{Data, Error};
 use poise::serenity_prelude as serenity;
 use songbird::serenity::SerenityInit;
-
-//use self::serenity::model::gateway::GatewayIntents;
-use self::serenity::GatewayIntents;
 use std::{env, sync::Arc};
-
-use crate::handlers::SerenityHandler;
 
 pub struct Client {
     client: serenity::Client,
@@ -21,7 +18,6 @@ impl Client {
     pub async fn client_builder(
         client_builder: serenity::ClientBuilder,
     ) -> Result<serenity::ClientBuilder, Error> {
-        //) -> serenity::ClientBuilder + Send + Sync + 'static {
         let token = env::var("DISCORD_TOKEN").expect("Fatality! DISCORD_TOKEN not set!");
         let application_id = env::var("DISCORD_APP_ID")
             .expect("Fatality! DISCORD_APP_ID not set!")
@@ -30,11 +26,13 @@ impl Client {
         let gateway_intents = GatewayIntents::non_privileged();
         let data = Arc::new(Data::default());
 
-        let client = //serenity::Client::builder(token, gateway_intents)
-            client_builder
+        let client = client_builder
             .token(token)
             .intents(gateway_intents)
-            .event_handler(SerenityHandler {is_loop_running: false.into(), data})
+            .event_handler(SerenityHandler {
+                is_loop_running: false.into(),
+                data,
+            })
             .application_id(application_id)
             .register_songbird();
 
@@ -56,11 +54,6 @@ impl Client {
             .application_id(application_id)
             .register_songbird()
             .await?;
-
-        // let mut data = client.data.write().await;
-        // data.insert::<GuildCacheMap>(HashMap::default());
-        // data.insert::<GuildSettingsMap>(HashMap::default());
-        // drop(data);
 
         Ok(Client { client })
     }
