@@ -225,7 +225,7 @@ impl SerenityHandler {
         let mut data = ctx.data.write().await;
 
         let settings = data.get_mut::<GuildSettingsMap>().unwrap();
-        let new_settings = new_settings.lock().unwrap();
+        let mut new_settings = new_settings.lock().unwrap();
 
         tracing::warn!("new_settings len: {:?}", new_settings.len());
 
@@ -235,6 +235,15 @@ impl SerenityHandler {
                 None => tracing::info!("Guild {} settings did not exist", key),
             }
         }
+
+        for (key, value) in settings.iter_mut() {
+            new_settings.insert(key.0, value.clone());
+        }
+        tracing::warn!(
+            "settings len: {:?}, new_settings len: {:?}",
+            settings.len(),
+            new_settings.len()
+        );
     }
 
     async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
@@ -475,14 +484,19 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                     new_cams.push(cam);
                 }
             }
-            let res = new_cams
+            let res: i32 = new_cams
                 .iter()
-                .all(|x| cam_status.insert(x.user_id, **x).is_none());
-            if !res {
-                tracing::error!("Something failed to insert??!?!");
-            }
+                .map(|x| {
+                    if cam_status.insert(x.user_id, **x).is_some() {
+                        0
+                    } else {
+                        1
+                    }
+                })
+                .sum();
 
-            tracing::error!("Sleeping");
+            tracing::warn!("num new cams: {}", res);
+            tracing::warn!("Sleeping");
             tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval)).await;
         }
     });
