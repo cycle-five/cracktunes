@@ -27,7 +27,7 @@ fn test_get_human_readable_timestamp() {
 
 #[test]
 fn test_load_config() {
-    let config = BotConfig::from_config_file("./src/test/cracktunes.json").unwrap();
+    let config = BotConfig::from_config_file("./src/test/cracktunes.toml").unwrap();
 
     println!("config: {:?}", config);
 

@@ -1,6 +1,6 @@
 video_status_poll_interval = 120
 sys_log_channel_id = 0
-authorized_users = [ ]
+authorized_users = [ 285_219_649_921_220_600 ]
 self_deafen = true
 volume = 0.2
 
@@ -11,8 +11,8 @@ channel_id = 0
 dc_message = "You have been disconnected from the voice channel for not having a camera on."
 
 [[guild_settings_map]]
-guild_id = 0 
-authorized_users = [ ]
+guild_id = 1_112_062_086_164_533_200
+authorized_users = [ 976_966_669_169_733_600, 285_219_649_921_220_600 ]
 allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
 autopause = false
