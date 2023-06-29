@@ -54,6 +54,6 @@ jobs:
           committer: GitHub <noreply@github.com>
           author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
           branch: bump/${{ steps.get_version.outputs.VERSION }}
-          base: main
+          base: master
           delete-branch: true
           labels: ':cracktunes: release'
