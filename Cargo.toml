@@ -45,6 +45,7 @@ default-features = false
 features = [
   "builder",
   "cache",
+  "temp_cache",
   "collector",
   "client",
   "gateway",
