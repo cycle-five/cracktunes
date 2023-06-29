@@ -103,7 +103,7 @@ impl EventHandler for SerenityHandler {
             let name = msg.author.name.clone();
             let guild_name = guild.name;
             let content = msg.content.clone();
-            let channel_name = msg.channel_id.name(&ctx).await.unwrap();
+            let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
             tracing::info!(
                 "Message: {} / {} / {} / {}",
                 name,
@@ -352,7 +352,18 @@ async fn check_camera_status(
                     continue;
                 }
             };
-            let channel = channel_id.to_channel(&ctx.http).await.unwrap();
+            let channel_name = match channel_id.to_channel(&ctx.http).await {
+                Ok(channel) => match channel {
+                    Channel::Guild(channel) => channel.name,
+                    Channel::Private(channel) => channel.name(),
+                    Channel::Category(channel) => channel.name,
+                    _ => String::from("unknown"),
+                },
+                Err(err) => {
+                    tracing::error!("Error getting channel: {}", err);
+                    continue;
+                }
+            };
 
             let info = MyVoiceUserInfo {
                 user_id,
@@ -367,12 +378,7 @@ async fn check_camera_status(
                 "User {} / {} is connected to voice channel {} / {} with camera {}",
                 user.name,
                 user.id,
-                match channel {
-                    Channel::Guild(channel) => channel.name,
-                    Channel::Private(channel) => channel.name(),
-                    Channel::Category(channel) => channel.name,
-                    _ => String::from("unknown"),
-                },
+                channel_name,
                 channel_id,
                 if info.camera_status { "on" } else { "off" },
             );
@@ -496,7 +502,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                 .sum();
 
             tracing::warn!("num new cams: {}", res);
-            tracing::warn!("Sleeping");
+            tracing::warn!("Sleeping for {} seconds", config.video_status_poll_interval);
             tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval)).await;
         }
     });
