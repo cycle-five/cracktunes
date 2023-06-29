@@ -1,16 +1,14 @@
-use crate::{errors::ParrotError, messaging::message::ParrotMessage, utils::create_response};
-use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+use crate::{
+    messaging::message::ParrotMessage, utils::create_response_poise_text, utils::get_guild_id,
+    Context, Error,
 };
 
-pub async fn leave(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
-    let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+/// Leave the current voice channel.
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = get_guild_id(&ctx).unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     manager.remove(guild_id).await.unwrap();
 
-    create_response(&ctx.http, interaction, ParrotMessage::Leaving).await
+    create_response_poise_text(&ctx, ParrotMessage::Leaving).await
 }

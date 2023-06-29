@@ -1,17 +1,18 @@
-use serenity::{
+use self::serenity::{
     async_trait,
     http::Http,
     model::id::GuildId,
-    prelude::{Mutex, RwLock, TypeMap},
+    {Mutex, RwLock, TypeMap},
 };
+use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 
 use crate::{
-    commands::{
-        queue::{build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message},
-        voteskip::forget_skip_votes,
+    commands::queue::{
+        build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
     },
+    commands::voteskip::forget_skip_votes,
     guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
 };
 
@@ -60,6 +61,7 @@ impl EventHandler for ModifyQueueHandler {
         drop(handler);
 
         update_queue_messages(&self.http, &self.ctx_data, &queue, self.guild_id).await;
+
         None
     }
 }

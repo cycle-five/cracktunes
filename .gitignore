@@ -1,5 +1,7 @@
 /target/
 
 /data/
+/logs/
 
-.env
+.env*
+.vscode/

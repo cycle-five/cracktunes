@@ -1,6 +1,8 @@
+use self::serenity::model::prelude::UserId;
+use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
+use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
-use serenity::{model::id::GuildId, prelude::TypeMapKey};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -9,24 +11,27 @@ use std::{
     path::Path,
 };
 
-use crate::errors::ParrotError;
+use crate::errors::CrackedError;
 
 const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-const DEFAULT_VOLUME_LEVEL: f32 = 0.2;
+const DEFAULT_VOLUME_LEVEL: f32 = 0.3;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub autopause: bool,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    pub defualt_volume: f32,
+    pub authorized_users: HashSet<u64>,
+    pub volume: f32,
+    pub self_deafen: bool,
+    pub timeout: u32,
 }
 
 impl GuildSettings {
@@ -41,11 +46,14 @@ impl GuildSettings {
             autopause: false,
             allowed_domains,
             banned_domains: HashSet::new(),
-            defualt_volume: DEFAULT_VOLUME_LEVEL,
+            authorized_users: HashSet::new(),
+            volume: DEFAULT_VOLUME_LEVEL,
+            self_deafen: true,
+            timeout: 5 * 60,
         }
     }
 
-    pub fn load_if_exists(&mut self) -> Result<(), ParrotError> {
+    pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
         if !Path::new(&path).exists() {
             return Ok(());
@@ -53,7 +61,7 @@ impl GuildSettings {
         self.load()
     }
 
-    pub fn load(&mut self) -> Result<(), ParrotError> {
+    pub fn load(&mut self) -> Result<(), CrackedError> {
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
         let file = OpenOptions::new().read(true).open(path)?;
         let reader = BufReader::new(file);
@@ -61,7 +69,8 @@ impl GuildSettings {
         Ok(())
     }
 
-    pub fn save(&self) -> Result<(), ParrotError> {
+    pub fn save(&self) -> Result<(), CrackedError> {
+        tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
 
@@ -78,6 +87,10 @@ impl GuildSettings {
 
     pub fn toggle_autopause(&mut self) {
         self.autopause = !self.autopause;
+    }
+
+    pub fn toggle_self_deafen(&mut self) {
+        self.self_deafen = !self.self_deafen;
     }
 
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {
@@ -111,8 +124,28 @@ impl GuildSettings {
         }
     }
 
+    pub fn authorize_user(&mut self, user_id: u64) {
+        if !self.authorized_users.contains(&user_id) {
+            self.authorized_users.insert(user_id);
+        }
+    }
+
+    pub fn deauthorize_user(&mut self, user_id: u64) {
+        if self.authorized_users.contains(&user_id) {
+            self.authorized_users.remove(&user_id);
+        }
+    }
+
+    pub fn check_authorized(&self, user_id: u64) -> bool {
+        self.authorized_users.contains(&user_id)
+    }
+
+    pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.contains(&user_id.0)
+    }
+
     pub fn set_default_volume(&mut self, volume: f32) {
-        self.defualt_volume = volume;
+        self.volume = volume;
     }
 }
 

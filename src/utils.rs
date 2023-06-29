@@ -1,4 +1,4 @@
-use serenity::{
+use self::serenity::{
     builder::CreateEmbed,
     http::{Http, HttpError},
     model::{
@@ -7,19 +7,40 @@ use serenity::{
         },
         channel::Message,
     },
-    Error,
+    Context as SerenityContext, SerenityError,
+};
+use crate::{
+    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
+};
+use poise::{
+    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
+    ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::{errors::ParrotError, messaging::message::ParrotMessage};
+pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+    let mut embed = CreateEmbed::default();
+    embed.description(format!("{message}"));
+
+    create_embed_response_poise(ctx, embed).await
+}
+
+pub async fn create_response_poise_text(
+    ctx: &Context<'_>,
+    message: ParrotMessage,
+) -> Result<(), Error> {
+    let message_str = format!("{message}");
+
+    create_embed_response_str(ctx, message_str).await
+}
 
 pub async fn create_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     message: ParrotMessage,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
     create_embed_response(http, interaction, embed).await
@@ -29,17 +50,34 @@ pub async fn create_response_text(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     content: &str,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(content);
     create_embed_response(http, interaction, embed).await
+}
+
+pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+    let mut embed = CreateEmbed::default();
+    embed.description(format!("{message}"));
+
+    match get_interaction(ctx) {
+        Some(mut interaction) => {
+            let res =
+                edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await;
+            res.map(|_| ())
+        }
+        None => {
+            create_embed_response_poise(ctx, embed).await
+            //return Err(Box::new(SerenityError::Other("No interaction found"))),
+        }
+    }
 }
 
 pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     message: ParrotMessage,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
     edit_embed_response(http, interaction, embed).await
@@ -49,17 +87,43 @@ pub async fn edit_response_text(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     content: &str,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(content);
     edit_embed_response(http, interaction, embed).await
+}
+
+pub async fn create_embed_response_str(
+    ctx: &Context<'_>,
+    message_str: String,
+) -> Result<(), Error> {
+    ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
+        .await?;
+    Ok(())
+}
+
+pub async fn create_embed_response_poise(
+    ctx: Context<'_>,
+    embed: CreateEmbed,
+) -> Result<(), Error> {
+    match get_interaction(ctx) {
+        Some(mut interaction) => {
+            create_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await
+        }
+        None => {
+            //ctx.defer().await?;
+            //let mut interaction = get_interaction(ctx).unwrap();
+            let asdf = format!("{:?}", embed.0.get("description").unwrap().to_string());
+            create_embed_response_str(&ctx, asdf).await
+        }
+    }
 }
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     embed: CreateEmbed,
-) -> Result<(), ParrotError> {
+) -> Result<(), Error> {
     match interaction
         .create_interaction_response(&http, |response| {
             response
@@ -71,16 +135,16 @@ pub async fn create_embed_response(
     {
         Ok(val) => Ok(val),
         Err(err) => match err {
-            ParrotError::Serenity(Error::Http(ref e)) => match &**e {
+            serenity::Error::Http(ref e) => match &**e {
                 HttpError::UnsuccessfulRequest(req) => match req.error.code {
                     40060 => edit_embed_response(http, interaction, embed)
                         .await
                         .map(|_| ()),
-                    _ => Err(err),
+                    _ => Err(Box::new(err)),
                 },
-                _ => Err(err),
+                _ => Err(Box::new(err)),
             },
-            _ => Err(err),
+            _ => Err(Box::new(err)),
         },
     }
 }
@@ -89,11 +153,26 @@ pub async fn edit_embed_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
     embed: CreateEmbed,
-) -> Result<Message, ParrotError> {
+) -> Result<Message, Error> {
     interaction
         .edit_original_interaction_response(&http, |message| message.content(" ").add_embed(embed))
         .await
         .map_err(Into::into)
+}
+
+pub async fn edit_embed_response_poise(
+    ctx: Context<'_>,
+    embed: CreateEmbed,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(interaction) => interaction
+            .edit_original_interaction_response(&ctx.serenity_context().http, |message| {
+                message.content(" ").add_embed(embed)
+            })
+            .await
+            .map_err(Into::into),
+        None => Err(Box::new(SerenityError::Other("No interaction found"))),
+    }
 }
 
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
@@ -157,4 +236,108 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
+}
+
+/// Checks that a message successfully sent; if not, then logs why to stdout.
+pub fn check_msg(result: Result<Message, Error>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
+}
+
+pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
+}
+
+pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => Some(x.clone()),
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        },
+        Context::Prefix(_) => None,
+    }
+}
+
+pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.guild_id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.guild_id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.guild_id,
+    }
+}
+
+pub fn get_user_id(ctx: &Context) -> serenity::UserId {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.author.id,
+    }
+}
+
+pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.channel_id,
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
+        },
+        Context::Prefix(pre_ctx) => pre_ctx.msg.channel_id,
+    }
+}
+
+// pub fn reply_poise(ctx: &Context, content: String) -> Result<Message, Error> {
+//     //ctx.reply(content)
+//     match ctx {
+//         Context::Application(app_ctx) => match app_ctx.interaction {
+//             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
+//         },
+//         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
+//     }
+// }
+pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Arc<Data>, Error>> {
+    match ctx {
+        Context::Application(prefix_ctx) => {
+            let guild_id = prefix_ctx.guild_id().unwrap();
+            let manager = songbird::get(prefix_ctx.serenity_context()).await.unwrap();
+            let call = manager.get(guild_id).unwrap();
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
+            drop(handler);
+
+            if !has_current_connection {
+                summon().slash_action.unwrap()(prefix_ctx).await
+            } else {
+                Ok(())
+            }
+        }
+        Context::Prefix(slash_ctx) => {
+            let guild_id = slash_ctx.guild_id().unwrap();
+            let manager = songbird::get(slash_ctx.serenity_context()).await.unwrap();
+            let call = manager.get(guild_id).unwrap();
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
+            drop(handler);
+
+            if !has_current_connection {
+                summon().prefix_action.unwrap()(slash_ctx).await
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+pub async fn handle_error(
+    ctx: &SerenityContext,
+    interaction: &mut ApplicationCommandInteraction,
+    err: CrackedError,
+) {
+    create_response_text(&ctx.http, interaction, &format!("{err}"))
+        .await
+        .expect("failed to create response");
 }

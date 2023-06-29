@@ -1,45 +1,49 @@
+use self::serenity::{
+    model::id::GuildId,
+    {Mentionable, RwLock, TypeMap},
+};
 use crate::{
-    commands::skip::{create_skip_response, force_skip_top_track},
+    commands::{create_skip_response, force_skip_top_track},
     connection::get_voice_channel_for_user,
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::ParrotMessage,
-    utils::create_response,
+    utils::{create_response_poise_text, get_guild_id, get_user_id},
+    Context, Error,
 };
-use serenity::{
-    client::Context,
-    model::{
-        application::interaction::application_command::ApplicationCommandInteraction, id::GuildId,
-    },
-    prelude::{Mentionable, RwLock, TypeMap},
-};
+use poise::serenity_prelude as serenity;
 use std::{collections::HashSet, sync::Arc};
 
-pub async fn voteskip(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
-    let guild_id = interaction.guild_id.unwrap();
+/// Vote to skip the current track
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = get_guild_id(&ctx).unwrap();
     let bot_channel_id = get_voice_channel_for_user(
-        &ctx.cache.guild(guild_id).unwrap(),
-        &ctx.cache.current_user_id(),
+        &ctx.serenity_context().cache.guild(guild_id).unwrap(),
+        &ctx.serenity_context().cache.current_user_id(),
     )
     .unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
-    let mut data = ctx.data.write().await;
+    let mut data = ctx.serenity_context().data.write().await;
     let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
     let cache = cache_map.entry(guild_id).or_default();
-    cache.current_skip_votes.insert(interaction.user.id);
+    let user_id = get_user_id(&ctx);
+    cache.current_skip_votes.insert(user_id);
 
-    let guild_users = ctx.cache.guild(guild_id).unwrap().voice_states;
+    let guild_users = ctx
+        .serenity_context()
+        .cache
+        .guild(guild_id)
+        .unwrap()
+        .voice_states;
     let channel_guild_users = guild_users
         .into_values()
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
@@ -47,13 +51,12 @@ pub async fn voteskip(
 
     if cache.current_skip_votes.len() >= skip_threshold {
         force_skip_top_track(&handler).await?;
-        create_skip_response(ctx, interaction, &handler, 1).await
+        create_skip_response(ctx, &handler, 1).await
     } else {
-        create_response(
-            &ctx.http,
-            interaction,
+        create_response_poise_text(
+            &ctx,
             ParrotMessage::VoteSkip {
-                mention: interaction.user.id.mention(),
+                mention: get_user_id(&ctx).mention(),
                 missing: skip_threshold - cache.current_skip_votes.len(),
             },
         )

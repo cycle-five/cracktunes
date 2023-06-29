@@ -1,19 +1,18 @@
 use crate::{
-    errors::ParrotError, messaging::message::ParrotMessage, messaging::messages::FAIL_LOOP,
-    utils::create_response,
-};
-use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    errors::CrackedError,
+    messaging::message::ParrotMessage,
+    messaging::messages::FAIL_LOOP,
+    utils::{create_response, get_interaction},
+    Context, Error,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
-pub async fn repeat(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+/// Toggle looping of the current track.
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
+    let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
@@ -28,11 +27,21 @@ pub async fn repeat(
 
     match toggler(&track) {
         Ok(_) if was_looping => {
-            create_response(&ctx.http, interaction, ParrotMessage::LoopDisable).await
+            create_response(
+                &ctx.serenity_context().http,
+                &mut interaction,
+                ParrotMessage::LoopDisable,
+            )
+            .await
         }
         Ok(_) if !was_looping => {
-            create_response(&ctx.http, interaction, ParrotMessage::LoopEnable).await
+            create_response(
+                &ctx.serenity_context().http,
+                &mut interaction,
+                ParrotMessage::LoopEnable,
+            )
+            .await
         }
-        _ => Err(ParrotError::Other(FAIL_LOOP)),
+        _ => Err(CrackedError::Other(FAIL_LOOP).into()),
     }
 }

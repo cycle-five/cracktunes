@@ -1,7 +1,8 @@
-use serenity::model::{
+use self::serenity::model::{
     guild::Guild,
     id::{ChannelId, UserId},
 };
+use poise::serenity_prelude as serenity;
 
 pub enum Connection {
     User(ChannelId),

@@ -1,10 +1,11 @@
 use std::fmt::Display;
 
-use serenity::model::mention::Mention;
+use self::serenity::model::mention::Mention;
+use poise::serenity_prelude as serenity;
 
 use crate::messaging::messages::*;
 
-const RELEASES_LINK: &str = "https://github.com/aquelemiguel/parrot/releases";
+const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 
 #[derive(Debug)]
 pub enum ParrotMessage {

@@ -7,22 +7,21 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aquelemiguel/parrot/actions/workflows/ci_workflow.yml"><img src="https://github.com/aquelemiguel/parrot/actions/workflows/ci_workflow.yml/badge.svg"></a>
-  <a href="https://deps.rs/repo/github/aquelemiguel/parrot"><img src="https://deps.rs/repo/github/aquelemiguel/parrot/status.svg"></a>
-  <a href="https://github.com/aquelemiguel/parrot/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://github.com/aquelemiguel/parrot/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
+  <a href="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml"><img src="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg"></a>
+  <a href="https://deps.rs/repo/github/cycle-five/cracktunes"><img src="https://deps.rs/repo/github/cycle-five/cracktunes/status.svg"></a>
+  <a href="https://github.com/cycle-five/cracktunes/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
 </p>
 
 ## Deployment
 
 ### Usage
 
-Just [create a bot account](https://github.com/aquelemiguel/parrot/wiki/Create-Your-Discord-Bot), and copy its **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively. Optionally, you may also define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. We recommend using our [.env.example](https://github.com/aquelemiguel/parrot/blob/main/.env.example) as a starting point.
+Just [create a bot account](https://github.com/cycle-five/cracktunes/wiki/Create-Your-Discord-Bot), and copy its **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively. Optionally, you may also define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. We recommend using our [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
 
 ### Docker
 
 ```shell
-docker run -d --env-file .env --restart unless-stopped --name parrot ghcr.io/aquelemiguel/parrot:latest
+docker run -d --env-file .env --restart unless-stopped --name cracktunes ghcr.io/cycle-five/cracktunes:latest
 ```
 
 ## Development
@@ -73,6 +72,22 @@ Increasing the test coverage is also welcome.
 Within the project folder, simply run the following:
 
 ```shell
-docker build -t parrot .
-docker run -d --env-file .env parrot
+docker build -t cracktunes .
+docker run -d --env-file .env cracktunes
 ```
+
+### Objectives
+
+## 0.2.0
+- [x] Play music from YouTube
+- [x] Play music from Spotify (kind of...)
+- [] Play music from HTTP URLs
+- [] Play music from local files
+
+## 0.3.0
+- [] Database Schema
+- [] Play music from SoundCloud (placeholder)
+
+...and more!
+## 1.0.0
+- [] RTChris' Demuxer

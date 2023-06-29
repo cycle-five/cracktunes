@@ -1,29 +1,24 @@
+use self::serenity::{
+    builder::{CreateButton, CreateComponents, CreateEmbed},
+    futures::StreamExt,
+    model::{
+        application::{component::ButtonStyle, interaction::InteractionResponseType},
+        channel::Message,
+        id::GuildId,
+    },
+    {RwLock, TypeMap},
+};
 use crate::{
-    errors::ParrotError,
     guild::cache::GuildCacheMap,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::{
         QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
         QUEUE_PAGE_OF, QUEUE_UP_NEXT,
     },
-    utils::get_human_readable_timestamp,
+    utils::{get_human_readable_timestamp, get_interaction},
+    Context, Error,
 };
-use serenity::{
-    builder::{CreateButton, CreateComponents, CreateEmbed},
-    client::Context,
-    futures::StreamExt,
-    model::{
-        application::{
-            component::ButtonStyle,
-            interaction::{
-                application_command::ApplicationCommandInteraction, InteractionResponseType,
-            },
-        },
-        channel::Message,
-        id::GuildId,
-    },
-    prelude::{RwLock, TypeMap},
-};
+use poise::serenity_prelude::{self as serenity};
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
     cmp::{max, min},
@@ -36,20 +31,48 @@ use std::{
 const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
-pub async fn queue(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+/// Display the current queue.
+#[poise::command(slash_command, guild_only)]
+pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
+    //ctx.defer().await.unwrap();
+
+    // let interaction = get_interaction(ctx).unwrap();
+    // tracing::error!("interaction: {:?}", interaction);
+    // ctx.send(|f| f.content("Works for slash and prefix commands")
+    // ).await.unwrap().into_message().await?.reply().create_interaction_response(&ctx.serenity_context().http, |response| {
+    //     response
+    //         .kind(InteractionResponseType::DeferredChannelMessageWithSource)
+    //         .interaction_response_data(|message| {
+    //             message
+    //                 .create_embed(|embed| {
+    //                     embed.description("Loading queue...");
+    //                 })
+    //                 .components(|components| {
+    //                     components.create_action_row(|action_row| {
+    //                         action_row.add_button(
+    //                             CreateButton::default()
+    //                                 .custom_id("test".to_string())
+    //                                 .label("test")
+    //                                 .style(ButtonStyle::Primary)
+    //                                 .to_owned(),
+    //                         )
+    //                     })
+    //                 })
+    //         })
+    // });
+    let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
     drop(handler);
 
+    tracing::error!("tracks: {:?}", tracks);
+
     interaction
-        .create_interaction_response(&ctx.http, |response| {
+        .create_interaction_response(&ctx.serenity_context().http, |response| {
             response
                 .kind(InteractionResponseType::ChannelMessageWithSource)
                 .interaction_response_data(|message| {
@@ -62,11 +85,15 @@ pub async fn queue(
         })
         .await?;
 
-    let mut message = interaction.get_interaction_response(&ctx.http).await?;
+    tracing::error!("past interaction");
+
+    let mut message = interaction
+        .get_interaction_response(&ctx.serenity_context().http)
+        .await?;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
-    let mut data = ctx.data.write().await;
+    let mut data = ctx.serenity_context().data.write().await;
     let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
     let cache = cache_map.entry(guild_id).or_default();
@@ -78,8 +105,8 @@ pub async fn queue(
     handler.add_global_event(
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
-            http: ctx.http.clone(),
-            ctx_data: ctx.data.clone(),
+            http: ctx.serenity_context().http.clone(),
+            ctx_data: ctx.serenity_context().data.clone(),
             call: call.clone(),
             guild_id,
         },
@@ -121,7 +148,7 @@ pub async fn queue(
     }
 
     message
-        .edit(&ctx.http, |edit| {
+        .edit(&ctx.serenity_context().http, |edit| {
             let mut embed = CreateEmbed::default();
             embed.description(QUEUE_EXPIRED);
             edit.set_embed(embed);
@@ -130,7 +157,7 @@ pub async fn queue(
         .await
         .unwrap();
 
-    forget_queue_message(&ctx.data, &mut message, guild_id)
+    forget_queue_message(&ctx.serenity_context().data, &mut message, guild_id)
         .await
         .ok();
 

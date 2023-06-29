@@ -1,6 +1,6 @@
 use crate::{
     commands::play::QueryType,
-    errors::ParrotError,
+    errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
 };
 use lazy_static::lazy_static;
@@ -14,8 +14,8 @@ use std::{env, str::FromStr};
 use tokio::sync::Mutex;
 
 lazy_static! {
-    pub static ref SPOTIFY: Mutex<Result<ClientCredsSpotify, ParrotError>> =
-        Mutex::new(Err(ParrotError::Other("no auth attempts")));
+    pub static ref SPOTIFY: Mutex<Result<ClientCredsSpotify, CrackedError>> =
+        Mutex::new(Err(CrackedError::Other("no auth attempts")));
     pub static ref SPOTIFY_QUERY_REGEX: Regex =
         Regex::new(r"spotify.com/(?P<media_type>.+)/(?P<media_id>.*?)(?:\?|$)").unwrap();
 }
@@ -43,12 +43,12 @@ impl FromStr for MediaType {
 pub struct Spotify {}
 
 impl Spotify {
-    pub async fn auth() -> Result<ClientCredsSpotify, ParrotError> {
+    pub async fn auth() -> Result<ClientCredsSpotify, CrackedError> {
         let spotify_client_id = env::var("SPOTIFY_CLIENT_ID")
-            .map_err(|_| ParrotError::Other("missing spotify client ID"))?;
+            .map_err(|_| CrackedError::Other("missing spotify client ID"))?;
 
         let spotify_client_secret = env::var("SPOTIFY_CLIENT_SECRET")
-            .map_err(|_| ParrotError::Other("missing spotify client secret"))?;
+            .map_err(|_| CrackedError::Other("missing spotify client secret"))?;
 
         let creds = Credentials::new(&spotify_client_id, &spotify_client_secret);
 
@@ -61,22 +61,22 @@ impl Spotify {
     pub async fn extract(
         spotify: &ClientCredsSpotify,
         query: &str,
-    ) -> Result<QueryType, ParrotError> {
+    ) -> Result<QueryType, CrackedError> {
         let captures = SPOTIFY_QUERY_REGEX
             .captures(query)
-            .ok_or(ParrotError::Other(SPOTIFY_INVALID_QUERY))?;
+            .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
 
         let media_type = captures
             .name("media_type")
-            .ok_or(ParrotError::Other(SPOTIFY_INVALID_QUERY))?
+            .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
             .as_str();
 
         let media_type = MediaType::from_str(media_type)
-            .map_err(|_| ParrotError::Other(SPOTIFY_INVALID_QUERY))?;
+            .map_err(|_| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
 
         let media_id = captures
             .name("media_id")
-            .ok_or(ParrotError::Other(SPOTIFY_INVALID_QUERY))?
+            .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
             .as_str();
 
         match media_type {
@@ -89,14 +89,14 @@ impl Spotify {
     async fn get_track_info(
         spotify: &ClientCredsSpotify,
         id: &str,
-    ) -> Result<QueryType, ParrotError> {
+    ) -> Result<QueryType, CrackedError> {
         let track_id = TrackId::from_id(id)
-            .map_err(|_| ParrotError::Other("track ID contains invalid characters"))?;
+            .map_err(|_| CrackedError::Other("track ID contains invalid characters"))?;
 
         let track = spotify
             .track(track_id)
             .await
-            .map_err(|_| ParrotError::Other("failed to fetch track"))?;
+            .map_err(|_| CrackedError::Other("failed to fetch track"))?;
 
         let artist_names = Self::join_artist_names(&track.artists);
 
@@ -107,14 +107,14 @@ impl Spotify {
     async fn get_album_info(
         spotify: &ClientCredsSpotify,
         id: &str,
-    ) -> Result<QueryType, ParrotError> {
+    ) -> Result<QueryType, CrackedError> {
         let album_id = AlbumId::from_id(id)
-            .map_err(|_| ParrotError::Other("album ID contains invalid characters"))?;
+            .map_err(|_| CrackedError::Other("album ID contains invalid characters"))?;
 
         let album = spotify
             .album(album_id)
             .await
-            .map_err(|_| ParrotError::Other("failed to fetch album"))?;
+            .map_err(|_| CrackedError::Other("failed to fetch album"))?;
 
         let artist_names = Self::join_artist_names(&album.artists);
 
@@ -131,14 +131,14 @@ impl Spotify {
     async fn get_playlist_info(
         spotify: &ClientCredsSpotify,
         id: &str,
-    ) -> Result<QueryType, ParrotError> {
+    ) -> Result<QueryType, CrackedError> {
         let playlist_id = PlaylistId::from_id(id)
-            .map_err(|_| ParrotError::Other("playlist ID contains invalid characters"))?;
+            .map_err(|_| CrackedError::Other("playlist ID contains invalid characters"))?;
 
         let playlist = spotify
             .playlist(playlist_id, None, None)
             .await
-            .map_err(|_| ParrotError::Other(SPOTIFY_PLAYLIST_FAILED))?;
+            .map_err(|_| CrackedError::Other(SPOTIFY_PLAYLIST_FAILED))?;
 
         let query_list: Vec<String> = playlist
             .tracks

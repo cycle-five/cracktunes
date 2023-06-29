@@ -1,7 +1,5 @@
-use serenity::{
-    async_trait, http::Http,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
-};
+use self::serenity::{async_trait, http::Http};
+use poise::serenity_prelude as serenity;
 use songbird::{tracks::PlayMode, Event, EventContext, EventHandler, Songbird};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -13,7 +11,8 @@ use crate::messaging::messages::IDLE_ALERT;
 pub struct IdleHandler {
     pub http: Arc<Http>,
     pub manager: Arc<Songbird>,
-    pub interaction: ApplicationCommandInteraction,
+    pub channel_id: serenity::ChannelId,
+    pub guild_id: Option<serenity::GuildId>,
     pub limit: usize,
     pub count: Arc<AtomicUsize>,
 }
@@ -38,14 +37,10 @@ impl EventHandler for IdleHandler {
         }
 
         if self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
-            let guild_id = self.interaction.guild_id?;
+            let guild_id = self.guild_id?;
 
             if self.manager.remove(guild_id).await.is_ok() {
-                self.interaction
-                    .channel_id
-                    .say(&self.http, IDLE_ALERT)
-                    .await
-                    .unwrap();
+                self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
             }
         }
 

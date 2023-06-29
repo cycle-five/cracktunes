@@ -1,5 +1,5 @@
 | - | - |
 | --- | --- |
-| Issue | https://github.com/aquelemiguel/parrot/issues/XXX |
+| Issue | https://github.com/cycle-five/cracktunes/issues/XXX |
 | Dependencies | |
 | Decisions | |

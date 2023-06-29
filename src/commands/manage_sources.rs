@@ -1,32 +1,30 @@
+use self::serenity::{
+    builder::{CreateComponents, CreateInputText},
+    collector::ModalInteractionCollectorBuilder,
+    futures::StreamExt,
+    model::prelude::{
+        component::{ActionRowComponent, InputTextStyle},
+        interaction::InteractionResponseType,
+    },
+};
 use crate::{
-    errors::ParrotError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::messages::{
         DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
         DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
     },
+    utils::get_interaction,
+    Context, Error,
 };
-use serenity::{
-    builder::{CreateComponents, CreateInputText},
-    client::Context,
-    collector::ModalInteractionCollectorBuilder,
-    futures::StreamExt,
-    model::{
-        application::interaction::application_command::ApplicationCommandInteraction,
-        prelude::{
-            component::{ActionRowComponent, InputTextStyle},
-            interaction::InteractionResponseType,
-        },
-    },
-};
+use poise::serenity_prelude as serenity;
 
-pub async fn allow(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
+/// Manage the domains that are allowed or banned.
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
+    let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
 
-    let mut data = ctx.data.write().await;
+    let mut data = ctx.serenity_context().data.write().await;
     let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
     let guild_settings = settings
@@ -74,7 +72,7 @@ pub async fn allow(
         .create_action_row(|r| r.add_input_text(banned_input));
 
     interaction
-        .create_interaction_response(&ctx.http, |r| {
+        .create_interaction_response(&ctx.serenity_context().http, |r| {
             r.kind(InteractionResponseType::Modal);
             r.interaction_response_data(|d| {
                 d.title(DOMAIN_FORM_TITLE);
@@ -91,7 +89,7 @@ pub async fn allow(
 
     collector
         .then(|int| async move {
-            let mut data = ctx.data.write().await;
+            let mut data = ctx.serenity_context().data.write().await;
             let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
             let inputs: Vec<_> = int
@@ -119,7 +117,7 @@ pub async fn allow(
             guild_settings.save().unwrap();
 
             // it's now safe to close the modal, so send a response to it
-            int.create_interaction_response(&ctx.http, |r| {
+            int.create_interaction_response(&ctx.serenity_context().http, |r| {
                 r.kind(InteractionResponseType::DeferredUpdateMessage)
             })
             .await

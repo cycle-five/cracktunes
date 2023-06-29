@@ -1,17 +1,20 @@
+use self::serenity::{model::mention::Mention, SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
     FAIL_NO_VOICE_CONNECTION, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, QUEUE_IS_EMPTY,
     TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
 };
+use crate::Error;
+use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
-use serenity::{model::mention::Mention, prelude::SerenityError};
-use songbird::input::error::Error as InputError;
+use songbird::input::error::{DcaError, Error as InputError};
 use std::fmt::{Debug, Display};
-use std::{error::Error, fmt};
+//use std::{error::Error, fmt};
+use std::fmt;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
-pub enum ParrotError {
+pub enum CrackedError {
     Other(&'static str),
     QueueEmpty,
     NotInRange(&'static str, isize, isize, isize),
@@ -26,16 +29,22 @@ pub enum ParrotError {
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
+    Songbird(songbird::input::error::Error),
+    Poise(Error),
 }
 
-/// `ParrotError` implements the [`Debug`] and [`Display`] traits
+/// `CrackedError` implements the [`Debug`] and [`Display`] traits
 /// meaning it implements the [`std::error::Error`] trait.
 /// This just makes it explicit.
-impl Error for ParrotError {}
+impl std::error::Error for CrackedError {}
 
-/// Implementation of the [`Display`] trait for the [`ParrotError`] enum.
+unsafe impl Send for CrackedError {}
+
+unsafe impl Sync for CrackedError {}
+
+/// Implementation of the [`Display`] trait for the [`CrackedError`] enum.
 /// Errors are formatted with this and then sent as responses to the interaction.
-impl Display for ParrotError {
+impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Other(msg) => f.write_str(msg),
@@ -70,14 +79,16 @@ impl Display for ParrotError {
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::Serde(err) => f.write_str(&format!("{err}")),
+            Self::Songbird(err) => f.write_str(&format!("{err}")),
+            Self::Poise(err) => f.write_str(&format!("{err}")),
         }
     }
 }
 
-/// Implementation of the [`PartialEq`] trait for the [`ParrotError`] enum.
+/// Implementation of the [`PartialEq`] trait for the [`CrackedError`] enum.
 /// For some enum variants, values are considered equal when their inner values
 /// are equal and for others when they are of the same type.
-impl PartialEq for ParrotError {
+impl PartialEq for CrackedError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Other(l0), Self::Other(r0)) => l0 == r0,
@@ -96,22 +107,97 @@ impl PartialEq for ParrotError {
     }
 }
 
-/// Provides an implementation to convert a [`std::io::Error`] to a [`ParrotError`].
-impl From<std::io::Error> for ParrotError {
+impl From<DcaError> for CrackedError {
+    fn from(err: songbird::input::error::DcaError) -> Self {
+        Self::Poise(Box::new(err))
+    }
+}
+
+use audiopus::error::Error as AudiopusError;
+impl From<AudiopusError> for CrackedError {
+    fn from(err: AudiopusError) -> Self {
+        Self::Poise(Box::new(err))
+    }
+}
+
+impl From<CrackedError> for songbird::input::error::Error {
+    fn from(val: CrackedError) -> songbird::input::error::Error {
+        match val {
+            CrackedError::Poise(_) => songbird::input::error::Error::Metadata,
+            CrackedError::Serde(err) => songbird::input::error::Error::Json {
+                error: err,
+                parsed_text: "".to_string(),
+            },
+            CrackedError::IO(err) => songbird::input::error::Error::Io(err),
+            CrackedError::Songbird(err) => err,
+            CrackedError::TrackFail(err) => err,
+            CrackedError::RSpotify(_) => songbird::input::error::Error::Metadata,
+            CrackedError::Serenity(_) => songbird::input::error::Error::Metadata,
+            CrackedError::AlreadyConnected(_) => songbird::input::error::Error::Metadata,
+            CrackedError::NotConnected => songbird::input::error::Error::Metadata,
+            CrackedError::Other(_) => songbird::input::error::Error::Metadata,
+            CrackedError::QueueEmpty => songbird::input::error::Error::Metadata,
+            CrackedError::NotInRange(_, _, _, _) => songbird::input::error::Error::Metadata,
+            CrackedError::AuthorDisconnected(_) => songbird::input::error::Error::Metadata,
+            CrackedError::WrongVoiceChannel => songbird::input::error::Error::Metadata,
+            CrackedError::AuthorNotFound => songbird::input::error::Error::Metadata,
+            _ => songbird::input::error::Error::Metadata,
+        }
+    }
+}
+
+impl From<songbird::input::error::Error> for CrackedError {
+    fn from(err: songbird::input::error::Error) -> Self {
+        match err {
+            songbird::input::error::Error::Json {
+                error,
+                parsed_text: _,
+            } => Self::Poise(error.into()),
+            songbird::input::error::Error::Io(err) => Self::IO(err),
+            songbird::input::error::Error::Metadata => Self::Other("Metadata"),
+            songbird::input::error::Error::Stdout => Self::Other("Stdout"),
+            songbird::input::error::Error::Dca(err) => Self::Poise(Box::new(err)),
+            songbird::input::error::Error::Streams => Self::Other("Streams"),
+            songbird::input::error::Error::Streamcatcher(err) => Self::Poise(Box::new(err)),
+            _ => Self::Other("FAILED"),
+        }
+    }
+}
+
+impl From<Error> for CrackedError {
+    fn from(err: Error) -> Self {
+        CrackedError::Poise(err)
+    }
+}
+
+// impl From<songbird::input::error::Error> for CrackedError {
+//     fn from(err: songbird::input::error::Error) -> CrackedError {
+//         CrackedError::IO(err)
+//     }
+// }
+
+// impl Into<songbird::input::error::Error> for Box<dyn std::error::Error + Send + Sync> {
+//     fn into(self) -> songbird::input::error::Error {
+//         Into<StdError>(self).into()
+//     }
+// }
+
+/// Provides an implementation to convert a [`std::io::Error`] to a [`CrackedError`].
+impl From<std::io::Error> for CrackedError {
     fn from(err: std::io::Error) -> Self {
         Self::IO(err)
     }
 }
 
-/// Provides an implementation to convert a [`serde_json::Error`] to a [`ParrotError`].
-impl From<serde_json::Error> for ParrotError {
+/// Provides an implementation to convert a [`serde_json::Error`] to a [`CrackedError`].
+impl From<serde_json::Error> for CrackedError {
     fn from(err: serde_json::Error) -> Self {
         Self::Serde(err)
     }
 }
 
-/// Provides an implementation to convert a [`SerenityError`] to a [`ParrotError`].
-impl From<SerenityError> for ParrotError {
+/// Provides an implementation to convert a [`SerenityError`] to a [`CrackedError`].
+impl From<SerenityError> for CrackedError {
     fn from(err: SerenityError) -> Self {
         match err {
             SerenityError::NotInRange(param, value, lower, upper) => {
@@ -123,12 +209,18 @@ impl From<SerenityError> for ParrotError {
     }
 }
 
-/// Provides an implementation to convert a rspotify [`ClientError`] to a [`ParrotError`].
-impl From<RSpotifyClientError> for ParrotError {
-    fn from(err: RSpotifyClientError) -> ParrotError {
-        ParrotError::RSpotify(err)
+/// Provides an implementation to convert a rspotify [`ClientError`] to a [`CrackedError`].
+impl From<RSpotifyClientError> for CrackedError {
+    fn from(err: RSpotifyClientError) -> CrackedError {
+        CrackedError::RSpotify(err)
     }
 }
+
+// impl From<Error> for CrackedError {
+//     fn from(err: Error) -> Self {
+//         Self::Poise(err)
+//     }
+// }
 
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.
@@ -157,6 +249,15 @@ impl<T> Verifiable<T> for Option<T> {
     }
 }
 
+// impl<T> From<Result<T, songbird::input::error::Error>> for Result<T, CrackedError> {
+//     fn from(err: Result<T, songbird::input::error::Error>) -> Self {
+//         match err {
+//             Ok(x) => Ok(x),
+//             Err(err) => Self::Songbird(err),
+//         }
+//     }
+// }
+
 impl<T, E> Verifiable<T> for Result<T, E>
 where
     E: Debug,
@@ -172,7 +273,7 @@ where
 
 /// Verifies if a value is true (or equivalent).
 /// Returns an [`Err`] with the given error or the value wrapped in [`Ok`].
-pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: ParrotError) -> Result<K, ParrotError> {
+pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K, CrackedError> {
     if verifiable.to_bool() {
         Ok(verifiable.unpack())
     } else {

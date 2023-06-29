@@ -56,4 +56,4 @@ jobs:
           branch: bump/${{ steps.get_version.outputs.VERSION }}
           base: main
           delete-branch: true
-          labels: ':parrot: release'
+          labels: ':cracktunes: release'

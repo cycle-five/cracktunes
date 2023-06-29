@@ -1,26 +1,28 @@
 use crate::{
-    errors::{verify, ParrotError},
+    errors::{verify, CrackedError},
     messaging::message::ParrotMessage,
-    utils::create_response,
-};
-use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    utils::{create_response_poise_text, get_guild_id},
+    {Context, Error},
 };
 
+/// Resume the current track.
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn resume(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
-    let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+    ctx: Context<'_>,
+    #[description = "Resume the currently playing track"] send_reply: Option<bool>,
+) -> Result<(), Error> {
+    let guild_id = get_guild_id(&ctx).unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
     let queue = handler.queue();
 
-    verify(!queue.is_empty(), ParrotError::NothingPlaying)?;
-    verify(queue.resume(), ParrotError::Other("Failed resuming track"))?;
+    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
+    verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    create_response(&ctx.http, interaction, ParrotMessage::Resume).await
+    if send_reply.unwrap_or(true) {
+        create_response_poise_text(&ctx, ParrotMessage::Resume).await?
+    }
+    Ok(())
 }

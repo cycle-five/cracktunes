@@ -1,26 +1,22 @@
 use crate::{
-    errors::ParrotError,
-    utils::{create_embed_response, create_now_playing_embed},
-};
-use serenity::{
-    client::Context,
-    model::application::interaction::application_command::ApplicationCommandInteraction,
+    errors::CrackedError,
+    utils::{create_embed_response_poise, create_now_playing_embed, get_guild_id},
+    Context, Error,
 };
 
-pub async fn now_playing(
-    ctx: &Context,
-    interaction: &mut ApplicationCommandInteraction,
-) -> Result<(), ParrotError> {
-    let guild_id = interaction.guild_id.unwrap();
-    let manager = songbird::get(ctx).await.unwrap();
+/// Get the currently playing track.
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = get_guild_id(&ctx).unwrap();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
     let track = handler
         .queue()
         .current()
-        .ok_or(ParrotError::NothingPlaying)?;
+        .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    create_embed_response(&ctx.http, interaction, embed).await
+    create_embed_response_poise(ctx, embed).await
 }

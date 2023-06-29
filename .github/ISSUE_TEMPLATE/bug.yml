@@ -25,7 +25,7 @@ body:
       label: ℹ Environment / Computer Info
       description: Please provide the details of the system Parrot is running on.
       value: |
-        - **Parrot version**: ` `
+        - **CrackTunes version**: ` `
         - **Operating System**: ` `
     validations:
       required: true
