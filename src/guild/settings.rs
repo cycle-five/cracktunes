@@ -22,6 +22,13 @@ lazy_static! {
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct WelcomeSettings {
+    pub channel_id: Option<u64>,
+    pub message: Option<String>,
+    pub auto_role: Option<u64>,
+}
+
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
@@ -32,6 +39,7 @@ pub struct GuildSettings {
     pub volume: f32,
     pub self_deafen: bool,
     pub timeout: u32,
+    pub welcome_settings: Option<WelcomeSettings>,
 }
 
 impl GuildSettings {
@@ -50,6 +58,7 @@ impl GuildSettings {
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
             timeout: 5 * 60,
+            welcome_settings: None,
         }
     }
 

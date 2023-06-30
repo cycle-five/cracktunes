@@ -166,39 +166,42 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             })
         },
         /// Every command invocation must pass this check to continue execution
-        command_check: Some(|ctx| {
-            //Box::pin(async move {Ok(true)})
+        command_check: Some(|_ctx| {
             Box::pin(async move {
-                tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.data().bot_settings.authorized_users.is_empty()
-                    || ctx
-                        .data()
-                        .bot_settings
-                        .authorized_users
-                        .contains(&ctx.author().id.0)
-                {
-                    return Ok(true);
-                }
-
-                let user_id = ctx.author_member().await.unwrap().user.id.0;
-                let guild_id = ctx.guild_id().unwrap_or_default();
-
-                ctx.data()
-                    .guild_settings_map
-                    .lock()
-                    .unwrap()
-                    .get(guild_id.as_u64())
-                    .map_or_else(
-                        || {
-                            tracing::info!("Guild not found in guild settings map");
-                            Ok(false)
-                        },
-                        |guild_settings| {
-                            tracing::info!("Guild found in guild settings map");
-                            Ok(guild_settings.authorized_users.contains(&user_id))
-                        },
-                    )
+                // let guild_id = ctx.guild_id().unwrap_or_default();
+                Ok(true)
             })
+            // Box::pin(async move {
+            //     tracing::info!("Checking command {}...", ctx.command().qualified_name);
+            //     if ctx.data().bot_settings.authorized_users.is_empty()
+            //         || ctx
+            //             .data()
+            //             .bot_settings
+            //             .authorized_users
+            //             .contains(&ctx.author().id.0)
+            //     {
+            //         return Ok(true);
+            //     }
+
+            //     let user_id = ctx.author_member().await.unwrap().user.id.0;
+            //     let guild_id = ctx.guild_id().unwrap_or_default();
+
+            //     ctx.data()
+            //         .guild_settings_map
+            //         .lock()
+            //         .unwrap()
+            //         .get(guild_id.as_u64())
+            //         .map_or_else(
+            //             || {
+            //                 tracing::info!("Guild not found in guild settings map");
+            //                 Ok(false)
+            //             },
+            //             |guild_settings| {
+            //                 tracing::info!("Guild found in guild settings map");
+            //                 Ok(guild_settings.authorized_users.contains(&user_id))
+            //             },
+            //         )
+            // })
         }),
         /// Enforce command checks even for owners (enforced by default)
         /// Set to true to bypass checks, which is useful for testing
@@ -206,7 +209,10 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
                 tracing::info!("Got an event in event handler: {:?}", event.name());
-                Ok(())
+                match event.name() {
+                    "GuildMemberAddition" => Ok(()),
+                    _ => Ok(()),
+                }
             })
         },
         ..Default::default()

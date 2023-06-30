@@ -12,6 +12,7 @@ keywords = ["discord", "music-bot", "rust"]
 audiopus = "0.2.0"
 ctrlc = "3.4.0"
 chatgpt_rs = "1.1.10"
+colored = "2.0.0"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
 rand = "0.8.5"

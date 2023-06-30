@@ -204,7 +204,7 @@ pub async fn play(
         CrackedError::Other("Something went wrong while parsing your query!"),
     )?;
 
-    tracing::error!("query_type: {:?}", query_type);
+    tracing::warn!("query_type: {:?}", query_type);
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
@@ -559,17 +559,26 @@ async fn create_queued_embed(
 
 async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedError> {
     match query_type {
-        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true)
-            .await
-            .map_err(|e| e.into()),
+        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true).await.map_err(|e| {
+            tracing::error!("error: {}", e);
+            e.into()
+        }),
 
-        QueryType::Keywords(query) => YouTubeRestartable::ytdl_search(query, true)
-            .await
-            .map_err(|e| e.into()),
+        QueryType::Keywords(query) => {
+            YouTubeRestartable::ytdl_search(query, true)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error: {}", e);
+                    e.into()
+                })
+        }
 
         QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
             .await
-            .map_err(CrackedError::TrackFail),
+            .map_err(|e| {
+                tracing::error!("error: {}", e);
+                e.into()
+            }),
         _ => unreachable!(),
     }
 }

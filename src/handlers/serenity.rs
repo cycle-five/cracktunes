@@ -14,6 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use chrono::offset::Utc;
+use colored::Colorize;
 use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
 use std::{
     collections::{HashMap, HashSet},
@@ -87,6 +88,38 @@ impl EventHandler for SerenityHandler {
     //     }
     // }
 
+    async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
+        let guild_id = new_member.guild_id;
+        let guild_settings = {
+            let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+            let guild_settings = guild_settings_map.get_mut(&guild_id.as_u64());
+            guild_settings.cloned()
+        };
+
+        let guild_settings = match guild_settings {
+            Some(guild_settings) => guild_settings,
+            None => {
+                tracing::error!("Guild settings not found for guild {}", guild_id);
+                return;
+            }
+        };
+
+        if guild_settings.welcome_settings.is_some() {
+            //welcome_action(&ctx, new_member, guild_settings).await;
+            let welcome = guild_settings.welcome_settings.unwrap();
+            let channel = ChannelId(welcome.channel_id.unwrap());
+            let _ = channel
+                .send_message(&ctx.http, |m| {
+                    m.content(format!(
+                        "{} {}",
+                        new_member.user.mention(),
+                        welcome.message.unwrap()
+                    ))
+                })
+                .await;
+        }
+    }
+
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
         // let user_id = msg.author.id;
         let guild_id = match msg.guild_id {
@@ -105,11 +138,11 @@ impl EventHandler for SerenityHandler {
             let content = msg.content.clone();
             let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
             tracing::info!(
-                "Message: {} / {} / {} / {}",
-                name,
-                guild_name,
-                channel_name,
-                content
+                "Message: {} {} {} {}",
+                name.purple(),
+                guild_name.purple(),
+                channel_name.purple(),
+                content.purple()
             );
         }
 
