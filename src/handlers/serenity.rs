@@ -92,7 +92,7 @@ impl EventHandler for SerenityHandler {
         let guild_id = new_member.guild_id;
         let guild_settings = {
             let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
-            let guild_settings = guild_settings_map.get_mut(&guild_id.as_u64());
+            let guild_settings = guild_settings_map.get_mut(guild_id.as_u64());
             guild_settings.cloned()
         };
 
