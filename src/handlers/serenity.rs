@@ -457,7 +457,11 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.user_id) {
-                    tracing::error!("Status checking {:?}", status);
+                    tracing::warn!(
+                        "{} {}",
+                        "Status checking".blue(),
+                        format!("{:?}", status).blue()
+                    );
                     if let Some(kick_conf) = channels.get(&status.channel_id.0) {
                         if status.camera_status != cam.camera_status {
                             tracing::info!(

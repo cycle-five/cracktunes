@@ -20,6 +20,7 @@ use crate::{
     },
     Context, Error,
 };
+use colored::Colorize;
 use poise::serenity_prelude::{self as serenity};
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
@@ -72,7 +73,14 @@ pub async fn play(
     #[description = "song link or search query."]
     msg: Option<String>,
 ) -> Result<(), Error> {
-    tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
+    // #[poise::command(slash_command, guild_only)]
+    // pub async fn play(
+    //     ctx: Context<'_>,
+    //     #[description = "song link or search query."] msg: String,
+    // ) -> Result<(), Error> {
+    //     tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
+    //     let file: Option<serenity::Attachment> = None;
+    //     let mode = Some("next".to_string());
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -134,7 +142,6 @@ pub async fn play(
         }
     };
     // let call = manager.get(guild_id).unwrap();
-
     // determine whether this is a link or a query string
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
@@ -145,6 +152,7 @@ pub async fn play(
                 Some(Spotify::extract(spotify, url).await?)
             }
             Some("cdn.discordapp.com") => {
+                tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
                 //ffmpeg::from_attachment(file.unwrap(), Metadata::default(), &[])
             }
