@@ -1,8 +1,8 @@
-use self::serenity::{builder::CreateEmbed, Mutex};
+use self::serenity::builder::CreateEmbed;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     messaging::messages::{
@@ -21,9 +21,10 @@ use crate::{
     Context, Error,
 };
 use colored::Colorize;
-use poise::serenity_prelude::{self as serenity};
+use poise::serenity_prelude as serenity;
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 use url::Url;
 
 #[derive(Clone, Copy, Debug)]
@@ -71,7 +72,7 @@ pub async fn play(
     #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
-    msg: Option<String>,
+    query_or_url: Option<String>,
 ) -> Result<(), Error> {
     // #[poise::command(slash_command, guild_only)]
     // pub async fn play(
@@ -81,6 +82,7 @@ pub async fn play(
     //     tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
     //     let file: Option<serenity::Attachment> = None;
     //     let mode = Some("next".to_string());
+    let msg = query_or_url.clone();
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -157,10 +159,9 @@ pub async fn play(
                 //ffmpeg::from_attachment(file.unwrap(), Metadata::default(), &[])
             }
             Some(other) => {
-                let mut data = ctx.serenity_context().data.write().await;
-                let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+                let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings
-                    .entry(guild_id)
+                    .entry(*guild_id.as_u64())
                     .or_insert_with(|| GuildSettings::new(guild_id));
 
                 let is_allowed = guild_settings
@@ -186,10 +187,9 @@ pub async fn play(
             None => None,
         },
         Err(_) => {
-            let mut data = ctx.serenity_context().data.write().await;
-            let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+            let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings
-                .entry(guild_id)
+                .entry(*guild_id.as_u64())
                 .or_insert_with(|| GuildSettings::new(guild_id));
 
             if guild_settings.banned_domains.contains("youtube.com")
@@ -442,10 +442,9 @@ pub async fn play(
     }
     let handler = call.lock().await;
 
-    let mut data = ctx.serenity_context().data.write().await;
-    let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = settings
-        .entry(guild_id)
+        .entry(*guild_id.as_u64())
         .or_insert_with(|| GuildSettings::new(guild_id));
 
     // refetch the queue after modification
@@ -453,7 +452,6 @@ pub async fn play(
     queue
         .iter()
         .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
-    drop(data);
     drop(handler);
 
     match queue.len().cmp(&1) {
