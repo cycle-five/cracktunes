@@ -398,7 +398,6 @@ dependencies = [
  "reqwest",
  "rspotify",
  "serde",
- "serde_derive",
  "serde_json",
  "serenity",
  "songbird",
