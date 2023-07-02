@@ -32,9 +32,9 @@ pub struct CamKickConfig {
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 30, //Duration::from_secs(0),
-            guild_id: 0,             //GuildId(0),
-            channel_id: 0,           //ChannelId(0),
+            cammed_down_timeout: 30,
+            guild_id: 0,
+            channel_id: 0,
             dc_message: "You have been disconnected for being cammed down for too long."
                 .to_string(),
         }

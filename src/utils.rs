@@ -312,11 +312,11 @@ pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
 
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
-        Context::Application(app_ctx) => match app_ctx.interaction {
+        Context::Application(ctx) => match ctx.interaction {
             ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
         },
-        Context::Prefix(pre_ctx) => pre_ctx.msg.author.id,
+        Context::Prefix(ctx) => ctx.msg.author.id,
     }
 }
 
@@ -327,15 +327,6 @@ pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
     }
 }
 
-// pub fn reply_poise(ctx: &Context, content: String) -> Result<Message, Error> {
-//     //ctx.reply(content)
-//     match ctx {
-//         Context::Application(app_ctx) => match app_ctx.interaction {
-//             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
-//         },
-//         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
-//     }
-// }
 pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Arc<Data>, Error>> {
     match ctx {
         Context::Application(prefix_ctx) => {
