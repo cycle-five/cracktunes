@@ -87,7 +87,7 @@ pub async fn from_uri(uri: &str, metadata: Metadata, pre_args: &[&str]) -> Resul
     File::create(file_name)
         .await
         .unwrap()
-        .write(&data)
+        .write_all(&data)
         .await
         .unwrap();
 
@@ -98,12 +98,6 @@ pub async fn from_uri(uri: &str, metadata: Metadata, pre_args: &[&str]) -> Resul
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-
-    // child
-    //     .stdin
-    //     .as_mut()
-    //     .ok_or("Failed to open stdin")?
-    //     .write_all(&data)?;
 
     tracing::warn!("Spawned cat");
     ffmpeg(child, metadata, pre_args).await
