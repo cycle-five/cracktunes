@@ -74,7 +74,7 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    let msg = query_or_url.clone();
+    let msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -83,7 +83,11 @@ pub async fn play(
         return Ok(());
     }
 
-    let mode = match mode.unwrap_or("next".to_string()).as_str() {
+    let mode = match mode
+        .map(|s| s.replace("query_or_url:", ""))
+        .unwrap_or("next".to_string())
+        .as_str()
+    {
         "next" => Mode::Next,
         "all" => Mode::All,
         "reverse" => Mode::Reverse,
