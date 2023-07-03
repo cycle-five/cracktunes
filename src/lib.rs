@@ -1,3 +1,4 @@
+use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -121,7 +122,7 @@ impl Default for Data {
         Self {
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            volume: Arc::new(Mutex::new(0.2)),
+            volume: Arc::new(Mutex::new(DEFAULT_VOLUME_LEVEL)),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
         }

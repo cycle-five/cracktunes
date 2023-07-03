@@ -74,14 +74,6 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    // #[poise::command(slash_command, guild_only)]
-    // pub async fn play(
-    //     ctx: Context<'_>,
-    //     #[description = "song link or search query."] msg: String,
-    // ) -> Result<(), Error> {
-    //     tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
-    //     let file: Option<serenity::Attachment> = None;
-    //     let mode = Some("next".to_string());
     let msg = query_or_url.clone();
 
     if msg.is_none() && file.is_none() {
