@@ -218,12 +218,12 @@ pub async fn play(
     let queue_was_empty = handler.queue().is_empty();
     drop(handler);
 
-    tracing::error!("mode: {:?}", mode);
+    tracing::info!("mode: {:?}", mode);
 
     match mode {
         Mode::End => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) => {
-                tracing::error!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
+                tracing::trace!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let queue = enqueue_track(&call, &query_type).await?;
                 update_queue_messages(
                     &ctx.serenity_context().http,
@@ -571,7 +571,6 @@ async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedE
             tracing::error!("error: {}", e);
             e.into()
         }),
-
         QueryType::Keywords(query) => {
             YouTubeRestartable::ytdl_search(query, true)
                 .await
@@ -580,7 +579,6 @@ async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedE
                     e.into()
                 })
         }
-
         QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
             .await
             .map_err(|e| {
@@ -614,7 +612,7 @@ async fn insert_track(
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
-    tracing::error!("queue_size: {}, idx: {}", queue_size, idx);
+    tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
 
     if queue_size <= 1 {
         let queue = enqueue_track(call, query_type).await?;
