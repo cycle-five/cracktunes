@@ -87,6 +87,8 @@ impl EventHandler for SerenityHandler {
             guild_settings.cloned()
         };
 
+        tracing::error!("guild_settings: {:?}", guild_settings);
+
         let (_guild_settings, welcome) = match guild_settings {
             Some(guild_settings) => match guild_settings.clone().welcome_settings {
                 None => return,
@@ -98,6 +100,8 @@ impl EventHandler for SerenityHandler {
             }
         };
 
+        tracing::error!("welcome: {:?}", welcome);
+
         match (welcome.message, welcome.channel_id) {
             (None, _) => {}
             (_, None) => {}
@@ -107,7 +111,7 @@ impl EventHandler for SerenityHandler {
                     .send_message(&ctx.http, |m| {
                         if message.contains("{user}") {
                             let new_msg = message
-                                .replace("{user}", &new_member.user.mention().to_string().as_str());
+                                .replace("{user}", new_member.user.mention().to_string().as_str());
                             m.content(new_msg)
                         } else {
                             m.content(format_args!(
@@ -200,15 +204,6 @@ impl EventHandler for SerenityHandler {
         // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
         let config = Arc::new(config);
-        // let config = Arc::clone(&self.config);
-
-        // let shard_manager = (*self.shard_manager.lock().unwrap()).clone().unwrap();
-        // let framework_data = poise::FrameworkContext {
-        //     bot_id: serenity::UserId(846453852164587620),
-        //     options: &self.options,
-        //     user_data: &(),
-        //     shard_manager: &shard_manager,
-        // };
 
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
