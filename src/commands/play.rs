@@ -234,10 +234,10 @@ pub async fn play(
                 .await;
             }
             QueryType::PlaylistLink(url) => {
-                tracing::error!("Mode::End, QueryType::PlaylistLink");
+                tracing::trace!("Mode::End, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::PlayListFail)?;
 
                 for url in urls.iter() {
                     let queue =
@@ -252,7 +252,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
-                tracing::error!("Mode::End, QueryType::KeywordList");
+                tracing::trace!("Mode::End, QueryType::KeywordList");
                 for keywords in keywords_list.iter() {
                     let queue =
                         enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
@@ -266,7 +266,7 @@ pub async fn play(
                 }
             }
             QueryType::File(file) => {
-                tracing::error!("Mode::End, QueryType::File");
+                tracing::trace!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
                         enqueue_track(&call, &QueryType::File(file)).await?;
                 update_queue_messages(
@@ -280,7 +280,7 @@ pub async fn play(
         },
         Mode::Next => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
-                tracing::error!(
+                tracing::trace!(
                     "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
                 let queue = insert_track(&call, &query_type, 1).await?;
@@ -293,7 +293,7 @@ pub async fn play(
                 .await;
             }
             QueryType::PlaylistLink(url) => {
-                tracing::error!("Mode::Next, QueryType::PlaylistLink");
+                tracing::trace!("Mode::Next, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
@@ -310,7 +310,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
-                tracing::error!("Mode::Next, QueryType::KeywordList");
+                tracing::trace!("Mode::Next, QueryType::KeywordList");
                 let q_not_empty = if call.clone().lock().await.queue().is_empty() {
                     0
                 } else {
@@ -332,7 +332,7 @@ pub async fn play(
         },
         Mode::Jump => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
-                tracing::error!(
+                tracing::trace!(
                     "Mode::Jump, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
                 let mut queue = enqueue_track(&call, &query_type).await?;
@@ -354,7 +354,7 @@ pub async fn play(
                 tracing::error!("Mode::Jump, QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::PlayListFail)?;
 
                 let mut insert_idx = 1;
 
@@ -403,10 +403,10 @@ pub async fn play(
         },
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
-                tracing::error!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
+                tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
                 let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                     .await
-                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                    .ok_or(CrackedError::PlayListFail)?;
 
                 for url in urls.into_iter() {
                     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
@@ -420,7 +420,7 @@ pub async fn play(
                 }
             }
             QueryType::KeywordList(keywords_list) => {
-                tracing::error!(
+                tracing::trace!(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
                 for keywords in keywords_list.into_iter() {
