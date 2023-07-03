@@ -7,7 +7,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response_poise_text, get_guild_id, get_user_id},
     Context, Error,
 };
@@ -55,7 +55,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         create_response_poise_text(
             &ctx,
-            ParrotMessage::VoteSkip {
+            CrackedMessage::VoteSkip {
                 mention: get_user_id(&ctx).mention(),
                 missing: skip_threshold - cache.current_skip_votes.len(),
             },

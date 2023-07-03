@@ -1,6 +1,6 @@
 use crate::{
     errors::{verify, CrackedError},
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response_poise_text, get_guild_id},
     Context, Error,
 };
@@ -55,7 +55,7 @@ pub async fn create_skip_response(
         Some(track) => {
             create_response_poise_text(
                 &ctx,
-                ParrotMessage::SkipTo {
+                CrackedMessage::SkipTo {
                     title: track.metadata().title.as_ref().unwrap().to_owned(),
                     url: track.metadata().source_url.as_ref().unwrap().to_owned(),
                 },
@@ -64,9 +64,9 @@ pub async fn create_skip_response(
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise_text(&ctx, ParrotMessage::SkipAll).await
+                create_response_poise_text(&ctx, CrackedMessage::SkipAll).await
             } else {
-                create_response_poise_text(&ctx, ParrotMessage::Skip).await
+                create_response_poise_text(&ctx, CrackedMessage::Skip).await
             }
         }
     }

@@ -1,6 +1,6 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response, get_interaction},
     Context, Error,
 };
@@ -23,14 +23,14 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
         create_response(
             &ctx.serenity_context().http,
             &mut interaction,
-            ParrotMessage::AutopauseOn,
+            CrackedMessage::AutopauseOn,
         )
         .await
     } else {
         create_response(
             &ctx.serenity_context().http,
             &mut interaction,
-            ParrotMessage::AutopauseOff,
+            CrackedMessage::AutopauseOff,
         )
         .await
     }

@@ -1,6 +1,6 @@
 use crate::{
     errors::{verify, CrackedError},
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
     utils::{create_response, get_interaction},
     Context, Error,
@@ -41,7 +41,7 @@ pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
     create_response(
         &ctx.serenity_context().http,
         &mut interaction,
-        ParrotMessage::Seek {
+        CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },
     )

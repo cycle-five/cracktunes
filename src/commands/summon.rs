@@ -3,7 +3,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::CrackedError,
     handlers::{IdleHandler, TrackEndHandler},
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{get_guild_id, get_user_id},
     Context, Error,
 };
@@ -79,7 +79,7 @@ pub async fn summon(
     }
 
     if send_reply.unwrap_or(true) {
-        let text = ParrotMessage::Summon {
+        let text = CrackedMessage::Summon {
             mention: channel_id.mention(),
         }
         .to_string();
@@ -89,7 +89,7 @@ pub async fn summon(
         })
         .await?;
         // ctx.say(
-        //     ParrotMessage::Summon {
+        //     CrackedMessage::Summon {
         //         mention: channel_id.mention(),
         //     }
         //     .to_string(),

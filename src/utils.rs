@@ -11,7 +11,8 @@ use self::serenity::{
     Context as SerenityContext, SerenityError,
 };
 use crate::{
-    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
+    commands::summon, errors::CrackedError, messaging::message::CrackedMessage, Context, Data,
+    Error,
 };
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
@@ -21,7 +22,7 @@ use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
 
@@ -30,7 +31,7 @@ pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> 
 
 pub async fn create_response_poise_text(
     ctx: &Context<'_>,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<(), Error> {
     let message_str = format!("{message}");
 
@@ -40,7 +41,7 @@ pub async fn create_response_poise_text(
 pub async fn create_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
@@ -57,7 +58,7 @@ pub async fn create_response_text(
     create_embed_response(http, interaction, embed).await
 }
 
-pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
 
@@ -77,7 +78,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Re
 pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
@@ -205,7 +206,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     tracing::warn!("metadata: {:?}", metadata);
 
-    embed.author(|author| author.name(ParrotMessage::NowPlaying));
+    embed.author(|author| author.name(CrackedMessage::NowPlaying));
     metadata
         .title
         .as_ref()

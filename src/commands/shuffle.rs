@@ -1,6 +1,6 @@
 use crate::{
     handlers::track_end::update_queue_messages,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response, get_interaction},
     Context, Error,
 };
@@ -30,7 +30,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     create_response(
         &ctx.serenity_context().http,
         &mut interaction,
-        ParrotMessage::Shuffle,
+        CrackedMessage::Shuffle,
     )
     .await?;
     update_queue_messages(

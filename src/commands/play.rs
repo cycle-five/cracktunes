@@ -4,7 +4,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
     },
@@ -171,7 +171,7 @@ pub async fn play(
                     .any(|d| compare_domains(d, other));
 
                 if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                    let message = ParrotMessage::PlayDomainBanned {
+                    let message = CrackedMessage::PlayDomainBanned {
                         domain: other.to_string(),
                     };
 
@@ -192,7 +192,7 @@ pub async fn play(
                 || (guild_settings.banned_domains.is_empty()
                     && !guild_settings.allowed_domains.contains("youtube.com"))
             {
-                let message = ParrotMessage::PlayDomainBanned {
+                let message = CrackedMessage::PlayDomainBanned {
                     domain: "youtube.com".to_string(),
                 };
 
@@ -212,7 +212,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    create_response_poise_text(&ctx, ParrotMessage::Search).await?;
+    create_response_poise_text(&ctx, CrackedMessage::Search).await?;
 
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
@@ -436,8 +436,8 @@ pub async fn play(
             }
             _ => {
                 ctx.defer().await?;
-                edit_response_poise(ctx, ParrotMessage::PlayAllFailed).await?;
-                //edit_response(&ctx.http, interaction, ParrotMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                //edit_response(&ctx.http, interaction, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
@@ -479,10 +479,10 @@ pub async fn play(
                         .unwrap()
                         .edit_original_interaction_response(
                             &ctx.serenity_context().http,
-                            |message| message.content(ParrotMessage::PlaylistQueued),
+                            |message| message.content(CrackedMessage::PlaylistQueued),
                         )
                         .await?;
-                    edit_response_poise(ctx, ParrotMessage::PlaylistQueued).await?;
+                    edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
                 }
                 (_, _) => {}
             }
