@@ -76,13 +76,14 @@ docker build -t cracktunes .
 docker run -d --env-file .env cracktunes
 ```
 
-### Objectives
+### Roadmap
 
 ## 0.2.0
 - [x] Play music from YouTube
 - [x] Play music from Spotify (kind of...)
-- [] Play music from HTTP URLs
-- [] Play music from local files
+
+## 0.2.1 (2023/07/02)
+- [x] Play music from local files
 
 ## 0.3.0
 - [] Database Schema
