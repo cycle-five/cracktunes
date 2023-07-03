@@ -311,9 +311,15 @@ pub async fn play(
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::error!("Mode::Next, QueryType::KeywordList");
+                let q_not_empty = if call.clone().lock().await.queue().is_empty() {
+                    0
+                } else {
+                    1
+                };
                 for (idx, keywords) in keywords_list.into_iter().enumerate() {
                     let queue =
-                        insert_track(&call, &QueryType::Keywords(keywords), idx + 1).await?;
+                        insert_track(&call, &QueryType::Keywords(keywords), idx + q_not_empty)
+                            .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         &ctx.serenity_context().data,
@@ -616,7 +622,7 @@ async fn insert_track(
     }
 
     verify(
-        idx > 0 && idx <= queue_size,
+        idx > 0 && idx <= queue_size + 1,
         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
