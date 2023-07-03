@@ -75,6 +75,11 @@ impl EventHandler for SerenityHandler {
     }
 
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
+        tracing::error!(
+            "{} {}",
+            "new member: ".white(),
+            new_member.to_string().white()
+        );
         let guild_id = new_member.guild_id;
         let guild_settings = {
             let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
@@ -82,28 +87,48 @@ impl EventHandler for SerenityHandler {
             guild_settings.cloned()
         };
 
-        let guild_settings = match guild_settings {
-            Some(guild_settings) => guild_settings,
+        let (_guild_settings, welcome) = match guild_settings {
+            Some(guild_settings) => match guild_settings.clone().welcome_settings {
+                None => return,
+                Some(welcome_settings) => (guild_settings, welcome_settings),
+            },
             None => {
                 tracing::error!("Guild settings not found for guild {}", guild_id);
                 return;
             }
         };
 
-        if guild_settings.welcome_settings.is_some() {
-            //welcome_action(&ctx, new_member, guild_settings).await;
-            let welcome = guild_settings.welcome_settings.unwrap();
-            let channel = ChannelId(welcome.channel_id.unwrap());
-            let _ = channel
-                .send_message(&ctx.http, |m| {
-                    m.content(format!(
-                        "{} {}",
-                        new_member.user.mention(),
-                        welcome.message.unwrap()
-                    ))
-                })
-                .await;
-        }
+        match (welcome.message, welcome.channel_id) {
+            (None, _) => {}
+            (_, None) => {}
+            (Some(message), Some(channel)) => {
+                let channel = ChannelId(channel);
+                let _ = channel
+                    .send_message(&ctx.http, |m| {
+                        if message.contains("{user}") {
+                            let new_msg = message
+                                .replace("{user}", &new_member.user.mention().to_string().as_str());
+                            m.content(new_msg)
+                        } else {
+                            m.content(format_args!(
+                                "{} {user}",
+                                message,
+                                user = new_member.user.mention()
+                            ))
+                        }
+                    })
+                    .await;
+            }
+        };
+
+        match welcome.auto_role {
+            None => {}
+            Some(role_id) => {
+                let mut new_member = new_member;
+                let role_id = serenity::RoleId(role_id);
+                let _ = new_member.add_role(&ctx.http, role_id).await;
+            }
+        };
     }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {

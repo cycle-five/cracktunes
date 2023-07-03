@@ -118,8 +118,6 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     let options = poise::FrameworkOptions::<_, Error> {
         commands: vec![
             commands::admin(),
-            // commands::authorize(),
-            // commands::deauthorize(),
             commands::autopause(),
             commands::boop(),
             commands::coinflip(),

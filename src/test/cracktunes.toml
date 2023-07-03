@@ -1,19 +1,42 @@
-video_status_poll_interval = 30
+video_status_poll_interval = 120
 sys_log_channel_id = 0
-self_deafen = true
 authorized_users = [ ]
-volume = 0.5
-guild_settings_map = [ ]
-guild_cache = [ ]
+self_deafen = true
+volume = 0.3
 
 [[cam_kick]]
-cammed_down_timeout = 60
+cammed_down_timeout = 0
 guild_id = 0
-channel_id = 10
+channel_id = 0
 dc_message = "You have been disconnected from the voice channel for not having a camera on."
 
 [[cam_kick]]
-cammed_down_timeout = 60
-guild_id = 0
-channel_id = 10
+cammed_down_timeout = 0
+guild_id = 1
+channel_id = 0
 dc_message = "You have been disconnected from the voice channel for not having a camera on."
+
+[[guild_settings_map]]
+guild_id = 0
+authorized_users = [ 0 ]
+allowed_domains = [ "youtube.com" ]
+banned_domains = [ ]
+autopause = false
+self_deafen = true
+volume = 0.3
+timeout = 0
+[guild_settings_map.welcome_settings]
+channel_id = 0 
+autorole = 0 
+
+[[guild_settings_map]]
+guild_id = 1
+authorized_users = [ 0 ]
+allowed_domains = [ "youtube.com" ]
+banned_domains = [ ]
+autopause = false
+self_deafen = true
+volume = 0.3
+timeout = 0
+
+[[guild_cache]]
