@@ -4,6 +4,7 @@ use self::serenity::{
     model::{
         application::interaction::{
             application_command::ApplicationCommandInteraction, InteractionResponseType,
+            MessageInteraction,
         },
         channel::Message,
     },
@@ -160,6 +161,23 @@ pub async fn edit_embed_response(
         .map_err(Into::into)
 }
 
+pub enum ApplicationCommandOrMessageInteraction {
+    ApplicationCommand(ApplicationCommandInteraction),
+    Message(MessageInteraction),
+}
+
+impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
+    fn from(message: MessageInteraction) -> Self {
+        Self::Message(message)
+    }
+}
+
+impl From<ApplicationCommandInteraction> for ApplicationCommandOrMessageInteraction {
+    fn from(message: ApplicationCommandInteraction) -> Self {
+        Self::ApplicationCommand(message)
+    }
+}
+
 pub async fn edit_embed_response_poise(
     ctx: Context<'_>,
     embed: CreateEmbed,
@@ -171,6 +189,12 @@ pub async fn edit_embed_response_poise(
             })
             .await
             .map_err(Into::into),
+        // Some(interaction: MessageInteraction) => interaction
+        //     .edit(&ctx.serenity_context().http, |message| {
+        //         message.content(" ").add_embed(embed)
+        //     })
+        //     .await
+        //     .map_err(Into::into),
         None => Err(Box::new(SerenityError::Other("No interaction found"))),
     }
 }
@@ -179,9 +203,18 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
     let metadata = track.metadata().clone();
 
+    tracing::warn!("metadata: {:?}", metadata);
+
     embed.author(|author| author.name(ParrotMessage::NowPlaying));
-    embed.title(metadata.title.unwrap());
-    embed.url(metadata.source_url.as_ref().unwrap());
+    metadata
+        .title
+        .as_ref()
+        .map(|title| embed.title(title.clone()));
+
+    metadata
+        .source_url
+        .as_ref()
+        .map(|source_url| embed.url(source_url.clone()));
 
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
@@ -193,18 +226,32 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
         None => embed.field("Channel", ">>> N/A", true),
     };
 
-    embed.thumbnail(&metadata.thumbnail.unwrap());
+    metadata
+        .thumbnail
+        .as_ref()
+        .map(|thumbnail| embed.thumbnail(thumbnail));
 
-    let source_url = metadata.source_url.as_ref().unwrap();
+    let source_url = metadata.source_url.unwrap_or_else(|| {
+        tracing::warn!("No source url found for track: {:?}", track);
+        "".to_string()
+    });
 
-    let (footer_text, footer_icon_url) = get_footer_info(source_url);
+    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
     embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
 
     embed
 }
 
 pub fn get_footer_info(url: &str) -> (String, String) {
-    let url_data = Url::parse(url).unwrap();
+    let url_data = match Url::parse(url) {
+        Ok(url_data) => url_data,
+        Err(_) => {
+            return (
+                "Streaming via unknown".to_string(),
+                "https://www.google.com/s2/favicons?domain=unknown".to_string(),
+            )
+        }
+    };
     let domain = url_data.host_str().unwrap();
 
     // remove www prefix because it looks ugly
@@ -257,49 +304,46 @@ pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction
             ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => Some(x.clone()),
             ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
-        Context::Prefix(_) => None,
+        Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
+    }
+}
+
+pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => {
+                Some(x.clone().into())
+            }
+            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        },
+        Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
     }
 }
 
 pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
     match ctx {
-        Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.guild_id,
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.guild_id,
-        },
-        Context::Prefix(pre_ctx) => pre_ctx.msg.guild_id,
+        Context::Application(ctx) => ctx.interaction.guild_id(),
+        Context::Prefix(ctx) => ctx.msg.guild_id,
     }
 }
 
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
-        Context::Application(app_ctx) => match app_ctx.interaction {
+        Context::Application(ctx) => match ctx.interaction {
             ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
         },
-        Context::Prefix(pre_ctx) => pre_ctx.msg.author.id,
+        Context::Prefix(ctx) => ctx.msg.author.id,
     }
 }
 
 pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
     match ctx {
-        Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.channel_id,
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
-        },
-        Context::Prefix(pre_ctx) => pre_ctx.msg.channel_id,
+        Context::Application(ctx) => ctx.interaction.channel_id(),
+        Context::Prefix(ctx) => ctx.msg.channel_id,
     }
 }
 
-// pub fn reply_poise(ctx: &Context, content: String) -> Result<Message, Error> {
-//     //ctx.reply(content)
-//     match ctx {
-//         Context::Application(app_ctx) => match app_ctx.interaction {
-//             ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.channel_id,
-//         },
-//         Context::Prefix(pre_ctx) => pre_ctx.msg.reply_mention(ctx.http(), content),
-//     }
-// }
 pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Arc<Data>, Error>> {
     match ctx {
         Context::Application(prefix_ctx) => {

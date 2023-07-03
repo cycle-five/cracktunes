@@ -13,13 +13,20 @@ use std::{
 
 use crate::errors::CrackedError;
 
-const DEFAULT_SETTINGS_PATH: &str = "data/settings";
-const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-const DEFAULT_VOLUME_LEVEL: f32 = 0.3;
+pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
+pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
+pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 0.3;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct WelcomeSettings {
+    pub channel_id: Option<u64>,
+    pub message: Option<String>,
+    pub auto_role: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
@@ -32,6 +39,7 @@ pub struct GuildSettings {
     pub volume: f32,
     pub self_deafen: bool,
     pub timeout: u32,
+    pub welcome_settings: Option<WelcomeSettings>,
 }
 
 impl GuildSettings {
@@ -50,6 +58,7 @@ impl GuildSettings {
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
             timeout: 5 * 60,
+            welcome_settings: None,
         }
     }
 

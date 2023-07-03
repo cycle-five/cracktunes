@@ -1,4 +1,4 @@
-use crate::{errors::CrackedError, Context, Error};
+use crate::{errors::CrackedError, utils::check_reply, Context, Error};
 
 /// Admin commands.
 #[poise::command(
@@ -32,6 +32,12 @@ pub async fn authorize(
         .authorized_users
         .insert(id);
 
+    //ctx.send("User authorized").await;
+    check_reply(
+        ctx.send(|m| m.content("User authorized.").reply(true))
+            .await,
+    );
+
     Ok(())
 }
 
@@ -54,6 +60,10 @@ pub async fn deauthorize(
         .remove(&id);
 
     if res {
+        check_reply(
+            ctx.send(|m| m.content("User authorized.").reply(true))
+                .await,
+        );
         Ok(())
     } else {
         Err(CrackedError::Other("User did not exist in authorized list").into())

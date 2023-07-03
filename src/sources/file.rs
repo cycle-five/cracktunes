@@ -45,12 +45,15 @@ where
 {
     async fn call_restart(&mut self, time: Option<Duration>) -> SongbirdResult<Input> {
         // let (yt, metadata) = ytdl(self.uri.as_ref()).await?;
+        tracing::info!("Restarting file source: {}", self.uri.as_ref());
         let url = self.uri.as_ref();
 
         let Some(time) = time else {
             //attachment::download().await;
             //return ffmpeg::from_attachment(attachment, Metadata::default(), &[]).await;
-            return ffmpeg::from_uri(url, Metadata::default(), &[]).await.map_err(|e: Error| Into::<CrackedError>::into(e).into())
+            let metadata = _file_metadata(url).await?;
+            tracing::warn!("metadata: {:?}", metadata);
+            return ffmpeg::from_uri(url, metadata, &[]).await.map_err(|e: Error| Into::<CrackedError>::into(e).into())
         };
 
         let ts = format!("{:.3}", time.as_secs_f64());
@@ -68,13 +71,29 @@ where
 }
 
 async fn _file_metadata(url: &str) -> SongbirdResult<Metadata> {
-    let url = Url::parse(url).unwrap();
-    let res = ffprobe::ffprobe_async_url(url).await.unwrap();
+    let url_parsed = Url::parse(url).unwrap();
+    let res = ffprobe::ffprobe_async_url(url_parsed.clone())
+        .await
+        .unwrap();
 
     let asdf = serde_json::to_string(&res).unwrap();
     let json_res = asdf.as_str();
 
     let val: Value = serde_json::from_str(json_res).unwrap();
+    tracing::warn!("ffprobe result: {:?}", val);
 
-    Ok(Metadata::from_ffprobe_json(&val))
+    let mut metadata = Metadata::from_ffprobe_json(&val);
+    tracing::warn!("metadata: {:?}", metadata);
+
+    metadata.source_url = Some(url.to_string());
+    metadata.title = Some(
+        url_parsed
+            .path_segments()
+            .unwrap()
+            .last()
+            .unwrap()
+            .to_string(),
+    );
+
+    Ok(metadata)
 }

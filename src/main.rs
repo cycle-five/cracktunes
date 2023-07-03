@@ -1,3 +1,4 @@
+use self::serenity::GatewayIntents;
 use cracktunes::{
     commands,
     guild::{
@@ -117,8 +118,8 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     let options = poise::FrameworkOptions::<_, Error> {
         commands: vec![
             commands::admin(),
-            commands::authorize(),
-            commands::deauthorize(),
+            // commands::authorize(),
+            // commands::deauthorize(),
             commands::autopause(),
             commands::boop(),
             commands::coinflip(),
@@ -167,7 +168,10 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         },
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
-            //Box::pin(async move {Ok(true)})
+            // Box::pin(async move {
+            //     // let guild_id = ctx.guild_id().unwrap_or_default();
+            //     Ok(true)
+            // })
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
                 if ctx.data().bot_settings.authorized_users.is_empty()
@@ -206,7 +210,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
                 tracing::info!("Got an event in event handler: {:?}", event.name());
-                Ok(())
+                match event.name() {
+                    "VoiceStateUpdate" => Ok(()),
+                    "GuildMemberAddition" => Ok(()),
+                    _ => Ok(()),
+                }
             })
         },
         ..Default::default()
@@ -263,6 +271,10 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         })
         .options(options)
         .intents(
-            serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
+            GatewayIntents::non_privileged()
+                | GatewayIntents::GUILD_MESSAGES
+                | GatewayIntents::DIRECT_MESSAGES
+                | GatewayIntents::GUILDS
+                | GatewayIntents::MESSAGE_CONTENT,
         )
 }

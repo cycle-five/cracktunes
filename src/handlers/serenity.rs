@@ -13,8 +13,10 @@ use crate::{
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
 };
-use chrono::offset::Utc;
-use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, SerenityError, UserId};
+use colored::Colorize;
+use poise::serenity_prelude::{
+    self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc, Mutex},
@@ -24,10 +26,8 @@ use tokio::time::{Duration, Instant};
 pub struct SerenityHandler {
     pub data: Arc<Data>,
     pub is_loop_running: std::sync::atomic::AtomicBool,
-    // pub config: Arc<BotConfig>,
 }
 
-use poise::serenity_prelude::Mentionable;
 #[derive(Copy, Clone, Debug)]
 pub struct MyVoiceUserInfo {
     pub user_id: UserId,
@@ -48,12 +48,10 @@ impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
+        ctx.set_activity(Activity::listening("/play")).await;
+
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth().await;
-
-        // creates the global application commands
-        //self.create_commands(&ctx).await;
-        //self.data.bot_settings = BotConfig::from_config_file("cracktunes.json").unwrap();
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
@@ -76,40 +74,59 @@ impl EventHandler for SerenityHandler {
             });
     }
 
-    // async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-    //     let Interaction::ApplicationCommand(mut command) = interaction else {
-    //         return;
-    //     };
+    async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
+        let guild_id = new_member.guild_id;
+        let guild_settings = {
+            let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+            let guild_settings = guild_settings_map.get_mut(guild_id.as_u64());
+            guild_settings.cloned()
+        };
 
-    //     if let Err(err) = self.run_command(&ctx, &mut command).await {
-    //         self.handle_error(&ctx, &mut command, CrackedError::Poise(err))
-    //             .await
-    //     }
-    // }
+        let guild_settings = match guild_settings {
+            Some(guild_settings) => guild_settings,
+            None => {
+                tracing::error!("Guild settings not found for guild {}", guild_id);
+                return;
+            }
+        };
+
+        if guild_settings.welcome_settings.is_some() {
+            //welcome_action(&ctx, new_member, guild_settings).await;
+            let welcome = guild_settings.welcome_settings.unwrap();
+            let channel = ChannelId(welcome.channel_id.unwrap());
+            let _ = channel
+                .send_message(&ctx.http, |m| {
+                    m.content(format!(
+                        "{} {}",
+                        new_member.user.mention(),
+                        welcome.message.unwrap()
+                    ))
+                })
+                .await;
+        }
+    }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
-        // let user_id = msg.author.id;
         let guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
                 GuildId(0)
-                // return
             }
         };
 
-        if guild_id.0 != 0 {
+        if *guild_id.as_u64() != 0 {
             let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
             let name = msg.author.name.clone();
             let guild_name = guild.name;
             let content = msg.content.clone();
             let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
             tracing::info!(
-                "Message: {} / {} / {} / {}",
-                name,
-                guild_name,
-                channel_name,
-                content
+                "Message: {} {} {} {}",
+                name.purple(),
+                guild_name.purple(),
+                channel_name.purple(),
+                content.purple()
             );
         }
 
@@ -144,7 +161,6 @@ impl EventHandler for SerenityHandler {
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
-
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
@@ -192,15 +208,6 @@ impl EventHandler for SerenityHandler {
                     }
                 });
             }
-
-            // And of course, we can run more than one thread at different timings.
-            let ctx2 = Arc::clone(&ctx);
-            tokio::spawn(async move {
-                loop {
-                    set_status_to_current_time(Arc::clone(&ctx2)).await;
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                }
-            });
 
             let ctx3 = Arc::clone(&ctx);
 
@@ -319,13 +326,6 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     }
 }
 
-async fn set_status_to_current_time(ctx: Arc<SerenityContext>) {
-    let current_time = Utc::now();
-    let formatted_time = current_time.to_rfc2822();
-
-    ctx.set_activity(Activity::playing(&formatted_time)).await;
-}
-
 async fn check_camera_status(
     ctx: Arc<SerenityContext>,
     guild_id: GuildId,
@@ -424,7 +424,11 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.user_id) {
-                    tracing::error!("Status checking {:?}", status);
+                    tracing::warn!(
+                        "{} {}",
+                        "Status checking".blue(),
+                        format!("{:?}", status).blue()
+                    );
                     if let Some(kick_conf) = channels.get(&status.channel_id.0) {
                         if status.camera_status != cam.camera_status {
                             tracing::info!(

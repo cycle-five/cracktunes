@@ -1,8 +1,8 @@
-use self::serenity::{builder::CreateEmbed, Mutex};
+use self::serenity::builder::CreateEmbed;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     messaging::message::ParrotMessage,
     messaging::messages::{
@@ -20,9 +20,11 @@ use crate::{
     },
     Context, Error,
 };
-use poise::serenity_prelude::{self as serenity};
+use colored::Colorize;
+use poise::serenity_prelude as serenity;
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 use url::Url;
 
 #[derive(Clone, Copy, Debug)]
@@ -70,9 +72,9 @@ pub async fn play(
     #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
-    msg: Option<String>,
+    query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    tracing::info!(target: "PLAY", "{}", msg.as_deref().unwrap_or("nothing"));
+    let msg = query_or_url.clone();
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -134,7 +136,6 @@ pub async fn play(
         }
     };
     // let call = manager.get(guild_id).unwrap();
-
     // determine whether this is a link or a query string
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
@@ -145,14 +146,14 @@ pub async fn play(
                 Some(Spotify::extract(spotify, url).await?)
             }
             Some("cdn.discordapp.com") => {
+                tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
                 //ffmpeg::from_attachment(file.unwrap(), Metadata::default(), &[])
             }
             Some(other) => {
-                let mut data = ctx.serenity_context().data.write().await;
-                let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+                let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings
-                    .entry(guild_id)
+                    .entry(*guild_id.as_u64())
                     .or_insert_with(|| GuildSettings::new(guild_id));
 
                 let is_allowed = guild_settings
@@ -178,10 +179,9 @@ pub async fn play(
             None => None,
         },
         Err(_) => {
-            let mut data = ctx.serenity_context().data.write().await;
-            let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+            let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings
-                .entry(guild_id)
+                .entry(*guild_id.as_u64())
                 .or_insert_with(|| GuildSettings::new(guild_id));
 
             if guild_settings.banned_domains.contains("youtube.com")
@@ -204,7 +204,7 @@ pub async fn play(
         CrackedError::Other("Something went wrong while parsing your query!"),
     )?;
 
-    tracing::error!("query_type: {:?}", query_type);
+    tracing::warn!("query_type: {:?}", query_type);
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
@@ -434,10 +434,9 @@ pub async fn play(
     }
     let handler = call.lock().await;
 
-    let mut data = ctx.serenity_context().data.write().await;
-    let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = settings
-        .entry(guild_id)
+        .entry(*guild_id.as_u64())
         .or_insert_with(|| GuildSettings::new(guild_id));
 
     // refetch the queue after modification
@@ -445,7 +444,6 @@ pub async fn play(
     queue
         .iter()
         .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
-    drop(data);
     drop(handler);
 
     match queue.len().cmp(&1) {
@@ -559,17 +557,26 @@ async fn create_queued_embed(
 
 async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedError> {
     match query_type {
-        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true)
-            .await
-            .map_err(|e| e.into()),
+        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true).await.map_err(|e| {
+            tracing::error!("error: {}", e);
+            e.into()
+        }),
 
-        QueryType::Keywords(query) => YouTubeRestartable::ytdl_search(query, true)
-            .await
-            .map_err(|e| e.into()),
+        QueryType::Keywords(query) => {
+            YouTubeRestartable::ytdl_search(query, true)
+                .await
+                .map_err(|e| {
+                    tracing::error!("error: {}", e);
+                    e.into()
+                })
+        }
 
         QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
             .await
-            .map_err(CrackedError::TrackFail),
+            .map_err(|e| {
+                tracing::error!("error: {}", e);
+                e.into()
+            }),
         _ => unreachable!(),
     }
 }

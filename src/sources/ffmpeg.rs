@@ -5,6 +5,9 @@ use std::{
     io::Write,
     process::{Child, Command, Stdio},
 };
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use url::Url;
 
 pub async fn ffmpeg(
     mut source: Child,
@@ -30,6 +33,8 @@ pub async fn ffmpeg(
         .take()
         .ok_or(songbird::input::error::Error::Stdout)?;
 
+    tracing::warn!("taken_stdout: {:?}", taken_stdout);
+
     let ffmpeg = Command::new("ffmpeg")
         .args(pre_args)
         .args(ffmpeg_args)
@@ -37,6 +42,8 @@ pub async fn ffmpeg(
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
         .spawn()?;
+
+    tracing::warn!("ffmpeg: {:?}", ffmpeg);
 
     let reader = Reader::from(vec![source, ffmpeg]);
 
@@ -47,6 +54,8 @@ pub async fn ffmpeg(
         Container::Raw,
         Some(metadata),
     );
+
+    tracing::warn!("input: {:?}", input);
 
     Ok(input)
 }
@@ -67,7 +76,31 @@ pub async fn from_attachment(
 
 pub async fn from_uri(uri: &str, metadata: Metadata, pre_args: &[&str]) -> Result<Input, Error> {
     let data = download(uri).await.unwrap();
-    from_bytes(data, metadata, pre_args).await
+
+    tracing::warn!("Downloaded {} bytes from {}", data.len(), uri);
+
+    let url = Url::parse(uri).unwrap();
+    let file_name = url.path_segments().unwrap().last().unwrap();
+
+    tracing::warn!("File name: {}", file_name);
+
+    File::create(file_name)
+        .await
+        .unwrap()
+        .write_all(&data)
+        .await
+        .unwrap();
+
+    let child = Command::new("cat")
+        .arg(file_name)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    tracing::warn!("Spawned cat");
+    ffmpeg(child, metadata, pre_args).await
 }
 
 pub async fn from_bytes(

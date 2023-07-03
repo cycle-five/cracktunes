@@ -8,14 +8,14 @@ pub async fn chatgpt(
     ctx: Context<'_>,
     #[rest]
     #[description = "Query text to send to the model."]
-    msg: String,
+    query: String,
 ) -> Result<(), Error> {
     tracing::info!(target: "commands", "chatgpt called");
     let key = std::env::var("OPENAI_KEY").expect("Expected an OpenAI key in the environment");
 
     ctx.defer().await?;
 
-    let content = msg;
+    let content = query;
     tracing::info!("{:?}", content);
     // Creating a new ChatGPT client.
     // Note that it requires an API key, and uses
