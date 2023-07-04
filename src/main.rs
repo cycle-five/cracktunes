@@ -218,13 +218,25 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         skip_checks_for_owners: false,
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
-                tracing::info!("Got an event in event handler: {:?}", event.name());
                 match event {
+                    poise::Event::PresenceUpdate { new_data } => {
+                        let _ = new_data;
+                        tracing::trace!("Got a presence update: {:?}", new_data);
+                        Ok(())
+                    }
+                    poise::Event::PresenceReplace { new_presences } => {
+                        let _ = new_presences;
+                        tracing::trace!("Got a presence replace");
+                        Ok(())
+                    }
                     poise::Event::GuildMemberAddition { new_member } => {
                         tracing::info!("Got a new member: {:?}", new_member);
                         Ok(())
                     }
-                    _ => Ok(()),
+                    _ => {
+                        tracing::info!("Got an event in event handler: {:?}", event.name());
+                        Ok(())
+                    }
                 }
             })
         },

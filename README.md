@@ -91,6 +91,7 @@ docker run -d --env-file .env cracktunes
 
 ## 0.2.2 (in progress)
 - [] Welcome Actions
+- [x] Play on multiple servers at once
 
 ## 0.2.3
 - [] Reminders

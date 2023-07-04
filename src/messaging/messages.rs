@@ -22,6 +22,7 @@ pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any vo
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
 pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
 pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";
+pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const IDLE_ALERT: &str = "I've been idle for a while, so I'll leave for now to save resources.\nFeel free to summon me back any time!";
 pub const JOINING: &str = "Joining";
 pub const LEAVING: &str = "👋 See you soon!";

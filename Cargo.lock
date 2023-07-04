@@ -389,6 +389,7 @@ dependencies = [
  "colored",
  "config-file",
  "ctrlc",
+ "date_time_parser",
  "dotenv",
  "ffprobe",
  "lazy_static",
@@ -503,6 +504,16 @@ dependencies = [
  "lock_api",
  "parking_lot_core",
  "serde",
+]
+
+[[package]]
+name = "date_time_parser"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f86cad3e692d9b556cb8b64357f50f3b1b8411f3c8999f0bb94523991b5ded6c"
+dependencies = [
+ "chrono",
+ "regex",
 ]
 
 [[package]]

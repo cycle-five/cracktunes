@@ -1,8 +1,8 @@
 use self::serenity::{model::mention::Mention, SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
-    FAIL_NO_VOICE_CONNECTION, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, PLAYLIST_FAILED,
-    QUEUE_IS_EMPTY, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
+    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING,
+    PLAYLIST_FAILED, QUEUE_IS_EMPTY, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
 };
 use crate::Error;
 use poise::serenity_prelude as serenity;
@@ -24,6 +24,7 @@ pub enum CrackedError {
     AuthorNotFound,
     NothingPlaying,
     PlayListFail,
+    ParseTimeFail,
     TrackFail(InputError),
     AlreadyConnected(Mention),
     Serenity(SerenityError),
@@ -64,6 +65,7 @@ impl Display for CrackedError {
             }
             Self::NothingPlaying => f.write_str(NOTHING_IS_PLAYING),
             Self::PlayListFail => f.write_str(PLAYLIST_FAILED),
+            Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),
             Self::TrackFail(err) => match err {
                 InputError::Json {
                     error: _,

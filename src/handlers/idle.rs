@@ -20,6 +20,7 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::error!("idle handler fired");
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
