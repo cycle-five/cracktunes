@@ -59,7 +59,7 @@ pub async fn summon(
         let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
 
         let _ = guild_settings_map
-            .get(&guild_id.as_u64())
+            .get(guild_id.as_u64())
             .map(|guild_settings| {
                 let timeout = guild_settings.timeout;
                 if timeout > 0 {
