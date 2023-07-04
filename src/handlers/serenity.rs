@@ -38,11 +38,6 @@ pub struct MyVoiceUserInfo {
     pub time_last_cam_change: Instant,
 }
 
-struct ChanCacheValue {
-    #[allow(dead_code)]
-    pub name: String,
-}
-
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
@@ -192,8 +187,6 @@ impl EventHandler for SerenityHandler {
     // case you have for this.
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
-
-        let _channel_cache = HashMap::<u64, ChanCacheValue>::new();
 
         for guildid in guilds.iter() {
             tracing::info!("Guild: {:?}", guildid);

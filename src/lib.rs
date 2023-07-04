@@ -1,3 +1,4 @@
+use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -65,6 +66,7 @@ pub struct BotConfig {
     pub self_deafen: bool,
     pub volume: f32,
     pub guild_settings_map: Vec<guild::settings::GuildSettings>,
+    pub prefix: Vec<u8>,
 }
 
 impl Default for BotConfig {
@@ -77,6 +79,7 @@ impl Default for BotConfig {
             self_deafen: true,
             volume: 0.2,
             guild_settings_map: vec![],
+            prefix: DEFAULT_PREFIX.to_string().into_bytes(),
         }
     }
 }
@@ -100,7 +103,17 @@ impl Display for BotConfig {
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
         ));
+        result.push_str(&format!(
+            "prefix: {}",
+            String::from_utf8(self.prefix.clone()).unwrap()
+        ));
         write!(f, "{}", result)
+    }
+}
+
+impl BotConfig {
+    pub fn get_prefix(&self) -> String {
+        String::from_utf8(self.prefix.clone()).unwrap()
     }
 }
 

@@ -299,6 +299,12 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     }
 }
 
+pub fn check_interaction(result: Result<(), Error>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
+}
+
 pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {

@@ -16,6 +16,7 @@ use crate::errors::CrackedError;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 0.3;
+pub(crate) const DEFAULT_PREFIX: &str = "rs!";
 
 lazy_static! {
     static ref SETTINGS_PATH: String =

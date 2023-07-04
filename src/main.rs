@@ -6,7 +6,7 @@ use cracktunes::{
         settings::{GuildSettings, GuildSettingsMap},
     },
     handlers::SerenityHandler,
-    utils::{create_response_text, get_interaction},
+    utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
@@ -95,13 +95,24 @@ async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
-            let mut interaction = get_interaction(ctx).unwrap();
-            let _ = create_response_text(
-                &ctx.serenity_context().http,
-                &mut interaction,
-                &format!("{error}"),
-            )
-            .await;
+            match get_interaction(ctx) {
+                Some(mut interaction) => {
+                    check_interaction(
+                        create_response_text(
+                            &ctx.serenity_context().http,
+                            &mut interaction,
+                            &format!("{error}"),
+                        )
+                        .await,
+                    );
+                }
+                None => {
+                    check_reply(
+                        ctx.send(|builder| builder.content(&format!("{error}")))
+                            .await,
+                    );
+                }
+            }
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {
@@ -142,7 +153,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             commands::queue(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
-            prefix: Some("~".into()),
+            prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
             additional_prefixes: vec![
                 poise::Prefix::Literal("hey bot"),
@@ -208,9 +219,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
                 tracing::info!("Got an event in event handler: {:?}", event.name());
-                match event.name() {
-                    "VoiceStateUpdate" => Ok(()),
-                    "GuildMemberAddition" => Ok(()),
+                match event {
+                    poise::Event::GuildMemberAddition { new_member } => {
+                        tracing::info!("Got a new member: {:?}", new_member);
+                        Ok(())
+                    }
                     _ => Ok(()),
                 }
             })
@@ -270,9 +283,15 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         .options(options)
         .intents(
             GatewayIntents::non_privileged()
+                | GatewayIntents::GUILD_MEMBERS
                 | GatewayIntents::GUILD_MESSAGES
+                | GatewayIntents::GUILD_MESSAGE_REACTIONS
                 | GatewayIntents::DIRECT_MESSAGES
+                | GatewayIntents::DIRECT_MESSAGE_TYPING
+                | GatewayIntents::DIRECT_MESSAGE_REACTIONS
                 | GatewayIntents::GUILDS
+                | GatewayIntents::GUILD_VOICE_STATES
+                | GatewayIntents::GUILD_PRESENCES
                 | GatewayIntents::MESSAGE_CONTENT,
         )
 }
