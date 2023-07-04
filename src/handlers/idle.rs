@@ -20,7 +20,6 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        tracing::error!("idle handler fired");
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
@@ -37,7 +36,7 @@ impl EventHandler for IdleHandler {
             return None;
         }
 
-        if self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
+        if self.limit > 0 && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
             let guild_id = self.guild_id?;
 
             if self.manager.remove(guild_id).await.is_ok() {
