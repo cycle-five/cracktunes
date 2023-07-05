@@ -74,7 +74,21 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    let msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+    let is_prefix = ctx.prefix() != "/";
+    tracing::info!(
+        "executing play as a {} command.",
+        if is_prefix { "prefix" } else { "slash" },
+    );
+
+    let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+
+    if is_prefix {
+        msg = Some(
+            mode.clone()
+                .map(|s| s.replace("query_or_url:", ""))
+                .unwrap_or("".to_string()),
+        );
+    }
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -83,17 +97,22 @@ pub async fn play(
         return Ok(());
     }
 
-    let mode = match mode
-        .map(|s| s.replace("query_or_url:", ""))
-        .unwrap_or("next".to_string())
-        .as_str()
-    {
-        "next" => Mode::Next,
-        "all" => Mode::All,
-        "reverse" => Mode::Reverse,
-        "shuffle" => Mode::Shuffle,
-        "jump" => Mode::Jump,
-        _ => Mode::End,
+    let mode = if is_prefix {
+        Mode::End
+    } else {
+        match mode
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or("next".to_string())
+            .as_str()
+        {
+            "next" => Mode::Next,
+            "all" => Mode::All,
+            "reverse" => Mode::Reverse,
+            "shuffle" => Mode::Shuffle,
+            "jump" => Mode::Jump,
+            _ => Mode::End,
+        }
     };
 
     let url = match file.clone() {
@@ -475,14 +494,19 @@ pub async fn play(
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
                     //FIXME: Also do this without application command
-                    get_interaction(ctx)
-                        .unwrap()
-                        .edit_original_interaction_response(
-                            &ctx.serenity_context().http,
-                            |message| message.content(CrackedMessage::PlaylistQueued),
-                        )
-                        .await?;
-                    edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
+                    match get_interaction(ctx) {
+                        Some(interaction) => {
+                            interaction
+                                .edit_original_interaction_response(
+                                    &ctx.serenity_context().http,
+                                    |message| message.content(CrackedMessage::PlaylistQueued),
+                                )
+                                .await?;
+                        }
+                        None => {
+                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
+                        }
+                    }
                 }
                 (_, _) => {}
             }
