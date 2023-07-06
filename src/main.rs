@@ -155,10 +155,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
-            additional_prefixes: vec![
-                poise::Prefix::Literal("hey bot"),
-                poise::Prefix::Literal("hey bot,"),
-            ],
+            additional_prefixes: vec![poise::Prefix::Literal("rs!")],
             ..Default::default()
         },
         /// The global error handler for all error cases that may occur
@@ -208,7 +205,8 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                         },
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
-                            Ok(guild_settings.authorized_users.contains(&user_id))
+                            Ok(guild_settings.authorized_users.is_empty()
+                                || guild_settings.authorized_users.contains(&user_id))
                         },
                     )
             })
@@ -285,9 +283,9 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             var("DISCORD_TOKEN")
                 .expect("Missing `DISCORD_TOKEN` env var, see README for more information."),
         )
-        .setup(move |ctx, _ready, framework| {
+        .setup(move |ctx, ready, framework| {
             Box::pin(async move {
-                tracing::info!("Logged in as {}", _ready.user.name);
+                tracing::info!("Logged in as {}", ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(setup_data)
             })

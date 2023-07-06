@@ -43,7 +43,11 @@ impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
-        ctx.set_activity(Activity::listening("/play")).await;
+        ctx.set_activity(Activity::listening(format!(
+            "{}",
+            self.data.bot_settings.prefix
+        )))
+        .await;
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth().await;
