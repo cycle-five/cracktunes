@@ -44,7 +44,7 @@ impl EventHandler for SerenityHandler {
         tracing::info!("{} is connected!", ready.user.name);
 
         ctx.set_activity(Activity::listening(format!(
-            "{}",
+            "{}play",
             self.data.bot_settings.prefix
         )))
         .await;
@@ -106,7 +106,7 @@ impl EventHandler for SerenityHandler {
             (_, None) => {}
             (Some(message), Some(channel)) => {
                 let channel = ChannelId(channel);
-                let _ = channel
+                let x = channel
                     .send_message(&ctx.http, |m| {
                         if message.contains("{user}") {
                             let new_msg = message
@@ -121,16 +121,19 @@ impl EventHandler for SerenityHandler {
                         }
                     })
                     .await;
+                tracing::error!("x: {:?}", x.unwrap());
             }
         };
 
         match welcome.auto_role {
-            None => {}
             Some(role_id) => {
+                tracing::warn!("role_id: {}", role_id);
                 let mut new_member = new_member;
                 let role_id = serenity::RoleId(role_id);
-                let _ = new_member.add_role(&ctx.http, role_id).await;
+                let res = new_member.add_role(&ctx.http, role_id).await;
+                res.unwrap();
             }
+            None => {}
         };
     }
 
@@ -149,13 +152,20 @@ impl EventHandler for SerenityHandler {
             let guild_name = guild.name;
             let content = msg.content.clone();
             let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
+
             tracing::info!(
                 "Message: {} {} {} {}",
                 name.purple(),
                 guild_name.purple(),
                 channel_name.purple(),
-                content.purple()
+                content.purple(),
             );
+            msg.embeds.iter().for_each(|x| {
+                tracing::info!(
+                    "Embed: {:?}",
+                    x.description.as_ref().unwrap_or(&String::new())
+                );
+            });
         }
 
         let serde_msg = serde_json::to_string(&msg).unwrap();
@@ -168,6 +178,7 @@ impl EventHandler for SerenityHandler {
         _old: Option<VoiceState>,
         new: VoiceState,
     ) {
+        //tracing::info!("VoiceStateUpdate: {}", voice_state_diff_str(old, &new));
         // do nothing if this is a voice update event for a user, not a bot
         if new.user_id != ctx.cache.current_user_id() {
             return;
@@ -441,11 +452,6 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.user_id) {
-                    tracing::warn!(
-                        "{} {}",
-                        "Status checking".blue(),
-                        format!("{:?}", status).blue()
-                    );
                     if let Some(kick_conf) = channels.get(&status.channel_id.0) {
                         if status.camera_status != cam.camera_status {
                             tracing::info!(
@@ -542,16 +548,15 @@ async fn disconnect_member(
         .await
 }
 
-#[allow(dead_code)]
-fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {
             return format!(
                 "{} / {} / {}",
-                new.member.as_ref().unwrap().user.name,
-                new.guild_id.unwrap().0,
-                new.channel_id.unwrap().0
+                new.member.as_ref().unwrap().user.name.blue(),
+                new.guild_id.unwrap().0.to_string().blue(),
+                new.channel_id.unwrap().0.to_string().blue()
             );
             // return format!(
             //     "channel_id: (none) -> {:?}

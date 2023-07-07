@@ -86,7 +86,8 @@ pub async fn play(
         msg = Some(
             mode.clone()
                 .map(|s| s.replace("query_or_url:", ""))
-                .unwrap_or("".to_string()),
+                .unwrap_or("".to_string())
+                + &msg.unwrap_or("".to_string()),
         );
     }
 

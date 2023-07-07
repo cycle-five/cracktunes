@@ -1,11 +1,9 @@
 use self::serenity::builder::CreateEmbed;
-use self::serenity::http::CacheHttp;
 use crate::errors::CrackedError;
-use crate::utils::{create_embed_response, create_embed_response_poise};
+use crate::utils::create_embed_response_poise;
 use crate::{Context, Data, Error};
-use poise::{serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction};
+use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
-use std::borrow::BorrowMut;
 use std::sync::Arc;
 
 /// Get or set the volume of the bot.
@@ -36,8 +34,6 @@ pub async fn volume(
         }
     };
 
-    let old_ctx = ctx.serenity_context();
-
     let to_set = match level {
         Some(arg) => Some(arg as isize),
         None => {
@@ -52,29 +48,8 @@ pub async fn volume(
             }
             let volume = track_handle.unwrap().get_info().await.unwrap().volume;
             let mut embed = CreateEmbed::default();
-            embed.description(format!("Current volume is {}%", volume * 100.0));
-            match ctx {
-                Context::Prefix(prefix_ctx) => {
-                    prefix_ctx
-                        .msg
-                        .reply(
-                            old_ctx.http(),
-                            format!("Current volume is {}%", volume * 100.0),
-                        )
-                        .await?;
-                    // create_embed_response(&Arc::new(*old_ctx.http()), , embed).await?;
-                }
-                Context::Application(app_ctx) => match app_ctx.interaction {
-                    ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => {
-                        let mut interaction = x.clone();
-                        create_embed_response(&old_ctx.http, interaction.borrow_mut(), embed)
-                            .await?;
-                    }
-                    ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => {
-                        panic!("Autocomplete not implemented");
-                    }
-                },
-            }
+            embed.description(format!("Current volume is {:.0}%", volume * 100.0));
+            create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -94,31 +69,8 @@ pub async fn volume(
     };
 
     let embed = create_volume_embed(old_volume, new_volume);
-
-    match ctx {
-        Context::Prefix(prefix_ctx) => {
-            // let desc = create_volume_desc(old_volume, new_volume);
-            // prefix_ctx.channel_id().say(pref)ix_ctx.serenity_context.http(), desc).await?;
-            prefix_ctx
-                .msg
-                .reply(
-                    old_ctx.http(),
-                    embed.0.get("description").unwrap().to_string(),
-                )
-                .await?;
-            Ok(())
-        }
-        Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => {
-                let mut interaction = x.clone();
-                create_embed_response(&old_ctx.http, interaction.borrow_mut(), embed).await?;
-                Ok(())
-            }
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => {
-                panic!("Autocomplete not implemented");
-            }
-        },
-    }
+    create_embed_response_poise(ctx, embed).await?;
+    Ok(())
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

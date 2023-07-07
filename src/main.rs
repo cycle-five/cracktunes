@@ -1,11 +1,12 @@
 use self::serenity::GatewayIntents;
+use colored::Colorize;
 use cracktunes::{
     commands,
     guild::{
         cache::GuildCacheMap,
         settings::{GuildSettings, GuildSettingsMap},
     },
-    handlers::SerenityHandler,
+    handlers::{serenity::voice_state_diff_str, SerenityHandler},
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
@@ -229,6 +230,13 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                     }
                     poise::Event::GuildMemberAddition { new_member } => {
                         tracing::info!("Got a new member: {:?}", new_member);
+                        Ok(())
+                    }
+                    poise::Event::VoiceStateUpdate { old, new } => {
+                        tracing::debug!(
+                            "VoiceStateUpdate: {}",
+                            voice_state_diff_str(old.clone(), &new).bright_yellow()
+                        );
                         Ok(())
                     }
                     _ => {
