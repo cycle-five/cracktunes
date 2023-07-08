@@ -7,13 +7,9 @@ use crate::messaging::messages::{
 use crate::Error;
 use poise::serenity_prelude as serenity;
 use rspotify::ClientError as RSpotifyClientError;
-use shuttle_serenity::SerenityService;
 use songbird::input::error::{DcaError, Error as InputError};
-use std::fmt::{Debug, Display};
-use std::ops::Deref;
-//use std::{error::Error, fmt};
 use std::fmt;
-use std::ops::DerefMut;
+use std::fmt::{Debug, Display};
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -199,18 +195,18 @@ impl From<std::io::Error> for CrackedError {
 }
 
 /// Provides an implementation to convert a [`shuttle_serenity::Error`] to a [`CrackedError`].
-impl From<shuttle_serenity::Error> for CrackedError {
-    fn from(err: shuttle_serenity::Error) -> Self {
-        Self::Shuttle(err)
-    }
-}
+// impl From<shuttle_serenity::Error> for CrackedError {
+//     fn from(err: shuttle_serenity::Error) -> Self {
+//         Self::Shuttle(err)
+//     }
+// }
 
-/// Provides an implementation to convert a [`CrackedError`] to a [`shuttle_serenity::Error`].
-impl From<CrackedError> for shuttle_runtime::Error {
-    fn from(val: CrackedError) -> shuttle_runtime::Error {
-        val.into()
-    }
-}
+// /// Provides an implementation to convert a [`CrackedError`] to a [`shuttle_serenity::Error`].
+// impl From<CrackedError> for shuttle_runtime::Error {
+//     fn from(val: CrackedError) -> shuttle_runtime::Error {
+//         val.into()
+//     }
+// }
 
 impl From<anyhow::Error> for CrackedError {
     fn from(err: anyhow::Error) -> Self {
