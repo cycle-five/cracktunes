@@ -1,5 +1,6 @@
 use self::serenity::GatewayIntents;
 use colored::Colorize;
+use config_file::FromConfigFile;
 use cracktunes::{
     commands,
     guild::{
@@ -11,6 +12,8 @@ use cracktunes::{
     BotConfig, Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use shuttle_runtime::Context;
+use shuttle_secrets::SecretStore;
 use songbird::serenity::SerenityInit;
 use std::{
     collections::HashMap,
@@ -19,12 +22,118 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+#[cfg(feature = "shuttle")]
+#[shuttle_runtime::main]
+async fn serenity(
+    #[shuttle_secrets::Secrets] secret_store: SecretStore,
+) -> shuttle_serenity::ShuttleSerenity {
+    // Get the discord token set in `Secrets.toml`
+
+    let token = secret_store
+        .get("DISCORD_TOKEN")
+        .context("'DISCORD_TOKEN' was not found")?;
+    let app_id = secret_store
+        .get("DISCORD_APP_ID")
+        .context("'DISCORD_APP_ID' was not found")?;
+    let spotify_client = secret_store
+        .get("SPOTIFY_CLIENT_ID")
+        .context("'SPOTIFY_CLIENT_ID' was not found")?;
+    let spotify_secret = secret_store
+        .get("SPOTIFY_CLIENT_SECRET")
+        .context("'SPOTIFY_CLIENT_SECRET' was not found")?;
+    let openai_key = secret_store
+        .get("OPENAI_KEY")
+        .context("'OPENAI_KEY' was not found")?;
+
+    init_logging().await;
+
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!("Using default config: {:?}", error);
+            BotConfig::default()
+        }
+    };
+    tracing::warn!("Using config: {:?}", config);
+    let framework = poise_framework(config);
+    let framework = framework
+        .build()
+        .await
+        .map_err(|e| CrackedError::Serenity(e))?;
+
+    // use ::serenity::Client;
+    // use shuttle_serenity::{NewTrait, NewTraitClone, NewTraitCloneBox};
+
+    // let client: &dyn shuttle_serenity::NewTraitClone =
+    //    <&dyn NewTrait<'_, Target = Client>>::into(framework.client());
+    let client = framework.client();
+    let mut data = client.data.write().await;
+    data.insert::<GuildCacheMap>(HashMap::default());
+    data.insert::<GuildSettingsMap>(HashMap::default());
+    drop(data);
+    drop(client);
+
+    match framework.clone().start().await {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::error!("Error starting framework: {}", e);
+            return Err(<shuttle_serenity::Error as From<CrackedError>>::from(
+                e.into(),
+            ));
+        }
+    }
+
+    // if let client = (<std::boxed::Box<
+    //     impl std::ops::DerefMut + std::ops::Deref<Target = poise::serenity_prelude::Client> + '_,
+    // > as std::convert::Into<T>>::into(Box::new(client))
+    //     as Box<serenity::Client>)
+    use shuttle_serenity::SerenityService;
+    use shuttle_serenity::{NewTrait, NewTraitClone, NewTraitCloneBox};
+    let client_ref = std::pin::Pin::new(Box::new(framework.client())) as Box<dyn NewTraitClone>;
+    let asdf = <dyn NewTraitClone>::into(Box::new(client_ref) as Box<dyn NewTrait>);
+    //let client: Box<poise::serenity_prelude::Client> = Box::new(client.into());
+    //let client: NewTraitCloneBox = Box::new();
+    let ss = SerenityService((*client).clone());
+    Ok(ss)
+
+    //let client: shuttle_serenity::NewTrait = &framework.clone().client().into();
+}
+
+#[cfg(not(feature = "shuttle"))]
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
+
+    init_logging().await;
+
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!("Using default config: {:?}", error);
+            BotConfig::default()
+        }
+    };
+    tracing::warn!("Using config: {:?}", config);
+    let framework = poise_framework(config);
+    let framework = framework.build().await?;
+
+    let client = framework.client();
+    let mut data = client.data.write().await;
+    data.insert::<GuildCacheMap>(HashMap::default());
+    data.insert::<GuildSettingsMap>(HashMap::default());
+    drop(data);
+    drop(client);
+
+    framework.start().await?;
+
+    Ok(())
+}
+
+async fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     // A layer that logs up to debug events.
@@ -63,30 +172,6 @@ async fn main() -> Result<(), Error> {
         .init();
 
     tracing::warn!("Hello, world!");
-
-    use config_file::FromConfigFile;
-
-    let config = match BotConfig::from_config_file("./cracktunes.toml") {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Using default config: {:?}", error);
-            BotConfig::default()
-        }
-    };
-    tracing::warn!("Using config: {:?}", config);
-    let framework = poise_framework(config);
-    let framework = framework.build().await?;
-
-    let client = framework.client();
-    let mut data = client.data.write().await;
-    data.insert::<GuildCacheMap>(HashMap::default());
-    data.insert::<GuildSettingsMap>(HashMap::default());
-    drop(data);
-    drop(client);
-
-    framework.start().await?;
-
-    Ok(())
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
@@ -215,7 +300,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         /// Enforce command checks even for owners (enforced by default)
         /// Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
-        event_handler: |_ctx, event, _framework, _data| {
+        event_handler: |ctx, event, _framework, _data| {
             Box::pin(async move {
                 match event {
                     poise::Event::PresenceUpdate { new_data } => {
@@ -235,12 +320,46 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                     poise::Event::VoiceStateUpdate { old, new } => {
                         tracing::debug!(
                             "VoiceStateUpdate: {}",
-                            voice_state_diff_str(old.clone(), &new).bright_yellow()
+                            voice_state_diff_str(old.clone(), new).bright_yellow()
+                        );
+                        Ok(())
+                    }
+                    poise::Event::Message { new_message } => {
+                        let serde_msg = serde_json::to_string(new_message).unwrap();
+                        tracing::trace!(target = "events_serde", "serde_msg: {}", serde_msg);
+                        Ok(())
+                    }
+                    poise::Event::TypingStart { event } => {
+                        //let serde_msg = serde_json::to_string(event).unwrap();
+                        let cache_http = ctx.http.clone();
+                        let channel = event
+                            .channel_id
+                            .to_channel_cached(ctx.cache.clone())
+                            .unwrap();
+                        let user = event.user_id.to_user(cache_http.clone()).await.unwrap();
+                        let channel_name = channel
+                            .guild()
+                            .map(|guild| guild.name)
+                            .unwrap_or("DM".to_string());
+                        let guild = event
+                            .guild_id
+                            .unwrap_or_default()
+                            .to_guild_cached(ctx.cache.clone())
+                            .map(|guild| guild.name)
+                            .unwrap_or("DM".to_string());
+
+                        tracing::info!(
+                            "{}{} / {} / {} / {}",
+                            "TypingStart: ".bright_green(),
+                            user.name.bright_yellow(),
+                            user.id.to_string().bright_yellow(),
+                            channel_name.bright_yellow(),
+                            guild.bright_yellow(),
                         );
                         Ok(())
                     }
                     _ => {
-                        tracing::info!("Got an event in event handler: {:?}", event.name());
+                        tracing::info!("{}", event.name().bright_green());
                         Ok(())
                     }
                 }
