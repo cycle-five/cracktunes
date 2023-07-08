@@ -245,46 +245,46 @@ impl From<RSpotifyClientError> for CrackedError {
     }
 }
 
-pub trait NewTrait: DerefMut + Deref<Target = serenity::Client> + NewTraitClone {}
+// pub trait NewTrait: DerefMut + Deref<Target = serenity::Client> + NewTraitClone {}
 
-pub trait NewTraitClone {
-    fn clone_box(&self) -> Box<dyn NewTrait>;
-}
+// pub trait NewTraitClone {
+//     fn clone_box(&self) -> Box<dyn NewTrait>;
+// }
 
-impl<T> NewTraitClone for T
-where
-    T: 'static + NewTrait + Clone,
-{
-    fn clone_box(&self) -> Box<dyn NewTrait> {
-        Box::new(self.clone())
-    }
-}
+// impl<T> NewTraitClone for T
+// where
+//     T: 'static + NewTrait + Clone,
+// {
+//     fn clone_box(&self) -> Box<dyn NewTrait> {
+//         Box::new(self.clone())
+//     }
+// }
 
-impl Clone for Box<dyn NewTraitClone> {
-    fn clone(&self) -> Box<dyn NewTraitClone> {
-        self.clone_box().into()
-    }
-}
+// impl Clone for Box<dyn NewTraitClone> {
+//     fn clone(&self) -> Box<dyn NewTraitClone> {
+//         self.clone_box().into()
+//     }
+// }
 
-pub struct NewTraitCloneBox(Box<dyn NewTraitClone>);
+// pub struct NewTraitCloneBox(Box<dyn NewTraitClone>);
 
-impl From<Box<dyn NewTrait<Target = serenity::Client>>> for NewTraitCloneBox {
-    fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-        item.into()
-    }
-}
+// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for NewTraitCloneBox {
+//     fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
+//         item.into()
+//     }
+// }
 
-impl From<Box<dyn NewTrait<Target = serenity::Client>>> for Box<dyn NewTraitClone> {
-    fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-        item.clone_box().into()
-    }
-}
+// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for Box<dyn NewTraitClone> {
+//     fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
+//         item.clone_box().into()
+//     }
+// }
 
-impl From<Box<dyn NewTrait<Target = serenity::Client>>> for SerenityService {
-    fn from(router: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-        <Box<dyn NewTrait<Target = serenity::Client>> as Into<SerenityService>>::into(router).into()
-    }
-}
+// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for SerenityService {
+//     fn from(router: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
+//         <Box<dyn NewTrait<Target = serenity::Client>> as Into<SerenityService>>::into(router).into()
+//     }
+// }
 
 /// The return type that should be returned from the [shuttle_runtime::main] function.
 // pub type ShuttleSerenity = Result<SerenityService, Error>;
