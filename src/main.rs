@@ -12,7 +12,7 @@ use cracktunes::{
     BotConfig, Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
-use shuttle_secrets::SecretStore;
+
 use songbird::serenity::SerenityInit;
 use std::{
     collections::HashMap,
