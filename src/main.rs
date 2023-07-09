@@ -279,7 +279,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                     .map_or_else(
                         || {
                             tracing::info!("Guild not found in guild settings map");
-                            Ok(false)
+                            Ok(true)
                         },
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
