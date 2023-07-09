@@ -2,8 +2,8 @@ video_status_poll_interval = 120
 sys_log_channel_id = 0
 authorized_users = [ ]
 self_deafen = true
-volume = 0.3
-prefix = "rs!"
+volume = 1.0
+prefix = "r!"
 
 [[cam_kick]]
 cammed_down_timeout = 0
