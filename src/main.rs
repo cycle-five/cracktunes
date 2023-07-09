@@ -1,19 +1,19 @@
 use self::serenity::GatewayIntents;
 use colored::Colorize;
 use config_file::FromConfigFile;
+use cracktunes::BotCredentials;
 use cracktunes::{
     commands,
-    guild::{
-        cache::GuildCacheMap,
-        settings::{GuildSettings, GuildSettingsMap},
-    },
+    guild::settings::GuildSettings,
     handlers::{serenity::voice_state_diff_str, SerenityHandler},
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
-
+use shuttle_runtime::Context as _;
+use shuttle_secrets::SecretStore;
 use songbird::serenity::SerenityInit;
+use std::env;
 use std::{
     collections::HashMap,
     env::var,
@@ -22,84 +22,38 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "shuttle")]
+use {cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise};
+#[cfg(not(feature = "shuttle"))]
+use {cracktunes::guild::cache::GuildCacheMap, cracktunes::guild::settings::GuildSettingsMap};
+
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "shuttle")]
 #[shuttle_runtime::main]
-async fn serenity(
+async fn poise(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> shuttle_serenity::ShuttleSerenity {
-    // Get the discord token set in `Secrets.toml`
-
-    let token = secret_store
-        .get("DISCORD_TOKEN")
-        .context("'DISCORD_TOKEN' was not found")?;
-    let app_id = secret_store
-        .get("DISCORD_APP_ID")
-        .context("'DISCORD_APP_ID' was not found")?;
-    let spotify_client = secret_store
-        .get("SPOTIFY_CLIENT_ID")
-        .context("'SPOTIFY_CLIENT_ID' was not found")?;
-    let spotify_secret = secret_store
-        .get("SPOTIFY_CLIENT_SECRET")
-        .context("'SPOTIFY_CLIENT_SECRET' was not found")?;
-    let openai_key = secret_store
-        .get("OPENAI_KEY")
-        .context("'OPENAI_KEY' was not found")?;
-
+) -> ShuttlePoise<Arc<Data>, Error> {
     init_logging().await;
-
-    let config = match BotConfig::from_config_file("./cracktunes.toml") {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Using default config: {:?}", error);
-            BotConfig::default()
-        }
-    };
+    let config = load_bot_config(secret_store).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
-    let framework = framework
-        .build()
-        .await
-        .map_err(|e| CrackedError::Serenity(e))?;
-
-    // use ::serenity::Client;
-    // use shuttle_serenity::{NewTrait, NewTraitClone, NewTraitCloneBox};
-
-    // let client: &dyn shuttle_serenity::NewTraitClone =
-    //    <&dyn NewTrait<'_, Target = Client>>::into(framework.client());
-    let client = framework.client();
-    let mut data = client.data.write().await;
-    data.insert::<GuildCacheMap>(HashMap::default());
-    data.insert::<GuildSettingsMap>(HashMap::default());
-    drop(data);
-    drop(client);
-
-    match framework.clone().start().await {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::error!("Error starting framework: {}", e);
-            return Err(<shuttle_serenity::Error as From<CrackedError>>::from(
+    let framework: Arc<poise::Framework<Arc<Data>, Error>> =
+        framework.build().await.map_err(|e| {
+            <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
                 e.into(),
-            ));
-        }
-    }
+            ))
+        })?;
 
-    // if let client = (<std::boxed::Box<
-    //     impl std::ops::DerefMut + std::ops::Deref<Target = poise::serenity_prelude::Client> + '_,
-    // > as std::convert::Into<T>>::into(Box::new(client))
-    //     as Box<serenity::Client>)
-    use shuttle_serenity::SerenityService;
-    use shuttle_serenity::{NewTrait, NewTraitClone, NewTraitCloneBox};
-    let client_ref = std::pin::Pin::new(Box::new(framework.client())) as Box<dyn NewTraitClone>;
-    let asdf = <dyn NewTraitClone>::into(Box::new(client_ref) as Box<dyn NewTrait>);
-    //let client: Box<poise::serenity_prelude::Client> = Box::new(client.into());
-    //let client: NewTraitCloneBox = Box::new();
-    let ss = SerenityService((*client).clone());
-    Ok(ss)
+    // let client = framework.client();
+    // let mut data = client.data.write().await;
+    // data.insert::<GuildCacheMap>(HashMap::default());
+    // data.insert::<GuildSettingsMap>(HashMap::default());
+    // drop(data);
+    // drop(client);
 
-    //let client: shuttle_serenity::NewTrait = &framework.clone().client().into();
+    Ok(framework.into())
 }
 
 #[cfg(not(feature = "shuttle"))]
@@ -108,15 +62,9 @@ async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
 
     init_logging().await;
-
-    let config = match BotConfig::from_config_file("./cracktunes.toml") {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Using default config: {:?}", error);
-            BotConfig::default()
-        }
-    };
+    let config = load_bot_config(None).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
+
     let framework = poise_framework(config);
     let framework = framework.build().await?;
 
@@ -130,6 +78,50 @@ async fn main() -> Result<(), Error> {
     framework.start().await?;
 
     Ok(())
+}
+
+fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Error> {
+    match env::var(&k) {
+        Ok(token) => Ok(token),
+        Err(_) => {
+            tracing::error!("{} not found in environment", &k);
+            match secret_store {
+                Some(secret_store) => secret_store
+                    .get(&k)
+                    .context(format!("'{}' was not found", &k))
+                    .map_err(|e| e.into()),
+                None => Err(format!("{} not found in environment or Secrets.toml", k).into()),
+            }
+        }
+    }
+}
+
+async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig, Error> {
+    // Get the discord token set in `Secrets.toml`
+
+    let discord_token = load_key(secret_store.clone(), "DISCORD_TOKEN".to_string())?;
+    let discord_app_id = load_key(secret_store.clone(), "DISCORD_APP_ID".to_string())?;
+    let spotify_client_id = load_key(secret_store.clone(), "SPOTIFY_CLIENT_ID".to_string()).ok();
+    let spotify_client_secret =
+        load_key(secret_store.clone(), "SPOTIFY_CLIENT_SECRET".to_string()).ok();
+    let openai_key = load_key(secret_store, "OPENAI_KEY".to_string()).ok();
+
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!("Using default config: {:?}", error);
+            BotConfig::default()
+        }
+    }
+    .set_credentials(BotCredentials {
+        discord_token,
+        discord_app_id,
+        spotify_client_id,
+        spotify_client_secret,
+        openai_key,
+    });
+
+    Ok(config)
 }
 
 async fn init_logging() {
@@ -208,6 +200,7 @@ async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
     }
 }
 
+//fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
 fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value

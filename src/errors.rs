@@ -28,6 +28,7 @@ pub enum CrackedError {
     AlreadyConnected(Mention),
     Serenity(SerenityError),
     Shuttle(shuttle_runtime::Error),
+    ShuttleCustom(shuttle_runtime::CustomError),
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
@@ -81,6 +82,7 @@ impl Display for CrackedError {
             },
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::Shuttle(err) => f.write_str(&format!("{err}")),
+            Self::ShuttleCustom(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::Serde(err) => f.write_str(&format!("{err}")),
@@ -194,23 +196,10 @@ impl From<std::io::Error> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`shuttle_serenity::Error`] to a [`CrackedError`].
-// impl From<shuttle_serenity::Error> for CrackedError {
-//     fn from(err: shuttle_serenity::Error) -> Self {
-//         Self::Shuttle(err)
-//     }
-// }
-
-// /// Provides an implementation to convert a [`CrackedError`] to a [`shuttle_serenity::Error`].
-// impl From<CrackedError> for shuttle_runtime::Error {
-//     fn from(val: CrackedError) -> shuttle_runtime::Error {
-//         val.into()
-//     }
-// }
-
-impl From<anyhow::Error> for CrackedError {
-    fn from(err: anyhow::Error) -> Self {
-        Self::Poise(err.into())
+/// Provides an implementation to convert a [`shuttle_service::CustomError`] to a [`CrackedError`].
+impl From<shuttle_service::CustomError> for CrackedError {
+    fn from(err: shuttle_service::CustomError) -> Self {
+        Self::ShuttleCustom(err)
     }
 }
 

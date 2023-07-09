@@ -9,8 +9,8 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-# default = ["shuttle"]  
-default = []  
+# default = ["shuttle"]
+default = []
 shuttle = []
 
 [dependencies]
@@ -27,7 +27,7 @@ serde_json = "1.0.100"
 url = "2.4.0"
 shuttle-poise = "0.20.0"
 shuttle-runtime = "0.20.0"
-shuttle-serenity = "0.20.0"
+shuttle-service = "0.20.0"
 shuttle-secrets = "0.20.0"
 serde = { version = "1.0.167", features = ["derive", "rc"] }
 tracing = "0.1.37"

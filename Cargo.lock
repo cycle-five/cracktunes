@@ -452,7 +452,7 @@ dependencies = [
  "shuttle-poise",
  "shuttle-runtime",
  "shuttle-secrets",
- "shuttle-serenity",
+ "shuttle-service",
  "songbird",
  "sys-info",
  "tokio",
@@ -2592,16 +2592,6 @@ dependencies = [
  "async-trait",
  "serde",
  "shuttle-service",
-]
-
-[[package]]
-name = "shuttle-serenity"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36debabb3636d0611ab550b1ea4d79f2ed7f8700af61a54fd4cbd103afd3dff2"
-dependencies = [
- "serenity",
- "shuttle-runtime",
 ]
 
 [[package]]

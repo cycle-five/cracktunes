@@ -50,7 +50,7 @@ impl EventHandler for SerenityHandler {
         .await;
 
         // attempts to authenticate to spotify
-        *SPOTIFY.lock().await = Spotify::auth().await;
+        *SPOTIFY.lock().await = Spotify::auth(None).await;
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");

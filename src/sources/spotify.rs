@@ -40,15 +40,21 @@ impl FromStr for MediaType {
     }
 }
 
+type SpotifyCreds = Credentials;
 pub struct Spotify {}
 
 impl Spotify {
-    pub async fn auth() -> Result<ClientCredsSpotify, CrackedError> {
-        let spotify_client_id = env::var("SPOTIFY_CLIENT_ID")
-            .map_err(|_| CrackedError::Other("missing spotify client ID"))?;
-
-        let spotify_client_secret = env::var("SPOTIFY_CLIENT_SECRET")
-            .map_err(|_| CrackedError::Other("missing spotify client secret"))?;
+    pub async fn auth(opt_creds: Option<SpotifyCreds>) -> Result<ClientCredsSpotify, CrackedError> {
+        let spotify_client_id = match opt_creds.clone() {
+            Some(creds) => creds.id,
+            None => env::var("SPOTIFY_CLIENT_ID")
+                .map_err(|_| CrackedError::Other("missing spotify client ID"))?,
+        };
+        let spotify_client_secret = match opt_creds {
+            Some(creds) => creds.secret.unwrap_or("".to_string()),
+            None => env::var("SPOTIFY_CLIENT_SECRET")
+                .map_err(|_| CrackedError::Other("missing spotify client secret"))?,
+        };
 
         let creds = Credentials::new(&spotify_client_id, &spotify_client_secret);
 
