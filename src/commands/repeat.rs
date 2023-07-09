@@ -1,6 +1,6 @@
 use crate::{
     errors::CrackedError,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     messaging::messages::FAIL_LOOP,
     utils::{create_response, get_interaction},
     Context, Error,
@@ -30,7 +30,7 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
             create_response(
                 &ctx.serenity_context().http,
                 &mut interaction,
-                ParrotMessage::LoopDisable,
+                CrackedMessage::LoopDisable,
             )
             .await
         }
@@ -38,7 +38,7 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
             create_response(
                 &ctx.serenity_context().http,
                 &mut interaction,
-                ParrotMessage::LoopEnable,
+                CrackedMessage::LoopEnable,
             )
             .await
         }

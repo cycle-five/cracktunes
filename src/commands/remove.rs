@@ -2,7 +2,7 @@ use self::serenity::builder::CreateEmbed;
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
     utils::create_embed_response_poise,
     utils::{create_response_poise_text, get_guild_id},
@@ -65,7 +65,7 @@ pub async fn remove(
         //create_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
         create_embed_response_poise(ctx, embed).await?;
     } else {
-        create_response_poise_text(&ctx, ParrotMessage::RemoveMultiple).await?;
+        create_response_poise_text(&ctx, CrackedMessage::RemoveMultiple).await?;
     }
 
     update_queue_messages(

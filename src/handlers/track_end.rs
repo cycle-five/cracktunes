@@ -58,8 +58,14 @@ impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let handler = self.call.lock().await;
         let queue = handler.queue().current_queue();
+        let data_rlock = self.ctx_data.read().await;
+        let settings = data_rlock.get::<GuildSettingsMap>().unwrap();
+        let vol = settings
+            .get(&self.guild_id)
+            .map(|guild_settings| guild_settings.volume);
         drop(handler);
 
+        vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
         update_queue_messages(&self.http, &self.ctx_data, &queue, self.guild_id).await;
 
         None

@@ -1,6 +1,6 @@
 use self::serenity::{
     builder::CreateEmbed,
-    http::{Http, HttpError},
+    http::Http,
     model::{
         application::interaction::{
             application_command::ApplicationCommandInteraction, InteractionResponseType,
@@ -11,7 +11,8 @@ use self::serenity::{
     Context as SerenityContext, SerenityError,
 };
 use crate::{
-    commands::summon, errors::CrackedError, messaging::message::ParrotMessage, Context, Data, Error,
+    commands::summon, errors::CrackedError, messaging::message::CrackedMessage, Context, Data,
+    Error,
 };
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
@@ -21,7 +22,7 @@ use songbird::tracks::TrackHandle;
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
 
@@ -30,17 +31,19 @@ pub async fn create_response_poise(ctx: Context<'_>, message: ParrotMessage) -> 
 
 pub async fn create_response_poise_text(
     ctx: &Context<'_>,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<(), Error> {
     let message_str = format!("{message}");
 
-    create_embed_response_str(ctx, message_str).await
+    create_embed_response_str(ctx, message_str)
+        .await
+        .map(|_| Ok(()))?
 }
 
 pub async fn create_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
@@ -57,7 +60,7 @@ pub async fn create_response_text(
     create_embed_response(http, interaction, embed).await
 }
 
-pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Result<(), Error> {
+pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
 
@@ -77,7 +80,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: ParrotMessage) -> Re
 pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &mut ApplicationCommandInteraction,
-    message: ParrotMessage,
+    message: CrackedMessage,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
@@ -97,10 +100,15 @@ pub async fn edit_response_text(
 pub async fn create_embed_response_str(
     ctx: &Context<'_>,
     message_str: String,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
-        .await?;
-    Ok(())
+        .await
+        .unwrap()
+        .into_message()
+        .await
+        .map_err(Into::into)
+    //.map_err(Into::into)
+    // Ok(())
 }
 
 pub async fn create_embed_response_poise(
@@ -111,13 +119,25 @@ pub async fn create_embed_response_poise(
         Some(mut interaction) => {
             create_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await
         }
-        None => {
-            //ctx.defer().await?;
-            //let mut interaction = get_interaction(ctx).unwrap();
-            let asdf = format!("{:?}", embed.0.get("description").unwrap().to_string());
-            create_embed_response_str(&ctx, asdf).await
-        }
+        None => create_embed_response_prefix(&ctx, embed)
+            .await
+            .map(|_| Ok(()))?,
     }
+}
+
+pub async fn create_embed_response_prefix(
+    ctx: &Context<'_>,
+    embed: CreateEmbed,
+) -> Result<Message, Error> {
+    ctx.send(|builder| {
+        builder.embeds.append(&mut vec![embed]);
+        builder //.reply(true)
+    })
+    .await
+    .unwrap()
+    .into_message()
+    .await
+    .map_err(Into::into)
 }
 
 pub async fn create_embed_response(
@@ -125,7 +145,7 @@ pub async fn create_embed_response(
     interaction: &mut ApplicationCommandInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
-    match interaction
+    interaction
         .create_interaction_response(&http, |response| {
             response
                 .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -133,21 +153,6 @@ pub async fn create_embed_response(
         })
         .await
         .map_err(Into::into)
-    {
-        Ok(val) => Ok(val),
-        Err(err) => match err {
-            serenity::Error::Http(ref e) => match &**e {
-                HttpError::UnsuccessfulRequest(req) => match req.error.code {
-                    40060 => edit_embed_response(http, interaction, embed)
-                        .await
-                        .map(|_| ()),
-                    _ => Err(Box::new(err)),
-                },
-                _ => Err(Box::new(err)),
-            },
-            _ => Err(Box::new(err)),
-        },
-    }
 }
 
 pub async fn edit_embed_response(
@@ -178,24 +183,15 @@ impl From<ApplicationCommandInteraction> for ApplicationCommandOrMessageInteract
     }
 }
 
-pub async fn edit_embed_response_poise(
-    ctx: Context<'_>,
-    embed: CreateEmbed,
-) -> Result<Message, Error> {
+pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> Result<(), Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
             .edit_original_interaction_response(&ctx.serenity_context().http, |message| {
                 message.content(" ").add_embed(embed)
             })
             .await
-            .map_err(Into::into),
-        // Some(interaction: MessageInteraction) => interaction
-        //     .edit(&ctx.serenity_context().http, |message| {
-        //         message.content(" ").add_embed(embed)
-        //     })
-        //     .await
-        //     .map_err(Into::into),
-        None => Err(Box::new(SerenityError::Other("No interaction found"))),
+            .map(|_| Ok(()))?,
+        None => create_embed_response_poise(ctx, embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
     }
 }
 
@@ -205,7 +201,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     tracing::warn!("metadata: {:?}", metadata);
 
-    embed.author(|author| author.name(ParrotMessage::NowPlaying));
+    embed.author(|author| author.name(CrackedMessage::NowPlaying));
     metadata
         .title
         .as_ref()
@@ -293,6 +289,12 @@ pub fn check_msg(result: Result<Message, Error>) {
 }
 
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
+    if let Err(why) = result {
+        tracing::error!("Error sending message: {:?}", why);
+    }
+}
+
+pub fn check_interaction(result: Result<(), Error>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
     }

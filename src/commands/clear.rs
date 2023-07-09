@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response, get_interaction},
     Context, Error,
 };
@@ -31,7 +31,7 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     create_response(
         &ctx.serenity_context().http,
         &mut interaction,
-        ParrotMessage::Clear,
+        CrackedMessage::Clear,
     )
     .await?;
     update_queue_messages(

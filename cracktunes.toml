@@ -3,6 +3,7 @@ sys_log_channel_id = 0
 authorized_users = [ ]
 self_deafen = true
 volume = 0.3
+prefix = "rs!"
 
 [[cam_kick]]
 cammed_down_timeout = 0
@@ -11,13 +12,17 @@ channel_id = 0
 dc_message = "You have been disconnected from the voice channel for not having a camera on."
 
 [[guild_settings_map]]
-guild_id = 0 
-authorized_users = [ ]
+guild_id = 0
+authorized_users = [  ]
 allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
 autopause = false
 self_deafen = true
 volume = 0.3
 timeout = 0
+[guild_settings_map.welcome_settings]
+message = "Welcome to the server, {user}!"
+channel_id = 0
+autorole = 0
 
 [[guild_cache]]

@@ -38,20 +38,19 @@ pub struct MyVoiceUserInfo {
     pub time_last_cam_change: Instant,
 }
 
-struct ChanCacheValue {
-    #[allow(dead_code)]
-    pub name: String,
-}
-
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
-        ctx.set_activity(Activity::listening("/play")).await;
+        ctx.set_activity(Activity::listening(format!(
+            "{}play",
+            self.data.bot_settings.prefix
+        )))
+        .await;
 
         // attempts to authenticate to spotify
-        *SPOTIFY.lock().await = Spotify::auth().await;
+        *SPOTIFY.lock().await = Spotify::auth(None).await;
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
@@ -75,6 +74,11 @@ impl EventHandler for SerenityHandler {
     }
 
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
+        tracing::info!(
+            "{}{}",
+            "new member: ".white(),
+            new_member.to_string().white()
+        );
         let guild_id = new_member.guild_id;
         let guild_settings = {
             let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
@@ -82,27 +86,55 @@ impl EventHandler for SerenityHandler {
             guild_settings.cloned()
         };
 
-        let guild_settings = match guild_settings {
-            Some(guild_settings) => guild_settings,
+        let (_guild_settings, welcome) = match guild_settings {
+            Some(guild_settings) => match guild_settings.clone().welcome_settings {
+                None => return,
+                Some(welcome_settings) => (guild_settings, welcome_settings),
+            },
             None => {
                 tracing::error!("Guild settings not found for guild {}", guild_id);
                 return;
             }
         };
 
-        if guild_settings.welcome_settings.is_some() {
-            //welcome_action(&ctx, new_member, guild_settings).await;
-            let welcome = guild_settings.welcome_settings.unwrap();
-            let channel = ChannelId(welcome.channel_id.unwrap());
-            let _ = channel
-                .send_message(&ctx.http, |m| {
-                    m.content(format!(
-                        "{} {}",
-                        new_member.user.mention(),
-                        welcome.message.unwrap()
-                    ))
-                })
-                .await;
+        tracing::trace!("welcome: {:?}", welcome);
+
+        match (welcome.message, welcome.channel_id) {
+            (None, _) => {}
+            (_, None) => {}
+            (Some(message), Some(channel)) => {
+                let channel = ChannelId(channel);
+                let x = channel
+                    .send_message(&ctx.http, |m| {
+                        if message.contains("{user}") {
+                            let new_msg = message
+                                .replace("{user}", new_member.user.mention().to_string().as_str());
+                            m.content(new_msg)
+                        } else {
+                            m.content(format_args!(
+                                "{} {user}",
+                                message,
+                                user = new_member.user.mention()
+                            ))
+                        }
+                    })
+                    .await;
+                tracing::info!("x: {:?}", x.unwrap());
+            }
+        };
+
+        if let Some(role_id) = welcome.auto_role {
+            tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
+            let mut new_member = new_member;
+            let role_id = serenity::RoleId(role_id);
+            match new_member.add_role(&ctx.http, role_id).await {
+                Ok(_) => {
+                    tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
+                }
+                Err(err) => {
+                    tracing::error!("Error adding role: {}", err);
+                }
+            }
         }
     }
 
@@ -121,17 +153,21 @@ impl EventHandler for SerenityHandler {
             let guild_name = guild.name;
             let content = msg.content.clone();
             let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
+
             tracing::info!(
                 "Message: {} {} {} {}",
                 name.purple(),
                 guild_name.purple(),
                 channel_name.purple(),
-                content.purple()
+                content.purple(),
             );
+            msg.embeds.iter().for_each(|x| {
+                tracing::info!(
+                    "Embed: {:?}",
+                    x.description.as_ref().unwrap_or(&String::new())
+                );
+            });
         }
-
-        let serde_msg = serde_json::to_string(&msg).unwrap();
-        tracing::trace!(target = "events_serde", "serde_msg: {}", serde_msg);
     }
 
     async fn voice_state_update(
@@ -164,8 +200,6 @@ impl EventHandler for SerenityHandler {
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
-        let _channel_cache = HashMap::<u64, ChanCacheValue>::new();
-
         for guildid in guilds.iter() {
             tracing::info!("Guild: {:?}", guildid);
         }
@@ -175,15 +209,6 @@ impl EventHandler for SerenityHandler {
         // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
         let config = Arc::new(config);
-        // let config = Arc::clone(&self.config);
-
-        // let shard_manager = (*self.shard_manager.lock().unwrap()).clone().unwrap();
-        // let framework_data = poise::FrameworkContext {
-        //     bot_id: serenity::UserId(846453852164587620),
-        //     options: &self.options,
-        //     user_data: &(),
-        //     shard_manager: &shard_manager,
-        // };
 
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
@@ -424,11 +449,6 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.user_id) {
-                    tracing::warn!(
-                        "{} {}",
-                        "Status checking".blue(),
-                        format!("{:?}", status).blue()
-                    );
                     if let Some(kick_conf) = channels.get(&status.channel_id.0) {
                         if status.camera_status != cam.camera_status {
                             tracing::info!(
@@ -525,16 +545,15 @@ async fn disconnect_member(
         .await
 }
 
-#[allow(dead_code)]
-fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {
             return format!(
                 "{} / {} / {}",
-                new.member.as_ref().unwrap().user.name,
-                new.guild_id.unwrap().0,
-                new.channel_id.unwrap().0
+                new.member.as_ref().unwrap().user.name.blue(),
+                new.guild_id.unwrap().0.to_string().blue(),
+                new.channel_id.unwrap().0.to_string().blue()
             );
             // return format!(
             //     "channel_id: (none) -> {:?}

@@ -137,6 +137,7 @@ async fn ytdl(uri: &str) -> Result<(Child, Metadata), Error> {
         "-R",
         "infinite",        // infinite number of download retries
         "--no-playlist",   // only download the video if URL also has playlist info
+        "--no-warnings",   // don't print warnings
         "--ignore-config", // disable all configuration files for a yt-dlp run
         uri,
         "-o",
@@ -188,6 +189,7 @@ async fn _ytdl_metadata(uri: &str) -> Result<Metadata, Error> {
         "-R",
         "infinite",        // infinite number of download retries
         "--no-playlist",   // only download the video if URL also has playlist info
+        "--no-warnings",   // don't print warnings
         "--ignore-config", // disable all configuration files for a yt-dlp run
         uri,
         "-o",

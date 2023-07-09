@@ -8,7 +8,7 @@ use crate::messaging::messages::*;
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 
 #[derive(Debug)]
-pub enum ParrotMessage {
+pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
     Clear,
@@ -35,7 +35,7 @@ pub enum ParrotMessage {
     VoteSkip { mention: Mention, missing: usize },
 }
 
-impl Display for ParrotMessage {
+impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),

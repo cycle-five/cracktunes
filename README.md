@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A hassle-free, highly performant, host-it-yourself Discord music bot
+  A hassle-free, highly performant, host-it-yourself, cracking smoking Discord music bot
 </p>
 
 <p align="center">
@@ -16,7 +16,11 @@
 
 ### Usage
 
-Just [create a bot account](https://github.com/cycle-five/cracktunes/wiki/Create-Your-Discord-Bot), and copy its **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively. Optionally, you may also define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. We recommend using our [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
+* Create a bot account
+* Copy the **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively.
+* *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
+* *Optional* define `OPENAI_KEY` for chatgpt support.
+* Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
 
 ### Docker
 
@@ -85,9 +89,19 @@ docker run -d --env-file .env cracktunes
 ## 0.2.1 (2023/07/02)
 - [x] Play music from local files
 
+## 0.2.2 (in progress)
+- [] Welcome Actions
+- [x] Play on multiple servers at once
+
+## 0.2.3
+- [] Reminders
+- [] Notes
+
+## 0.2.4
+- [] Flesh out admin commands
+
 ## 0.3.0
 - [] Database Schema
-- [] Play music from SoundCloud (placeholder)
 
 ...and more!
 ## 1.0.0

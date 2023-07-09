@@ -22,6 +22,7 @@ pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any vo
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
 pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
 pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";
+pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const IDLE_ALERT: &str = "I've been idle for a while, so I'll leave for now to save resources.\nFeel free to summon me back any time!";
 pub const JOINING: &str = "Joining";
 pub const LEAVING: &str = "👋 See you soon!";
@@ -33,6 +34,7 @@ pub const PLAY_FAILED_BLOCKED_DOMAIN: &str =
     "**is either not allowed in this server or is not supported!** \n\nTo explicitely allow this domain, ask a moderator to run the `/managesources` command. [Click to see a list of supported sources.](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)";
 pub const PLAY_ALL_FAILED: &str =
     "⚠️ Cannot fetch playlist via keywords! Try passing this command an URL.";
+pub const PLAYLIST_FAILED: &str = "⚠️ Failed to fetch playlist!";
 pub const PLAY_PLAYLIST: &str = "📃 Added playlist to queue!";
 pub const PLAY_QUEUE: &str = "📃 Added to queue!";
 pub const PLAY_TOP: &str = "📃 Added to top!";

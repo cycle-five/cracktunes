@@ -1,6 +1,6 @@
 use crate::{
     errors::{verify, CrackedError},
-    messaging::message::ParrotMessage,
+    messaging::message::CrackedMessage,
     utils::{create_response_poise_text, get_guild_id},
     {Context, Error},
 };
@@ -22,7 +22,7 @@ pub async fn resume(
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
     if send_reply.unwrap_or(true) {
-        create_response_poise_text(&ctx, ParrotMessage::Resume).await?
+        create_response_poise_text(&ctx, CrackedMessage::Resume).await?
     }
     Ok(())
 }

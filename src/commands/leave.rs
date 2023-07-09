@@ -1,5 +1,5 @@
 use crate::{
-    messaging::message::ParrotMessage, utils::create_response_poise_text, utils::get_guild_id,
+    messaging::message::CrackedMessage, utils::create_response_poise_text, utils::get_guild_id,
     Context, Error,
 };
 
@@ -10,5 +10,5 @@ pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     manager.remove(guild_id).await.unwrap();
 
-    create_response_poise_text(&ctx, ParrotMessage::Leaving).await
+    create_response_poise_text(&ctx, CrackedMessage::Leaving).await
 }

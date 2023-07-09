@@ -9,13 +9,14 @@ use self::serenity::{
     {RwLock, TypeMap},
 };
 use crate::{
+    errors::CrackedError,
     guild::cache::GuildCacheMap,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::{
         QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
         QUEUE_PAGE_OF, QUEUE_UP_NEXT,
     },
-    utils::{get_human_readable_timestamp, get_interaction},
+    utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
     Context, Error,
 };
 use poise::serenity_prelude::{self as serenity};
@@ -32,64 +33,60 @@ const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
-#[poise::command(slash_command, guild_only)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    //ctx.defer().await.unwrap();
-
-    // let interaction = get_interaction(ctx).unwrap();
-    // tracing::error!("interaction: {:?}", interaction);
-    // ctx.send(|f| f.content("Works for slash and prefix commands")
-    // ).await.unwrap().into_message().await?.reply().create_interaction_response(&ctx.serenity_context().http, |response| {
-    //     response
-    //         .kind(InteractionResponseType::DeferredChannelMessageWithSource)
-    //         .interaction_response_data(|message| {
-    //             message
-    //                 .create_embed(|embed| {
-    //                     embed.description("Loading queue...");
-    //                 })
-    //                 .components(|components| {
-    //                     components.create_action_row(|action_row| {
-    //                         action_row.add_button(
-    //                             CreateButton::default()
-    //                                 .custom_id("test".to_string())
-    //                                 .label("test")
-    //                                 .style(ButtonStyle::Primary)
-    //                                 .to_owned(),
-    //                         )
-    //                     })
-    //                 })
-    //         })
-    // });
-    let interaction = get_interaction(ctx).unwrap();
-    let guild_id = interaction.guild_id.unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let call = match manager.get(guild_id) {
+        Some(call) => call,
+        None => {
+            let mut embed = CreateEmbed::default();
+            embed.description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, embed).await?;
+            return Ok(());
+        }
+    };
 
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
     drop(handler);
 
-    tracing::error!("tracks: {:?}", tracks);
+    tracing::trace!("tracks: {:?}", tracks);
 
-    interaction
-        .create_interaction_response(&ctx.serenity_context().http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| {
-                    let num_pages = calculate_num_pages(&tracks);
+    let mut message = match get_interaction(ctx) {
+        Some(interaction) => {
+            interaction
+                .create_interaction_response(&ctx.serenity_context().http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| {
+                            let num_pages = calculate_num_pages(&tracks);
 
-                    message
-                        .add_embed(create_queue_embed(&tracks, 0))
-                        .components(|components| build_nav_btns(components, 0, num_pages))
+                            message
+                                .add_embed(create_queue_embed(&tracks, 0))
+                                .components(|components| build_nav_btns(components, 0, num_pages))
+                        })
                 })
-        })
-        .await?;
+                .await?;
+            interaction
+                .get_interaction_response(&ctx.serenity_context().http)
+                .await?
+        }
+        _ => {
+            let reply = ctx
+                .send(|m| {
+                    let num_pages = calculate_num_pages(&tracks);
+                    m.embeds.push(create_queue_embed(&tracks, 0));
+                    m.components(|components| build_nav_btns(components, 0, num_pages))
+                })
+                .await?;
+            reply.into_message().await?
+        }
+    };
 
-    tracing::error!("past interaction");
-
-    let mut message = interaction
-        .get_interaction_response(&ctx.serenity_context().http)
-        .await?;
+    // let mut message = interaction
+    //     .get_interaction_response(&ctx.serenity_context().http)
+    //     .await?;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
