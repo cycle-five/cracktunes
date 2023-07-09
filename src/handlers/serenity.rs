@@ -50,7 +50,7 @@ impl EventHandler for SerenityHandler {
         .await;
 
         // attempts to authenticate to spotify
-        *SPOTIFY.lock().await = Spotify::auth().await;
+        *SPOTIFY.lock().await = Spotify::auth(None).await;
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
@@ -74,8 +74,8 @@ impl EventHandler for SerenityHandler {
     }
 
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
-        tracing::error!(
-            "{} {}",
+        tracing::info!(
+            "{}{}",
             "new member: ".white(),
             new_member.to_string().white()
         );
@@ -85,8 +85,6 @@ impl EventHandler for SerenityHandler {
             let guild_settings = guild_settings_map.get_mut(guild_id.as_u64());
             guild_settings.cloned()
         };
-
-        tracing::error!("guild_settings: {:?}", guild_settings);
 
         let (_guild_settings, welcome) = match guild_settings {
             Some(guild_settings) => match guild_settings.clone().welcome_settings {
@@ -99,7 +97,7 @@ impl EventHandler for SerenityHandler {
             }
         };
 
-        tracing::error!("welcome: {:?}", welcome);
+        tracing::trace!("welcome: {:?}", welcome);
 
         match (welcome.message, welcome.channel_id) {
             (None, _) => {}
@@ -121,20 +119,23 @@ impl EventHandler for SerenityHandler {
                         }
                     })
                     .await;
-                tracing::error!("x: {:?}", x.unwrap());
+                tracing::info!("x: {:?}", x.unwrap());
             }
         };
 
-        match welcome.auto_role {
-            Some(role_id) => {
-                tracing::warn!("role_id: {}", role_id);
-                let mut new_member = new_member;
-                let role_id = serenity::RoleId(role_id);
-                let res = new_member.add_role(&ctx.http, role_id).await;
-                res.unwrap();
+        if let Some(role_id) = welcome.auto_role {
+            tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
+            let mut new_member = new_member;
+            let role_id = serenity::RoleId(role_id);
+            match new_member.add_role(&ctx.http, role_id).await {
+                Ok(_) => {
+                    tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
+                }
+                Err(err) => {
+                    tracing::error!("Error adding role: {}", err);
+                }
             }
-            None => {}
-        };
+        }
     }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
@@ -167,9 +168,6 @@ impl EventHandler for SerenityHandler {
                 );
             });
         }
-
-        let serde_msg = serde_json::to_string(&msg).unwrap();
-        tracing::trace!(target = "events_serde", "serde_msg: {}", serde_msg);
     }
 
     async fn voice_state_update(
@@ -178,7 +176,6 @@ impl EventHandler for SerenityHandler {
         _old: Option<VoiceState>,
         new: VoiceState,
     ) {
-        //tracing::info!("VoiceStateUpdate: {}", voice_state_diff_str(old, &new));
         // do nothing if this is a voice update event for a user, not a bot
         if new.user_id != ctx.cache.current_user_id() {
             return;

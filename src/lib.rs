@@ -56,6 +56,15 @@ impl Display for CamKickConfig {
         write!(f, "{}", result)
     }
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BotCredentials {
+    pub discord_token: String,
+    pub discord_app_id: String,
+    pub spotify_client_id: Option<String>,
+    pub spotify_client_secret: Option<String>,
+    pub openai_key: Option<String>,
+}
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: u64,
@@ -67,6 +76,7 @@ pub struct BotConfig {
     pub volume: f32,
     pub guild_settings_map: Vec<guild::settings::GuildSettings>,
     pub prefix: String,
+    pub credentials: Option<BotCredentials>,
 }
 
 impl Default for BotConfig {
@@ -80,6 +90,7 @@ impl Default for BotConfig {
             volume: 0.2,
             guild_settings_map: vec![],
             prefix: DEFAULT_PREFIX.to_string(),
+            credentials: None,
         }
     }
 }
@@ -112,6 +123,11 @@ impl BotConfig {
     pub fn get_prefix(&self) -> String {
         self.prefix.clone()
     }
+
+    pub fn set_credentials(&mut self, creds: BotCredentials) -> BotConfig {
+        self.credentials = Some(creds);
+        self.clone()
+    }
 }
 
 /// User data, which is stored and accessible in all command invocations
@@ -138,3 +154,43 @@ impl Default for Data {
         }
     }
 }
+
+// shuttle library code for poise
+use std::net::SocketAddr;
+
+/// A wrapper type for [poise::Framework] so we can implement [shuttle_runtime::Service] for it.
+pub struct PoiseService<T, E>(pub Arc<poise::Framework<Arc<T>, E>>);
+
+#[shuttle_runtime::async_trait]
+impl<T, E> shuttle_runtime::Service for PoiseService<Arc<T>, E>
+where
+    T: Send + Sync + 'static,
+    E: Send + Sync + 'static,
+{
+    async fn bind(mut self, _addr: SocketAddr) -> Result<(), shuttle_runtime::Error> {
+        self.0
+            .start()
+            .await
+            .map_err(shuttle_runtime::CustomError::new)?;
+
+        Ok(())
+    }
+}
+
+impl<T, E> From<Arc<poise::Framework<Arc<T>, E>>> for PoiseService<T, E> {
+    fn from(framework: Arc<poise::Framework<Arc<T>, E>>) -> Self {
+        Self(framework)
+    }
+}
+//impl From<Arc<Framework<Arc<cracktunes::Data>, Box<(dyn std::error::Error + std::marker::Send + Sync + 'static)>>>> for PoiseService<>
+
+// impl<T, E> From<Arc<poise::Framework<Arc<T>, E>>> for PoiseService<T, E> {
+//     fn from(framework: Arc<poise::Framework<Arc<T>, E>>) -> Self {
+//         Self(framework)
+//     }
+// }
+
+//From<Arc<Framework<Arc<cracktunes::Data>, Box<(dyn std::error::Error + std::marker::Send + Sync + 'static)>>>>
+
+/// The return type that should be returned from the [shuttle_runtime::main] function.
+pub type ShuttlePoise<T, E> = Result<PoiseService<T, E>, shuttle_runtime::Error>;
