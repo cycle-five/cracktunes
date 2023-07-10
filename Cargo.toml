@@ -9,8 +9,8 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-# default = ["shuttle"]
-default = []
+default = ["shuttle"]
+# default = []
 shuttle = []
 
 [dependencies]

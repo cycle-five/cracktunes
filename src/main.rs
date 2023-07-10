@@ -34,6 +34,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 async fn poise(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
 ) -> ShuttlePoise<Arc<Data>, Error> {
+    dotenv::dotenv().ok();
     //init_logging().await;
     let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
