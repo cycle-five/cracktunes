@@ -283,7 +283,14 @@ impl SerenityHandler {
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
             tracing::info!("Loading guild settings for {:?}", guild);
-            let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+            let settings = match data.get_mut::<GuildSettingsMap>() {
+                Some(settings) => settings,
+                None => {
+                    tracing::error!("Guild settings not found");
+                    data.insert::<GuildSettingsMap>(HashMap::default());
+                    data.get_mut::<GuildSettingsMap>().unwrap()
+                }
+            };
 
             let guild_settings = settings
                 .entry(guild.id)

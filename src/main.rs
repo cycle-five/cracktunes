@@ -35,8 +35,8 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 async fn poise(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
 ) -> ShuttlePoise<Arc<Data>, Error> {
-    init_logging().await;
-    let config = load_bot_config(secret_store).await.unwrap();
+    //init_logging().await;
+    let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
     let framework: Arc<poise::Framework<Arc<Data>, Error>> =
@@ -52,6 +52,8 @@ async fn poise(
     // data.insert::<GuildSettingsMap>(HashMap::default());
     // drop(data);
     // drop(client);
+
+    tracing::warn!("Starting framework");
 
     Ok(framework.into())
 }
@@ -84,7 +86,7 @@ fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Erro
     match env::var(&k) {
         Ok(token) => Ok(token),
         Err(_) => {
-            tracing::error!("{} not found in environment", &k);
+            tracing::warn!("{} not found in environment", &k);
             match secret_store {
                 Some(secret_store) => secret_store
                     .get(&k)
@@ -124,6 +126,8 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     Ok(config)
 }
 
+#[cfg(feature = "shuttle")]
+#[allow(dead_code)]
 async fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
@@ -366,7 +370,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         .map(|gs| (*gs.guild_id.as_u64(), gs.clone()))
         .collect::<HashMap<u64, GuildSettings>>();
     let data = Arc::new(cracktunes::Data {
-        bot_settings: config,
+        bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         ..Default::default()
     });
@@ -390,6 +394,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
 
     let handler_data = data.clone();
     let setup_data = data;
+    let token = config
+        .clone()
+        .credentials
+        .expect("Error getting discord token")
+        .discord_token;
     poise::Framework::builder()
         .client_settings(|builder| {
             builder
@@ -399,10 +408,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                 })
                 .register_songbird()
         })
-        .token(
-            var("DISCORD_TOKEN")
-                .expect("Missing `DISCORD_TOKEN` env var, see README for more information."),
-        )
+        .token(token)
         .setup(move |ctx, ready, framework| {
             Box::pin(async move {
                 tracing::info!("Logged in as {}", ready.user.name);
