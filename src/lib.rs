@@ -29,6 +29,9 @@ pub struct CamKickConfig {
     pub guild_id: u64,
     pub channel_id: u64,
     pub dc_message: String,
+    pub send_msg_deafen: bool,
+    pub send_msg_mute: bool,
+    pub send_msg_dc: bool,
 }
 
 impl Default for CamKickConfig {
@@ -37,8 +40,10 @@ impl Default for CamKickConfig {
             cammed_down_timeout: 30,
             guild_id: 0,
             channel_id: 0,
-            dc_message: "You have been disconnected for being cammed down for too long."
-                .to_string(),
+            dc_message: "You have been violated for being cammed down for too long.".to_string(),
+            send_msg_deafen: false,
+            send_msg_mute: true,
+            send_msg_dc: false,
         }
     }
 }
@@ -53,6 +58,22 @@ impl Display for CamKickConfig {
         result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
         result.push_str(&format!("channel_id: {:?}\n", self.channel_id));
         result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
+        result.push_str(&format!(
+            "send_msg
+        deafen: {}\n",
+            self.send_msg_deafen
+        ));
+        result.push_str(&format!(
+            "send_msg
+        mute: {}\n",
+            self.send_msg_mute
+        ));
+        result.push_str(&format!(
+            "send_msg
+        dc: {}\n",
+            self.send_msg_dc
+        ));
+
         write!(f, "{}", result)
     }
 }
