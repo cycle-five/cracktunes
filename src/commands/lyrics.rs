@@ -17,16 +17,8 @@ pub async fn lyrics(ctx: Context<'_>, query: Option<String>) -> Result<(), Error
         .current()
         .ok_or(CrackedError::NothingPlaying)?;
 
-    let search_title = track_handle
-        .metadata()
-        .title
-        .clone()
-        .unwrap_or_else(|| "".to_string());
-    let search_artist = track_handle
-        .metadata()
-        .artist
-        .clone()
-        .unwrap_or_else(|| "".to_string());
+    let search_title = track_handle.metadata().title.clone().unwrap_or_default();
+    let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();
     let query = query.unwrap_or_else(|| format!("{} {}", search_title, search_artist));
 
     let client = lyric_finder::Client::new();

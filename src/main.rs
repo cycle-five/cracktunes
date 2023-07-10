@@ -16,7 +16,6 @@ use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
     collections::HashMap,
-    env::var,
     process::exit,
     sync::{Arc, Mutex},
     time::Duration,
@@ -126,7 +125,6 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     Ok(config)
 }
 
-#[cfg(feature = "shuttle")]
 #[allow(dead_code)]
 async fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
@@ -395,7 +393,6 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     let handler_data = data.clone();
     let setup_data = data;
     let token = config
-        .clone()
         .credentials
         .expect("Error getting discord token")
         .discord_token;
