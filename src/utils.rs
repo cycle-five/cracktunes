@@ -238,6 +238,44 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     embed
 }
 
+pub async fn create_lyrics_embed(
+    track_handle: TrackHandle,
+    track: String,
+    artists: String,
+    lyric: String,
+) -> CreateEmbed {
+    let mut embed = CreateEmbed::default();
+    let metadata = track_handle.metadata().clone();
+
+    tracing::trace!("lyric: {}", lyric);
+    tracing::trace!("track: {}", track);
+    tracing::trace!("artists: {}", artists);
+
+    embed.author(|author| author.name(artists));
+    embed.title(track.clone());
+    embed.description(lyric);
+
+    metadata
+        .source_url
+        .as_ref()
+        .map(|source_url| embed.url(source_url.clone()));
+
+    metadata
+        .thumbnail
+        .as_ref()
+        .map(|thumbnail| embed.thumbnail(thumbnail));
+
+    let source_url = metadata.source_url.unwrap_or_else(|| {
+        tracing::warn!("No source url found for track: {:?}", track);
+        "".to_string()
+    });
+
+    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
+    embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
+
+    embed
+}
+
 pub fn get_footer_info(url: &str) -> (String, String) {
     let url_data = match Url::parse(url) {
         Ok(url_data) => url_data,

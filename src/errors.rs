@@ -1,7 +1,7 @@
 use self::serenity::{model::mention::Mention, SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
-    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING,
+    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, NO_GUILD_ID,
     PLAYLIST_FAILED, QUEUE_IS_EMPTY, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
 };
 use crate::Error;
@@ -18,6 +18,7 @@ pub enum CrackedError {
     QueueEmpty,
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
+    NoGuildId,
     AuthorDisconnected(Mention),
     WrongVoiceChannel,
     AuthorNotFound,
@@ -56,6 +57,7 @@ impl Display for CrackedError {
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
+            Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }

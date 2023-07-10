@@ -214,6 +214,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             commands::clear(),
             commands::help(),
             commands::leave(),
+            commands::lyrics(),
             commands::now_playing(),
             commands::pause(),
             commands::play(),

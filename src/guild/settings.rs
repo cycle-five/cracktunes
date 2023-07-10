@@ -17,7 +17,7 @@ pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 5 * 60;
+pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
