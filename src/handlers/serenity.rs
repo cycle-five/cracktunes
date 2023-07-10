@@ -534,9 +534,10 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                     .await;
                                                 // cam_status.remove(&cam.key());
                                             }
-                                            if state == "disconnect" {
-                                                cam_status.remove(&cam.key());
-                                            }
+                                            cam_status.remove(&cam.key());
+                                            // if state == "disconnect" {
+                                            //     cam_status.remove(&cam.key());
+                                            // }
                                         }
                                         Err(err) => {
                                             tracing::error!("Error violating user: {}", err);
