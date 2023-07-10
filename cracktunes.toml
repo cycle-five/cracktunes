@@ -18,7 +18,7 @@ allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
 autopause = false
 self_deafen = true
-volume = 0.3
+volume = 1.0
 timeout = 0
 [guild_settings_map.welcome_settings]
 message = "Welcome to the server, {user}!"
