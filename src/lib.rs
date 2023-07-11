@@ -21,7 +21,7 @@ pub mod utils;
 pub mod test;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Arc<Data>, Error>;
+type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
@@ -201,15 +201,6 @@ impl<T, E> From<Arc<poise::Framework<Arc<T>, E>>> for PoiseService<T, E> {
         Self(framework)
     }
 }
-//impl From<Arc<Framework<Arc<cracktunes::Data>, Box<(dyn std::error::Error + std::marker::Send + Sync + 'static)>>>> for PoiseService<>
-
-// impl<T, E> From<Arc<poise::Framework<Arc<T>, E>>> for PoiseService<T, E> {
-//     fn from(framework: Arc<poise::Framework<Arc<T>, E>>) -> Self {
-//         Self(framework)
-//     }
-// }
-
-//From<Arc<Framework<Arc<cracktunes::Data>, Box<(dyn std::error::Error + std::marker::Send + Sync + 'static)>>>>
 
 /// The return type that should be returned from the [shuttle_runtime::main] function.
 pub type ShuttlePoise<T, E> = Result<PoiseService<T, E>, shuttle_runtime::Error>;

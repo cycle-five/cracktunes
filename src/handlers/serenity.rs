@@ -24,7 +24,7 @@ use std::{
 use tokio::time::{Duration, Instant};
 
 pub struct SerenityHandler {
-    pub data: Arc<Data>,
+    pub data: Data,
     pub is_loop_running: std::sync::atomic::AtomicBool,
 }
 

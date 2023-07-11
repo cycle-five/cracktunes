@@ -31,20 +31,17 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "shuttle")]
 #[shuttle_runtime::main]
-async fn poise(
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> ShuttlePoise<Arc<Data>, Error> {
+async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttlePoise<Data, Error> {
     dotenv::dotenv().ok();
     //init_logging().await;
     let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
-    let framework: Arc<poise::Framework<Arc<Data>, Error>> =
-        framework.build().await.map_err(|e| {
-            <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
-                e.into(),
-            ))
-        })?;
+    let framework: Arc<poise::Framework<Data, Error>> = framework.build().await.map_err(|e| {
+        <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
+            e.into(),
+        ))
+    })?;
 
     // let client = framework.client();
     // let mut data = client.data.write().await;
@@ -168,7 +165,7 @@ async fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
+async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
@@ -204,7 +201,7 @@ async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
 }
 
 //fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
-fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
+fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
@@ -368,11 +365,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
         .iter()
         .map(|gs| (*gs.guild_id.as_u64(), gs.clone()))
         .collect::<HashMap<u64, GuildSettings>>();
-    let data = Arc::new(cracktunes::Data {
+    let data = cracktunes::Data {
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         ..Default::default()
-    });
+    };
 
     let save_data = data.clone();
     ctrlc::set_handler(move || {
