@@ -12,6 +12,9 @@
   <a href="https://github.com/cycle-five/cracktunes/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
 </p>
 
+<p align="center">
+Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a>
+<p>
 ## Deployment
 
 ### Usage
@@ -90,7 +93,7 @@ docker run -d --env-file .env cracktunes
 - [x] Play music from local files
 
 ## 0.2.2 (in progress)
-- [] Welcome Actions
+- [x] Welcome Actions
 - [x] Play on multiple servers at once
 
 ## 0.2.3
