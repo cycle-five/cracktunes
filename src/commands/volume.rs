@@ -38,16 +38,24 @@ pub async fn volume(
     let to_set = match level {
         Some(arg) => Some(arg as isize),
         None => {
-            let handler = call.lock().await;
-            let track_handle: Option<TrackHandle> = handler.queue().current();
-            if track_handle.is_none() {
-                let mut embed = CreateEmbed::default();
-                embed.description(format!("{}", CrackedError::NothingPlaying));
+            // let handler = call.lock().await;
+            // let track_handle: Option<TrackHandle> = handler.queue().current();
+            // if track_handle.is_none() {
+            //     let mut embed = CreateEmbed::default();
+            //     embed.description(format!("{}", CrackedError::NothingPlaying));
 
-                create_embed_response_poise(ctx, embed).await?;
-                return Ok(());
-            }
-            let volume = track_handle.unwrap().get_info().await.unwrap().volume;
+            //     create_embed_response_poise(ctx, embed).await?;
+            //     return Ok(());
+            // }
+            // let volume = track_handle.unwrap().get_info().await.unwrap().volume;
+            let volume = ctx
+                .data()
+                .guild_settings_map
+                .lock()
+                .unwrap()
+                .get(guild_id.as_u64())
+                .unwrap()
+                .volume;
             let mut embed = CreateEmbed::default();
             embed.description(format!("Current volume is {:.0}%", volume * 100.0));
             create_embed_response_poise(ctx, embed).await?;
@@ -57,9 +65,22 @@ pub async fn volume(
 
     let handler = call.lock().await;
     let new_volume = to_set.unwrap() as f32 / 100.0;
-    let track_handle: TrackHandle = handler.queue().current().expect("No track playing");
-    let old_volume = track_handle.get_info().await.unwrap().volume;
-
+    let old_volume = ctx
+        .data()
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .get(guild_id.as_u64())
+        .unwrap()
+        .volume;
+    let embed = create_volume_embed(old_volume, new_volume);
+    let track_handle: TrackHandle = match handler.queue().current() {
+        Some(handle) => handle,
+        None => {
+            create_embed_response_poise(ctx, embed).await?;
+            return Ok(());
+        }
+    };
     track_handle.set_volume(new_volume).unwrap();
     // lock the mutex inside of it's own block, so it isn't locked across an await.
     let _x = {
@@ -72,7 +93,6 @@ pub async fn volume(
         new_volume
     };
 
-    let embed = create_volume_embed(old_volume, new_volume);
     create_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
@@ -84,5 +104,9 @@ pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
 }
 
 pub fn create_volume_desc(old: f32, new: f32) -> String {
-    format!("Volume changed from {}% to {}%", old * 100.0, new * 100.0,)
+    format!(
+        "Volume changed from {:.0}% to {:.0}%",
+        old * 100.0,
+        new * 100.0,
+    )
 }

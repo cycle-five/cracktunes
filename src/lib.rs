@@ -158,7 +158,6 @@ pub struct Data {
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub volume: Arc<Mutex<f32>>,
     pub guild_settings_map: Arc<Mutex<HashMap<u64, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<u64, guild::cache::GuildCache>>>,
@@ -169,7 +168,6 @@ impl Default for Data {
         Self {
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            volume: Arc::new(Mutex::new(DEFAULT_VOLUME_LEVEL)),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
         }
