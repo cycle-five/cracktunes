@@ -9,6 +9,7 @@ use cracktunes::{
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
+use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use shuttle_runtime::Context as _;
 use shuttle_secrets::SecretStore;
@@ -276,7 +277,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                     .guild_settings_map
                     .lock()
                     .unwrap()
-                    .get(guild_id.as_u64())
+                    .get(&guild_id)
                     .map_or_else(
                         || {
                             tracing::info!("Guild not found in guild settings map");
@@ -363,8 +364,8 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
     let guild_settings_map = config
         .guild_settings_map
         .iter()
-        .map(|gs| (*gs.guild_id.as_u64(), gs.clone()))
-        .collect::<HashMap<u64, GuildSettings>>();
+        .map(|gs| (gs.guild_id, gs.clone()))
+        .collect::<HashMap<GuildId, GuildSettings>>();
     let data = cracktunes::Data {
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),

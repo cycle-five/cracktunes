@@ -6,18 +6,17 @@ use self::serenity::{
         channel::Message,
         id::GuildId,
     },
-    {RwLock, TypeMap},
+    RwLock,
 };
 use crate::{
     errors::CrackedError,
-    guild::cache::GuildCacheMap,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::{
         QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
         QUEUE_PAGE_OF, QUEUE_UP_NEXT,
     },
     utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
-    Context, Error,
+    Context, Data, Error,
 };
 use poise::serenity_prelude::{self as serenity};
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
@@ -90,8 +89,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
-    let mut data = ctx.serenity_context().data.write().await;
-    let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
+    let data = ctx.data().clone();
+    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 
     let cache = cache_map.entry(guild_id).or_default();
     cache.queue_messages.push((message.clone(), page.clone()));
@@ -103,7 +102,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
             http: ctx.serenity_context().http.clone(),
-            ctx_data: ctx.serenity_context().data.clone(),
+            data: ctx.data().clone(),
             call: call.clone(),
             guild_id,
         },
@@ -154,7 +153,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .unwrap();
 
-    forget_queue_message(&ctx.serenity_context().data, &mut message, guild_id)
+    forget_queue_message(ctx.data(), &mut message, guild_id)
         .await
         .ok();
 
@@ -257,12 +256,11 @@ pub fn calculate_num_pages(tracks: &[TrackHandle]) -> usize {
 }
 
 pub async fn forget_queue_message(
-    data: &Arc<RwLock<TypeMap>>,
+    data: &Data,
     message: &mut Message,
     guild_id: GuildId,
 ) -> Result<(), ()> {
-    let mut data_wlock = data.write().await;
-    let cache_map = data_wlock.get_mut::<GuildCacheMap>().ok_or(())?;
+    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 
     let cache = cache_map.get_mut(&guild_id).ok_or(())?;
     cache.queue_messages.retain(|(m, _)| m.id != message.id);

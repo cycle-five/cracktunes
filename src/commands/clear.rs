@@ -34,12 +34,6 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         CrackedMessage::Clear,
     )
     .await?;
-    update_queue_messages(
-        &ctx.serenity_context().http,
-        &ctx.serenity_context().data,
-        &queue,
-        guild_id,
-    )
-    .await;
+    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

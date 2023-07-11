@@ -58,31 +58,29 @@ pub async fn summon(
 
         let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
 
-        let _ = guild_settings_map
-            .get(guild_id.as_u64())
-            .map(|guild_settings| {
-                let timeout = guild_settings.timeout;
-                if timeout > 0 {
-                    handler.add_global_event(
-                        Event::Periodic(Duration::from_secs(1), None),
-                        IdleHandler {
-                            http: ctx.serenity_context().http.clone(),
-                            manager: manager.clone(),
-                            channel_id,
-                            guild_id: Some(guild_id),
-                            limit: timeout as usize,
-                            count: Default::default(),
-                        },
-                    );
-                }
-            });
+        let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
+            let timeout = guild_settings.timeout;
+            if timeout > 0 {
+                handler.add_global_event(
+                    Event::Periodic(Duration::from_secs(1), None),
+                    IdleHandler {
+                        http: ctx.serenity_context().http.clone(),
+                        manager: manager.clone(),
+                        channel_id,
+                        guild_id: Some(guild_id),
+                        limit: timeout as usize,
+                        count: Default::default(),
+                    },
+                );
+            }
+        });
 
         handler.add_global_event(
             Event::Track(TrackEvent::End),
             TrackEndHandler {
                 guild_id: guild.id,
                 call: call.clone(),
-                ctx_data: ctx.serenity_context().data.clone(),
+                data: ctx.data().clone(),
             },
         );
     }

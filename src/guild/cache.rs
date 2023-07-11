@@ -13,7 +13,7 @@ use std::{
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct GuildCache {
     pub queue_messages: Vec<QueueMessage>,
     pub current_skip_votes: HashSet<UserId>,

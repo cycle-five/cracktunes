@@ -52,7 +52,7 @@ pub async fn volume(
                 .guild_settings_map
                 .lock()
                 .unwrap()
-                .get(guild_id.as_u64())
+                .get(&guild_id)
                 .unwrap()
                 .volume;
             let mut embed = CreateEmbed::default();
@@ -65,7 +65,7 @@ pub async fn volume(
     let handler = call.lock().await;
     let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = guild_settings_map
-        .entry(*guild_id.as_u64())
+        .entry(guild_id)
         .or_insert_with(|| GuildSettings::new(guild_id));
     let new_volume = to_set.unwrap() as f32 / 100.0;
     let old_volume = guild_settings.volume;

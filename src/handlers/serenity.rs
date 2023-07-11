@@ -88,7 +88,7 @@ impl EventHandler for SerenityHandler {
         let guild_id = new_member.guild_id;
         let guild_settings = {
             let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
-            let guild_settings = guild_settings_map.get_mut(guild_id.as_u64());
+            let guild_settings = guild_settings_map.get_mut(&guild_id);
             guild_settings.cloned()
         };
 
@@ -198,7 +198,7 @@ impl EventHandler for SerenityHandler {
             manager.remove(guild_id).await.ok();
         }
 
-        update_queue_messages(&ctx.http, &ctx.data, &[], guild_id).await;
+        update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
@@ -257,7 +257,7 @@ impl SerenityHandler {
         &self,
         ctx: &SerenityContext,
         _ready: &Ready,
-        new_settings: Arc<Mutex<HashMap<u64, GuildSettings>>>,
+        new_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     ) {
         tracing::warn!("in merge_guild_settings");
         let mut data = ctx.data.write().await;
@@ -268,14 +268,14 @@ impl SerenityHandler {
         tracing::warn!("new_settings len: {:?}", new_settings.len());
 
         for (key, value) in new_settings.iter() {
-            match settings.insert(GuildId(*key), value.clone()) {
+            match settings.insert(*key, value.clone()) {
                 Some(_) => tracing::info!("Guild {} settings overwritten", key),
                 None => tracing::info!("Guild {} settings did not exist", key),
             }
         }
 
         for (key, value) in settings.iter_mut() {
-            new_settings.insert(key.0, value.clone());
+            new_settings.insert(*key, value.clone());
         }
         tracing::warn!(
             "settings len: {:?}, new_settings len: {:?}",

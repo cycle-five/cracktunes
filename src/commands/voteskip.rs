@@ -1,7 +1,4 @@
-use self::serenity::{
-    model::id::GuildId,
-    {Mentionable, RwLock, TypeMap},
-};
+use self::serenity::{model::id::GuildId, Mentionable};
 use crate::{
     commands::{create_skip_response, force_skip_top_track},
     connection::get_voice_channel_for_user,
@@ -9,10 +6,10 @@ use crate::{
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
     utils::{create_response_poise_text, get_guild_id, get_user_id},
-    Context, Error,
+    Context, Data, Error,
 };
 use poise::serenity_prelude as serenity;
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 /// Vote to skip the current track
 #[poise::command(slash_command, prefix_command, guild_only)]
@@ -64,10 +61,9 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     }
 }
 
-pub async fn forget_skip_votes(data: &Arc<RwLock<TypeMap>>, guild_id: GuildId) -> Result<(), ()> {
-    let mut data = data.write().await;
+pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), ()> {
+    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 
-    let cache_map = data.get_mut::<GuildCacheMap>().ok_or(())?;
     let cache = cache_map.get_mut(&guild_id).ok_or(())?;
     cache.current_skip_votes = HashSet::new();
 

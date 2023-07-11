@@ -1,5 +1,6 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
+use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -158,9 +159,9 @@ pub struct Data {
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map: Arc<Mutex<HashMap<u64, guild::settings::GuildSettings>>>,
+    pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
-    pub guild_cache_map: Arc<Mutex<HashMap<u64, guild::cache::GuildCache>>>,
+    pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
 }
 
 impl Default for Data {
