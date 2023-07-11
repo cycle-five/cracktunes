@@ -92,15 +92,20 @@ docker run -d --env-file .env cracktunes
 ## 0.2.1 (2023/07/02)
 - [x] Play music from local files
 
-## 0.2.2 (in progress)
+## 0.2.2 (2022/07/09 ish)
 - [x] Welcome Actions
 - [x] Play on multiple servers at once
 
 ## 0.2.3
+- [x] Bug fixes (volume)
+- [x] Shuttle support (still broken)
+
+## 0.2.4
+- [] Shuttle
 - [] Reminders
 - [] Notes
 
-## 0.2.4
+## 0.2.5
 - [] Flesh out admin commands
 
 ## 0.3.0
