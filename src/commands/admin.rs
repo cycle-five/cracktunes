@@ -29,7 +29,7 @@ pub async fn authorize(
     data.guild_settings_map
         .lock()
         .unwrap()
-        .get_mut(guild_id.as_u64())
+        .get_mut(&guild_id)
         .expect("Failed to get guild settings map")
         .authorized_users
         .insert(id);
@@ -56,7 +56,7 @@ pub async fn deauthorize(
         .guild_settings_map
         .lock()
         .unwrap()
-        .get_mut(guild_id.as_u64())
+        .get_mut(&guild_id)
         .expect("Failed to get guild settings map")
         .authorized_users
         .remove(&id);
@@ -92,7 +92,7 @@ pub async fn set_idle_timeout(
     data.guild_settings_map
         .lock()
         .unwrap()
-        .entry(*guild_id.as_u64())
+        .entry(guild_id)
         .and_modify(|e| e.timeout = timeout);
 
     check_reply(

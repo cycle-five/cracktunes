@@ -3,5 +3,6 @@
 /data/
 /logs/
 
+Secrets.toml
 .env*
 .vscode/

@@ -9,7 +9,10 @@ prefix = "r!"
 cammed_down_timeout = 0
 guild_id = 0
 channel_id = 0
-dc_message = "You have been disconnected from the voice channel for not having a camera on."
+dc_message = "You have been violated in voice channel for not having a camera on."
+send_msg_deafen = false
+send_msg_mute = false
+send_msg_dc = false
 
 [[guild_settings_map]]
 guild_id = 0
@@ -18,7 +21,7 @@ allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
 autopause = false
 self_deafen = true
-volume = 0.3
+volume = 1.0
 timeout = 0
 [guild_settings_map.welcome_settings]
 message = "Welcome to the server, {user}!"

@@ -29,6 +29,7 @@ pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";
 pub const NOTHING_IS_PLAYING: &str = "🔈 Nothing is playing!";
+pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const PAUSED: &str = "⏸️ Paused!";
 pub const PLAY_FAILED_BLOCKED_DOMAIN: &str =
     "**is either not allowed in this server or is not supported!** \n\nTo explicitely allow this domain, ask a moderator to run the `/managesources` command. [Click to see a list of supported sources.](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)";

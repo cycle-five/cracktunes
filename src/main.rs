@@ -9,6 +9,7 @@ use cracktunes::{
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
+use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use shuttle_runtime::Context as _;
 use shuttle_secrets::SecretStore;
@@ -16,7 +17,6 @@ use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
     collections::HashMap,
-    env::var,
     process::exit,
     sync::{Arc, Mutex},
     time::Duration,
@@ -32,19 +32,17 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "shuttle")]
 #[shuttle_runtime::main]
-async fn poise(
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> ShuttlePoise<Arc<Data>, Error> {
-    init_logging().await;
-    let config = load_bot_config(secret_store).await.unwrap();
+async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttlePoise<Data, Error> {
+    dotenv::dotenv().ok();
+    //init_logging().await;
+    let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
-    let framework: Arc<poise::Framework<Arc<Data>, Error>> =
-        framework.build().await.map_err(|e| {
-            <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
-                e.into(),
-            ))
-        })?;
+    let framework: Arc<poise::Framework<Data, Error>> = framework.build().await.map_err(|e| {
+        <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
+            e.into(),
+        ))
+    })?;
 
     // let client = framework.client();
     // let mut data = client.data.write().await;
@@ -52,6 +50,8 @@ async fn poise(
     // data.insert::<GuildSettingsMap>(HashMap::default());
     // drop(data);
     // drop(client);
+
+    tracing::warn!("Starting framework");
 
     Ok(framework.into())
 }
@@ -84,7 +84,7 @@ fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Erro
     match env::var(&k) {
         Ok(token) => Ok(token),
         Err(_) => {
-            tracing::error!("{} not found in environment", &k);
+            tracing::warn!("{} not found in environment", &k);
             match secret_store {
                 Some(secret_store) => secret_store
                     .get(&k)
@@ -124,6 +124,7 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     Ok(config)
 }
 
+#[allow(dead_code)]
 async fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
@@ -165,7 +166,7 @@ async fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
+async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
@@ -201,7 +202,7 @@ async fn on_error(error: poise::FrameworkError<'_, Arc<Data>, Error>) {
 }
 
 //fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
-fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
+fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
@@ -214,6 +215,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
             commands::clear(),
             commands::help(),
             commands::leave(),
+            commands::lyrics(),
             commands::now_playing(),
             commands::pause(),
             commands::play(),
@@ -275,11 +277,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                     .guild_settings_map
                     .lock()
                     .unwrap()
-                    .get(guild_id.as_u64())
+                    .get(&guild_id)
                     .map_or_else(
                         || {
                             tracing::info!("Guild not found in guild settings map");
-                            Ok(false)
+                            Ok(true)
                         },
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
@@ -362,13 +364,13 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
     let guild_settings_map = config
         .guild_settings_map
         .iter()
-        .map(|gs| (*gs.guild_id.as_u64(), gs.clone()))
-        .collect::<HashMap<u64, GuildSettings>>();
-    let data = Arc::new(cracktunes::Data {
-        bot_settings: config,
+        .map(|gs| (gs.guild_id, gs.clone()))
+        .collect::<HashMap<GuildId, GuildSettings>>();
+    let data = cracktunes::Data {
+        bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         ..Default::default()
-    });
+    };
 
     let save_data = data.clone();
     ctrlc::set_handler(move || {
@@ -389,6 +391,10 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
 
     let handler_data = data.clone();
     let setup_data = data;
+    let token = config
+        .credentials
+        .expect("Error getting discord token")
+        .discord_token;
     poise::Framework::builder()
         .client_settings(|builder| {
             builder
@@ -398,10 +404,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
                 })
                 .register_songbird()
         })
-        .token(
-            var("DISCORD_TOKEN")
-                .expect("Missing `DISCORD_TOKEN` env var, see README for more information."),
-        )
+        .token(token)
         .setup(move |ctx, ready, framework| {
             Box::pin(async move {
                 tracing::info!("Logged in as {}", ready.user.name);

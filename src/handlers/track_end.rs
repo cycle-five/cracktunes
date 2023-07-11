@@ -1,9 +1,4 @@
-use self::serenity::{
-    async_trait,
-    http::Http,
-    model::id::GuildId,
-    {Mutex, RwLock, TypeMap},
-};
+use self::serenity::{async_trait, http::Http, model::id::GuildId, Mutex};
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
@@ -13,18 +8,18 @@ use crate::{
         build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
     },
     commands::voteskip::forget_skip_votes,
-    guild::{cache::GuildCacheMap, settings::GuildSettingsMap},
+    Data,
 };
 
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
     pub call: Arc<Mutex<Call>>,
-    pub ctx_data: Arc<RwLock<TypeMap>>,
+    pub data: Data,
 }
 
 pub struct ModifyQueueHandler {
     pub http: Arc<Http>,
-    pub ctx_data: Arc<RwLock<TypeMap>>,
+    pub data: Data, //Arc<RwLock<TypeMap>>,
     pub call: Arc<Mutex<Call>>,
     pub guild_id: GuildId,
 }
@@ -32,8 +27,7 @@ pub struct ModifyQueueHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let data_rlock = self.ctx_data.read().await;
-        let settings = data_rlock.get::<GuildSettingsMap>().unwrap();
+        let settings = self.data.guild_settings_map.lock().unwrap().clone();
 
         let autopause = settings
             .get(&self.guild_id)
@@ -46,8 +40,7 @@ impl EventHandler for TrackEndHandler {
             queue.pause().ok();
         }
 
-        drop(data_rlock);
-        forget_skip_votes(&self.ctx_data, self.guild_id).await.ok();
+        forget_skip_votes(&self.data, self.guild_id).await.ok();
 
         None
     }
@@ -58,15 +51,14 @@ impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let handler = self.call.lock().await;
         let queue = handler.queue().current_queue();
-        let data_rlock = self.ctx_data.read().await;
-        let settings = data_rlock.get::<GuildSettingsMap>().unwrap();
+        let settings = self.data.guild_settings_map.lock().unwrap().clone();
         let vol = settings
             .get(&self.guild_id)
             .map(|guild_settings| guild_settings.volume);
         drop(handler);
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
-        update_queue_messages(&self.http, &self.ctx_data, &queue, self.guild_id).await;
+        update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
 
         None
     }
@@ -74,18 +66,17 @@ impl EventHandler for ModifyQueueHandler {
 
 pub async fn update_queue_messages(
     http: &Arc<Http>,
-    ctx_data: &Arc<RwLock<TypeMap>>,
+    data: &Data,
     tracks: &[TrackHandle],
     guild_id: GuildId,
 ) {
-    let data = ctx_data.read().await;
-    let cache_map = data.get::<GuildCacheMap>().unwrap();
+    let cache_map = data.guild_cache_map.lock().unwrap().clone();
 
     let mut messages = match cache_map.get(&guild_id) {
         Some(cache) => cache.queue_messages.clone(),
         None => return,
     };
-    drop(data);
+    // drop(data);
 
     for (message, page_lock) in messages.iter_mut() {
         // has the page size shrunk?
@@ -103,7 +94,7 @@ pub async fn update_queue_messages(
             .await;
 
         if edit_message.is_err() {
-            forget_queue_message(ctx_data, message, guild_id).await.ok();
+            forget_queue_message(data, message, guild_id).await.ok();
         };
     }
 }

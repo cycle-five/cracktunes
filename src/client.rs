@@ -3,7 +3,7 @@ use crate::handlers::SerenityHandler;
 use crate::{Data, Error};
 use poise::serenity_prelude as serenity;
 use songbird::serenity::SerenityInit;
-use std::{env, sync::Arc};
+use std::env;
 
 pub struct Client {
     client: serenity::Client,
@@ -24,7 +24,7 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
-        let data = Arc::new(Data::default());
+        let data = Data::default();
 
         let client = client_builder
             .token(token)
@@ -45,7 +45,7 @@ impl Client {
             .parse()?;
 
         let gateway_intents = GatewayIntents::non_privileged();
-        let data = Arc::new(Data::default());
+        let data = Data::default();
         let client = serenity::Client::builder(token, gateway_intents)
             .event_handler(SerenityHandler {
                 is_loop_running: false.into(),

@@ -177,7 +177,7 @@ pub async fn play(
             Some(other) => {
                 let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings
-                    .entry(*guild_id.as_u64())
+                    .entry(guild_id)
                     .or_insert_with(|| GuildSettings::new(guild_id));
 
                 let is_allowed = guild_settings
@@ -205,7 +205,7 @@ pub async fn play(
         Err(_) => {
             let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings
-                .entry(*guild_id.as_u64())
+                .entry(guild_id)
                 .or_insert_with(|| GuildSettings::new(guild_id));
 
             if guild_settings.banned_domains.contains("youtube.com")
@@ -245,13 +245,8 @@ pub async fn play(
             QueryType::Keywords(_) | QueryType::VideoLink(_) => {
                 tracing::trace!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let queue = enqueue_track(&call, &query_type).await?;
-                update_queue_messages(
-                    &ctx.serenity_context().http,
-                    &ctx.serenity_context().data,
-                    &queue,
-                    guild_id,
-                )
-                .await;
+                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+                    .await;
             }
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
@@ -264,7 +259,7 @@ pub async fn play(
                         enqueue_track(&call, &QueryType::VideoLink(url.to_string())).await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -278,7 +273,7 @@ pub async fn play(
                         enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -289,13 +284,8 @@ pub async fn play(
                 tracing::trace!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
                         enqueue_track(&call, &QueryType::File(file)).await?;
-                update_queue_messages(
-                    &ctx.serenity_context().http,
-                    &ctx.serenity_context().data,
-                    &queue,
-                    guild_id,
-                )
-                .await;
+                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+                    .await;
             }
         },
         Mode::Next => match query_type.clone() {
@@ -304,13 +294,8 @@ pub async fn play(
                     "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
                 let queue = insert_track(&call, &query_type, 1).await?;
-                update_queue_messages(
-                    &ctx.serenity_context().http,
-                    &ctx.serenity_context().data,
-                    &queue,
-                    guild_id,
-                )
-                .await;
+                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+                    .await;
             }
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
@@ -322,7 +307,7 @@ pub async fn play(
                     let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -342,7 +327,7 @@ pub async fn play(
                             .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -362,13 +347,8 @@ pub async fn play(
                     queue = force_skip_top_track(&call.lock().await).await?;
                 }
 
-                update_queue_messages(
-                    &ctx.serenity_context().http,
-                    &ctx.serenity_context().data,
-                    &queue,
-                    guild_id,
-                )
-                .await;
+                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+                    .await;
             }
             QueryType::PlaylistLink(url) => {
                 tracing::error!("Mode::Jump, QueryType::PlaylistLink");
@@ -390,7 +370,7 @@ pub async fn play(
 
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -413,7 +393,7 @@ pub async fn play(
 
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -432,7 +412,7 @@ pub async fn play(
                     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -447,7 +427,7 @@ pub async fn play(
                     let queue = enqueue_track(&call, &QueryType::Keywords(keywords)).await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
-                        &ctx.serenity_context().data,
+                        ctx.data(),
                         &queue,
                         guild_id,
                     )
@@ -466,7 +446,7 @@ pub async fn play(
 
     let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = settings
-        .entry(*guild_id.as_u64())
+        .entry(guild_id)
         .or_insert_with(|| GuildSettings::new(guild_id));
 
     // refetch the queue after modification
