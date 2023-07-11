@@ -53,19 +53,22 @@ pub async fn volume(
                 Some(handle) => handle.get_info().await.unwrap().volume,
                 None => 0.0,
             };
-            let volume = ctx
-                .data()
-                .guild_settings_map
-                .lock()
-                .unwrap()
-                .clone()
-                .get(&guild_id)
-                .unwrap()
-                .volume;
+            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+            let guild_settings = guild_settings_map
+                .entry(guild_id)
+                .or_insert_with(|| GuildSettings::new(guild_id))
+                .clone();
+            let asdf = guild_settings_map.get(&guild_id).unwrap().volume;
+
+            tracing::warn!(
+                "asdf: {} guild_settings: {:?}",
+                format!("{:?}", guild_settings).white(),
+                asdf,
+            );
             let mut embed = CreateEmbed::default();
             embed.description(format!(
                 "Current volume is {:.0}% in settings, {:.0}% in track.",
-                volume * 100.0,
+                guild_settings.volume * 100.0,
                 volume_track * 100.0
             ));
             create_embed_response_poise(ctx, embed).await?;
@@ -86,20 +89,11 @@ pub async fn volume(
     let old_volume = guild_settings.volume;
 
     guild_settings.volume = new_volume;
-
-    tracing::warn!(
-        "guild_settings: {:?}",
-        format!("{:?}", guild_settings).white(),
-    );
-
-    let new_guild_settings = guild_settings_map
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id));
-
-    tracing::warn!(
-        "new_guild_settings: {:?}",
-        format!("{:?}", new_guild_settings).white(),
-    );
+    ctx.data()
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .insert(guild_id, guild_settings.clone());
 
     let embed = create_volume_embed(old_volume, new_volume);
     let track_handle: TrackHandle = match handler.queue().current() {
@@ -110,17 +104,6 @@ pub async fn volume(
         }
     };
     track_handle.set_volume(new_volume).unwrap();
-    // lock the mutex inside of it's own block, so it isn't locked across an await.
-    // let _x = {
-    //     let data: &Arc<Data> = ctx.data();
-    //     let mut settings = data.guild_settings_map.lock().unwrap().clone();
-    //     let guild_settings = settings
-    //         .entry(*guild_id.as_u64())
-    //         .or_insert_with(|| GuildSettings::new(guild_id));
-    //     guild_settings.set_default_volume(new_volume);
-    //     new_volume
-    // };
-
     create_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
