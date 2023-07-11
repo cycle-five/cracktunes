@@ -1,5 +1,6 @@
 use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
+use crate::guild::settings::GuildSettings;
 use crate::utils::create_embed_response_poise;
 use crate::{Context, Data, Error};
 use poise::serenity_prelude as serenity;
@@ -63,9 +64,12 @@ pub async fn volume(
     // lock the mutex inside of it's own block, so it isn't locked across an await.
     let _x = {
         let data: &Arc<Data> = ctx.data();
-        let mut res = data.volume.lock().unwrap();
-        *res = new_volume;
-        *res
+        let mut settings = data.guild_settings_map.lock().unwrap().clone();
+        let guild_settings = settings
+            .entry(*guild_id.as_u64())
+            .or_insert_with(|| GuildSettings::new(guild_id));
+        guild_settings.set_default_volume(new_volume);
+        new_volume
     };
 
     let embed = create_volume_embed(old_volume, new_volume);

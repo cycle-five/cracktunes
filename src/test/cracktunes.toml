@@ -10,16 +10,18 @@ cammed_down_timeout = 0
 guild_id = 0
 channel_id = 0
 dc_message = "You have been violated from the voice channel for not having a camera on."
-send_msg_deafen = true
+send_msg_deafen = false
 send_msg_mute = false
+send_msg_dc = false
 
 [[cam_kick]]
 cammed_down_timeout = 0
 guild_id = 1
 channel_id = 0
 dc_message = "You have been violated from the voice channel for not having a camera on."
-send_msg_deafen = true
+send_msg_deafen = false
 send_msg_mute = false
+send_msg_dc = false
 
 [[guild_settings_map]]
 guild_id = 0

@@ -108,7 +108,7 @@ impl Default for BotConfig {
             cam_kick: vec![],
             sys_log_channel_id: 0,
             self_deafen: true,
-            volume: 0.2,
+            volume: DEFAULT_VOLUME_LEVEL,
             guild_settings_map: vec![],
             prefix: DEFAULT_PREFIX.to_string(),
             credentials: None,
