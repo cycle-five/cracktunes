@@ -98,6 +98,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 
     // refresh the queue interaction whenever a track ends
     let mut handler = call.lock().await;
+    // let data = ctx.data().clone();
     handler.add_global_event(
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
