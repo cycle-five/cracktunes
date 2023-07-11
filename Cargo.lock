@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "audiopus 0.2.0",
