@@ -1,3 +1,4 @@
+use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{errors::CrackedError, utils::check_reply, Context, Error};
 use chrono::NaiveTime;
 use date_time_parser::TimeParser;
@@ -12,6 +13,7 @@ use date_time_parser::TimeParser;
 )]
 pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
+    COMMAND_EXECUTIONS.with_label_values(&["admin"]).inc();
 
     Ok(())
 }
@@ -22,6 +24,10 @@ pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
 ) -> Result<(), Error> {
+    // metrics::INCOMING_REQUESTS
+    //     .get_metric()
+    //     .with_label_values(&["admin"])
+    //     .inc();
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();

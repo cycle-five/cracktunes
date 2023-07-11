@@ -15,6 +15,7 @@ pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod messaging;
+pub mod metrics;
 pub mod sources;
 pub mod utils;
 
@@ -23,6 +24,9 @@ pub mod test;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
+
+// #[macro_use]
+// extern crate lazy_static;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
