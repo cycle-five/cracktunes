@@ -1,4 +1,4 @@
-use crate::{Context, Error};
+use crate::{utils::count_command, Context, Error};
 
 /// Show this help menu.
 #[poise::command(prefix_command, track_edits, slash_command)]
@@ -8,6 +8,8 @@ pub async fn help(
     #[autocomplete = "poise::builtins::autocomplete_command"]
     command: Option<String>,
 ) -> Result<(), Error> {
+    // COMMAND_EXECUTIONS.with_label_values(&["help"]).inc();
+    count_command("help");
     poise::builtins::help(
         ctx,
         command.as_deref(),

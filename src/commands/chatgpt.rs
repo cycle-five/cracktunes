@@ -1,4 +1,7 @@
-use crate::{utils::check_reply, Context, Error};
+use crate::{
+    utils::{check_reply, count_command},
+    Context, Error,
+};
 use chatgpt::prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder};
 use url::Url;
 
@@ -10,6 +13,7 @@ pub async fn chatgpt(
     #[description = "Query text to send to the model."]
     query: String,
 ) -> Result<(), Error> {
+    count_command("chatgpt");
     tracing::info!(target: "commands", "chatgpt called");
     let key = std::env::var("OPENAI_KEY").expect("Expected an OpenAI key in the environment");
 

@@ -1,8 +1,9 @@
-use crate::{Context, Error};
+use crate::{utils::count_command, Context, Error};
 
 /// Flip a coin.
 #[poise::command(prefix_command, slash_command)]
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
+    count_command("grab");
     let res = rand::random::<bool>();
 
     ctx.send(|m| {

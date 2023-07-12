@@ -2,13 +2,14 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    utils::{create_response_poise_text, get_guild_id},
+    utils::{count_command, create_response_poise_text, get_guild_id},
     Context, Error,
 };
 
 /// Stop the current track.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
+    count_command("stop");
     let guild_id = get_guild_id(&ctx).unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();

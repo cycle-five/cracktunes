@@ -1,12 +1,15 @@
 use crate::{
-    handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    utils::create_response_poise, Context, Error,
+    handlers::track_end::update_queue_messages,
+    messaging::message::CrackedMessage,
+    utils::{count_command, create_response_poise},
+    Context, Error,
 };
 use rand::Rng;
 
 /// Shuffle the current queue.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
+    count_command("shuffle");
     //let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();

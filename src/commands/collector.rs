@@ -1,9 +1,10 @@
-use crate::{Context, Error};
+use crate::{utils::count_command, Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Boop the bot!
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
+    count_command("boop");
     let uuid_boop = ctx.id();
     // ctx.defer().await?;
     // let interaction = get_interaction(ctx).unwrap();

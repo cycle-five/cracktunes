@@ -14,7 +14,7 @@ use crate::{
         youtube::{YouTube, YouTubeRestartable},
     },
     utils::{
-        compare_domains, create_embed_response_poise, create_now_playing_embed,
+        compare_domains, count_command, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise,
         get_human_readable_timestamp, get_interaction, summon_short,
     },
@@ -57,12 +57,6 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
-// while let Some(mci) = serenity::CollectComponentInteraction::new(ctx)
-//     .author_id(ctx.author().id)
-//     .channel_id(ctx.channel_id())
-//     .timeout(std::time::Duration::from_secs(120))
-//     .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
-//     .await
 
 /// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only)]
@@ -74,6 +68,7 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    count_command("play");
     let is_prefix = ctx.prefix() != "/";
     tracing::info!(
         "executing play as a {} command.",

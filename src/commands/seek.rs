@@ -2,7 +2,7 @@ use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    utils::{create_response, get_interaction},
+    utils::{count_command, create_response, get_interaction},
     Context, Error,
 };
 use std::time::Duration;
@@ -10,6 +10,7 @@ use std::time::Duration;
 /// Seek to a specific timestamp in the current track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn seek(ctx: Context<'_>) -> Result<(), Error> {
+    count_command("seek");
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();

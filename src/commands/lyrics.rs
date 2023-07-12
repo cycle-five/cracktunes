@@ -1,12 +1,13 @@
 use crate::{
     errors::CrackedError,
-    utils::{create_embed_response_poise, create_lyrics_embed},
+    utils::{count_command, create_embed_response_poise, create_lyrics_embed},
     Context, Error,
 };
 
 /// Get the currently playing track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn lyrics(ctx: Context<'_>, query: Option<String>) -> Result<(), Error> {
+    count_command("lyrics");
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();

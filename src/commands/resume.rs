@@ -1,6 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
+    metrics::COMMAND_EXECUTIONS,
     utils::{create_response_poise_text, get_guild_id},
     {Context, Error},
 };
@@ -11,6 +12,7 @@ pub async fn resume(
     ctx: Context<'_>,
     #[description = "Resume the currently playing track"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
+    COMMAND_EXECUTIONS.with_label_values(&["resume"]).inc();
     let guild_id = get_guild_id(&ctx).unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();

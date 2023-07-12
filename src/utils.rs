@@ -11,8 +11,8 @@ use self::serenity::{
     Context as SerenityContext, SerenityError,
 };
 use crate::{
-    commands::summon, errors::CrackedError, messaging::message::CrackedMessage, Context, Data,
-    Error,
+    commands::summon, errors::CrackedError, messaging::message::CrackedMessage,
+    metrics::COMMAND_EXECUTIONS, Context, Data, Error,
 };
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
@@ -424,4 +424,14 @@ pub async fn handle_error(
     create_response_text(&ctx.http, interaction, &format!("{err}"))
         .await
         .expect("failed to create response");
+}
+pub fn count_command(command: &str) {
+    match COMMAND_EXECUTIONS.get_metric_with_label_values(&[command]) {
+        Ok(metric) => {
+            metric.inc();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get metric: {}", e);
+        }
+    };
 }
