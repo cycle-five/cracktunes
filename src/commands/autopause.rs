@@ -1,23 +1,15 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::message::CrackedMessage,
-    metrics::COMMAND_EXECUTIONS,
-    utils::{create_response, get_interaction},
+    utils::{count_command, create_response, get_interaction},
     Context, Error,
 };
 
 /// Toggle autopause at the end of everytrack.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
-    //COMMAND_EXECUTIONS.with_label_values(&["autopause"]).inc();
-    match COMMAND_EXECUTIONS.get_metric_with_label_values(&["autopause"]) {
-        Ok(metric) => {
-            metric.inc();
-        }
-        Err(e) => {
-            tracing::error!("Failed to get metric: {}", e);
-        }
-    }
+    count_command("autopause");
+
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
     let mut data = ctx.serenity_context().data.write().await;
