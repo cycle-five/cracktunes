@@ -425,8 +425,11 @@ pub async fn handle_error(
         .await
         .expect("failed to create response");
 }
-pub fn count_command(command: &str) {
-    match COMMAND_EXECUTIONS.get_metric_with_label_values(&[command]) {
+pub fn count_command(command: &str, is_prefix: bool) {
+    tracing::warn!("counting command: {}", command);
+    match COMMAND_EXECUTIONS
+        .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
+    {
         Ok(metric) => {
             metric.inc();
         }

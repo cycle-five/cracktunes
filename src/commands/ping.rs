@@ -1,9 +1,9 @@
-use crate::{Context, Error};
+use crate::{is_prefix, Context, Error};
 
 /// Ping the bot.
 #[poise::command(slash_command, prefix_command)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
-    //COMMAND_EXECUTIONS.with_label_values(&["ping"]).inc();
+    crate::utils::count_command("ping", is_prefix(ctx));
     ctx.say("Pong!").await?;
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
+    is_prefix,
     messaging::message::CrackedMessage,
     utils::{count_command, create_response, get_interaction},
     Context, Error,
@@ -8,7 +9,7 @@ use crate::{
 /// Toggle autopause at the end of everytrack.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
-    count_command("autopause");
+    count_command("autopause", is_prefix(ctx));
 
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();

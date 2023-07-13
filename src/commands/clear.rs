@@ -1,6 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
+    is_prefix,
     messaging::message::CrackedMessage,
     utils::{count_command, create_response, get_interaction},
     Context, Error,
@@ -9,7 +10,7 @@ use crate::{
 /// Clear the queue.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
-    count_command("clear");
+    count_command("clear", is_prefix(ctx));
     let mut interaction = get_interaction(ctx).unwrap();
 
     let guild_id = interaction.guild_id.unwrap();

@@ -11,11 +11,14 @@ use self::serenity::{
 use crate::{
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
+    is_prefix,
     messaging::messages::{
         QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE,
         QUEUE_PAGE_OF, QUEUE_UP_NEXT,
     },
-    utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
+    utils::{
+        count_command, create_embed_response_poise, get_human_readable_timestamp, get_interaction,
+    },
     Context, Data, Error,
 };
 use poise::serenity_prelude::{self as serenity};
@@ -34,7 +37,7 @@ const EMBED_TIMEOUT: u64 = 3600;
 /// Display the current queue.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    //COMMAND_EXECUTIONS.with_label_values(&["queue"]).inc();
+    count_command("queue", is_prefix(ctx));
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = match manager.get(guild_id) {

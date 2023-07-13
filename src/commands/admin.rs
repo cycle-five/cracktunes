@@ -1,3 +1,4 @@
+use crate::is_prefix;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::utils::count_command;
 use crate::{errors::CrackedError, utils::check_reply, Context, Error};
@@ -12,9 +13,9 @@ use date_time_parser::TimeParser;
     ephemeral,
     owners_only
 )]
-pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
+pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
-    COMMAND_EXECUTIONS.with_label_values(&["admin"]).inc();
+    count_command("admin", is_prefix(ctx));
 
     Ok(())
 }
@@ -25,7 +26,7 @@ pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
 ) -> Result<(), Error> {
-    count_command("authorize");
+    count_command("authorize", is_prefix(ctx));
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
@@ -53,7 +54,7 @@ pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,
 ) -> Result<(), Error> {
-    COMMAND_EXECUTIONS.with_label_values(&["deauthorize"]).inc();
+    count_command("deauthorize", is_prefix(ctx));
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();

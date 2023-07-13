@@ -27,6 +27,9 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 
 // #[macro_use]
 // extern crate lazy_static;
+pub fn is_prefix(ctx: Context) -> bool {
+    ctx.prefix() != "/"
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {

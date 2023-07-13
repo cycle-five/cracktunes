@@ -3,6 +3,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::CrackedError,
     handlers::{IdleHandler, TrackEndHandler},
+    is_prefix,
     messaging::message::CrackedMessage,
     utils::{count_command, get_guild_id, get_user_id},
     Context, Error,
@@ -18,7 +19,7 @@ pub async fn summon(
     #[description = "Channel id to join"] channel_id_str: Option<String>,
     #[description = "Send a reply to the user"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
-    count_command("summon");
+    count_command("summon", is_prefix(ctx));
     let guild_id = get_guild_id(&ctx).unwrap();
     let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();

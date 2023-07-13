@@ -1,6 +1,7 @@
 use self::serenity::GatewayIntents;
 use colored::Colorize;
 use config_file::FromConfigFile;
+use cracktunes::metrics::REGISTRY;
 use cracktunes::BotCredentials;
 use cracktunes::{
     commands,
@@ -37,6 +38,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttlePoise<Data, Error> {
     dotenv::dotenv().ok();
     //init_logging().await;
+    init_metrics().await;
     let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
@@ -64,6 +66,7 @@ async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
 
     init_logging().await;
+    init_metrics();
     let config = load_bot_config(None).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
@@ -80,7 +83,8 @@ async fn main() -> Result<(), Error> {
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
     let server = async {
-        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+        //warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+        warp::serve(metrics_route).run(([0, 0, 0, 0], 8000)).await;
         Ok::<(), serenity::Error>(())
     };
 
@@ -93,7 +97,9 @@ async fn main() -> Result<(), Error> {
 
 async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
+    let mut metric_families = prometheus::gather();
+    metric_families.extend(REGISTRY.gather());
+    tracing::info!("Metrics: {:?}", metric_families);
     let mut buffer = vec![];
     encoder.encode(&metric_families, &mut buffer).unwrap();
 
@@ -146,6 +152,11 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     });
 
     Ok(config)
+}
+
+fn init_metrics() {
+    tracing::info!("Initializing metrics");
+    cracktunes::metrics::register_custom_metrics();
 }
 
 #[allow(dead_code)]

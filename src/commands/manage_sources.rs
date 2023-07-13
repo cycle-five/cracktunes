@@ -9,12 +9,12 @@ use self::serenity::{
 };
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
+    is_prefix,
     messaging::messages::{
         DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
         DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
     },
-    metrics::COMMAND_EXECUTIONS,
-    utils::get_interaction,
+    utils::{count_command, get_interaction},
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -22,7 +22,7 @@ use poise::serenity_prelude as serenity;
 /// Manage the domains that are allowed or banned.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
-    COMMAND_EXECUTIONS.with_label_values(&["allow"]).inc();
+    count_command("allow", is_prefix(ctx));
     let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
 

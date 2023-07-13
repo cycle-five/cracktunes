@@ -4,6 +4,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
+    is_prefix,
     messaging::message::CrackedMessage,
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
@@ -68,7 +69,7 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    count_command("play");
+    count_command("play", is_prefix(ctx));
     let is_prefix = ctx.prefix() != "/";
     tracing::info!(
         "executing play as a {} command.",
