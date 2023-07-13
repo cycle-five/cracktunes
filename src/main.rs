@@ -11,6 +11,7 @@ use cracktunes::{
 };
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use prometheus::{Encoder, TextEncoder};
 use shuttle_runtime::Context as _;
 use shuttle_secrets::SecretStore;
 use songbird::serenity::SerenityInit;
@@ -21,6 +22,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use warp::Filter;
 
 #[cfg(feature = "shuttle")]
 use {cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise};
@@ -75,9 +77,31 @@ async fn main() -> Result<(), Error> {
     drop(data);
     drop(client);
 
-    framework.start().await?;
+    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+
+    let server = async {
+        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+        Ok::<(), serenity::Error>(())
+    };
+
+    let bot = framework.start(); //.await?;
+
+    tokio::try_join!(bot, server)?;
 
     Ok(())
+}
+
+async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    Ok(warp::reply::with_header(
+        buffer,
+        "content-type",
+        encoder.format_type(),
+    ))
 }
 
 fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Error> {

@@ -47,3 +47,21 @@ lazy_static! {
     )
     .expect("metric can be created");
 }
+
+pub fn register_custom_metrics() {
+    REGISTRY
+        .register(Box::new(COMMAND_EXECUTIONS.clone()))
+        .expect("collector can be registered");
+
+    REGISTRY
+        .register(Box::new(CONNECTED_CLIENTS.clone()))
+        .expect("collector can be registered");
+
+    REGISTRY
+        .register(Box::new(RESPONSE_CODE_COLLECTOR.clone()))
+        .expect("collector can be registered");
+
+    REGISTRY
+        .register(Box::new(RESPONSE_TIME_COLLECTOR.clone()))
+        .expect("collector can be registered");
+}
