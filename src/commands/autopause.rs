@@ -9,8 +9,7 @@ use crate::{
 /// Toggle autopause at the end of everytrack.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
-    count_command("autopause", is_prefix(ctx));
-
+    // FIXME: Don't reply on interaction.
     let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
     let mut data = ctx.serenity_context().data.write().await;

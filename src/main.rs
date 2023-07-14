@@ -2,7 +2,7 @@ use self::serenity::GatewayIntents;
 use colored::Colorize;
 use config_file::FromConfigFile;
 use cracktunes::metrics::REGISTRY;
-use cracktunes::BotCredentials;
+use cracktunes::utils::count_command;
 use cracktunes::{
     commands,
     guild::settings::GuildSettings,
@@ -10,6 +10,7 @@ use cracktunes::{
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
+use cracktunes::{is_prefix, BotCredentials};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use prometheus::{Encoder, TextEncoder};
@@ -23,6 +24,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tracing::instrument;
 use warp::Filter;
 
 #[cfg(feature = "shuttle")]
@@ -65,7 +67,7 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
 
-    init_logging().await;
+    init_logging();
     init_metrics();
     let config = load_bot_config(None).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
@@ -99,7 +101,7 @@ async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
     let mut metric_families = prometheus::gather();
     metric_families.extend(REGISTRY.gather());
-    tracing::info!("Metrics: {:?}", metric_families);
+    // tracing::info!("Metrics: {:?}", metric_families);
     let mut buffer = vec![];
     encoder.encode(&metric_families, &mut buffer).unwrap();
 
@@ -154,13 +156,15 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     Ok(config)
 }
 
+#[instrument]
 fn init_metrics() {
     tracing::info!("Initializing metrics");
     cracktunes::metrics::register_custom_metrics();
 }
 
 #[allow(dead_code)]
-async fn init_logging() {
+#[instrument]
+fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     // A layer that logs up to debug events.
@@ -279,6 +283,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("Executing command {}...", ctx.command().qualified_name);
+                count_command(ctx.command().qualified_name.as_ref(), is_prefix(ctx));
             })
         },
         /// This code is run after a command if it was successful (returned Ok)

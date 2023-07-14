@@ -15,7 +15,6 @@ use date_time_parser::TimeParser;
 )]
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
-    count_command("admin", is_prefix(ctx));
 
     Ok(())
 }
@@ -26,7 +25,6 @@ pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
 ) -> Result<(), Error> {
-    count_command("authorize", is_prefix(ctx));
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
@@ -54,7 +52,6 @@ pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,
 ) -> Result<(), Error> {
-    count_command("deauthorize", is_prefix(ctx));
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
