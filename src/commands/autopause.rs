@@ -1,8 +1,7 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
-    is_prefix,
     messaging::message::CrackedMessage,
-    utils::{count_command, create_response, get_interaction},
+    utils::{create_response, get_interaction},
     Context, Error,
 };
 

@@ -247,7 +247,7 @@ pub async fn create_lyrics_embed(track: String, artists: String, lyric: String) 
     tracing::trace!("artists: {}", artists);
 
     embed.author(|author| author.name(artists));
-    embed.title(track.clone());
+    embed.title(track);
     embed.description(lyric);
 
     // metadata

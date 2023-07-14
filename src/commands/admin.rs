@@ -1,6 +1,4 @@
-use crate::is_prefix;
 use crate::metrics::COMMAND_EXECUTIONS;
-use crate::utils::count_command;
 use crate::{errors::CrackedError, utils::check_reply, Context, Error};
 use chrono::NaiveTime;
 use date_time_parser::TimeParser;
@@ -13,7 +11,7 @@ use date_time_parser::TimeParser;
     ephemeral,
     owners_only
 )]
-pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
     Ok(())

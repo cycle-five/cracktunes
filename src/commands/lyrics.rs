@@ -1,7 +1,6 @@
 use crate::{
     errors::CrackedError,
-    is_prefix,
-    utils::{count_command, create_embed_response_poise, create_lyrics_embed},
+    utils::{create_embed_response_poise, create_lyrics_embed},
     Context, Error,
 };
 
@@ -13,7 +12,6 @@ pub async fn lyrics(
     #[description = "The query to search for"]
     query: Option<String>,
 ) -> Result<(), Error> {
-    count_command("lyrics", is_prefix(ctx));
     // The artist field seems to really just get in the way as it's the literal youtube channel name
     // in many cases.
     // let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();

@@ -1,8 +1,8 @@
 use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::utils::{count_command, create_embed_response_poise};
-use crate::{is_prefix, Context, Error};
+use crate::utils::create_embed_response_poise;
+use crate::{Context, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
@@ -13,8 +13,6 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
-    count_command("volume", is_prefix(ctx));
-    tracing::info!("volume");
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {

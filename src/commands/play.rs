@@ -4,7 +4,6 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
-    is_prefix,
     messaging::message::CrackedMessage,
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
@@ -15,7 +14,7 @@ use crate::{
         youtube::{YouTube, YouTubeRestartable},
     },
     utils::{
-        compare_domains, count_command, create_embed_response_poise, create_now_playing_embed,
+        compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise,
         get_human_readable_timestamp, get_interaction, summon_short,
     },
@@ -69,13 +68,7 @@ pub async fn play(
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    count_command("play", is_prefix(ctx));
     let is_prefix = ctx.prefix() != "/";
-    tracing::info!(
-        "executing play as a {} command.",
-        if is_prefix { "prefix" } else { "slash" },
-    );
-
     let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
 
     if is_prefix {
