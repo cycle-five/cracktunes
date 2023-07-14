@@ -83,8 +83,8 @@ async fn main() -> Result<(), Error> {
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
     let server = async {
-        //warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
-        warp::serve(metrics_route).run(([0, 0, 0, 0], 8000)).await;
+        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+        //warp::serve(metrics_route).run(([0, 0, 0, 0], 8000)).await;
         Ok::<(), serenity::Error>(())
     };
 

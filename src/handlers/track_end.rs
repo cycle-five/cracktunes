@@ -42,7 +42,7 @@ impl EventHandler for TrackEndHandler {
         let queue = handler.queue();
         queue.modify_queue(|v| {
             v.front_mut().map(|track| {
-                track.set_volume(volume);
+                let _ = track.set_volume(volume);
             });
         });
         if autopause {
