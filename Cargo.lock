@@ -433,11 +433,9 @@ dependencies = [
  "anyhow",
  "audiopus 0.2.0",
  "chatgpt_rs",
- "chrono",
  "colored",
  "config-file",
  "ctrlc",
- "date_time_parser",
  "dotenv",
  "ffprobe",
  "lazy_static",
@@ -559,16 +557,6 @@ dependencies = [
  "once_cell",
  "parking_lot_core",
  "serde",
-]
-
-[[package]]
-name = "date_time_parser"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0521d96e513670773ac503e5f5239178c3aef16cffda1e77a3cdbdbe993fb5a"
-dependencies = [
- "chrono",
- "regex",
 ]
 
 [[package]]
