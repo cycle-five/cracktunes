@@ -2,7 +2,7 @@
 # Necessary dependencies to build CrackTunes
 FROM rust:slim-bullseye as build
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update -y && apt-get install -y \
     build-essential autoconf automake cmake libtool libssl-dev pkg-config
 
 WORKDIR "/cracktunes"
