@@ -8,7 +8,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub mod client;
 pub mod commands;
 pub mod connection;
 pub mod errors;

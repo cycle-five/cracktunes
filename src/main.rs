@@ -1,7 +1,7 @@
 use self::serenity::GatewayIntents;
 use colored::Colorize;
 use config_file::FromConfigFile;
-use cracktunes::metrics::REGISTRY;
+use cracktunes::metrics::{COMMAND_ERRORS, REGISTRY};
 use cracktunes::utils::count_command;
 use cracktunes::{
     commands,
@@ -87,7 +87,6 @@ async fn main() -> Result<(), Error> {
 
     let server = async {
         warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
-        //warp::serve(metrics_route).run(([0, 0, 0, 0], 8000)).await;
         Ok::<(), serenity::Error>(())
     };
 
@@ -251,6 +250,9 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
+            COMMAND_ERRORS
+                .with_label_values(&[&ctx.command().qualified_name])
+                .inc();
             match get_interaction(ctx) {
                 Some(mut interaction) => {
                     check_interaction(
@@ -333,10 +335,6 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         },
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
-            // Box::pin(async move {
-            //     // let guild_id = ctx.guild_id().unwrap_or_default();
-            //     Ok(true)
-            // })
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
                 if ctx.data().bot_settings.authorized_users.is_empty()
@@ -344,12 +342,12 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                         .data()
                         .bot_settings
                         .authorized_users
-                        .contains(&ctx.author().id.0)
+                        .contains(ctx.author().id.as_u64())
                 {
                     return Ok(true);
                 }
 
-                let user_id = ctx.author_member().await.unwrap().user.id.0;
+                let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
                 ctx.data()
@@ -365,7 +363,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
                             Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains(&user_id))
+                                || guild_settings.authorized_users.contains(user_id))
                         },
                     )
             })

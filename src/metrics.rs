@@ -9,16 +9,14 @@ lazy_static! {
         &["command", "type"]
     )
     .expect("metric can be created");
+    pub static ref COMMAND_ERRORS: IntCounterVec =
+        IntCounterVec::new(Opts::new("command_errors", "Command Errors"), &["command"])
+            .expect("metric can be created");
     pub static ref CONNECTED_CLIENTS: Gauge =
         Gauge::new("connected_clients", "Connected Clients").expect("metric can be created");
-    pub static ref RESPONSE_CODE_COLLECTOR: IntCounterVec = IntCounterVec::new(
-        Opts::new("response_code", "Response Codes"),
-        &["env", "statuscode", "type"]
-    )
-    .expect("metric can be created");
     pub static ref RESPONSE_TIME_COLLECTOR: HistogramVec = HistogramVec::new(
         HistogramOpts::new("response_time", "Response Times"),
-        &["env"]
+        &["command"]
     )
     .expect("metric can be created");
 }
@@ -33,7 +31,7 @@ pub fn register_custom_metrics() {
         .expect("collector can be registered");
 
     REGISTRY
-        .register(Box::new(RESPONSE_CODE_COLLECTOR.clone()))
+        .register(Box::new(COMMAND_ERRORS.clone()))
         .expect("collector can be registered");
 
     REGISTRY
