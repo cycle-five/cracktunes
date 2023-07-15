@@ -14,8 +14,6 @@ use cracktunes::{is_prefix, BotCredentials};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use prometheus::{Encoder, TextEncoder};
-use shuttle_runtime::Context as _;
-use shuttle_secrets::SecretStore;
 use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
@@ -28,7 +26,10 @@ use tracing::instrument;
 use warp::Filter;
 
 #[cfg(feature = "shuttle")]
-use {cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise};
+use {
+    cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise, shuttle_runtime::Context as _,
+    shuttle_secrets::SecretStore,
+};
 #[cfg(not(feature = "shuttle"))]
 use {cracktunes::guild::cache::GuildCacheMap, cracktunes::guild::settings::GuildSettingsMap};
 
@@ -69,7 +70,7 @@ async fn main() -> Result<(), Error> {
 
     init_logging();
     init_metrics();
-    let config = load_bot_config(None).await.unwrap();
+    let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
     let framework = poise_framework(config);
@@ -112,6 +113,7 @@ async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     ))
 }
 
+#[cfg(feature = "shuttle")]
 fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
@@ -127,7 +129,18 @@ fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Erro
         }
     }
 }
+#[cfg(not(feature = "shuttle"))]
+fn load_key(k: String) -> Result<String, Error> {
+    match env::var(&k) {
+        Ok(token) => Ok(token),
+        Err(_) => {
+            tracing::warn!("{} not found in environment", &k);
+            Err(format!("{} not found in environment or Secrets.toml", k).into())
+        }
+    }
+}
 
+#[cfg(feature = "shuttle")]
 async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig, Error> {
     // Get the discord token set in `Secrets.toml`
 
@@ -137,6 +150,32 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     let spotify_client_secret =
         load_key(secret_store.clone(), "SPOTIFY_CLIENT_SECRET".to_string()).ok();
     let openai_key = load_key(secret_store, "OPENAI_KEY".to_string()).ok();
+
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!("Using default config: {:?}", error);
+            BotConfig::default()
+        }
+    }
+    .set_credentials(BotCredentials {
+        discord_token,
+        discord_app_id,
+        spotify_client_id,
+        spotify_client_secret,
+        openai_key,
+    });
+
+    Ok(config)
+}
+
+#[cfg(not(feature = "shuttle"))]
+async fn load_bot_config() -> Result<BotConfig, Error> {
+    let discord_token = load_key("DISCORD_TOKEN".to_string())?;
+    let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
+    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
+    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
+    let openai_key = load_key("OPENAI_KEY".to_string()).ok();
 
     let config = match BotConfig::from_config_file("./cracktunes.toml") {
         Ok(config) => config,
