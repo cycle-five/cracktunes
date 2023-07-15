@@ -30,7 +30,7 @@ shuttle-poise = "0.21.0"
 shuttle-runtime = "0.21.0"
 shuttle-service = "0.21.0"
 shuttle-secrets = "0.21.0"
-serde = { version = "1.0.169", features = ["derive", "rc"] }
+serde = { version = "1.0.171", features = ["derive", "rc"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 sys-info = "0.9.1"
