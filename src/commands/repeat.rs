@@ -1,17 +1,13 @@
 use crate::{
-    errors::CrackedError,
-    messaging::message::CrackedMessage,
-    messaging::messages::FAIL_LOOP,
-    utils::{create_response, get_interaction},
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, messaging::messages::FAIL_LOOP,
+    utils::create_response_poise, Context, Error,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
 /// Toggle looping of the current track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
-    let mut interaction = get_interaction(ctx).unwrap();
-    let guild_id = interaction.guild_id.unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 
@@ -26,22 +22,8 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     match toggler(&track) {
-        Ok(_) if was_looping => {
-            create_response(
-                &ctx.serenity_context().http,
-                &mut interaction,
-                CrackedMessage::LoopDisable,
-            )
-            .await
-        }
-        Ok(_) if !was_looping => {
-            create_response(
-                &ctx.serenity_context().http,
-                &mut interaction,
-                CrackedMessage::LoopEnable,
-            )
-            .await
-        }
+        Ok(_) if was_looping => create_response_poise(ctx, CrackedMessage::LoopDisable).await,
+        Ok(_) if !was_looping => create_response_poise(ctx, CrackedMessage::LoopEnable).await,
         _ => Err(CrackedError::Other(FAIL_LOOP).into()),
     }
 }

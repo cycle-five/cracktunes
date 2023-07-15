@@ -57,12 +57,6 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
-// while let Some(mci) = serenity::CollectComponentInteraction::new(ctx)
-//     .author_id(ctx.author().id)
-//     .channel_id(ctx.channel_id())
-//     .timeout(std::time::Duration::from_secs(120))
-//     .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
-//     .await
 
 /// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only)]
@@ -75,11 +69,6 @@ pub async fn play(
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
     let is_prefix = ctx.prefix() != "/";
-    tracing::info!(
-        "executing play as a {} command.",
-        if is_prefix { "prefix" } else { "slash" },
-    );
-
     let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
 
     if is_prefix {
@@ -474,7 +463,6 @@ pub async fn play(
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
-                    //FIXME: Also do this without application command
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
@@ -607,8 +595,6 @@ async fn enqueue_track(
     Ok(handler.queue().current_queue())
 }
 
-// FIXME: This is broken when the first thing that is done no the server is add a playflist from soptify
-// it break ons the third insertion.
 async fn insert_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,

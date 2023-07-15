@@ -4,22 +4,35 @@ use crate::{
     Context, Error,
 };
 
-/// Get the currently playing track.
+/// Search for song lyrics.
 #[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn lyrics(ctx: Context<'_>, query: Option<String>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+pub async fn lyrics(
+    ctx: Context<'_>,
+    #[rest]
+    #[description = "The query to search for"]
+    query: Option<String>,
+) -> Result<(), Error> {
+    // The artist field seems to really just get in the way as it's the literal youtube channel name
+    // in many cases.
+    // let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();
+    let query = if query.is_some() {
+        query.unwrap()
+    } else {
+        let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+        let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
-    let handler = call.lock().await;
-    let track_handle = handler
-        .queue()
-        .current()
-        .ok_or(CrackedError::NothingPlaying)?;
+        let handler = call.lock().await;
+        let track_handle = handler
+            .queue()
+            .current()
+            .ok_or(CrackedError::NothingPlaying)?;
 
-    let search_title = track_handle.metadata().title.clone().unwrap_or_default();
-    let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();
-    let query = query.unwrap_or_else(|| format!("{} {}", search_title, search_artist));
+        let search_title = track_handle.metadata().title.clone().unwrap_or_default();
+
+        search_title.clone()
+    };
+    tracing::warn!("searching for lyrics for {}", query);
 
     let client = lyric_finder::Client::new();
     let result = client.get_lyric(&query).await?;
@@ -42,6 +55,6 @@ pub async fn lyrics(ctx: Context<'_>, query: Option<String>) -> Result<(), Error
         }
     };
 
-    let embed = create_lyrics_embed(track_handle, track, artists, lyric).await;
+    let embed = create_lyrics_embed(track, artists, lyric).await;
     create_embed_response_poise(ctx, embed).await
 }

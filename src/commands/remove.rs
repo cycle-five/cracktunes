@@ -5,7 +5,7 @@ use crate::{
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
     utils::create_embed_response_poise,
-    utils::{create_response_poise_text, get_guild_id},
+    utils::create_response_poise_text,
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -19,7 +19,7 @@ pub async fn remove(
     #[description = "Start index in the track queue to remove"] b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 

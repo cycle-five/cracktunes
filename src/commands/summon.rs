@@ -4,7 +4,7 @@ use crate::{
     errors::CrackedError,
     handlers::{IdleHandler, TrackEndHandler},
     messaging::message::CrackedMessage,
-    utils::{get_guild_id, get_user_id},
+    utils::get_user_id,
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -18,7 +18,7 @@ pub async fn summon(
     #[description = "Channel id to join"] channel_id_str: Option<String>,
     #[description = "Send a reply to the user"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let user_id = get_user_id(&ctx);

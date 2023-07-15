@@ -13,7 +13,6 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
-    tracing::info!("volume");
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
@@ -42,13 +41,7 @@ pub async fn volume(
         None => {
             let handler = call.lock().await;
             let track_handle: Option<TrackHandle> = handler.queue().current();
-            // if track_handle.is_none() {
-            //     let mut embed = CreateEmbed::default();
-            //     embed.description(format!("{}", CrackedError::NothingPlaying));
 
-            //     create_embed_response_poise(ctx, embed).await?;
-            //     return Ok(());
-            // }
             let volume_track = match track_handle {
                 Some(handle) => handle.get_info().await.unwrap().volume,
                 None => 0.0,

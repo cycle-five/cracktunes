@@ -28,7 +28,9 @@ pub enum CrackedError {
     TrackFail(InputError),
     AlreadyConnected(Mention),
     Serenity(SerenityError),
+    #[cfg(feature = "shuttle")]
     Shuttle(shuttle_runtime::Error),
+    #[cfg(feature = "shuttle")]
     ShuttleCustom(shuttle_runtime::CustomError),
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
@@ -83,7 +85,9 @@ impl Display for CrackedError {
                 _ => f.write_str(&format!("{err}")),
             },
             Self::Serenity(err) => f.write_str(&format!("{err}")),
+            #[cfg(feature = "shuttle")]
             Self::Shuttle(err) => f.write_str(&format!("{err}")),
+            #[cfg(feature = "shuttle")]
             Self::ShuttleCustom(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
@@ -198,6 +202,7 @@ impl From<std::io::Error> for CrackedError {
     }
 }
 
+#[cfg(feature = "shuttle")]
 /// Provides an implementation to convert a [`shuttle_service::CustomError`] to a [`CrackedError`].
 impl From<shuttle_service::CustomError> for CrackedError {
     fn from(err: shuttle_service::CustomError) -> Self {
@@ -231,74 +236,6 @@ impl From<RSpotifyClientError> for CrackedError {
         CrackedError::RSpotify(err)
     }
 }
-
-// pub trait NewTrait: DerefMut + Deref<Target = serenity::Client> + NewTraitClone {}
-
-// pub trait NewTraitClone {
-//     fn clone_box(&self) -> Box<dyn NewTrait>;
-// }
-
-// impl<T> NewTraitClone for T
-// where
-//     T: 'static + NewTrait + Clone,
-// {
-//     fn clone_box(&self) -> Box<dyn NewTrait> {
-//         Box::new(self.clone())
-//     }
-// }
-
-// impl Clone for Box<dyn NewTraitClone> {
-//     fn clone(&self) -> Box<dyn NewTraitClone> {
-//         self.clone_box().into()
-//     }
-// }
-
-// pub struct NewTraitCloneBox(Box<dyn NewTraitClone>);
-
-// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for NewTraitCloneBox {
-//     fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-//         item.into()
-//     }
-// }
-
-// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for Box<dyn NewTraitClone> {
-//     fn from(item: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-//         item.clone_box().into()
-//     }
-// }
-
-// impl From<Box<dyn NewTrait<Target = serenity::Client>>> for SerenityService {
-//     fn from(router: Box<dyn NewTrait<Target = serenity::Client>>) -> Self {
-//         <Box<dyn NewTrait<Target = serenity::Client>> as Into<SerenityService>>::into(router).into()
-//     }
-// }
-
-/// The return type that should be returned from the [shuttle_runtime::main] function.
-// pub type ShuttleSerenity = Result<SerenityService, Error>;
-
-// impl From<serenity::Client> for SerenityService {
-//     fn from(item: serenity::Client) -> Self {
-//         SerenityService(item)
-//     }
-// }
-
-// impl From<Box<serenity::Client>> for SerenityService {
-//     fn from(item: Box<serenity::Client>) -> Self {
-//         SerenityService(*item)
-//     }
-// }
-
-// impl From<dyn NewTrait + 'a> for CrackedError {
-//     fn from(err: impl DerefMut + Deref<Target = serenity::Client> + 'a) -> Self {
-//         Self::Poise(Box::new(err))
-//     }
-// }
-
-// impl From<Error> for CrackedError {
-//     fn from(err: Error) -> Self {
-//         Self::Poise(err)
-//     }
-// }
 
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.

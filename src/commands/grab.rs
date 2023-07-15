@@ -9,7 +9,6 @@ pub async fn grab(
     ctx: &Context,
     interaction: &mut ApplicationCommandInteraction,
 ) -> Result<(), Error> {
-    tracing::info!("grab");
     let guild_id = interaction.guild_id.unwrap();
     let manager = songbird::get(ctx).await.unwrap();
     let call = manager.get(guild_id).unwrap();

@@ -1,13 +1,13 @@
 use crate::{
     errors::CrackedError,
-    utils::{create_embed_response_poise, create_now_playing_embed, get_guild_id},
+    utils::{create_embed_response_poise, create_now_playing_embed},
     Context, Error,
 };
 
 /// Get the currently playing track.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 

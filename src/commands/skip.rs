@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{create_response_poise_text, get_guild_id},
+    utils::create_response_poise_text,
     Context, Error,
 };
 use songbird::{tracks::TrackHandle, Call};
@@ -14,7 +14,7 @@ pub async fn skip(
     ctx: Context<'_>,
     #[description = "Number of tracks to skip"] tracks_to_skip: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 

@@ -7,7 +7,6 @@ use rand::Rng;
 /// Shuffle the current queue.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
-    //let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();

@@ -11,8 +11,8 @@ use self::serenity::{
     Context as SerenityContext, SerenityError,
 };
 use crate::{
-    commands::summon, errors::CrackedError, messaging::message::CrackedMessage, Context, Data,
-    Error,
+    commands::summon, errors::CrackedError, messaging::message::CrackedMessage,
+    metrics::COMMAND_EXECUTIONS, Context, Data, Error,
 };
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
@@ -238,40 +238,35 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     embed
 }
 
-pub async fn create_lyrics_embed(
-    track_handle: TrackHandle,
-    track: String,
-    artists: String,
-    lyric: String,
-) -> CreateEmbed {
+pub async fn create_lyrics_embed(track: String, artists: String, lyric: String) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
-    let metadata = track_handle.metadata().clone();
+    // let metadata = track_handle.metadata().clone();
 
     tracing::trace!("lyric: {}", lyric);
     tracing::trace!("track: {}", track);
     tracing::trace!("artists: {}", artists);
 
     embed.author(|author| author.name(artists));
-    embed.title(track.clone());
+    embed.title(track);
     embed.description(lyric);
 
-    metadata
-        .source_url
-        .as_ref()
-        .map(|source_url| embed.url(source_url.clone()));
+    // metadata
+    //     .source_url
+    //     .as_ref()
+    //     .map(|source_url| embed.url(source_url.clone()));
 
-    metadata
-        .thumbnail
-        .as_ref()
-        .map(|thumbnail| embed.thumbnail(thumbnail));
+    // metadata
+    //     .thumbnail
+    //     .as_ref()
+    //     .map(|thumbnail| embed.thumbnail(thumbnail));
 
-    let source_url = metadata.source_url.unwrap_or_else(|| {
-        tracing::warn!("No source url found for track: {:?}", track);
-        "".to_string()
-    });
+    // let source_url = metadata.source_url.unwrap_or_else(|| {
+    //     tracing::warn!("No source url found for track: {:?}", track);
+    //     "".to_string()
+    // });
 
-    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-    embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
+    // let (footer_text, footer_icon_url) = get_footer_info(&source_url);
+    // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
 
     embed
 }
@@ -360,13 +355,6 @@ pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessa
     }
 }
 
-pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
-    match ctx {
-        Context::Application(ctx) => ctx.interaction.guild_id(),
-        Context::Prefix(ctx) => ctx.msg.guild_id,
-    }
-}
-
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
         Context::Application(ctx) => match ctx.interaction {
@@ -424,4 +412,17 @@ pub async fn handle_error(
     create_response_text(&ctx.http, interaction, &format!("{err}"))
         .await
         .expect("failed to create response");
+}
+pub fn count_command(command: &str, is_prefix: bool) {
+    tracing::warn!("counting command: {}", command);
+    match COMMAND_EXECUTIONS
+        .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
+    {
+        Ok(metric) => {
+            metric.inc();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get metric: {}", e);
+        }
+    };
 }

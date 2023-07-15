@@ -19,7 +19,7 @@ pub struct TrackEndHandler {
 
 pub struct ModifyQueueHandler {
     pub http: Arc<Http>,
-    pub data: Data, //Arc<RwLock<TypeMap>>,
+    pub data: Data,
     pub call: Arc<Mutex<Call>>,
     pub guild_id: GuildId,
 }
@@ -33,10 +33,19 @@ impl EventHandler for TrackEndHandler {
             .get(&self.guild_id)
             .map(|guild_settings| guild_settings.autopause)
             .unwrap_or_default();
+        let volume = settings
+            .get(&self.guild_id)
+            .map(|guild_settings| guild_settings.volume)
+            .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
 
+        let handler = self.call.lock().await;
+        let queue = handler.queue();
+        queue.modify_queue(|v| {
+            if let Some(track) = v.front_mut() {
+                let _ = track.set_volume(volume);
+            };
+        });
         if autopause {
-            let handler = self.call.lock().await;
-            let queue = handler.queue();
             queue.pause().ok();
         }
 

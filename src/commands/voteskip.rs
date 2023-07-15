@@ -5,7 +5,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
-    utils::{create_response_poise_text, get_guild_id, get_user_id},
+    utils::{create_response_poise_text, get_user_id},
     Context, Data, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -14,7 +14,7 @@ use std::collections::HashSet;
 /// Vote to skip the current track
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let bot_channel_id = get_voice_channel_for_user(
         &ctx.serenity_context().cache.guild(guild_id).unwrap(),
         &ctx.serenity_context().cache.current_user_id(),

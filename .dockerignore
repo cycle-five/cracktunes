@@ -12,3 +12,13 @@ README.md
 # Cargo files
 **/*.rs.bk
 /target/
+
+# Submodules
+/dep-installer-hack/
+
+# data
+/logs/
+/data/
+
+#IDE files
+/.vscode/

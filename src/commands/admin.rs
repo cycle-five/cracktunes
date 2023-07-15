@@ -1,6 +1,6 @@
 use crate::{errors::CrackedError, utils::check_reply, Context, Error};
-use chrono::NaiveTime;
-use date_time_parser::TimeParser;
+// use chrono::NaiveTime;
+// use date_time_parser::TimeParser;
 
 /// Admin commands.
 #[poise::command(
@@ -76,18 +76,20 @@ pub async fn deauthorize(
 #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
 pub async fn set_idle_timeout(
     ctx: Context<'_>,
-    #[description = "Set the idle timeout for the bot in vc."] timeout: String,
+    // #[description = "Idle timeout for the bot in minutes."] timeout: String,
+    #[description = "Idle timeout for the bot in minutes."] timeout: u32,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
 
-    let timeout = match TimeParser::parse(&timeout) {
-        Some(time) => time,
-        None => return Err(CrackedError::ParseTimeFail.into()),
-    };
-    let timeout = timeout
-        .signed_duration_since(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-        .num_seconds() as u32;
+    // let timeout = match TimeParser::parse(&timeout) {
+    //     Some(time) => time,
+    //     None => return Err(CrackedError::ParseTimeFail.into()),
+    // };
+    // let timeout = timeout
+    //     .signed_duration_since(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+    //     .num_seconds() as u32;
+    let timeout = timeout * 60;
 
     data.guild_settings_map
         .lock()

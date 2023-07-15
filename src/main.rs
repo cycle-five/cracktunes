@@ -1,7 +1,8 @@
 use self::serenity::GatewayIntents;
 use colored::Colorize;
 use config_file::FromConfigFile;
-use cracktunes::BotCredentials;
+use cracktunes::metrics::{COMMAND_ERRORS, REGISTRY};
+use cracktunes::utils::count_command;
 use cracktunes::{
     commands,
     guild::settings::GuildSettings,
@@ -9,10 +10,10 @@ use cracktunes::{
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
+use cracktunes::{is_prefix, BotCredentials};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
-use shuttle_runtime::Context as _;
-use shuttle_secrets::SecretStore;
+use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
@@ -21,9 +22,14 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tracing::instrument;
+use warp::Filter;
 
 #[cfg(feature = "shuttle")]
-use {cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise};
+use {
+    cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise, shuttle_runtime::Context as _,
+    shuttle_secrets::SecretStore,
+};
 #[cfg(not(feature = "shuttle"))]
 use {cracktunes::guild::cache::GuildCacheMap, cracktunes::guild::settings::GuildSettingsMap};
 
@@ -35,6 +41,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttlePoise<Data, Error> {
     dotenv::dotenv().ok();
     //init_logging().await;
+    init_metrics().await;
     let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
@@ -61,8 +68,9 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
 
-    init_logging().await;
-    let config = load_bot_config(None).await.unwrap();
+    init_logging();
+    init_metrics();
+    let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
     let framework = poise_framework(config);
@@ -75,11 +83,36 @@ async fn main() -> Result<(), Error> {
     drop(data);
     drop(client);
 
-    framework.start().await?;
+    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+
+    let server = async {
+        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+        Ok::<(), serenity::Error>(())
+    };
+
+    let bot = framework.start(); //.await?;
+
+    tokio::try_join!(bot, server)?;
 
     Ok(())
 }
 
+async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
+    let encoder = TextEncoder::new();
+    let mut metric_families = prometheus::gather();
+    metric_families.extend(REGISTRY.gather());
+    // tracing::info!("Metrics: {:?}", metric_families);
+    let mut buffer = vec![];
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    Ok(warp::reply::with_header(
+        buffer,
+        "content-type",
+        encoder.format_type(),
+    ))
+}
+
+#[cfg(feature = "shuttle")]
 fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
@@ -95,7 +128,18 @@ fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Erro
         }
     }
 }
+#[cfg(not(feature = "shuttle"))]
+fn load_key(k: String) -> Result<String, Error> {
+    match env::var(&k) {
+        Ok(token) => Ok(token),
+        Err(_) => {
+            tracing::warn!("{} not found in environment", &k);
+            Err(format!("{} not found in environment or Secrets.toml", k).into())
+        }
+    }
+}
 
+#[cfg(feature = "shuttle")]
 async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig, Error> {
     // Get the discord token set in `Secrets.toml`
 
@@ -124,8 +168,41 @@ async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig,
     Ok(config)
 }
 
+#[cfg(not(feature = "shuttle"))]
+async fn load_bot_config() -> Result<BotConfig, Error> {
+    let discord_token = load_key("DISCORD_TOKEN".to_string())?;
+    let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
+    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
+    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
+    let openai_key = load_key("OPENAI_KEY".to_string()).ok();
+
+    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+        Ok(config) => config,
+        Err(error) => {
+            tracing::warn!("Using default config: {:?}", error);
+            BotConfig::default()
+        }
+    }
+    .set_credentials(BotCredentials {
+        discord_token,
+        discord_app_id,
+        spotify_client_id,
+        spotify_client_secret,
+        openai_key,
+    });
+
+    Ok(config)
+}
+
+#[instrument]
+fn init_metrics() {
+    tracing::info!("Initializing metrics");
+    cracktunes::metrics::register_custom_metrics();
+}
+
 #[allow(dead_code)]
-async fn init_logging() {
+#[instrument]
+fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     // A layer that logs up to debug events.
@@ -173,6 +250,9 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx } => {
+            COMMAND_ERRORS
+                .with_label_values(&[&ctx.command().qualified_name])
+                .inc();
             match get_interaction(ctx) {
                 Some(mut interaction) => {
                     check_interaction(
@@ -244,6 +324,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("Executing command {}...", ctx.command().qualified_name);
+                count_command(ctx.command().qualified_name.as_ref(), is_prefix(ctx));
             })
         },
         /// This code is run after a command if it was successful (returned Ok)
@@ -254,10 +335,6 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         },
         /// Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
-            // Box::pin(async move {
-            //     // let guild_id = ctx.guild_id().unwrap_or_default();
-            //     Ok(true)
-            // })
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
                 if ctx.data().bot_settings.authorized_users.is_empty()
@@ -265,12 +342,12 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                         .data()
                         .bot_settings
                         .authorized_users
-                        .contains(&ctx.author().id.0)
+                        .contains(ctx.author().id.as_u64())
                 {
                     return Ok(true);
                 }
 
-                let user_id = ctx.author_member().await.unwrap().user.id.0;
+                let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
                 ctx.data()
@@ -286,7 +363,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
                             Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains(&user_id))
+                                || guild_settings.authorized_users.contains(user_id))
                         },
                     )
             })

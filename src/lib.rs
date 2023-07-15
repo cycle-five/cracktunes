@@ -8,13 +8,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub mod client;
 pub mod commands;
 pub mod connection;
 pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod messaging;
+pub mod metrics;
 pub mod sources;
 pub mod utils;
 
@@ -23,6 +23,12 @@ pub mod test;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
+
+// #[macro_use]
+// extern crate lazy_static;
+pub fn is_prefix(ctx: Context) -> bool {
+    ctx.prefix() != "/"
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
@@ -176,11 +182,14 @@ impl Default for Data {
 }
 
 // shuttle library code for poise
+#[cfg(feature = "shuttle")]
 use std::net::SocketAddr;
 
 /// A wrapper type for [poise::Framework] so we can implement [shuttle_runtime::Service] for it.
+#[cfg(feature = "shuttle")]
 pub struct PoiseService<T, E>(pub Arc<poise::Framework<T, E>>);
 
+#[cfg(feature = "shuttle")]
 #[shuttle_runtime::async_trait]
 impl<T, E> shuttle_runtime::Service for PoiseService<T, E>
 where
@@ -197,11 +206,13 @@ where
     }
 }
 
+#[cfg(feature = "shuttle")]
 impl<T, E> From<Arc<poise::Framework<T, E>>> for PoiseService<T, E> {
     fn from(framework: Arc<poise::Framework<T, E>>) -> Self {
         Self(framework)
     }
 }
 
+#[cfg(feature = "shuttle")]
 /// The return type that should be returned from the [shuttle_runtime::main] function.
 pub type ShuttlePoise<T, E> = Result<PoiseService<T, E>, shuttle_runtime::Error>;

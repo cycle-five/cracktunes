@@ -1,17 +1,11 @@
-use crate::{
-    messaging::message::CrackedMessage,
-    utils::{create_response, get_interaction},
-    Context, Error,
-};
+use crate::{messaging::message::CrackedMessage, utils::create_response_poise, Context, Error};
 
 /// Get the current version of the bot.
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(slash_command, prefix_command)]
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
-    let mut interaction = get_interaction(ctx).unwrap();
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| "Unknown");
-    create_response(
-        &ctx.serenity_context().http,
-        &mut interaction,
+    create_response_poise(
+        ctx,
         CrackedMessage::Version {
             current: current.to_owned(),
         },

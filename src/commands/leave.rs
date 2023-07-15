@@ -1,14 +1,16 @@
 use crate::{
-    messaging::message::CrackedMessage, utils::create_response_poise_text, utils::get_guild_id,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
     Context, Error,
 };
 
 /// Leave the current voice channel.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = get_guild_id(&ctx).unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    manager.remove(guild_id).await.unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NotConnected)?;
+    manager.remove(guild_id).await?;
 
-    create_response_poise_text(&ctx, CrackedMessage::Leaving).await
+    create_response_poise(ctx, CrackedMessage::Leaving).await
 }
