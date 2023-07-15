@@ -355,13 +355,6 @@ pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessa
     }
 }
 
-pub fn get_guild_id(ctx: &Context) -> Option<serenity::GuildId> {
-    match ctx {
-        Context::Application(ctx) => ctx.interaction.guild_id(),
-        Context::Prefix(ctx) => ctx.msg.guild_id,
-    }
-}
-
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
         Context::Application(ctx) => match ctx.interaction {
