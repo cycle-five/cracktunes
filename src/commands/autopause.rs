@@ -1,16 +1,14 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::message::CrackedMessage,
-    utils::{create_response, get_interaction},
+    utils::create_response_poise,
     Context, Error,
 };
 
 /// Toggle autopause at the end of everytrack.
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
-    // FIXME: Don't reply on interaction.
-    let mut interaction = get_interaction(ctx).unwrap();
-    let guild_id = interaction.guild_id.unwrap();
+    let guild_id = ctx.guild_id().unwrap();
     let mut data = ctx.serenity_context().data.write().await;
     let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
@@ -21,18 +19,8 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     guild_settings.save()?;
 
     if guild_settings.autopause {
-        create_response(
-            &ctx.serenity_context().http,
-            &mut interaction,
-            CrackedMessage::AutopauseOn,
-        )
-        .await
+        create_response_poise(ctx, CrackedMessage::AutopauseOn).await
     } else {
-        create_response(
-            &ctx.serenity_context().http,
-            &mut interaction,
-            CrackedMessage::AutopauseOff,
-        )
-        .await
+        create_response_poise(ctx, CrackedMessage::AutopauseOff).await
     }
 }

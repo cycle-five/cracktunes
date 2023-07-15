@@ -463,7 +463,6 @@ pub async fn play(
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
-                    //FIXME: Also do this without application command
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
@@ -596,8 +595,6 @@ async fn enqueue_track(
     Ok(handler.queue().current_queue())
 }
 
-// FIXME: This is broken when the first thing that is done no the server is add a playflist from soptify
-// it break ons the third insertion.
 async fn insert_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,

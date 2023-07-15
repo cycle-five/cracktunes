@@ -5,9 +5,6 @@ use poise::serenity_prelude as serenity;
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     let uuid_boop = ctx.id();
-    // ctx.defer().await?;
-    // let interaction = get_interaction(ctx).unwrap();
-    // tracing::info!("Got interaction: {:?}", interaction);
 
     ctx.send(|m| {
         m.content("I want some boops!").components(|c| {
