@@ -374,36 +374,17 @@ pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
 
 pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, Error>> {
     match ctx {
-        Context::Application(prefix_ctx) => {
-            let guild_id = prefix_ctx.guild_id().unwrap();
-            let manager = songbird::get(prefix_ctx.serenity_context()).await.unwrap();
-            let call = manager.get(guild_id).unwrap();
-            let handler = call.lock().await;
-            let has_current_connection = handler.current_connection().is_some();
-            drop(handler);
-
-            if !has_current_connection {
-                summon().slash_action.unwrap()(prefix_ctx).await
-            } else {
-                Ok(())
-            }
+        Context::Application(ctx) => {
+            tracing::warn!("summoning via slash command");
+            summon().slash_action.unwrap()(ctx).await
         }
-        Context::Prefix(slash_ctx) => {
-            let guild_id = slash_ctx.guild_id().unwrap();
-            let manager = songbird::get(slash_ctx.serenity_context()).await.unwrap();
-            let call = manager.get(guild_id).unwrap();
-            let handler = call.lock().await;
-            let has_current_connection = handler.current_connection().is_some();
-            drop(handler);
-
-            if !has_current_connection {
-                summon().prefix_action.unwrap()(slash_ctx).await
-            } else {
-                Ok(())
-            }
+        Context::Prefix(ctx) => {
+            tracing::warn!("summoning via prefix command");
+            summon().prefix_action.unwrap()(ctx).await
         }
     }
 }
+
 pub async fn handle_error(
     ctx: &SerenityContext,
     interaction: &mut ApplicationCommandInteraction,

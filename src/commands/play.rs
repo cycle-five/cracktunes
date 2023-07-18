@@ -6,7 +6,8 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     messaging::messages::{
-        PLAY_QUEUE, PLAY_TOP, SPOTIFY_AUTH_FAILED, TRACK_DURATION, TRACK_TIME_TO_PLAY,
+        PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
+        TRACK_TIME_TO_PLAY,
     },
     sources::{
         file::FileRestartable,
@@ -20,8 +21,7 @@ use crate::{
     },
     Context, Error,
 };
-use colored::Colorize;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, Attachment};
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -127,90 +127,21 @@ pub async fn play(
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
-
-    // let guild_id = interaction.guild_id.unwrap();
-    // let manager = songbird::get(ctx).await.unwrap();
-
-    // // try to join a voice channel if not in one just yet
-    // summon().slash_action.unwrap()(&ctx.clone()).await;
-    match summon_short(ctx).await {
-        Ok(_) => {}
-        Err(_) => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
-    // let call = manager.get(guild_id).unwrap();
-    // determine whether this is a link or a query string
-    let query_type = match Url::parse(url) {
-        Ok(url_data) => match url_data.host_str() {
-            Some("open.spotify.com") => {
-                tracing::error!("spotify: {}", url);
-                let spotify = SPOTIFY.lock().await;
-                let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
-                Some(Spotify::extract(spotify, url).await?)
-            }
-            Some("cdn.discordapp.com") => {
-                tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
-                Some(QueryType::File(file.unwrap()))
-                //ffmpeg::from_attachment(file.unwrap(), Metadata::default(), &[])
-            }
-            Some(other) => {
-                let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-                let guild_settings = settings
-                    .entry(guild_id)
-                    .or_insert_with(|| GuildSettings::new(guild_id));
-
-                let is_allowed = guild_settings
-                    .allowed_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
-
-                let is_banned = guild_settings
-                    .banned_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
-
-                if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                    let message = CrackedMessage::PlayDomainBanned {
-                        domain: other.to_string(),
-                    };
-
-                    return create_response_poise_text(&ctx, message).await;
+            // try to join a voice channel if not in one just yet
+            match summon_short(ctx).await {
+                Ok(_) => manager.get(guild_id).unwrap(),
+                Err(_) => {
+                    let mut embed = CreateEmbed::default();
+                    embed.description(format!("{}", CrackedError::NotConnected));
+                    create_embed_response_poise(ctx, embed).await?;
+                    return Ok(());
                 }
-
-                YouTube::extract(url)
             }
-            None => None,
-        },
-        Err(_) => {
-            let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-            let guild_settings = settings
-                .entry(guild_id)
-                .or_insert_with(|| GuildSettings::new(guild_id));
-
-            if guild_settings.banned_domains.contains("youtube.com")
-                || (guild_settings.banned_domains.is_empty()
-                    && !guild_settings.allowed_domains.contains("youtube.com"))
-            {
-                let message = CrackedMessage::PlayDomainBanned {
-                    domain: "youtube.com".to_string(),
-                };
-
-                return create_response_poise_text(&ctx, message).await;
-            }
-
-            Some(QueryType::Keywords(url.to_string()))
         }
     };
+
+    // determine whether this is a link or a query string
+    let query_type = match_url(&ctx, url, file).await?;
 
     let query_type = verify(
         query_type,
@@ -424,9 +355,8 @@ pub async fn play(
                 }
             }
             _ => {
-                ctx.defer().await?;
+                ctx.defer().await?; // Why did I do this?
                 edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
-                //edit_response(&ctx.http, interaction, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
@@ -492,6 +422,78 @@ pub async fn play(
     Ok(())
 }
 
+use colored::Colorize;
+async fn match_url(
+    ctx: &Context<'_>,
+    url: &str,
+    file: Option<Attachment>,
+) -> Result<Option<QueryType>, Error> {
+    // determine whether this is a link or a query string
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let query_type = match Url::parse(url) {
+        Ok(url_data) => match url_data.host_str() {
+            Some("open.spotify.com") => {
+                tracing::error!("spotify: {}", url);
+                let spotify = SPOTIFY.lock().await;
+                let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+                Some(Spotify::extract(spotify, url).await?)
+            }
+            Some("cdn.discordapp.com") => {
+                tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
+                Some(QueryType::File(file.unwrap()))
+            }
+            Some(other) => {
+                let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+                let guild_settings = settings
+                    .entry(guild_id)
+                    .or_insert_with(|| GuildSettings::new(guild_id));
+
+                let is_allowed = guild_settings
+                    .allowed_domains
+                    .iter()
+                    .any(|d| compare_domains(d, other));
+
+                let is_banned = guild_settings
+                    .banned_domains
+                    .iter()
+                    .any(|d| compare_domains(d, other));
+
+                if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
+                    let message = CrackedMessage::PlayDomainBanned {
+                        domain: other.to_string(),
+                    };
+
+                    create_response_poise_text(ctx, message).await?;
+                }
+
+                YouTube::extract(url)
+            }
+            None => None,
+        },
+        Err(_) => {
+            let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+            let guild_settings = settings
+                .entry(guild_id)
+                .or_insert_with(|| GuildSettings::new(guild_id));
+
+            if guild_settings.banned_domains.contains("youtube.com")
+                || (guild_settings.banned_domains.is_empty()
+                    && !guild_settings.allowed_domains.contains("youtube.com"))
+            {
+                let message = CrackedMessage::PlayDomainBanned {
+                    domain: "youtube.com".to_string(),
+                };
+
+                create_response_poise_text(ctx, message).await?;
+            }
+
+            Some(QueryType::Keywords(url.to_string()))
+        }
+    };
+
+    Result::Ok(query_type)
+}
+
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
     if queue.is_empty() {
         return None;
@@ -534,14 +536,14 @@ async fn create_queued_embed(
     let mut embed = CreateEmbed::default();
     let metadata = track.metadata().clone();
 
-    embed.thumbnail(&metadata.thumbnail.unwrap());
+    embed.thumbnail(&metadata.thumbnail.unwrap_or_default());
 
     embed.field(
         title,
         &format!(
             "[**{}**]({})",
-            metadata.title.unwrap(),
-            metadata.source_url.unwrap()
+            metadata.title.unwrap_or(QUEUE_NO_TITLE.to_string()),
+            metadata.source_url.unwrap_or(QUEUE_NO_SRC.to_string())
         ),
         false,
     );

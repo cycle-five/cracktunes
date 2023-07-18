@@ -9,12 +9,10 @@
 <p align="center">
   <a href="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml"><img src="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg"></a>
   <a href="https://deps.rs/repo/github/cycle-five/cracktunes"><img src="https://deps.rs/repo/github/cycle-five/cracktunes/status.svg"></a>
+  <a href="https://github.com/cycle-five/cracktunes/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://github.com/cycle-five/cracktunes/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
 </p>
 
-<p align="center">
-Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a>
-<p>
 ## Deployment
 
 ### Usage
@@ -92,7 +90,7 @@ docker run -d --env-file .env cracktunes
 ## 0.2.1 (2023/07/02)
 - [x] Play music from local files
 
-## 0.2.2 (2022/07/09 ish)
+## 0.2.2 (2023/07/09 ish)
 - [x] Welcome Actions
 - [x] Play on multiple servers at once
 
@@ -100,12 +98,17 @@ docker run -d --env-file .env cracktunes
 - [x] Bug fixes (volume)
 - [x] Shuttle support (still broken)
 
-## 0.2.4
-- [] Shuttle
+## 0.2.4 (2023/07/17)
+- [x] Bug fixes.
+- [x] Remove reliance on slash commands everywhere.
+- [x] Remove shuttle for now
+
+## 0.2.5
+- ~~[] Shuttle~~
 - [] Reminders
 - [] Notes
 
-## 0.2.5
+## 0.2.6
 - [] Flesh out admin commands
 
 ## 0.3.0
@@ -114,3 +117,10 @@ docker run -d --env-file .env cracktunes
 ...and more!
 ## 1.0.0
 - [] RTChris' Demuxer
+
+
+<p align="center">
+<small>
+Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a>
+</small>
+<p>

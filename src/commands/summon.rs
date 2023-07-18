@@ -24,7 +24,21 @@ pub async fn summon(
     let user_id = get_user_id(&ctx);
 
     let channel_id = match channel_id_str {
-        Some(id) => ChannelId(id.parse::<u64>().unwrap()),
+        Some(id) => {
+            tracing::warn!("channel_id_str: {:?}", id);
+            match id.parse::<u64>() {
+                Ok(id) => ChannelId(id),
+                Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
+                    Some(channel_id) => channel_id,
+                    None => {
+                        if send_reply.unwrap_or(true) {
+                            ctx.say("You are not in a voice channel!").await?;
+                        }
+                        return Err(CrackedError::WrongVoiceChannel.into());
+                    }
+                },
+            }
+        }
         None => match get_voice_channel_for_user(&guild, &user_id) {
             Some(channel_id) => channel_id,
             None => {

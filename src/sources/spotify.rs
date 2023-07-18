@@ -102,7 +102,7 @@ impl Spotify {
         let track = spotify
             .track(track_id)
             .await
-            .map_err(|_| CrackedError::Other("failed to fetch track"))?;
+            .map_err(CrackedError::RSpotify)?;
 
         let artist_names = Self::join_artist_names(&track.artists);
 
