@@ -12,7 +12,7 @@ use songbird::{Event, TrackEvent};
 use std::time::Duration;
 
 /// Summon the bot to a voice channel.
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(slash_command, prefix_command, aliases("join"), guild_only)]
 pub async fn summon(
     ctx: Context<'_>,
     #[description = "Channel id to join"] channel_id_str: Option<String>,
@@ -109,13 +109,6 @@ pub async fn summon(
             m.content(text)
         })
         .await?;
-        // ctx.say(
-        //     CrackedMessage::Summon {
-        //         mention: channel_id.mention(),
-        //     }
-        //     .to_string(),
-        // )
-        // .await?;
     }
 
     Ok(())
