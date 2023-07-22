@@ -33,5 +33,5 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
