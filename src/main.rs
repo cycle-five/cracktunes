@@ -11,7 +11,7 @@ use cracktunes::{
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
-use cracktunes::{is_prefix, BotCredentials};
+use cracktunes::{is_prefix, BotCredentials, DataInner};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, FrameworkBuilder};
 use prometheus::{Encoder, TextEncoder};
@@ -64,19 +64,24 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
     Ok(framework.into())
 }
 
+use once_cell::sync::Lazy;
 use serde_stream::tokio_stream::SerdeWrite;
+use tokio::fs::File as TokioFile;
 use tokio::sync::Mutex as TokioMutex;
-lazy_static::lazy_static! {
-
-    pub static ref EVENT_LOG: TokioMutex<tokio::fs::File> = TokioMutex::new(tokio::runtime::Runtime::new().unwrap().block_on(async {
-        tokio::fs::File::open("events.log").await.unwrap()
-    }));
-}
+static EVENT_LOG: Lazy<Arc<TokioMutex<TokioFile>>> = Lazy::new(|| {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let file = TokioFile::open("events.log").await.unwrap();
+        Arc::new(TokioMutex::new(file))
+    })
+});
 
 #[cfg(not(feature = "shuttle"))]
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv::dotenv().ok();
+    // Initialize the eventlog
+    let _ = &*EVENT_LOG;
 
     init_logging();
     init_metrics();
@@ -991,11 +996,11 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
-    let data = cracktunes::Data {
+    let data = Data(Arc::new(DataInner {
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         ..Default::default()
-    };
+    }));
 
     let save_data = data.clone();
     ctrlc::set_handler(move || {

@@ -2,6 +2,7 @@ use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -24,8 +25,6 @@ pub mod test;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
-// #[macro_use]
-// extern crate lazy_static;
 pub fn is_prefix(ctx: Context) -> bool {
     ctx.prefix() != "/"
 }
@@ -160,7 +159,7 @@ impl BotConfig {
 
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Data {
+pub struct DataInner {
     pub bot_settings: BotConfig,
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
@@ -168,16 +167,65 @@ pub struct Data {
     pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    #[serde(skip)]
+    pub event_log: EventLog,
 }
 
-impl Default for Data {
+#[derive(Clone, Debug)]
+pub struct EventLog(pub Arc<Mutex<File>>);
+
+impl std::ops::Deref for EventLog {
+    type Target = Arc<Mutex<File>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for EventLog {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Default for EventLog {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(File::create("event.log").unwrap())))
+    }
+}
+
+impl EventLog {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(File::create("event.log").unwrap())))
+    }
+}
+
+impl Default for DataInner {
     fn default() -> Self {
         Self {
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
+            event_log: EventLog::default(),
         }
+    }
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        Self(Arc::new(DataInner::default()))
+    }
+}
+
+#[derive(Clone)]
+pub struct Data(pub Arc<DataInner>);
+
+impl std::ops::Deref for Data {
+    type Target = DataInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
