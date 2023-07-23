@@ -1,8 +1,10 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
+use errors::CrackedError;
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
+use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -196,7 +198,14 @@ impl Default for EventLog {
 
 impl EventLog {
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(File::create("event.log").unwrap())))
+        Self::default()
+    }
+
+    pub fn write(self, buf: &[u8]) -> Result<(), Error> {
+        self.lock()
+            .unwrap()
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
     }
 }
 
@@ -228,6 +237,12 @@ impl std::ops::Deref for Data {
         &self.0
     }
 }
+
+// impl std::ops::DerefMut for Data {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
 
 // shuttle library code for poise
 #[cfg(feature = "shuttle")]
