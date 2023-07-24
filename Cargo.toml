@@ -16,7 +16,7 @@ shuttle = []
 [dependencies]
 audiopus = "0.2.0"
 ctrlc = "3.4.0"
-chatgpt_rs = "1.1.11"
+chatgpt_rs = "1.1.13"
 colored = "2.0.4"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
