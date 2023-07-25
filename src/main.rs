@@ -79,7 +79,6 @@ fn main() -> Result<(), Error> {
 
     dotenv::dotenv().ok();
     rt.block_on(async { main_async(event_log).await })
-    // Initialize the eventlog
 }
 
 async fn main_async(event_log: EventLog) -> Result<(), Error> {
@@ -230,12 +229,12 @@ fn init_logging() {
 
     //oauth2_callback=debug,tower_http=debug
     // A layer that logs events to a file.
-    let trace_file = std::fs::File::create("trace.log");
-    let trace_file = match trace_file {
-        Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
-    };
-    let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
+    // let trace_file = std::fs::File::create("trace.log");
+    // let trace_file = match trace_file {
+    //     Ok(file) => file,
+    //     Err(error) => panic!("Error: {:?}", error),
+    // };
+    //let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
     tracing_subscriber::registry()
         .with(
             stdout_log
@@ -246,7 +245,7 @@ fn init_logging() {
                 .and_then(debug_log)
                 .with_filter(filter::LevelFilter::DEBUG)
                 // Combine with trace layer
-                .and_then(trace_log)
+                // .and_then(trace_log)
                 // Add a filter to *both* layers that rejects spans and
                 // events whose targets start with `metrics`.
                 .with_filter(filter::filter_fn(|metadata_global| {

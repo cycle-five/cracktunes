@@ -38,6 +38,7 @@ pub enum CrackedError {
     SerdeStream(serde_stream::Error),
     Songbird(songbird::input::error::Error),
     Poise(Error),
+    Anyhow(anyhow::Error),
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -96,6 +97,7 @@ impl Display for CrackedError {
             Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
+            Self::Anyhow(err) => f.write_str(&format!("{err}")),
         }
     }
 }

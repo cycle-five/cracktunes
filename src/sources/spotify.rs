@@ -8,7 +8,7 @@ use regex::Regex;
 use rspotify::{
     clients::BaseClient,
     model::{AlbumId, PlayableItem, PlaylistId, SimplifiedArtist, TrackId},
-    ClientCredsSpotify, Credentials,
+    ClientCredsSpotify, Config, Credentials,
 };
 use std::{env, str::FromStr};
 use tokio::sync::Mutex;
@@ -57,8 +57,10 @@ impl Spotify {
         };
 
         let creds = Credentials::new(&spotify_client_id, &spotify_client_secret);
+        let mut config = Config::default();
+        config.token_refreshing = true;
 
-        let spotify = ClientCredsSpotify::new(creds);
+        let spotify = ClientCredsSpotify::with_config(creds, config);
         spotify.request_token().await?;
 
         Ok(spotify)
