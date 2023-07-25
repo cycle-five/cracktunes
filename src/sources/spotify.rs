@@ -57,8 +57,10 @@ impl Spotify {
         };
 
         let creds = Credentials::new(&spotify_client_id, &spotify_client_secret);
-        let mut config = Config::default();
-        config.token_refreshing = true;
+        let config = Config {
+            token_refreshing: true,
+            ..Default::default()
+        };
 
         let spotify = ClientCredsSpotify::with_config(creds, config);
         spotify.request_token().await?;
