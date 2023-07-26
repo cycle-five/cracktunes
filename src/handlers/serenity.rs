@@ -441,11 +441,6 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 &channel_name,
                 &channel_id,
                 if info.camera_status { "on" } else { "off" },
-                //     match info.camera_status {
-                //         CamStatus::On => "on",
-                //         CamStatus::Off => "off",
-                //         CamStatus::New => "new",
-                //     }
             ));
         }
     }
