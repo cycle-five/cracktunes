@@ -38,4 +38,4 @@ RUN yt-dlp -v -h
 
 COPY --from=build /cracktunes/target/release/cracktunes .
 
-CMD ["/home/cracktunes/cracktunes"]
+CMD ["/cracktunes/cracktunes"]

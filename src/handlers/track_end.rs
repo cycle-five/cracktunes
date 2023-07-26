@@ -1,5 +1,5 @@
 use self::serenity::{async_trait, http::Http, model::id::GuildId, Mutex};
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, ChannelId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 
@@ -7,12 +7,13 @@ use crate::{
     commands::queue::{
         build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
     },
-    commands::voteskip::forget_skip_votes,
+    commands::{send_now_playing, voteskip::forget_skip_votes},
     Data,
 };
 
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
+    pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
     pub data: Data,
 }
@@ -50,6 +51,16 @@ impl EventHandler for TrackEndHandler {
         }
 
         forget_skip_votes(&self.data, self.guild_id).await.ok();
+
+        let channel = match handler.current_channel() {
+            Some(channel) => ChannelId(channel.0),
+            None => return None,
+        };
+        drop(handler);
+
+        send_now_playing(channel, self.http.clone(), self.call.clone())
+            .await
+            .ok();
 
         None
     }

@@ -11,8 +11,8 @@ use cracktunes::{
     BotConfig, Data,
 };
 use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
-use poise::serenity_prelude::GuildId;
-use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use poise::serenity_prelude::{GuildId, UserId};
+use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
 use std::env;
@@ -87,8 +87,7 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let framework = poise_framework(config, event_log);
-    let framework = framework.build().await?;
+    let framework = poise_framework(config, event_log).await?;
 
     let client = framework.client();
     let mut data_global = client.data.write().await;
@@ -296,10 +295,16 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 }
 
 //fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<data_global>, Error> {
-fn poise_framework(config: BotConfig, event_log: EventLog) -> FrameworkBuilder<Data, Error> {
+async fn poise_framework(
+    config: BotConfig,
+    event_log: EventLog,
+) -> Result<Arc<Framework<Data, Error>>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
+        owners: vec![UserId(700411523264282685), UserId(285219649921220608)]
+            .into_iter()
+            .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
@@ -405,21 +410,21 @@ fn poise_framework(config: BotConfig, event_log: EventLog) -> FrameworkBuilder<D
     }));
 
     let save_data = data.clone();
-    ctrlc::set_handler(move || {
-        tracing::warn!("Received Ctrl-C, shutting down...");
-        save_data
-            .guild_settings_map
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|(k, v)| {
-                tracing::warn!("Saving Guild: {}", k);
-                v.save().expect("Error saving guild settings");
-            });
+    // ctrlc::set_handler(move || {
+    //     tracing::warn!("Received Ctrl-C, shutting down...");
+    //     save_data
+    //         .guild_settings_map
+    //         .lock()
+    //         .unwrap()
+    //         .iter()
+    //         .for_each(|(k, v)| {
+    //             tracing::warn!("Saving Guild: {}", k);
+    //             v.save().expect("Error saving guild settings");
+    //         });
 
-        exit(0);
-    })
-    .expect("Error setting Ctrl-C handler");
+    //     exit(0);
+    // })
+    // .expect("Error setting Ctrl-C handler");
 
     let handler_data = data.clone();
     let setup_data = data;
@@ -427,7 +432,7 @@ fn poise_framework(config: BotConfig, event_log: EventLog) -> FrameworkBuilder<D
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    poise::Framework::builder()
+    let framework = poise::Framework::builder()
         .client_settings(|builder| {
             builder
                 .event_handler(SerenityHandler {
@@ -457,5 +462,55 @@ fn poise_framework(config: BotConfig, event_log: EventLog) -> FrameworkBuilder<D
                 | GatewayIntents::GUILD_VOICE_STATES
                 | GatewayIntents::GUILD_PRESENCES
                 | GatewayIntents::MESSAGE_CONTENT,
-        )
+        );
+
+    let res = framework.build().await?;
+    let shard_manager = res.client().shard_manager.clone();
+
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix as signal;
+
+            let [mut s1, mut s2, mut s3] = [
+                signal::signal(signal::SignalKind::hangup()).unwrap(),
+                signal::signal(signal::SignalKind::interrupt()).unwrap(),
+                signal::signal(signal::SignalKind::terminate()).unwrap(),
+            ];
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+                v = s3.recv() => v.unwrap(),
+            );
+        }
+        #[cfg(windows)]
+        {
+            let (mut s1, mut s2) = (
+                tokio::signal::windows::ctrl_c().unwrap(),
+                tokio::signal::windows::ctrl_break().unwrap(),
+            );
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+            );
+        }
+
+        tracing::warn!("Received Ctrl-C, shutting down...");
+        save_data
+            .guild_settings_map
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|(k, v)| {
+                tracing::warn!("Saving Guild: {}", k);
+                v.save().expect("Error saving guild settings");
+            });
+        shard_manager.lock().await.shutdown_all().await;
+
+        exit(0);
+    });
+
+    Ok(res)
 }

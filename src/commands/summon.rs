@@ -93,6 +93,7 @@ pub async fn summon(
             Event::Track(TrackEvent::End),
             TrackEndHandler {
                 guild_id: guild.id,
+                http: ctx.serenity_context().http.clone(),
                 call: call.clone(),
                 data: ctx.data().clone(),
             },
