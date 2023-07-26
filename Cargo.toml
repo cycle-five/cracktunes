@@ -14,7 +14,7 @@ default = []
 shuttle = []
 
 [dependencies]
-audiopus = "0.2.0"
+audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
 chatgpt_rs = "1.1.11"
 colored = "2.0.4"
