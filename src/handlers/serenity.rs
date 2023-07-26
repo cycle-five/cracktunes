@@ -401,7 +401,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
     let voice_states = guild.voice_states;
     let mut cams = vec![];
-    let mut output: String = "".to_string();
+    let mut output: String = "\n".to_string();
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
@@ -448,8 +448,8 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 //     }
             ));
         }
-        tracing::warn!("{}", output.bright_cyan())
     }
+    tracing::warn!("{}", output.bright_cyan());
     cams
 }
 
