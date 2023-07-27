@@ -7,12 +7,12 @@
 # To get a newer version, you will need to update the SHA.
 # You can also reference a tag or branch, but the action may change without warning.
 
-name: Dockerhub Image Build
+name: Dockerhub
 
 on:
   push:
-    branches:
-      - 'master'
+    tags: ['v*.*.*']
+
   pull_request:
     branches: [master]
 
