@@ -336,7 +336,13 @@ async fn poise_framework(
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
-            additional_prefixes: vec![poise::Prefix::Literal("rs!")],
+            additional_prefixes: vec![
+                poise::Prefix::Literal("rs!"),
+                poise::Prefix::Literal("hey bot,"),
+                poise::Prefix::Literal("hey bot"),
+                poise::Prefix::Literal("bot,"),
+                poise::Prefix::Literal("bot"),
+            ],
             ..Default::default()
         },
         /// The global error handler for all error cases that may occur
