@@ -10,14 +10,12 @@ on:
   workflow_call:
 
 env:
+  REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
     name: Build & Push Docker Image
-    strategy:
-      matrix:
-        registry: ['ghcr.io', 'registry.hub.docker.com']
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,7 +27,7 @@ jobs:
       - name: Registry Login
         uses: docker/login-action@v2
         with:
-          registry: ${{ matrix.registry}}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -37,10 +35,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: ${{ matrix.registry }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build & Push Docker Image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') }}
