@@ -7,3 +7,6 @@ rustflags = ["-C", "target-feature=+simd128"]
 
 [target.wasm32-wasi]
 rustflags = ["-C", "target-feature=+simd128"]
+
+# [patch.crates-io]
+# time = { version = "0.3.23" }
