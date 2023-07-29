@@ -1,18 +1,18 @@
 use self::serenity::GatewayIntents;
-use colored::Colorize;
 use config_file::FromConfigFile;
+use cracktunes::handlers::handle_event;
 use cracktunes::metrics::{COMMAND_ERRORS, REGISTRY};
 use cracktunes::utils::count_command;
 use cracktunes::{
     commands,
     guild::settings::GuildSettings,
-    handlers::{serenity::voice_state_diff_str, SerenityHandler},
+    handlers::SerenityHandler,
     utils::{check_interaction, check_reply, create_response_text, get_interaction},
     BotConfig, Data,
 };
-use cracktunes::{is_prefix, BotCredentials};
-use poise::serenity_prelude::GuildId;
-use poise::{serenity_prelude as serenity, FrameworkBuilder};
+use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
+use poise::serenity_prelude::{GuildId, UserId};
+use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
 use std::env;
@@ -38,24 +38,27 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(feature = "shuttle")]
 #[shuttle_runtime::main]
-async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttlePoise<Data, Error> {
+async fn poise(
+    #[shuttle_secrets::Secrets] secret_store: SecretStore,
+) -> ShuttlePoise<data_global, Error> {
     dotenv::dotenv().ok();
     //init_logging().await;
     init_metrics().await;
     let config = load_bot_config(Some(secret_store)).await.unwrap();
     tracing::warn!("Using config: {:?}", config);
     let framework = poise_framework(config);
-    let framework: Arc<poise::Framework<Data, Error>> = framework.build().await.map_err(|e| {
-        <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
-            e.into(),
-        ))
-    })?;
+    let framework: Arc<poise::Framework<data_global, Error>> =
+        framework.build().await.map_err(|e| {
+            <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
+                e.into(),
+            ))
+        })?;
 
     // let client = framework.client();
-    // let mut data = client.data.write().await;
-    // data.insert::<GuildCacheMap>(HashMap::default());
-    // data.insert::<GuildSettingsMap>(HashMap::default());
-    // drop(data);
+    // let mut data_global = client.data_global.write().await;
+    // data_global.insert::<GuildCacheMap>(HashMap::default());
+    // data_global.insert::<GuildSettingsMap>(HashMap::default());
+    // drop(data_global);
     // drop(client);
 
     tracing::warn!("Starting framework");
@@ -64,23 +67,33 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
 }
 
 #[cfg(not(feature = "shuttle"))]
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    dotenv::dotenv().ok();
+fn main() -> Result<(), Error> {
+    use std::fs::File;
 
+    let event_log = EventLog(Arc::new(Mutex::new(File::create("events.log")?)));
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(4)
+        .build()
+        .unwrap();
+
+    dotenv::dotenv().ok();
+    rt.block_on(async { main_async(event_log).await })
+}
+
+async fn main_async(event_log: EventLog) -> Result<(), Error> {
     init_logging();
     init_metrics();
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let framework = poise_framework(config);
-    let framework = framework.build().await?;
+    let framework = poise_framework(config, event_log).await?;
 
     let client = framework.client();
-    let mut data = client.data.write().await;
-    data.insert::<GuildCacheMap>(HashMap::default());
-    data.insert::<GuildSettingsMap>(HashMap::default());
-    drop(data);
+    let mut data_global = client.data.write().await;
+    data_global.insert::<GuildCacheMap>(HashMap::default());
+    data_global.insert::<GuildSettingsMap>(HashMap::default());
+    drop(data_global);
     drop(client);
 
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
@@ -215,12 +228,12 @@ fn init_logging() {
 
     //oauth2_callback=debug,tower_http=debug
     // A layer that logs events to a file.
-    let trace_file = std::fs::File::create("trace.log");
-    let trace_file = match trace_file {
-        Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
-    };
-    let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
+    // let trace_file = std::fs::File::create("trace.log");
+    // let trace_file = match trace_file {
+    //     Ok(file) => file,
+    //     Err(error) => panic!("Error: {:?}", error),
+    // };
+    //let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
     tracing_subscriber::registry()
         .with(
             stdout_log
@@ -231,11 +244,11 @@ fn init_logging() {
                 .and_then(debug_log)
                 .with_filter(filter::LevelFilter::DEBUG)
                 // Combine with trace layer
-                .and_then(trace_log)
+                // .and_then(trace_log)
                 // Add a filter to *both* layers that rejects spans and
                 // events whose targets start with `metrics`.
-                .with_filter(filter::filter_fn(|metadata| {
-                    !metadata.target().starts_with("metrics")
+                .with_filter(filter::filter_fn(|metadata_global| {
+                    !metadata_global.target().starts_with("metrics")
                 })),
         )
         .init();
@@ -281,11 +294,17 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-//fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<Data>, Error> {
-fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
+//fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<data_global>, Error> {
+async fn poise_framework(
+    config: BotConfig,
+    event_log: EventLog,
+) -> Result<Arc<Framework<Data, Error>>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions::<_, Error> {
+        owners: vec![UserId(700411523264282685), UserId(285219649921220608)]
+            .into_iter()
+            .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
@@ -296,6 +315,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
             commands::help(),
             commands::leave(),
             commands::lyrics(),
+            commands::grab(),
             commands::now_playing(),
             commands::pause(),
             commands::play(),
@@ -303,6 +323,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
             commands::remove(),
             commands::repeat(),
             commands::resume(),
+            commands::servers(),
             commands::seek(),
             commands::skip(),
             commands::stop(),
@@ -315,7 +336,13 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
-            additional_prefixes: vec![poise::Prefix::Literal("rs!")],
+            additional_prefixes: vec![
+                poise::Prefix::Literal("rs!"),
+                poise::Prefix::Literal("hey bot,"),
+                poise::Prefix::Literal("hey bot"),
+                poise::Prefix::Literal("bot,"),
+                poise::Prefix::Literal("bot"),
+            ],
             ..Default::default()
         },
         /// The global error handler for all error cases that may occur
@@ -371,70 +398,8 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         /// Enforce command checks even for owners (enforced by default)
         /// Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
-        event_handler: |ctx, event, _framework, _data| {
-            Box::pin(async move {
-                match event {
-                    poise::Event::PresenceUpdate { new_data } => {
-                        let _ = new_data;
-                        tracing::trace!("Got a presence update: {:?}", new_data);
-                        Ok(())
-                    }
-                    poise::Event::PresenceReplace { new_presences } => {
-                        let _ = new_presences;
-                        tracing::trace!("Got a presence replace");
-                        Ok(())
-                    }
-                    poise::Event::GuildMemberAddition { new_member } => {
-                        tracing::info!("Got a new member: {:?}", new_member);
-                        Ok(())
-                    }
-                    poise::Event::VoiceStateUpdate { old, new } => {
-                        tracing::debug!(
-                            "VoiceStateUpdate: {}",
-                            voice_state_diff_str(old.clone(), new).bright_yellow()
-                        );
-                        Ok(())
-                    }
-                    poise::Event::Message { new_message } => {
-                        let serde_msg = serde_json::to_string(new_message).unwrap();
-                        tracing::trace!(target = "events_serde", "serde_msg: {}", serde_msg);
-                        Ok(())
-                    }
-                    poise::Event::TypingStart { event } => {
-                        //let serde_msg = serde_json::to_string(event).unwrap();
-                        let cache_http = ctx.http.clone();
-                        let channel = event
-                            .channel_id
-                            .to_channel_cached(ctx.cache.clone())
-                            .unwrap();
-                        let user = event.user_id.to_user(cache_http.clone()).await.unwrap();
-                        let channel_name = channel
-                            .guild()
-                            .map(|guild| guild.name)
-                            .unwrap_or("DM".to_string());
-                        let guild = event
-                            .guild_id
-                            .unwrap_or_default()
-                            .to_guild_cached(ctx.cache.clone())
-                            .map(|guild| guild.name)
-                            .unwrap_or("DM".to_string());
-
-                        tracing::info!(
-                            "{}{} / {} / {} / {}",
-                            "TypingStart: ".bright_green(),
-                            user.name.bright_yellow(),
-                            user.id.to_string().bright_yellow(),
-                            channel_name.bright_yellow(),
-                            guild.bright_yellow(),
-                        );
-                        Ok(())
-                    }
-                    _ => {
-                        tracing::info!("{}", event.name().bright_green());
-                        Ok(())
-                    }
-                }
-            })
+        event_handler: |ctx, event, _framework, data_global| {
+            Box::pin(async move { handle_event(ctx, event, data_global).await })
         },
         ..Default::default()
     };
@@ -443,28 +408,29 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
-    let data = cracktunes::Data {
+    let data = Data(Arc::new(DataInner {
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
+        event_log,
         ..Default::default()
-    };
+    }));
 
     let save_data = data.clone();
-    ctrlc::set_handler(move || {
-        tracing::warn!("Received Ctrl-C, shutting down...");
-        save_data
-            .guild_settings_map
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|(k, v)| {
-                tracing::warn!("Saving Guild: {}", k);
-                v.save().expect("Error saving guild settings");
-            });
+    // ctrlc::set_handler(move || {
+    //     tracing::warn!("Received Ctrl-C, shutting down...");
+    //     save_data
+    //         .guild_settings_map
+    //         .lock()
+    //         .unwrap()
+    //         .iter()
+    //         .for_each(|(k, v)| {
+    //             tracing::warn!("Saving Guild: {}", k);
+    //             v.save().expect("Error saving guild settings");
+    //         });
 
-        exit(0);
-    })
-    .expect("Error setting Ctrl-C handler");
+    //     exit(0);
+    // })
+    // .expect("Error setting Ctrl-C handler");
 
     let handler_data = data.clone();
     let setup_data = data;
@@ -472,7 +438,7 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    poise::Framework::builder()
+    let framework = poise::Framework::builder()
         .client_settings(|builder| {
             builder
                 .event_handler(SerenityHandler {
@@ -502,5 +468,55 @@ fn poise_framework(config: BotConfig) -> FrameworkBuilder<Data, Error> {
                 | GatewayIntents::GUILD_VOICE_STATES
                 | GatewayIntents::GUILD_PRESENCES
                 | GatewayIntents::MESSAGE_CONTENT,
-        )
+        );
+
+    let res = framework.build().await?;
+    let shard_manager = res.client().shard_manager.clone();
+
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix as signal;
+
+            let [mut s1, mut s2, mut s3] = [
+                signal::signal(signal::SignalKind::hangup()).unwrap(),
+                signal::signal(signal::SignalKind::interrupt()).unwrap(),
+                signal::signal(signal::SignalKind::terminate()).unwrap(),
+            ];
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+                v = s3.recv() => v.unwrap(),
+            );
+        }
+        #[cfg(windows)]
+        {
+            let (mut s1, mut s2) = (
+                tokio::signal::windows::ctrl_c().unwrap(),
+                tokio::signal::windows::ctrl_break().unwrap(),
+            );
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+            );
+        }
+
+        tracing::warn!("Received Ctrl-C, shutting down...");
+        save_data
+            .guild_settings_map
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|(k, v)| {
+                tracing::warn!("Saving Guild: {}", k);
+                v.save().expect("Error saving guild settings");
+            });
+        shard_manager.lock().await.shutdown_all().await;
+
+        exit(0);
+    });
+
+    Ok(res)
 }

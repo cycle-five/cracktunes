@@ -1,8 +1,4 @@
-use crate::{
-    errors::CrackedError,
-    utils::{create_embed_response_poise, create_lyrics_embed},
-    Context, Error,
-};
+use crate::{errors::CrackedError, utils::create_lyrics_embed, Context, Error};
 
 /// Search for song lyrics.
 #[poise::command(prefix_command, slash_command, guild_only)]
@@ -35,7 +31,13 @@ pub async fn lyrics(
     tracing::warn!("searching for lyrics for {}", query);
 
     let client = lyric_finder::Client::new();
-    let result = client.get_lyric(&query).await?;
+    let result = match client.get_lyric(&query).await {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!("lyric search failed: {}", e);
+            return Err(CrackedError::Anyhow(e).into());
+        }
+    };
     let (track, artists, lyric) = match result {
         lyric_finder::LyricResult::Some {
             track,
@@ -55,6 +57,7 @@ pub async fn lyrics(
         }
     };
 
-    let embed = create_lyrics_embed(track, artists, lyric).await;
-    create_embed_response_poise(ctx, embed).await
+    // let embed = create_lyrics_embed(track, artists, lyric).await;
+    // create_embed_response_poise(ctx, embed).await
+    create_lyrics_embed(ctx, artists, track, lyric).await
 }

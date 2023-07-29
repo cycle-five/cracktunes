@@ -23,3 +23,10 @@ jobs:
     needs: [build, lint]
     uses: ./.github/workflows/docker.yml
     secrets: inherit
+
+  dockerhub:
+    name: Dockerhub
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [build, lint]
+    uses: ./.github/workflows/dockerhub.yml
+    secrets: inherit

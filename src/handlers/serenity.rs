@@ -19,6 +19,7 @@ use poise::serenity_prelude::{
 };
 use std::{
     collections::{HashMap, HashSet},
+    fmt,
     sync::{atomic::Ordering, Arc, Mutex},
 };
 use tokio::time::{Duration, Instant};
@@ -145,6 +146,35 @@ impl EventHandler for SerenityHandler {
     }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
+        struct MyMessage(serenity::Message);
+        impl fmt::Display for MyMessage {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let mut result = String::new();
+                let msg = &self.0;
+                // let guild_id = match msg.guild_id {
+                //     Some(guild_id) => guild_id,
+                //     None => {
+                //         tracing::warn!("Non-gateway message received: {:?}", msg);
+                //         GuildId(0)
+                //     }
+                // };
+                let name = msg.author.name.clone();
+                let content = msg.content.clone();
+                result.push_str(&format!("Message: {} {}", name.purple(), content.purple(),));
+                msg.embeds.iter().for_each(|x| {
+                    result.push_str(&format!(
+                        "{}{}{}",
+                        x.title.as_ref().unwrap_or(&String::new()).purple(),
+                        x.description.as_ref().unwrap_or(&String::new()).purple(),
+                        x.fields.iter().fold(String::new(), |acc, x| {
+                            format!("{}{}{}", acc, x.name.purple(), x.value.purple())
+                        })
+                    ));
+                });
+                write!(f, "{}", result)
+            }
+        }
+
         let guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
@@ -167,12 +197,8 @@ impl EventHandler for SerenityHandler {
                 channel_name.purple(),
                 content.purple(),
             );
-            msg.embeds.iter().for_each(|x| {
-                tracing::info!(
-                    "Embed: {:?}",
-                    x.description.as_ref().unwrap_or(&String::new())
-                );
-            });
+            let mm = MyMessage(msg);
+            tracing::info!("{}", mm);
         }
     }
 
@@ -375,6 +401,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
     let voice_states = guild.voice_states;
     let mut cams = vec![];
+    let mut output: String = "\n".to_string();
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
@@ -407,21 +434,17 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
             };
 
             cams.push(info);
-            tracing::warn!(
-                "User {} / {} is connected to voice channel {} / {} with camera {}",
-                user.name,
-                user.id,
-                channel_name,
-                channel_id,
+            output.push_str(&format!(
+                "({}|{})({}|{})|{}\n",
+                &user.name,
+                &user.id,
+                &channel_name,
+                &channel_id,
                 if info.camera_status { "on" } else { "off" },
-                //     match info.camera_status {
-                //         CamStatus::On => "on",
-                //         CamStatus::Off => "off",
-                //         CamStatus::New => "new",
-                //     }
-            );
+            ));
         }
     }
+    tracing::warn!("{}", output.bright_cyan());
     cams
 }
 

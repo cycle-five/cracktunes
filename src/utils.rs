@@ -11,15 +11,21 @@ use self::serenity::{
     Context as SerenityContext, SerenityError,
 };
 use crate::{
-    commands::summon, errors::CrackedError, messaging::message::CrackedMessage,
-    metrics::COMMAND_EXECUTIONS, Context, Data, Error,
+    commands::{build_nav_btns, summon},
+    errors::CrackedError,
+    guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
+    messaging::message::CrackedMessage,
+    metrics::COMMAND_EXECUTIONS,
+    Context, Data, Error,
 };
+use ::serenity::futures::StreamExt;
 use poise::{
     serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
     ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
-use std::{sync::Arc, time::Duration};
+use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 use url::Url;
 
 pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
@@ -238,7 +244,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     embed
 }
 
-pub async fn create_lyrics_embed(track: String, artists: String, lyric: String) -> CreateEmbed {
+pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
     let mut embed = CreateEmbed::default();
     // let metadata = track_handle.metadata().clone();
 
@@ -269,6 +275,143 @@ pub async fn create_lyrics_embed(track: String, artists: String, lyric: String) 
     // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
 
     embed
+}
+
+pub async fn create_lyrics_embed(
+    ctx: Context<'_>,
+    track: String,
+    artists: String,
+    lyric: String,
+) -> Result<(), Error> {
+    create_paged_embed(
+        ctx,
+        artists,
+        track,
+        lyric,
+        DEFAULT_LYRICS_PAGE_SIZE, //ctx.data().bot_settings.lyrics_page_size,
+    )
+    .await
+}
+
+pub async fn create_paged_embed(
+    ctx: Context<'_>,
+    author: String,
+    title: String,
+    content: String,
+    page_size: usize,
+) -> Result<(), Error> {
+    // let mut embed = CreateEmbed::default();
+    let page_getter = create_lyric_page_getter(&content, page_size);
+    let num_pages = content.len() / page_size + 1;
+    let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+
+    let mut message = {
+        let reply = ctx
+            .send(|m| {
+                m.embed(|e| {
+                    e.title(title.clone());
+                    e.author(|a| a.name(author.clone()));
+                    e.description(page_getter(0));
+                    e.footer(|f| f.text(format!("Page {}/{}", 1, num_pages)))
+                });
+                m.components(|components| build_nav_btns(components, 0, num_pages))
+            })
+            .await?;
+        reply.into_message().await?
+    };
+
+    let mut cib = message
+        .await_component_interactions(ctx)
+        .timeout(Duration::from_secs(60 * 10))
+        .build();
+
+    while let Some(mci) = cib.next().await {
+        let btn_id = &mci.data.custom_id;
+
+        let mut page_wlock = page.write().await;
+
+        *page_wlock = match btn_id.as_str() {
+            "<<" => 0,
+            "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
+            ">" => min(page_wlock.add(1), num_pages - 1),
+            ">>" => num_pages - 1,
+            _ => continue,
+        };
+
+        mci.create_interaction_response(&ctx, |r| {
+            r.kind(InteractionResponseType::UpdateMessage);
+            r.interaction_response_data(|d| {
+                d.embed(|e| {
+                    e.title(title.clone());
+                    e.author(|a| a.name(author.clone()));
+                    e.description(page_getter(*page_wlock));
+                    e.footer(|f| f.text(format!("Page {}/{}", *page_wlock + 1, num_pages)))
+                });
+                d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
+            })
+        })
+        .await?;
+    }
+
+    message
+        .edit(&ctx.serenity_context().http, |edit| {
+            let mut embed = CreateEmbed::default();
+            embed.description("Lryics timed out, run the command again to see them.");
+            edit.set_embed(embed);
+            edit.components(|f| f)
+        })
+        .await
+        .unwrap();
+
+    Ok(())
+}
+
+pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
+    string
+        .chars()
+        .collect::<Vec<char>>()
+        .chunks(chunk_size)
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+/// Splits lyrics into chunks of a given size, but tries to split on a newline if possible.
+pub fn split_lyric_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let end = string.len();
+    let mut cur: usize = 0;
+    while cur < end {
+        let mut next = min(cur + chunk_size, end);
+        let chunk = &string[cur..next];
+        let newline_index = chunk.rfind('\n');
+        let chunk = match newline_index {
+            Some(index) => {
+                next = index + cur + 1;
+                &chunk[..index]
+            }
+            None => chunk,
+        };
+        chunks.push(chunk.to_string());
+        cur = next;
+    }
+
+    chunks
+}
+
+pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String {
+    let chunks = split_string_into_chunks(string, chunk_size);
+    move |page| {
+        let page = page % chunks.len();
+        chunks[page].clone()
+    }
+}
+
+pub fn create_lyric_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String + '_ {
+    let chunks = split_lyric_string_into_chunks(string, chunk_size);
+    move |page| {
+        let page = page % chunks.len();
+        chunks[page].clone()
+    }
 }
 
 pub fn get_footer_info(url: &str) -> (String, String) {

@@ -35,8 +35,10 @@ pub enum CrackedError {
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
+    SerdeStream(serde_stream::Error),
     Songbird(songbird::input::error::Error),
     Poise(Error),
+    Anyhow(anyhow::Error),
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -92,8 +94,10 @@ impl Display for CrackedError {
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::Serde(err) => f.write_str(&format!("{err}")),
+            Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
+            Self::Anyhow(err) => f.write_str(&format!("{err}")),
         }
     }
 }
@@ -180,6 +184,12 @@ impl From<songbird::input::error::Error> for CrackedError {
 impl From<Error> for CrackedError {
     fn from(err: Error) -> Self {
         CrackedError::Poise(err)
+    }
+}
+
+impl From<serde_stream::Error> for CrackedError {
+    fn from(err: serde_stream::Error) -> Self {
+        CrackedError::SerdeStream(err)
     }
 }
 

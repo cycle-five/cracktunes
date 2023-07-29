@@ -8,7 +8,7 @@ use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 
 /// Get or set the volume of the bot.
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("vol"))]
 pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,

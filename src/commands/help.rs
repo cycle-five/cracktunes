@@ -20,8 +20,8 @@ pub async fn help(
     Ok(())
 }
 
-#[cfg(feature = "cache")]
-#[poise::command(slash_command, prefix_command)]
+/// Get information about the servers this bot is in.
+#[poise::command(slash_command, prefix_command, owners_only)]
 pub async fn servers(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::servers(ctx).await?;
     Ok(())

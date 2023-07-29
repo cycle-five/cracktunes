@@ -120,7 +120,5 @@ docker run -d --env-file .env cracktunes
 
 
 <p align="center">
-<small>
-Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a>
-</small>
+<sub><sup>Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a></sup></sub>
 <p>
