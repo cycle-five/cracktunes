@@ -28,6 +28,7 @@ regex = "1.9.1"
 ipinfo = "2.1.0"
 serde_json = "1.0.104"
 url = "2.4.0"
+sha1 = "0.10.5"
 serde = { version = "1.0.177", features = ["derive", "rc"] }
 serde_stream = { version = "1.0.1", features = ["tokio"]}
 tracing = "0.1.37"
