@@ -24,7 +24,7 @@ pub async fn fetch_wayback_snapshot(url: &str) -> Result<String, Error> {
 }
 
 /// Fetch a historical snapshot of a given URL from the Wayback Machine.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(prefix_command, hide_in_help)]
 pub async fn wayback(
     ctx: Context<'_>,
     #[description = "url to retreive snapshot of"] url: String,
@@ -36,6 +36,6 @@ pub async fn wayback(
                 .await?;
             Ok(())
         }
-        Err(e) => Err(e.into()),
+        Err(e) => Err(e),
     }
 }

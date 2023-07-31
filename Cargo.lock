@@ -390,6 +390,7 @@ dependencies = [
  "serde_json",
  "serde_stream",
  "serenity",
+ "sha1",
  "songbird",
  "sys-info",
  "time",

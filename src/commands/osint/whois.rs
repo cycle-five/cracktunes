@@ -3,7 +3,7 @@ use whois_rust::{WhoIs, WhoIsLookupOptions};
 use crate::{messaging::message::CrackedMessage, utils::create_response_poise, Context, Error};
 
 /// Fetch and display WHOIS information about a domain.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(prefix_command, hide_in_help)]
 pub async fn whois(ctx: Context<'_>, domain: String) -> Result<(), Error> {
     let whois = WhoIs::from_string(domain.clone())?;
     let options = WhoIsLookupOptions::from_string(domain)?;
