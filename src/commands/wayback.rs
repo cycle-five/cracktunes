@@ -1,14 +1,9 @@
 use crate::{messaging::message::CrackedMessage, utils::create_response_poise, Context, Error};
 use reqwest::Url;
 
-/// Fetch a historical snapshot of a given URL from the Wayback Machine.
-#[poise::command(slash_command, prefix_command)]
-pub async fn wayback(
-    ctx: Context<'_>,
-    #[description = "url to retreive snapshot of"] url: String,
-) -> Result<(), Error> {
+pub async fn fetch_wayback_snapshot(url: &str) -> Result<String, Error> {
     // Validate the URL
-    let url = Url::parse(&url)?;
+    let url = Url::parse(url)?;
 
     // Construct the URL for the CDX Server API request
     let api_url = format!(
@@ -25,8 +20,22 @@ pub async fn wayback(
     // Construct the URL for the snapshot
     let snapshot_url = format!("http://web.archive.org/web/{}id_/{}/", snapshot[1], url);
 
-    // Send the snapshot URL as the command's response
-    create_response_poise(ctx, CrackedMessage::WaybackSnapshot { url: snapshot_url }).await?;
+    Ok(snapshot_url)
+}
 
-    Ok(())
+/// Fetch a historical snapshot of a given URL from the Wayback Machine.
+#[poise::command(slash_command, prefix_command)]
+pub async fn wayback(
+    ctx: Context<'_>,
+    #[description = "url to retreive snapshot of"] url: String,
+) -> Result<(), Error> {
+    match fetch_wayback_snapshot(&url).await {
+        Ok(snapshot_url) => {
+            // Send the snapshot URL as the command's response
+            create_response_poise(ctx, CrackedMessage::WaybackSnapshot { url: snapshot_url })
+                .await?;
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
 }
