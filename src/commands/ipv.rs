@@ -9,7 +9,7 @@ use std::net::IpAddr;
 /// and sends a response with this information. If the IP address is not
 /// valid, this command sends an error message.
 ///
-#[poise::command(slash_command, prefix_command, guild_only, track_edits)]
+#[poise::command(slash_command, prefix_command)]
 pub async fn ipv(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     match ip_address.parse::<IpAddr>() {
         Ok(ip_addr) => match ip_addr {
