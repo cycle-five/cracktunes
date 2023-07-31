@@ -35,6 +35,7 @@ pub enum CrackedMessage {
     SkipTo { title: String, url: String },
     Stop,
     Summon { mention: Mention },
+    WaybackSnapshot { url: String },
     Version { current: String },
     VoteSkip { mention: Mention, missing: usize },
 }
@@ -76,6 +77,7 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
             }
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
+            Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::Version { current } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)",
                 VERSION, current, RELEASES_LINK, current, VERSION_LATEST, RELEASES_LINK
