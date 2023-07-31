@@ -334,7 +334,7 @@ async fn poise_framework(
             commands::version(),
             commands::volume(),
             commands::queue(),
-            commands::ip(),
+            commands::osint::ip(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
