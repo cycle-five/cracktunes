@@ -14,7 +14,7 @@ default = []
 shuttle = []
 
 [dependencies]
-time = {version = "0.3.23", default-features = false, features = ["serde"]}
+time = {version = "0.3.24", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
 chatgpt_rs = "1.1.13"
