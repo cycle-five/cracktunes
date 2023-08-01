@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::commands::check_password_pwned;
 
     #[tokio::test]
     async fn test_check_password_pwned() {
