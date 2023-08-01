@@ -334,7 +334,7 @@ async fn poise_framework(
             commands::version(),
             commands::volume(),
             commands::queue(),
-            commands::osint::ip(),
+            commands::osint(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
@@ -522,5 +522,6 @@ async fn poise_framework(
         exit(0);
     });
 
+    res.client().start_autosharded().await?;
     Ok(res)
 }

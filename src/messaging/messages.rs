@@ -41,6 +41,8 @@ pub const PLAY_ALL_FAILED: &str =
     "⚠️ Cannot fetch playlist via keywords! Try passing this command an URL.";
 pub const PLAYLIST_FAILED: &str = "⚠️ Failed to fetch playlist!";
 pub const PLAY_PLAYLIST: &str = "📃 Added playlist to queue!";
+pub const PLAY_SEARCH: &str = "🔎 Searching...";
+pub const PHONE_NUMBER_INFO_ERROR: &str = "⚠️ Failed to fetch phone number info!";
 pub const PLAY_QUEUE: &str = "📃 Added to queue!";
 pub const PLAY_TOP: &str = "📃 Added to top!";
 pub const QUEUE_EXPIRED: &str = "This command has expired.\nPlease feel free to reinvoke it!";

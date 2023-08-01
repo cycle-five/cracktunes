@@ -24,6 +24,8 @@ pub enum CrackedMessage {
     Pause,
     PasswordPwned,
     PasswordSafe,
+    PhoneNumberInfo(String),
+    PhoneNumberInfoError,
     PlayAllFailed,
     PlayDomainBanned { domain: String },
     PlaylistQueued,
@@ -61,6 +63,8 @@ impl Display for CrackedMessage {
             Self::PasswordPwned => f.write_str(PASSWORD_PWNED),
             Self::PasswordSafe => f.write_str(PASSWORD_SAFE),
             Self::Pause => f.write_str(PAUSED),
+            Self::PhoneNumberInfo(info) => f.write_str(info),
+            Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {
