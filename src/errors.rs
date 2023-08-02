@@ -33,6 +33,7 @@ pub enum CrackedError {
     Shuttle(shuttle_runtime::Error),
     #[cfg(feature = "shuttle")]
     ShuttleCustom(shuttle_runtime::CustomError),
+    Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
     Serde(serde_json::Error),
@@ -92,6 +93,7 @@ impl Display for CrackedError {
             Self::Shuttle(err) => f.write_str(&format!("{err}")),
             #[cfg(feature = "shuttle")]
             Self::ShuttleCustom(err) => f.write_str(&format!("{err}")),
+            Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
@@ -239,6 +241,13 @@ impl From<SerenityError> for CrackedError {
             SerenityError::Other(msg) => Self::Other(msg),
             _ => Self::Serenity(err),
         }
+    }
+}
+
+/// Provides an implementation to convert a [`reqwest::Error`] to a [`CrackedError`].
+impl From<reqwest::Error> for CrackedError {
+    fn from(err: reqwest::Error) -> Self {
+        Self::Reqwest(err)
     }
 }
 

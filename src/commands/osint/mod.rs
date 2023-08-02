@@ -1,6 +1,7 @@
 pub mod checkpass;
 pub mod ip;
 pub mod ipv;
+pub mod phcode;
 pub mod phlookup;
 pub mod socialmedia;
 pub mod wayback;
@@ -9,6 +10,7 @@ pub mod whois;
 pub use checkpass::*;
 pub use ip::*;
 pub use ipv::*;
+pub use phcode::*;
 pub use phlookup::*;
 pub use socialmedia::*;
 pub use wayback::*;
@@ -26,7 +28,8 @@ use crate::{Context, Error};
         "wayback",
         "whois",
         "checkpass",
-        "phlookup"
+        "phlookup",
+        "phcode"
     ),
     hide_in_help,
     owners_only
