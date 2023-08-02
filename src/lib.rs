@@ -1,5 +1,6 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
+use commands::PhoneCodeData;
 use errors::CrackedError;
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
@@ -162,6 +163,8 @@ impl BotConfig {
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DataInner {
+    #[serde(skip)]
+    pub phone_data: PhoneCodeData,
     pub bot_settings: BotConfig,
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
@@ -212,6 +215,7 @@ impl EventLog {
 impl Default for DataInner {
     fn default() -> Self {
         Self {
+            phone_data: PhoneCodeData::load().unwrap(),
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),

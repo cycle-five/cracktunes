@@ -11,6 +11,7 @@ const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
+    CountryName(String),
     Clear,
     DomainInfo(String),
     Error,
@@ -53,6 +54,7 @@ impl Display for CrackedMessage {
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
+            Self::CountryName(name) => f.write_str(name),
             Self::Clear => f.write_str(CLEARED),
             Self::DomainInfo(info) => f.write_str(info),
             Self::Error => f.write_str(ERROR),

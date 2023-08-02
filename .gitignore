@@ -1,9 +1,20 @@
+# build artifacts
 /target/
 
+# data generated during runtime
 /data/
 /logs/
 
+# configuration / secrets
 Secrets.toml
 .env*
+
+# IDE config
 .vscode/
+
+# submodules
 dep-installer-hack/
+
+# static data sets that are pulled in from external sources
+names.json
+phone.json
