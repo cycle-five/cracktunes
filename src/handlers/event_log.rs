@@ -1,9 +1,23 @@
-use std::io::Write;
-
-use crate::{errors::CrackedError, handlers::serenity::voice_state_diff_str, Data, Error};
+use crate::{handlers::serenity::voice_state_diff_str, Data, Error};
 use colored::Colorize;
 use poise::Event::*;
+use serde::{ser::SerializeStruct, Serialize};
 use serenity::client::Context as SerenityContext;
+
+#[derive(Debug)]
+pub struct LogEntry<T: Serialize> {
+    pub name: String,
+    pub event: T,
+}
+
+impl<T: Serialize> Serialize for LogEntry<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("LogEntry", 2)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("event", &self.event)?;
+        state.end()
+    }
+}
 
 pub async fn handle_event(
     ctx: &SerenityContext,
@@ -11,31 +25,27 @@ pub async fn handle_event(
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = data_global.event_log.clone();
+    let event_name = event.name();
     match event {
         PresenceUpdate { new_data } => {
             let _ = new_data;
             tracing::trace!("Got a presence update: {:?}", new_data);
-            Ok(())
+            event_log.write_log_obj(event.name(), new_data)
         }
         GuildMemberAddition { new_member } => {
             tracing::info!("Got a new member: {:?}", new_member);
-            Ok(())
+            event_log.write_log_obj(event.name(), new_member)
         }
         VoiceStateUpdate { old, new } => {
             tracing::debug!(
                 "VoiceStateUpdate: {}",
                 voice_state_diff_str(old.clone(), new).bright_yellow()
             );
-            let serde_msg = serde_json::to_vec(&(old, new)).unwrap();
-            event_log.write(&serde_msg)
+            event_log.write_log_obj(event.name(), &(old, new))
         }
-        Message { new_message } => {
-            let serde_msg = serde_json::to_vec(&new_message).unwrap();
-            event_log.write(&serde_msg)
-        }
+        Message { new_message } => event_log.write_log_obj(event.name(), &new_message),
         TypingStart { event } => {
-            let serde_msg = serde_json::to_vec(event).unwrap();
-            let _ = event_log.write(&serde_msg);
+            let _ = event_log.write_log_obj(event_name, &event);
             let cache_http = ctx.http.clone();
             let channel = event
                 .channel_id
@@ -64,257 +74,118 @@ pub async fn handle_event(
             Ok(())
         }
         ApplicationCommandPermissionsUpdate { permission } => {
-            event_log.write(&serde_json::to_vec(&permission).unwrap())
+            event_log.write_log_obj(event.name(), permission)
         }
         AutoModerationActionExecution { execution } => {
-            event_log.write(&serde_json::to_vec(&execution).unwrap())
+            event_log.write_log_obj(event.name(), execution)
         }
-        AutoModerationRuleCreate { rule } => event_log.write(&serde_json::to_vec(&rule).unwrap()),
-        AutoModerationRuleUpdate { rule } => event_log.write(&serde_json::to_vec(&rule).unwrap()),
-        AutoModerationRuleDelete { rule } => event_log.write(&serde_json::to_vec(&rule).unwrap()),
-        // poise::Event::CategoryCreate { category } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(category)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::CategoryDelete { category } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(category)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::ChannelDelete { channel } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(channel)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::ChannelPinsUpdate { pin } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(pin)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::ChannelUpdate { old, new } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::ChannelUpdate { old, new } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildBanAddition {
-        //     guild_id,
-        //     banned_user,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, banned_user))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildBanRemoval {
-        //     guild_id,
-        //     unbanned_user,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, unbanned_user))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::GuildCreate { guild, is_new } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&poise::Event::GuildCreate { guild, is_new })
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildCreate { guild, is_new } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild, is_new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // GuildDelete { incomplete, full } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&poise::Event::GuildDelete { incomplete, full })
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildDelete { incomplete, full } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(incomplete, full))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildEmojisUpdate {
-        //     guild_id,
-        //     current_state,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, current_state))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildIntegrationsUpdate { guild_id } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&guild_id)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
+        AutoModerationRuleCreate { rule } => event_log.write_log_obj(event.name(), rule),
+        AutoModerationRuleUpdate { rule } => event_log.write_log_obj(event.name(), rule),
+        AutoModerationRuleDelete { rule } => event_log.write_log_obj(event.name(), rule),
+        CategoryCreate { category } => event_log.write_log_obj(event.name(), category),
+        CategoryDelete { category } => event_log.write_log_obj(event.name(), category),
+        ChannelDelete { channel } => event_log.write_log_obj(event.name(), channel),
+        ChannelPinsUpdate { pin } => event_log.write_log_obj(event.name(), pin),
+        #[cfg(feature = "cache")]
+        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
+        #[cfg(not(feature = "cache"))]
+        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
+        poise::Event::GuildBanAddition {
+            guild_id,
+            banned_user,
+        } => event_log.write_log_obj(event.name(), &(guild_id, banned_user)),
+        poise::Event::GuildBanRemoval {
+            guild_id,
+            unbanned_user,
+        } => event_log.write_log_obj(event.name(), &(guild_id, unbanned_user)),
+        #[cfg(feature = "cache")]
+        GuildCreate { guild, is_new } => {
+            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
+        }
+        #[cfg(not(feature = "cache"))]
+        GuildCreate { guild, is_new } => {
+            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
+        }
+        #[cfg(feature = "cache")]
+        GuildDelete { incomplete, full } => event_log.write_log_obj(
+            event.name(),
+            &serde_json::to_vec(&(incomplete, full)).unwrap(),
+        ),
+        #[cfg(not(feature = "cache"))]
+        GuildDelete { incomplete, full } => event_log.write_obj(&(incomplete, full)),
+        GuildEmojisUpdate {
+            guild_id,
+            current_state,
+        } => event_log.write_obj(&(guild_id, current_state)),
+        GuildIntegrationsUpdate { guild_id } => event_log.write_obj(&guild_id),
         // // poise::Event::GuildMemberAddition { new_member } => data_global.event_log
         // //     .lock()
         // //     .await
         // //     .write_obj(&new_member)
         // //     .await
         // //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::GuildMemberRemoval {
-        //     guild_id,
-        //     user,
-        //     member_data_global_if_available,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, user, member_data_global_if_available))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildMemberRemoval {
-        //     guild_id,
-        //     user,
-        //     member_data_if_available,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, user, member_data_if_available))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::GuildMemberUpdate {
-        //     old_if_available,
-        //     new,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old_if_available, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildMemberUpdate {
-        //     old_if_available,
-        //     new,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old_if_available, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildMembersChunk { chunk } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(chunk)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildRoleCreate { new } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(new)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::GuildRoleDelete {
-        //     guild_id,
-        //     removed_role_id,
-        //     removed_role_data_global_if_available,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(
-        //         guild_id,
-        //         removed_role_id,
-        //         removed_role_data_global_if_available,
-        //     ))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildRoleDelete {
-        //     guild_id,
-        //     removed_role_id,
-        //     removed_role_data_if_available,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(guild_id, removed_role_id, removed_role_data_if_available))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
-        // poise::Event::GuildRoleUpdate {
-        //     old_data_global_if_available,
-        //     new,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old_data_global_if_available, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildRoleUpdate {
-        //     new,
-        //     old_data_if_available,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(new, old_data_if_available))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildScheduledEventCreate { event } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(event)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::GuildScheduledEventUpdate { event } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(event)
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
+        #[cfg(feature = "cache")]
+        poise::Event::GuildMemberRemoval {
+            guild_id,
+            user,
+            member_data_global_if_available,
+        } => event_log.write_obj(&(guild_id, user, member_data_global_if_available)),
+        #[cfg(not(feature = "cache"))]
+        poise::Event::GuildMemberRemoval {
+            guild_id,
+            user,
+            member_data_if_available,
+        } => event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available)),
+        #[cfg(feature = "cache")]
+        poise::Event::GuildMemberUpdate {
+            old_if_available,
+            new,
+        } => event_log.write_log_obj(event_name, &(old_if_available, new)),
+        #[cfg(not(feature = "cache"))]
+        poise::Event::GuildMemberUpdate {
+            old_if_available,
+            new,
+        } => event_log.write_log_obj(event_name, &(old_if_available, new)),
+        GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
+        poise::Event::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
+        #[cfg(feature = "cache")]
+        poise::Event::GuildRoleDelete {
+            guild_id,
+            removed_role_id,
+            removed_role_data_global_if_available,
+        } => event_log.write_log_obj(
+            event_name,
+            &(
+                guild_id,
+                removed_role_id,
+                removed_role_data_global_if_available,
+            ),
+        ),
+        #[cfg(not(feature = "cache"))]
+        poise::Event::GuildRoleDelete {
+            guild_id,
+            removed_role_id,
+            removed_role_data_if_available,
+        } => event_log.write_log_obj(
+            event_name,
+            &(guild_id, removed_role_id, removed_role_data_if_available),
+        ),
+        #[cfg(feature = "cache")]
+        poise::Event::GuildRoleUpdate {
+            old_data_global_if_available,
+            new,
+        } => event_log.write_log_obj(event_name, &(old_data_global_if_available, new)),
+        #[cfg(not(feature = "cache"))]
+        poise::Event::GuildRoleUpdate {
+            new,
+            old_data_if_available,
+        } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
+        poise::Event::GuildScheduledEventCreate { event } => {
+            event_log.write_log_obj(event_name, event)
+        }
+        poise::Event::GuildScheduledEventUpdate { event } => {
+            event_log.write_log_obj(event_name, event)
+        }
         // poise::Event::GuildScheduledEventDelete { event } => data_global
         //     .event_log
         //     .lock()
@@ -422,29 +293,17 @@ pub async fn handle_event(
         //     .await
         //     .map_err(|e| CrackedError::SerdeStream(e).into()),
         // // message => Message { new_message: serenity::Message },
-        // poise::Event::MessageDelete {
-        //     channel_id,
-        //     deleted_message_id,
-        //     guild_id,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(channel_id, deleted_message_id, guild_id))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // poise::Event::MessageDeleteBulk {
-        //     channel_id,
-        //     multiple_deleted_messages_ids,
-        //     guild_id,
-        // } => data_global
-        //     .event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        // #[cfg(feature = "cache")]
+        MessageDelete {
+            channel_id,
+            deleted_message_id,
+            guild_id,
+        } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
+        MessageDeleteBulk {
+            channel_id,
+            multiple_deleted_messages_ids,
+            guild_id,
+        } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
+        //#[cfg(feature = "cache")]
         // poise::Event::MessageUpdate {
         //     old_if_available,
         //     new,
@@ -630,31 +489,84 @@ pub async fn handle_event(
         //     .await
         //     .map_err(|e| CrackedError::SerdeStream(e).into()),
         // #[cfg(feature = "cache")]
-        // poise::Event::VoiceStateUpdate { old, new } => data_global.event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
+        // VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         // #[cfg(not(feature = "cache"))]
-        // poise::Event::VoiceStateUpdate { old, new } => data_global.event_log
-        //     .lock()
-        //     .await
-        //     .write_obj(&(old, new))
-        //     .await
-        //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        poise::Event::WebhookUpdate {
-            guild_id,
-            belongs_to_channel_id,
-        } => data_global
-            .event_log
-            .lock()
-            .unwrap()
-            .write_all(&serde_json::to_vec(&(guild_id, belongs_to_channel_id)).unwrap())
-            .map_err(|e| CrackedError::IO(e).into()),
+        // VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
+        // WebhookUpdate {
+        //     guild_id,
+        //     belongs_to_channel_id,
+        // } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
         _ => {
             tracing::info!("{}", event.name().bright_green());
             Ok(())
         }
     }
 }
+
+// #[allow(dead_code)]
+// enum EventTypes {
+//     PresenceUpdate,
+//     GuildMemberAddition,
+//     VoiceStateUpdate,
+//     Message,
+//     TypingStart,
+//     ApplicationCommandPermissionsUpdate,
+//     AutoModerationActionExecution,
+//     AutoModerationRuleCreate,
+//     AutoModerationRuleUpdate,
+//     AutoModerationRuleDelete,
+//     CategoryCreate,
+//     CategoryDelete,
+//     ChannelDelete,
+//     ChannelPinsUpdate,
+//     ChannelUpdate,
+//     GuildBanAddition,
+//     GuildBanRemoval,
+//     GuildCreate,
+//     GuildDelete,
+//     GuildEmojisUpdate,
+//     GuildIntegrationsUpdate,
+//     GuildMemberRemoval,
+//     GuildMemberUpdate,
+//     GuildMembersChunk,
+//     GuildRoleCreate,
+//     GuildRoleDelete,
+//     GuildRoleUpdate,
+//     GuildScheduledEventCreate,
+//     GuildScheduledEventUpdate,
+//     GuildScheduledEventDelete,
+//     GuildScheduledEventUserAdd,
+//     GuildScheduledEventUserRemove,
+//     GuildStickersUpdate,
+//     GuildUnavailable,
+//     GuildUpdate,
+//     IntegrationCreate,
+//     IntegrationUpdate,
+//     IntegrationDelete,
+//     InteractionCreate,
+//     InviteCreate,
+//     InviteDelete,
+//     MessageDelete,
+//     MessageDeleteBulk,
+//     MessageUpdate,
+//     ReactionAdd,
+//     ReactionRemove,
+//     ReactionRemoveAll,
+//     PresenceReplace,
+//     Ready,
+//     Resume,
+//     ShardStageUpdate,
+//     StageInstanceCreate,
+//     StageInstanceDelete,
+//     StageInstanceUpdate,
+//     ThreadCreate,
+//     ThreadDelete,
+//     ThreadListSync,
+//     ThreadMemberUpdate,
+//     ThreadMembersUpdate,
+//     ThreadUpdate,
+//     Unknown,
+//     UserUpdate,
+//     VoiceServerUpdate,
+//     WebhooksUpdate,
+// }

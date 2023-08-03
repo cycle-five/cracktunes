@@ -69,9 +69,7 @@ async fn poise(
 
 #[cfg(not(feature = "shuttle"))]
 fn main() -> Result<(), Error> {
-    use std::fs::File;
-
-    let event_log = EventLog(Arc::new(Mutex::new(File::create("events.log")?)));
+    let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .worker_threads(4)
