@@ -1,5 +1,6 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
+use crate::handlers::event_log::LogEntry;
 use commands::PhoneCodeData;
 use errors::CrackedError;
 use poise::serenity_prelude::GuildId;
@@ -195,7 +196,7 @@ impl std::ops::DerefMut for EventLog {
 
 impl Default for EventLog {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(File::create("event.log").unwrap())))
+        Self(Arc::new(Mutex::new(File::create("events.log").unwrap())))
     }
 }
 
@@ -204,7 +205,36 @@ impl EventLog {
         Self::default()
     }
 
+    pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
+        let entry = LogEntry {
+            name: name.to_string(),
+            event: obj,
+        };
+        let mut buf = serde_json::to_vec(&entry).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        println!("...{:?}...", buf);
+        self.lock()
+            .unwrap()
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
+        let mut buf = serde_json::to_vec(obj).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        println!("...{:?}...", buf);
+        self.lock()
+            .unwrap()
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
     pub fn write(self, buf: &[u8]) -> Result<(), Error> {
+        // let buf = &mut buf.to_owned();
+        // let _ = buf.write(&[b'\n']);
+        // let buf: &[u8] = buf.as_slice();
         self.lock()
             .unwrap()
             .write_all(buf)
