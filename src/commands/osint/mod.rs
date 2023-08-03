@@ -3,6 +3,7 @@ pub mod ip;
 pub mod ipv;
 pub mod phcode;
 pub mod phlookup;
+pub mod scan;
 pub mod socialmedia;
 pub mod wayback;
 pub mod whois;
@@ -12,6 +13,7 @@ pub use ip::*;
 pub use ipv::*;
 pub use phcode::*;
 pub use phlookup::*;
+pub use scan::*;
 pub use socialmedia::*;
 pub use wayback::*;
 pub use whois::*;
@@ -29,7 +31,8 @@ use crate::{Context, Error};
         "whois",
         "checkpass",
         "phlookup",
-        "phcode"
+        "phcode",
+        "scan"
     ),
     hide_in_help,
     owners_only
