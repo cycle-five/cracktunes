@@ -1,5 +1,6 @@
 use self::serenity::GatewayIntents;
 use config_file::FromConfigFile;
+use cracktunes::commands::PhoneCodeData;
 use cracktunes::handlers::handle_event;
 use cracktunes::metrics::{COMMAND_ERRORS, REGISTRY};
 use cracktunes::utils::count_command;
@@ -410,6 +411,7 @@ async fn poise_framework(
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
     let data = Data(Arc::new(DataInner {
+        phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         event_log,
