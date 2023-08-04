@@ -213,7 +213,7 @@ impl EventLog {
         let mut buf = serde_json::to_vec(&entry).unwrap();
         let _ = buf.write(&[b'\n']);
         let buf: &[u8] = buf.as_slice();
-        println!("...{:?}...", buf);
+        //println!("...{:?}...", buf);
         self.lock()
             .unwrap()
             .write_all(buf)
@@ -224,7 +224,7 @@ impl EventLog {
         let mut buf = serde_json::to_vec(obj).unwrap();
         let _ = buf.write(&[b'\n']);
         let buf: &[u8] = buf.as_slice();
-        println!("...{:?}...", buf);
+        //println!("...{:?}...", buf);
         self.lock()
             .unwrap()
             .write_all(buf)
