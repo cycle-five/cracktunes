@@ -167,6 +167,7 @@ impl BotConfig {
 pub struct DataInner {
     #[serde(skip)]
     pub phone_data: PhoneCodeData,
+    pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
@@ -247,6 +248,7 @@ impl Default for DataInner {
     fn default() -> Self {
         Self {
             phone_data: PhoneCodeData::load().unwrap(),
+            up_prefix: "RS",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
