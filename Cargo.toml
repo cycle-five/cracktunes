@@ -16,7 +16,7 @@ shuttle = []
 
 [dependencies]
 async-trait = "0.1.72"
-time = {version = "0.3.23", default-features = false, features = ["serde"]}
+time = {version = "0.3.25", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
 chatgpt_rs = "1.1.13"
@@ -66,11 +66,11 @@ git = "https://github.com/serenity-rs/songbird"
 branch = "current"
 version = "0.3.2"
 features = [
+  "driver-core",
   "driver",
   "rustls",
   "serenity",
   "builtin-queue",
-  "driver-core",
   "yt-dlp",
   "audiopus",
 ]
@@ -103,7 +103,7 @@ version = "0.5.5"
 default-features = true
 
 [dependencies.tokio]
-version = "1.29.0"
+version = "1.29.1"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.ffprobe]

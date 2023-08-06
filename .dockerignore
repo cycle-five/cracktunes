@@ -18,7 +18,7 @@ README.md
 
 # data
 /logs/
-/data/
+# /data/
 
 #IDE files
 /.vscode/

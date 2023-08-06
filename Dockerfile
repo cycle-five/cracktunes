@@ -21,6 +21,9 @@ COPY Cargo.lock ./
 RUN cargo build --release --locked
 
 COPY . .
+RUN ls -lah
+#ENV SQLX_OFFLINE true 
+ENV DATABASE_URL sqlite://./data/crackedmusic.sqlite
 RUN cargo build --release --locked
 
 # Release image
