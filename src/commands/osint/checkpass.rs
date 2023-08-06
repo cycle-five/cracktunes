@@ -21,7 +21,7 @@ pub async fn check_password_pwned(password: &str) -> Result<bool, Error> {
 }
 
 /// Check if a password has been pwned.
-#[poise::command(slash_command, prefix_command, hide_in_help)]
+#[poise::command(prefix_command, hide_in_help)]
 pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> {
     let pwned = check_password_pwned(&password).await?;
     let message = if pwned {

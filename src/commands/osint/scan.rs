@@ -15,7 +15,7 @@ struct ScanResult {
 ///
 /// # Arguments
 /// * `url` - The URL of the website to be scanned.
-#[poise::command(prefix_command, guild_only, hide_in_help)]
+#[poise::command(prefix_command, hide_in_help)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     // Validate the provided URL
     if !url_validator(&url) {
