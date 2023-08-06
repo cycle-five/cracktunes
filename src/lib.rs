@@ -198,7 +198,9 @@ impl std::ops::DerefMut for EventLog {
 
 impl Default for EventLog {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(File::create("events.log").unwrap())))
+        Self(Arc::new(Mutex::new(
+            File::create("/data/events.log").unwrap(),
+        )))
     }
 }
 

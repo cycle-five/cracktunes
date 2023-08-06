@@ -20,9 +20,20 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           profile: minimal
           override: true
+      
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
 
       - name: Cache
         uses: Swatinem/rust-cache@v1
+
+      - name: Migrate database
+        env:
+          DATABASE_URL: sqlite://./data/crackedmusic.db
+        run: |
+          sqlx database create
+          sqlx migrate run --source migrations/
+          cargo sqlx prepare -- --tests
 
       - name: Build Binary
         run: cargo build --locked

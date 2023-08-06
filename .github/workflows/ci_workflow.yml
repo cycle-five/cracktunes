@@ -1,6 +1,9 @@
 name: CI Workflow
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -8,11 +11,13 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Build
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
   lint:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Lint
     uses: ./.github/workflows/lint.yml
     secrets: inherit
