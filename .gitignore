@@ -14,7 +14,3 @@ Secrets.toml
 
 # submodules
 dep-installer-hack/
-
-# static data sets that are pulled in from external sources
-names.json
-phone.json
