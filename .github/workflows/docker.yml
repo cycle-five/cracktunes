@@ -36,7 +36,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare -- --tests
+          cargo sqlx prepare
       - 
         name: Build Docker Image
         env:
@@ -76,7 +76,6 @@ jobs:
         env:
           DATABASE_URL: sqlite://./data/crackedmusic.db
         run: |
-          cargo install sqlx-cli --no-default-features --features sqlite,postgres
           sqlx database create
           sqlx migrate run --source migrations/
           cargo sqlx prepare
