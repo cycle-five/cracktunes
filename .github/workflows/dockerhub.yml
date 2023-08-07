@@ -34,7 +34,7 @@ jobs:
           cargo install sqlx-cli --no-default-features --features postgres,sqlite
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare -- --tests
+          cargo sqlx prepare
       -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
