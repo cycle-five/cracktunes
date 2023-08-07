@@ -11,7 +11,7 @@ RUN apt-get update -y && apt-get install -y \
        libssl-dev \
        pkg-config
 
-WORKDIR "/cracktunes"
+WORKDIR "/app"
 
 # Cache cargo build dependencies by creating a dummy source
 RUN mkdir src
@@ -22,7 +22,7 @@ RUN cargo build --release --locked
 
 COPY . .
 RUN ls -lah
-ENV DATABASE_URL sqlite://./data/crackedmusic.db
+ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
 RUN cargo build --release --locked
 
 # Release image
@@ -40,8 +40,10 @@ RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/down
 
 RUN yt-dlp -v -h
 
-COPY --from=build /cracktunes/target/release/cracktunes .
+COPY --from=build /app/target/release/cracktunes .
+COPY --from=build /app/data / 
 
 ENV APP_ENVIRONMENT production
+ENV DATABASE_URL sqlite:///data/crackedmusic.db
 ENV RUST_BACKTRACE 1
-CMD ["/cracktunes/cracktunes"]
+CMD ["/app/cracktunes"]

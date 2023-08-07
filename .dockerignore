@@ -10,7 +10,6 @@ LICENSE
 README.md
 
 # Cargo files
-**/*.rs.bk
 /target/
 
 # Submodules
