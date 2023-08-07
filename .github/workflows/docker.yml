@@ -3,7 +3,7 @@ name: Docker Workflow
 on:
   push:
     tags: ['v*.*.*']
-
+    branches: [master]
   pull_request:
     branches: [master]
 
@@ -15,8 +15,34 @@ env:
 
 jobs:
   build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v3
+      
+      - 
+        name: Migrate database
+        env:
+          DATABASE_URL: sqlite://./data/crackedmusic.db
+        run: |
+          cargo install sqlx-cli --no-default-features --features postgres,sqlite
+          sqlx database create
+          sqlx migrate run --source migrations/
+          cargo sqlx prepare -- --tests
+
+
+      - name: Build Docker Image
+        env:
+          DATABASE_URL: sqlite://./data/crackedmusic.db
+        run: docker build . -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+  push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build')
     permissions:
       contents: read
       packages: write
@@ -35,7 +61,17 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      
+      - 
+        name: Migrate database
+        env:
+          DATABASE_URL: sqlite://./data/crackedmusic.db
+        run: |
+          cargo install sqlx-cli --no-default-features --features sqlite,postgres
+          sqlx database create
+          sqlx migrate run --source migrations/
+          cargo sqlx prepare
 
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v4

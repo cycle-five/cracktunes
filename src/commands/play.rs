@@ -59,7 +59,7 @@ pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Play a song.
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,

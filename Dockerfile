@@ -11,8 +11,6 @@ RUN apt-get update -y && apt-get install -y \
        libssl-dev \
        pkg-config
 
-#RUN useradd -m cracktunes
-#USER cracktunes
 WORKDIR "/cracktunes"
 
 # Cache cargo build dependencies by creating a dummy source
@@ -23,19 +21,27 @@ COPY Cargo.lock ./
 RUN cargo build --release --locked
 
 COPY . .
+RUN ls -lah
+ENV DATABASE_URL sqlite://./data/crackedmusic.db
 RUN cargo build --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update -y && apt-get install -y ffmpeg curl
+RUN apt-get update -y \
+       && apt-get install -y ffmpeg curl \
+       # Clean up
+       && apt-get autoremove -y \
+       && apt-get clean -y \
+       && rm -rf /var/lib/apt/lists/*
+
 RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.07.06/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
 
-#RUN useradd -m cracktunes
-#USER cracktunes
 RUN yt-dlp -v -h
 
 COPY --from=build /cracktunes/target/release/cracktunes .
 
+ENV APP_ENVIRONMENT production
+ENV RUST_BACKTRACE 1
 CMD ["/cracktunes/cracktunes"]

@@ -1,9 +1,16 @@
+# build artifacts
 /target/
 
+# data generated during runtime
 /data/
 /logs/
 
+# configuration / secrets
 Secrets.toml
 .env*
+
+# IDE config
 .vscode/
+
+# submodules
 dep-installer-hack/

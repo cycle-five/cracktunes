@@ -1,5 +1,7 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
+use crate::handlers::event_log::LogEntry;
+use commands::PhoneCodeData;
 use errors::CrackedError;
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,7 @@ pub mod guild;
 pub mod handlers;
 pub mod messaging;
 pub mod metrics;
+pub mod playlist;
 pub mod sources;
 pub mod utils;
 
@@ -162,6 +165,9 @@ impl BotConfig {
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DataInner {
+    #[serde(skip)]
+    pub phone_data: PhoneCodeData,
+    pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
@@ -192,7 +198,9 @@ impl std::ops::DerefMut for EventLog {
 
 impl Default for EventLog {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(File::create("event.log").unwrap())))
+        Self(Arc::new(Mutex::new(
+            File::create("/data/events.log").unwrap(),
+        )))
     }
 }
 
@@ -201,7 +209,36 @@ impl EventLog {
         Self::default()
     }
 
+    pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
+        let entry = LogEntry {
+            name: name.to_string(),
+            event: obj,
+        };
+        let mut buf = serde_json::to_vec(&entry).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        //println!("...{:?}...", buf);
+        self.lock()
+            .unwrap()
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
+        let mut buf = serde_json::to_vec(obj).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        //println!("...{:?}...", buf);
+        self.lock()
+            .unwrap()
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
     pub fn write(self, buf: &[u8]) -> Result<(), Error> {
+        // let buf = &mut buf.to_owned();
+        // let _ = buf.write(&[b'\n']);
+        // let buf: &[u8] = buf.as_slice();
         self.lock()
             .unwrap()
             .write_all(buf)
@@ -212,6 +249,8 @@ impl EventLog {
 impl Default for DataInner {
     fn default() -> Self {
         Self {
+            phone_data: PhoneCodeData::load().unwrap(),
+            up_prefix: "RS",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),

@@ -1,5 +1,6 @@
 use self::serenity::GatewayIntents;
 use config_file::FromConfigFile;
+use cracktunes::commands::PhoneCodeData;
 use cracktunes::handlers::handle_event;
 use cracktunes::metrics::{COMMAND_ERRORS, REGISTRY};
 use cracktunes::utils::count_command;
@@ -68,9 +69,7 @@ async fn poise(
 
 #[cfg(not(feature = "shuttle"))]
 fn main() -> Result<(), Error> {
-    use std::fs::File;
-
-    let event_log = EventLog(Arc::new(Mutex::new(File::create("events.log")?)));
+    let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .worker_threads(4)
@@ -334,6 +333,7 @@ async fn poise_framework(
             commands::version(),
             commands::volume(),
             commands::queue(),
+            commands::osint(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
@@ -412,6 +412,7 @@ async fn poise_framework(
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
     let data = Data(Arc::new(DataInner {
+        phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         event_log,
@@ -521,5 +522,6 @@ async fn poise_framework(
         exit(0);
     });
 
+    res.client().start_autosharded().await?;
     Ok(res)
 }

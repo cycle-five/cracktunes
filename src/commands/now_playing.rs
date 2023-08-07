@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// Get the currently playing track.
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(prefix_command, slash_command, guild_only, aliases("np"))]
 pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
