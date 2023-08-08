@@ -21,7 +21,7 @@ COPY Cargo.lock ./
 RUN cargo build --release --locked
 
 COPY . .
-RUN ls -lah
+RUN ls -al . && ls -al data
 ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
 RUN cargo build --release --locked
 
@@ -41,7 +41,8 @@ RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/down
 RUN yt-dlp -v -h
 
 COPY --from=build /app/target/release/cracktunes .
-COPY --from=build /app/data / 
+COPY --from=build /app/data  /data
+RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
 ENV DATABASE_URL sqlite:///data/crackedmusic.db
