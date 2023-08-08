@@ -10,9 +10,9 @@
 name: Dockerhub
 
 on:
-  push:
-    tags: ['v*.*.*']
-    branches: [master]
+  # push:
+  #   tags: ['v*.*.*']
+  #   branches: [master]
   workflow_call:
 
 env:
