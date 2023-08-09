@@ -24,12 +24,14 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          components: sqlx-cli
           profile: minimal
           override: true
 
       - name: Install cargo-bump
         run: cargo install cargo-bump
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
 
       - name: Bump Cargo version
         run: cargo-bump bump ${{ github.event.inputs.version }}
