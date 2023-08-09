@@ -24,6 +24,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          components: sqlx-cli
           profile: minimal
           override: true
 
@@ -34,7 +35,11 @@ jobs:
         run: cargo-bump bump ${{ github.event.inputs.version }}
 
       - name: Bump Cargo.lock
-        run: cargo build
+        run: |
+          sqlx database create
+          sqlx migrate run --source migrations/
+          cargo sqlx prepare
+          cargo build
 
       - name: Get latest version
         id: get_version
