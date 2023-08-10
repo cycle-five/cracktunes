@@ -3,6 +3,16 @@ use sqlx::{types::chrono, SqlitePool};
 use crate::errors::CrackedError;
 
 #[derive(Debug, Default)]
+pub struct User {
+    pub id: i64,
+    pub discord_id: String,
+    pub username: String,
+    pub descriminator: String,
+    pub last_seen: chrono::NaiveDate,
+    pub creation_date: chrono::NaiveDate,
+}
+
+#[derive(Debug, Default)]
 pub struct Playlist {
     pub id: i64,
     pub name: String,
@@ -41,6 +51,12 @@ impl Playlist {
         name: &str,
         user_id: i64,
     ) -> Result<Playlist, CrackedError> {
+        if Self::get_user(pool, user_id).await.is_none() {
+            Self::insert_user(pool, user_id, name.to_string()).await?;
+            // return Err(CrackedError::Other(
+            //     "(playlist::create) User does not exist",
+            // ));
+        }
         let rec = sqlx::query_as!(
             Playlist,
             "INSERT INTO playlist (name, user_id) VALUES (?, ?) RETURNING id, name, user_id, privacy",
@@ -72,6 +88,28 @@ impl Playlist {
         Ok(())
     }
 
+    pub async fn get_user(pool: &SqlitePool, user_id: i64) -> Option<User> {
+        sqlx::query_as!(User, "SELECT * FROM user WHERE id = ?", user_id)
+            .fetch_optional(pool)
+            .await
+            .ok()?
+    }
+
+    pub async fn insert_user(
+        pool: &SqlitePool,
+        user_id: i64,
+        username: String,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "INSERT INTO user (discord_id, username) VALUES (?, ?)",
+            user_id,
+            username
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     // Additional functions to retrieve, update, and delete playlists and tracks
     // Function to retrieve a playlist by ID
     pub async fn get_playlist_by_id(
@@ -85,7 +123,7 @@ impl Playlist {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| CrackedError::SQLX(e))
+        .map_err(CrackedError::SQLX)
     }
 
     // Function to update a playlist's name
@@ -115,7 +153,7 @@ impl Playlist {
             user_id: r.user_id,
             privacy: r.privacy,
         })
-        .map_err(|e| CrackedError::SQLX(e))
+        .map_err(CrackedError::SQLX)
     }
 
     // Function to delete a playlist by ID

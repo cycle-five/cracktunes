@@ -126,7 +126,7 @@ mod tests {
 
         // Verify that the playlist is no longer present in the database
         let res = Playlist::get_playlist_by_id(&pool, playlist_id.id).await;
-        assert!(res.is_ok(), "Playlist was not deleted successfully");
+        assert!(!res.is_ok(), "Playlist was not deleted successfully");
 
         //Ok(())
     }

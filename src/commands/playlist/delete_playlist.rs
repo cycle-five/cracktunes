@@ -6,7 +6,7 @@ pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i64) -> Result<(), E
     let user_id = ctx.author().id.0 as i64;
     let pool = ctx.data().database_pool.as_ref().unwrap();
 
-    match Playlist::delete_playlist_by_id(&pool, playlist_id, user_id).await {
+    match Playlist::delete_playlist_by_id(pool, playlist_id, user_id).await {
         Ok(_) => {
             poise::say_reply(
                 ctx,
