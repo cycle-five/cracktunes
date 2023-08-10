@@ -4,10 +4,10 @@ use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 
 use crate::{
-    commands::queue::{
+    commands::music::queue::{
         build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
     },
-    commands::{send_now_playing, voteskip::forget_skip_votes},
+    commands::music::{send_now_playing, voteskip::forget_skip_votes},
     Data,
 };
 
