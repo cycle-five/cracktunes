@@ -311,6 +311,8 @@ async fn poise_framework(
             commands::autopause(),
             commands::boop(),
             commands::coinflip(),
+            commands::create_playlist(),
+            commands::delete_playlist(),
             commands::chatgpt(),
             commands::clear(),
             commands::help(),
@@ -411,11 +413,16 @@ async fn poise_framework(
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
+    let db_url = config.database_url.clone();
+    let pool_opts = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(&db_url.clone())
+        .await;
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
         event_log,
+        database_pool: pool_opts.unwrap().into(),
         ..Default::default()
     }));
 

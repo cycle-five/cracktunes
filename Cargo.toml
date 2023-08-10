@@ -54,7 +54,8 @@ features = [
   "macros",
   "sqlite",
   "postgres",
-  "chrono"
+  "chrono",
+  "migrate",
 ]
 
 [dependencies.rspotify]
