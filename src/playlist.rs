@@ -1,4 +1,8 @@
-use sqlx::{types::chrono, SqlitePool};
+use songbird::tracks::TrackHandle;
+use sqlx::{
+    types::chrono::{self, NaiveDate},
+    SqlitePool,
+};
 
 use crate::errors::CrackedError;
 
@@ -7,7 +11,7 @@ pub struct User {
     pub id: i64,
     pub discord_id: String,
     pub username: String,
-    pub descriminator: String,
+    pub descriminator: Option<String>,
     pub last_seen: chrono::NaiveDate,
     pub creation_date: chrono::NaiveDate,
 }
@@ -24,25 +28,25 @@ pub struct Playlist {
 pub struct PlaylistTrack {
     pub id: i64,
     pub playlist_id: i64,
-    pub track_id: i64,
-    pub guild_id: i64,
-    pub channel_id: i64,
+    pub metadata_id: i64,
+    pub guild_id: Option<i64>,
+    pub channel_id: Option<i64>,
 }
 
 pub struct Metadata {
     pub id: i64,
-    pub track: String,
-    pub artist: String,
-    pub album: String,
+    pub track: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
     pub date: Option<chrono::NaiveDate>,
-    pub channels: i64,
-    pub channel: String,
-    pub start_time: Option<chrono::NaiveTime>,
-    pub duration: Option<chrono::NaiveTime>,
+    pub channels: Option<i64>,
+    pub channel: Option<String>,
+    pub start_time: Option<i64>,
+    pub duration: Option<i64>,
     pub sample_rate: Option<i64>,
-    pub source_url: String,
-    pub title: String,
-    pub thumbnail: String,
+    pub source_url: Option<String>,
+    pub title: Option<String>,
+    pub thumbnail: Option<String>,
 }
 
 impl Playlist {
@@ -72,14 +76,14 @@ impl Playlist {
     pub async fn add_track(
         pool: &SqlitePool,
         playlist_id: i32,
-        track_id: i32,
+        metadata_id: i32,
         guild_id: i32,
         channel_id: i32,
     ) -> sqlx::Result<()> {
         sqlx::query!(
-            "INSERT INTO playlist_track (playlist_id, track_id, guild_id, channel_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES (?, ?, ?, ?)",
             playlist_id,
-            track_id,
+            metadata_id,
             guild_id,
             channel_id
         )
@@ -182,4 +186,70 @@ impl Playlist {
 
         Ok(())
     }
+}
+
+async fn track_handle_to_db_structures(
+    pool: &SqlitePool,
+    track_handle: TrackHandle,
+    playlist_id: i64,
+    guild_id: i64,
+    channel_id: i64,
+) -> Result<(Metadata, PlaylistTrack), CrackedError> {
+    // 1. Extract metadata from TrackHandle
+    let track = track_handle.metadata().title.clone();
+    let title = track_handle.metadata().title.clone();
+    let artist = track_handle.metadata().artist.clone();
+    let album = Some("".to_string());
+    let date = track_handle
+        .metadata()
+        .date
+        .clone()
+        .map(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").unwrap_or_default());
+    let channels = track_handle.metadata().channels;
+    let channel = Some(channel_id);
+    let start_time = track_handle
+        .metadata()
+        .start_time
+        .map(|d| d.as_secs() as i64);
+    let duration = track_handle.metadata().duration.map(|d| d.as_secs() as i64);
+    let sample_rate = track_handle.metadata().sample_rate.map(i64::from);
+    let source_url = track_handle.metadata().source_url.clone();
+    let thumbnail = track_handle.metadata().thumbnail.clone();
+
+    let metadata = sqlx::query_as!(
+        Metadata,
+        "INSERT INTO metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail",
+        track,
+        artist,
+        album,
+        date,
+        channels,
+        channel,
+        start_time,
+        duration,
+        sample_rate,
+        source_url,
+        title,
+        thumbnail
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(CrackedError::SQLX)?;
+
+    let guild_id_opt = Some(guild_id);
+    let channel_id_opt = Some(channel_id);
+    // 3. Populate the PlaylistTrack structure
+    let playlist_track = sqlx::query_as!(
+        PlaylistTrack,
+        "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES (?, ?, ?, ?) RETURNING id, playlist_id, metadata_id, guild_id, channel_id",
+        playlist_id,
+        metadata.id,
+        guild_id_opt,
+        channel_id_opt
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(CrackedError::SQLX)?;
+
+    Ok((metadata, playlist_track))
 }

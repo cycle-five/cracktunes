@@ -22,14 +22,14 @@ mod tests {
         async fn add_track(
             &self,
             playlist_id: i64,
-            track_id: i64,
+            metadata_id: i64,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<(), sqlx::Error>;
         async fn delete_track(
             &self,
             playlist_id: i64,
-            track_id: i64,
+            metadata_id: i64,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<u64, sqlx::Error>;
