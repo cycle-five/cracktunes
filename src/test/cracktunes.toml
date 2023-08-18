@@ -25,6 +25,8 @@ send_msg_mute = false
 send_msg_dc = false
 
 [[guild_settings_map]]
+prefix = "m!"
+prefix_up = "M!"
 guild_id = 0
 authorized_users = [ 0 ]
 allowed_domains = [ "youtube.com" ]
@@ -39,6 +41,8 @@ autorole = 0
 
 [[guild_settings_map]]
 guild_id = 1
+prefix = "m/"
+prefix_up = "M/"
 authorized_users = [ 0 ]
 allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
