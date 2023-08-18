@@ -1,4 +1,7 @@
-use crate::{playlist::Playlist, Context, Error};
+use crate::{
+    messaging::message::CrackedMessage, playlist::Playlist, utils::create_response_poise, Context,
+    Error,
+};
 
 #[poise::command(prefix_command, slash_command)]
 pub async fn create_playlist(ctx: Context<'_>, name: String) -> Result<(), Error> {
@@ -7,11 +10,8 @@ pub async fn create_playlist(ctx: Context<'_>, name: String) -> Result<(), Error
 
     match Playlist::create(ctx.data().database_pool.as_ref().unwrap(), &name, user_id).await {
         Ok(playlist) => {
-            poise::say_reply(
-                ctx,
-                format!("Successfully created playlist: {}", playlist.name),
-            )
-            .await?;
+            create_response_poise(ctx, CrackedMessage::PlaylistCreated(playlist.name.clone()))
+                .await?;
         }
         Err(e) => {
             poise::say_reply(ctx, format!("Error creating playlist: {}", e)).await?;

@@ -1,4 +1,9 @@
-use crate::{errors::CrackedError, utils::check_reply, Context, Error};
+use crate::{
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    utils::{check_reply, create_response_poise},
+    Context, Error,
+};
 // use chrono::NaiveTime;
 // use date_time_parser::TimeParser;
 
@@ -6,9 +11,10 @@ use crate::{errors::CrackedError, utils::check_reply, Context, Error};
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("authorize", "deauthorize", "set_idle_timeout"),
+    subcommands("authorize", "deauthorize", "set_idle_timeout", "set_prefix"),
     ephemeral,
-    owners_only
+    owners_only,
+    hide_in_help
 )]
 pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
@@ -16,8 +22,33 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Set the prefix for the bot.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+pub async fn set_prefix(
+    ctx: Context<'_>,
+    #[description = "The prefix to set for the bot"] prefix: String,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let data = ctx.data();
+    let _entry = &data
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| e.prefix = prefix.clone())
+        .and_modify(|e| e.prefix_up = prefix.to_uppercase());
+
+    create_response_poise(
+        ctx,
+        CrackedMessage::Other(format!("Prefix set to {}", prefix)),
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
@@ -44,7 +75,7 @@ pub async fn authorize(
 }
 
 /// Deauthorize a user from using the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
 pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,
@@ -73,7 +104,7 @@ pub async fn deauthorize(
 }
 
 /// Set the idle timeout for the bot in vc.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_idle_timeout(
     ctx: Context<'_>,
     // #[description = "Idle timeout for the bot in minutes."] timeout: String,

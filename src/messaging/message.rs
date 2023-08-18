@@ -22,13 +22,16 @@ pub enum CrackedMessage {
     LoopDisable,
     LoopEnable,
     NowPlaying,
+    Other(String),
     Pause,
     PasswordPwned,
     PasswordSafe,
+    Paywall(String),
     PhoneNumberInfo(String),
     PhoneNumberInfoError,
     PlayAllFailed,
     PlayDomainBanned { domain: String },
+    PlaylistCreated(String),
     PlaylistQueued,
     RemoveMultiple,
     Resume,
@@ -63,11 +66,16 @@ impl Display for CrackedMessage {
             Self::LoopDisable => f.write_str(LOOP_DISABLED),
             Self::LoopEnable => f.write_str(LOOP_ENABLED),
             Self::NowPlaying => f.write_str(QUEUE_NOW_PLAYING),
+            Self::Other(message) => f.write_str(message),
             Self::PasswordPwned => f.write_str(PASSWORD_PWNED),
             Self::PasswordSafe => f.write_str(PASSWORD_SAFE),
             Self::Pause => f.write_str(PAUSED),
+            Self::Paywall(url) => f.write_str(&format!("{}{}", ONETWOFT, url)),
             Self::PhoneNumberInfo(info) => f.write_str(info),
             Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
+            Self::PlaylistCreated(name) => {
+                f.write_str(&format!("{} **{}**", PLAYLIST_CREATED, name))
+            }
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {

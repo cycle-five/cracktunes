@@ -154,8 +154,279 @@ pub async fn play(
     // needed because interactions must be replied within 3s and queueing takes longer
     create_response_poise_text(&ctx, CrackedMessage::Search).await?;
 
+    match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
+
+    // match mode {
+    //     Mode::End => match query_type.clone() {
+    //         QueryType::Keywords(_) | QueryType::VideoLink(_) => {
+    //             tracing::trace!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
+    //             let queue = enqueue_track(&call, &query_type).await?;
+    //             update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+    //                 .await;
+    //         }
+    //         QueryType::PlaylistLink(url) => {
+    //             tracing::trace!("Mode::End, QueryType::PlaylistLink");
+    //             let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+    //                 .await
+    //                 .ok_or(CrackedError::PlayListFail)?;
+
+    //             for url in urls.iter() {
+    //                 let queue =
+    //                     enqueue_track(&call, &QueryType::VideoLink(url.to_string())).await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         QueryType::KeywordList(keywords_list) => {
+    //             tracing::trace!("Mode::End, QueryType::KeywordList");
+    //             for keywords in keywords_list.iter() {
+    //                 let queue =
+    //                     enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         QueryType::File(file) => {
+    //             tracing::trace!("Mode::End, QueryType::File");
+    //             let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
+    //                     enqueue_track(&call, &QueryType::File(file)).await?;
+    //             update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+    //                 .await;
+    //         }
+    //     },
+    //     Mode::Next => match query_type.clone() {
+    //         QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+    //             tracing::trace!(
+    //                 "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
+    //             );
+    //             let queue = insert_track(&call, &query_type, 1).await?;
+    //             update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+    //                 .await;
+    //         }
+    //         QueryType::PlaylistLink(url) => {
+    //             tracing::trace!("Mode::Next, QueryType::PlaylistLink");
+    //             let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+    //                 .await
+    //                 .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+
+    //             for (idx, url) in urls.into_iter().enumerate() {
+    //                 let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         QueryType::KeywordList(keywords_list) => {
+    //             tracing::trace!("Mode::Next, QueryType::KeywordList");
+    //             let q_not_empty = if call.clone().lock().await.queue().is_empty() {
+    //                 0
+    //             } else {
+    //                 1
+    //             };
+    //             for (idx, keywords) in keywords_list.into_iter().enumerate() {
+    //                 let queue =
+    //                     insert_track(&call, &QueryType::Keywords(keywords), idx + q_not_empty)
+    //                         .await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //     },
+    //     Mode::Jump => match query_type.clone() {
+    //         QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+    //             tracing::trace!(
+    //                 "Mode::Jump, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
+    //             );
+    //             let mut queue = enqueue_track(&call, &query_type).await?;
+
+    //             if !queue_was_empty {
+    //                 rotate_tracks(&call, 1).await.ok();
+    //                 queue = force_skip_top_track(&call.lock().await).await?;
+    //             }
+
+    //             update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+    //                 .await;
+    //         }
+    //         QueryType::PlaylistLink(url) => {
+    //             tracing::error!("Mode::Jump, QueryType::PlaylistLink");
+    //             let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+    //                 .await
+    //                 .ok_or(CrackedError::PlayListFail)?;
+
+    //             let mut insert_idx = 1;
+
+    //             for (i, url) in urls.into_iter().enumerate() {
+    //                 let mut queue =
+    //                     insert_track(&call, &QueryType::VideoLink(url), insert_idx).await?;
+
+    //                 if i == 0 && !queue_was_empty {
+    //                     queue = force_skip_top_track(&call.lock().await).await?;
+    //                 } else {
+    //                     insert_idx += 1;
+    //                 }
+
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         QueryType::KeywordList(keywords_list) => {
+    //             tracing::error!("Mode::Jump, QueryType::KeywordList");
+    //             let mut insert_idx = 1;
+
+    //             for (i, keywords) in keywords_list.into_iter().enumerate() {
+    //                 let mut queue =
+    //                     insert_track(&call, &QueryType::Keywords(keywords), insert_idx).await?;
+
+    //                 if i == 0 && !queue_was_empty {
+    //                     queue = force_skip_top_track(&call.lock().await).await?;
+    //                 } else {
+    //                     insert_idx += 1;
+    //                 }
+
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //     },
+    //     Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
+    //         QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
+    //             tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
+    //             let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+    //                 .await
+    //                 .ok_or(CrackedError::PlayListFail)?;
+
+    //             for url in urls.into_iter() {
+    //                 let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         QueryType::KeywordList(keywords_list) => {
+    //             tracing::trace!(
+    //                 "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
+    //             );
+    //             for keywords in keywords_list.into_iter() {
+    //                 let queue = enqueue_track(&call, &QueryType::Keywords(keywords)).await?;
+    //                 update_queue_messages(
+    //                     &ctx.serenity_context().http,
+    //                     ctx.data(),
+    //                     &queue,
+    //                     guild_id,
+    //                 )
+    //                 .await;
+    //             }
+    //         }
+    //         _ => {
+    //             ctx.defer().await?; // Why did I do this?
+    //             edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+    //             return Ok(());
+    //         }
+    //     },
+    // }
+    let handler = call.lock().await;
+
+    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+    let guild_settings = settings
+        .entry(guild_id)
+        .or_insert_with(|| GuildSettings::new(guild_id));
+
+    // refetch the queue after modification
+    let queue = handler.queue().current_queue();
+    queue
+        .iter()
+        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
+    drop(handler);
+
+    match queue.len().cmp(&1) {
+        Ordering::Greater => {
+            let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
+
+            match (query_type, mode) {
+                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
+                    let track = queue.get(1).unwrap();
+                    let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
+                    let track = queue.last().unwrap();
+                    let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
+                    match get_interaction(ctx) {
+                        Some(interaction) => {
+                            interaction
+                                .edit_original_interaction_response(
+                                    &ctx.serenity_context().http,
+                                    |message| message.content(CrackedMessage::PlaylistQueued),
+                                )
+                                .await?;
+                        }
+                        None => {
+                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
+                        }
+                    }
+                }
+                (_, _) => {}
+            }
+        }
+        Ordering::Equal => {
+            let track = queue.first().unwrap();
+            let embed = create_now_playing_embed(track).await;
+
+            edit_embed_response_poise(ctx, embed).await?;
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(())
+}
+
+async fn match_mode(
+    ctx: &Context<'_>,
+    call: Arc<Mutex<Call>>,
+    mode: Mode,
+    query_type: QueryType,
+) -> Result<(), Error> {
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
 
     tracing::info!("mode: {:?}", mode);
@@ -356,67 +627,10 @@ pub async fn play(
             }
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(*ctx, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
-    }
-    let handler = call.lock().await;
-
-    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let guild_settings = settings
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id));
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    queue
-        .iter()
-        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
-    drop(handler);
-
-    match queue.len().cmp(&1) {
-        Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
-
-            match (query_type, mode) {
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
-                    let track = queue.get(1).unwrap();
-                    let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
-                }
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
-                    let track = queue.last().unwrap();
-                    let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
-                }
-                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
-                    match get_interaction(ctx) {
-                        Some(interaction) => {
-                            interaction
-                                .edit_original_interaction_response(
-                                    &ctx.serenity_context().http,
-                                    |message| message.content(CrackedMessage::PlaylistQueued),
-                                )
-                                .await?;
-                        }
-                        None => {
-                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
-                        }
-                    }
-                }
-                (_, _) => {}
-            }
-        }
-        Ordering::Equal => {
-            let track = queue.first().unwrap();
-            let embed = create_now_playing_embed(track).await;
-
-            edit_embed_response_poise(ctx, embed).await?;
-        }
-        _ => unreachable!(),
     }
 
     Ok(())

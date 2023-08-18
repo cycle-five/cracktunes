@@ -188,7 +188,7 @@ impl Playlist {
     }
 }
 
-async fn track_handle_to_db_structures(
+pub async fn track_handle_to_db_structures(
     pool: &SqlitePool,
     track_handle: TrackHandle,
     playlist_id: i64,
@@ -218,7 +218,11 @@ async fn track_handle_to_db_structures(
 
     let metadata = sqlx::query_as!(
         Metadata,
-        "INSERT INTO metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail",
+        r#"INSERT INTO
+            metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+            "#,
         track,
         artist,
         album,
@@ -241,7 +245,11 @@ async fn track_handle_to_db_structures(
     // 3. Populate the PlaylistTrack structure
     let playlist_track = sqlx::query_as!(
         PlaylistTrack,
-        "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES (?, ?, ?, ?) RETURNING id, playlist_id, metadata_id, guild_id, channel_id",
+        r#"INSERT INTO playlist_track
+            (playlist_id, metadata_id, guild_id, channel_id)
+            VALUES (?, ?, ?, ?)
+            RETURNING id, playlist_id, metadata_id, guild_id, channel_id
+            "#,
         playlist_id,
         metadata.id,
         guild_id_opt,
