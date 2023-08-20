@@ -17,32 +17,14 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         .create_dm_channel(&ctx.serenity_context().http)
         .await?;
 
-    send_now_playing(
+    let _ = send_now_playing(
         channel.id,
         ctx.serenity_context().http.clone(),
         call.clone(),
     )
     .await?;
-    // match handler.queue().current() {
-    //     Some(track_handle) => {
-    //         let embed = create_now_playing_embed(&track_handle).await;
-    //         // create_embed_response_poise(ctx, embed).await?;
-    //         channel
-    //             .send_message(&ctx.serenity_context().http, |m| {
-    //                 m.embed(|e| {
-    //                     e.clone_from(&embed);
-    //                     e
-    //                 })
-    //             })
-    //             .await?;
-    //     }
-    //     None => {
-    //         channel
-    //             .say(&ctx.serenity_context().http, "Nothing playing!")
-    //             .await
-    //             .expect("Error sending message");
-    //     }
-    // }
+
+    ctx.say("Sent you a DM with the current track").await?;
 
     Ok(())
 }

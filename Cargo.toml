@@ -9,7 +9,6 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-# default = ["shuttle"]
 default = ["playlist"]
 playlist = ["sqlx"]
 shuttle = []
