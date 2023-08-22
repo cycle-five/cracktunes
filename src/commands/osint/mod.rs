@@ -1,6 +1,7 @@
 pub mod checkpass;
 pub mod ip;
 pub mod ipv;
+pub mod paywall;
 pub mod phcode;
 pub mod phlookup;
 pub mod scan;
@@ -11,6 +12,7 @@ pub mod whois;
 pub use checkpass::*;
 pub use ip::*;
 pub use ipv::*;
+pub use paywall::*;
 pub use phcode::*;
 pub use phlookup::*;
 pub use scan::*;
@@ -26,6 +28,7 @@ use crate::{Context, Error};
     subcommands(
         "ip",
         "ipv",
+        "paywall",
         "socialmedia",
         "wayback",
         "whois",

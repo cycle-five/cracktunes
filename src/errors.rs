@@ -33,6 +33,7 @@ pub enum CrackedError {
     Shuttle(shuttle_runtime::Error),
     #[cfg(feature = "shuttle")]
     ShuttleCustom(shuttle_runtime::CustomError),
+    SQLX(sqlx::Error),
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
     IO(std::io::Error),
@@ -93,6 +94,7 @@ impl Display for CrackedError {
             Self::Shuttle(err) => f.write_str(&format!("{err}")),
             #[cfg(feature = "shuttle")]
             Self::ShuttleCustom(err) => f.write_str(&format!("{err}")),
+            Self::SQLX(err) => f.write_str(&format!("{err}")),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::IO(err) => f.write_str(&format!("{err}")),
@@ -125,6 +127,12 @@ impl PartialEq for CrackedError {
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+impl From<sqlx::Error> for CrackedError {
+    fn from(err: sqlx::Error) -> Self {
+        Self::SQLX(err)
     }
 }
 

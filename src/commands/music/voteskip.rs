@@ -1,6 +1,6 @@
 use self::serenity::{model::id::GuildId, Mentionable};
 use crate::{
-    commands::{create_skip_response, force_skip_top_track},
+    commands::music::{create_skip_response, force_skip_top_track},
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,

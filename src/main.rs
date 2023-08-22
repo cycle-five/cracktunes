@@ -26,48 +26,11 @@ use std::{
 use tracing::instrument;
 use warp::Filter;
 
-#[cfg(feature = "shuttle")]
-use {
-    cracktunes::errors::CrackedError, shuttle_poise::ShuttlePoise, shuttle_runtime::Context as _,
-    shuttle_secrets::SecretStore,
-};
-#[cfg(not(feature = "shuttle"))]
 use {cracktunes::guild::cache::GuildCacheMap, cracktunes::guild::settings::GuildSettingsMap};
 
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-#[cfg(feature = "shuttle")]
-#[shuttle_runtime::main]
-async fn poise(
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> ShuttlePoise<data_global, Error> {
-    dotenv::dotenv().ok();
-    //init_logging().await;
-    init_metrics().await;
-    let config = load_bot_config(Some(secret_store)).await.unwrap();
-    tracing::warn!("Using config: {:?}", config);
-    let framework = poise_framework(config);
-    let framework: Arc<poise::Framework<data_global, Error>> =
-        framework.build().await.map_err(|e| {
-            <CrackedError as Into<shuttle_runtime::CustomError>>::into(CrackedError::ShuttleCustom(
-                e.into(),
-            ))
-        })?;
-
-    // let client = framework.client();
-    // let mut data_global = client.data_global.write().await;
-    // data_global.insert::<GuildCacheMap>(HashMap::default());
-    // data_global.insert::<GuildSettingsMap>(HashMap::default());
-    // drop(data_global);
-    // drop(client);
-
-    tracing::warn!("Starting framework");
-
-    Ok(framework.into())
-}
-
-#[cfg(not(feature = "shuttle"))]
 fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -124,23 +87,6 @@ async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     ))
 }
 
-#[cfg(feature = "shuttle")]
-fn load_key(secret_store: Option<SecretStore>, k: String) -> Result<String, Error> {
-    match env::var(&k) {
-        Ok(token) => Ok(token),
-        Err(_) => {
-            tracing::warn!("{} not found in environment", &k);
-            match secret_store {
-                Some(secret_store) => secret_store
-                    .get(&k)
-                    .context(format!("'{}' was not found", &k))
-                    .map_err(|e| e.into()),
-                None => Err(format!("{} not found in environment or Secrets.toml", k).into()),
-            }
-        }
-    }
-}
-#[cfg(not(feature = "shuttle"))]
 fn load_key(k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
@@ -151,36 +97,6 @@ fn load_key(k: String) -> Result<String, Error> {
     }
 }
 
-#[cfg(feature = "shuttle")]
-async fn load_bot_config(secret_store: Option<SecretStore>) -> Result<BotConfig, Error> {
-    // Get the discord token set in `Secrets.toml`
-
-    let discord_token = load_key(secret_store.clone(), "DISCORD_TOKEN".to_string())?;
-    let discord_app_id = load_key(secret_store.clone(), "DISCORD_APP_ID".to_string())?;
-    let spotify_client_id = load_key(secret_store.clone(), "SPOTIFY_CLIENT_ID".to_string()).ok();
-    let spotify_client_secret =
-        load_key(secret_store.clone(), "SPOTIFY_CLIENT_SECRET".to_string()).ok();
-    let openai_key = load_key(secret_store, "OPENAI_KEY".to_string()).ok();
-
-    let config = match BotConfig::from_config_file("./cracktunes.toml") {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Using default config: {:?}", error);
-            BotConfig::default()
-        }
-    }
-    .set_credentials(BotCredentials {
-        discord_token,
-        discord_app_id,
-        spotify_client_id,
-        spotify_client_secret,
-        openai_key,
-    });
-
-    Ok(config)
-}
-
-#[cfg(not(feature = "shuttle"))]
 async fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN".to_string())?;
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
@@ -300,6 +216,7 @@ async fn poise_framework(
 ) -> Result<Arc<Framework<Data, Error>>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
+    tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
@@ -311,6 +228,8 @@ async fn poise_framework(
             commands::autopause(),
             commands::boop(),
             commands::coinflip(),
+            commands::create_playlist(),
+            commands::delete_playlist(),
             commands::chatgpt(),
             commands::clear(),
             commands::help(),
@@ -340,12 +259,33 @@ async fn poise_framework(
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
             additional_prefixes: vec![
                 poise::Prefix::Literal(up_prefix_cloned),
-                poise::Prefix::Literal("rs!"),
                 poise::Prefix::Literal("hey bot,"),
                 poise::Prefix::Literal("hey bot"),
                 poise::Prefix::Literal("bot,"),
                 poise::Prefix::Literal("bot"),
             ],
+            stripped_dynamic_prefix: Some(|ctx, msg, _| {
+                Box::pin(async move {
+                    let guild_id = msg.guild_id.unwrap();
+                    let data_read = ctx.data.read().await;
+                    let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+
+                    if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
+                        let prefix = &guild_settings.prefix;
+                        let prefix_up = &guild_settings.prefix_up;
+
+                        if msg.content.starts_with(prefix) {
+                            Ok(Some(msg.content.split_at(prefix.len())))
+                        } else if msg.content.starts_with(prefix_up) {
+                            Ok(Some(msg.content.split_at(prefix_up.len())))
+                        } else {
+                            Ok(None)
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                })
+            }),
             ..Default::default()
         },
         /// The global error handler for all error cases that may occur
@@ -411,11 +351,18 @@ async fn poise_framework(
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
+
+    let db_url = config.database_url.clone();
+    let pool_opts = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(&db_url.clone())
+        .await;
+    let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
-        guild_settings_map: Arc::new(Mutex::new(guild_settings_map)),
+        guild_settings_map: Arc::new(Mutex::new(cloned_map)),
         event_log,
+        database_pool: pool_opts.unwrap().into(),
         ..Default::default()
     }));
 
@@ -456,6 +403,10 @@ async fn poise_framework(
             Box::pin(async move {
                 tracing::info!("Logged in as {}", ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                ctx.data
+                    .write()
+                    .await
+                    .insert::<GuildSettingsMap>(guild_settings_map.clone());
                 Ok(setup_data)
             })
         })

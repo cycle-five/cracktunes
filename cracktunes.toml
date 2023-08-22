@@ -4,6 +4,7 @@ authorized_users = [ ]
 self_deafen = true
 volume = 1.0
 prefix = "r!"
+database_url = "sqlite:///data/crackedmusic.db"
 
 [[cam_kick]]
 cammed_down_timeout = 0
@@ -16,6 +17,8 @@ send_msg_dc = false
 
 [[guild_settings_map]]
 guild_id = 0
+prefix = "m/"
+prefix_up = "M/"
 authorized_users = [  ]
 allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]

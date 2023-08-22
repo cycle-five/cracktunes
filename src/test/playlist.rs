@@ -6,6 +6,7 @@ mod tests {
     use mockall::automock;
 
     use async_trait::async_trait;
+    use sqlx::SqlitePool;
     #[cfg_attr(test, automock)]
     #[async_trait]
     pub trait Database {
@@ -21,14 +22,14 @@ mod tests {
         async fn add_track(
             &self,
             playlist_id: i64,
-            track_id: i64,
+            metadata_id: i64,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<(), sqlx::Error>;
         async fn delete_track(
             &self,
             playlist_id: i64,
-            track_id: i64,
+            metadata_id: i64,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<u64, sqlx::Error>;
@@ -43,11 +44,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_playlist() {
         let mut mock_db = MockDatabase::new();
-        mock_db.expect_create_playlist().returning(|_, _| {
+        mock_db.expect_create_playlist().returning(|name, user_id| {
             Ok(Playlist {
                 id: 1,
-                name: "Test Playlist".to_string(),
-                user_id: Some(1),
+                name: name.to_string(),
+                user_id: Some(user_id),
+                privacy: "public".to_string(),
             })
         });
 
@@ -65,6 +67,7 @@ mod tests {
                     id: playlist_id,
                     name: "Test Playlist".to_string(),
                     user_id: Some(1),
+                    privacy: "private".to_string(),
                 })
             });
 
@@ -82,6 +85,7 @@ mod tests {
                     id: playlist_id,
                     name: new_name,
                     user_id: Some(1),
+                    privacy: "private".to_string(),
                 })
             });
 
@@ -101,6 +105,30 @@ mod tests {
 
         let delete_count = mock_db.delete_playlist(1).await.unwrap();
         assert_eq!(delete_count, 1);
+    }
+
+    //#[tokio::test]
+    #[sqlx::test]
+    async fn test_delete_playlist_by_id(pool: SqlitePool) {
+        // Setup
+        let user_id = 1; // or fetch a user id for the test
+        let playlist_name = "Test Playlist";
+
+        // Create a new playlist entry
+        let playlist_id = Playlist::create(&pool, playlist_name, user_id)
+            .await
+            .expect("Failed to create playlist");
+
+        // Use the delete_playlist_by_id function to delete the playlist
+        Playlist::delete_playlist_by_id(&pool, playlist_id.id, user_id)
+            .await
+            .expect("Failed to delete playlist");
+
+        // Verify that the playlist is no longer present in the database
+        let res = Playlist::get_playlist_by_id(&pool, playlist_id.id).await;
+        assert!(!res.is_ok(), "Playlist was not deleted successfully");
+
+        //Ok(())
     }
 
     #[tokio::test]

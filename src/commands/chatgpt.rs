@@ -3,6 +3,8 @@ use chatgpt::prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder};
 use url::Url;
 
 /// Talk with chatgpt.
+#[allow(unused)]
+#[allow(unused_variables)]
 #[poise::command(slash_command, prefix_command)]
 pub async fn chatgpt(
     ctx: Context<'_>,
@@ -10,6 +12,7 @@ pub async fn chatgpt(
     #[description = "Query text to send to the model."]
     query: String,
 ) -> Result<(), Error> {
+    return Ok(());
     let key = std::env::var("OPENAI_KEY").expect("Expected an OpenAI key in the environment");
 
     ctx.defer().await?;

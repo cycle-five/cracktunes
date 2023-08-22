@@ -35,6 +35,8 @@ pub struct WelcomeSettings {
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
+    pub prefix: String,
+    pub prefix_up: String,
     pub autopause: bool,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
@@ -54,6 +56,8 @@ impl GuildSettings {
 
         GuildSettings {
             guild_id,
+            prefix: DEFAULT_PREFIX.to_string(),
+            prefix_up: DEFAULT_PREFIX.to_string().to_ascii_uppercase(),
             autopause: false,
             allowed_domains,
             banned_domains: HashSet::new(),

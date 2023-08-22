@@ -154,8 +154,78 @@ pub async fn play(
     // needed because interactions must be replied within 3s and queueing takes longer
     create_response_poise_text(&ctx, CrackedMessage::Search).await?;
 
+    match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
+
+    let handler = call.lock().await;
+
+    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+    let guild_settings = settings
+        .entry(guild_id)
+        .or_insert_with(|| GuildSettings::new(guild_id));
+
+    // refetch the queue after modification
+    let queue = handler.queue().current_queue();
+    queue
+        .iter()
+        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
+    drop(handler);
+
+    match queue.len().cmp(&1) {
+        Ordering::Greater => {
+            let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
+
+            match (query_type, mode) {
+                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
+                    let track = queue.get(1).unwrap();
+                    let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
+                    let track = queue.last().unwrap();
+                    let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
+                    match get_interaction(ctx) {
+                        Some(interaction) => {
+                            interaction
+                                .edit_original_interaction_response(
+                                    &ctx.serenity_context().http,
+                                    |message| message.content(CrackedMessage::PlaylistQueued),
+                                )
+                                .await?;
+                        }
+                        None => {
+                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
+                        }
+                    }
+                }
+                (_, _) => {}
+            }
+        }
+        Ordering::Equal => {
+            let track = queue.first().unwrap();
+            let embed = create_now_playing_embed(track).await;
+
+            edit_embed_response_poise(ctx, embed).await?;
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(())
+}
+
+async fn match_mode(
+    ctx: &Context<'_>,
+    call: Arc<Mutex<Call>>,
+    mode: Mode,
+    query_type: QueryType,
+) -> Result<(), Error> {
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
 
     tracing::info!("mode: {:?}", mode);
@@ -356,67 +426,10 @@ pub async fn play(
             }
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(*ctx, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
-    }
-    let handler = call.lock().await;
-
-    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let guild_settings = settings
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id));
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    queue
-        .iter()
-        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
-    drop(handler);
-
-    match queue.len().cmp(&1) {
-        Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
-
-            match (query_type, mode) {
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
-                    let track = queue.get(1).unwrap();
-                    let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
-                }
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
-                    let track = queue.last().unwrap();
-                    let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
-                }
-                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
-                    match get_interaction(ctx) {
-                        Some(interaction) => {
-                            interaction
-                                .edit_original_interaction_response(
-                                    &ctx.serenity_context().http,
-                                    |message| message.content(CrackedMessage::PlaylistQueued),
-                                )
-                                .await?;
-                        }
-                        None => {
-                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
-                        }
-                    }
-                }
-                (_, _) => {}
-            }
-        }
-        Ordering::Equal => {
-            let track = queue.first().unwrap();
-            let embed = create_now_playing_embed(track).await;
-
-            edit_embed_response_poise(ctx, embed).await?;
-        }
-        _ => unreachable!(),
     }
 
     Ok(())

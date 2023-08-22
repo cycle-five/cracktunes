@@ -109,6 +109,7 @@ pub struct BotConfig {
     pub guild_settings_map: Vec<guild::settings::GuildSettings>,
     pub prefix: String,
     pub credentials: Option<BotCredentials>,
+    pub database_url: String,
 }
 
 impl Default for BotConfig {
@@ -123,6 +124,7 @@ impl Default for BotConfig {
             guild_settings_map: vec![],
             prefix: DEFAULT_PREFIX.to_string(),
             credentials: None,
+            database_url: "sqlite:///data/cracked.db".to_string(),
         }
     }
 }
@@ -177,6 +179,8 @@ pub struct DataInner {
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     pub event_log: EventLog,
+    #[serde(skip)]
+    pub database_pool: Option<sqlx::SqlitePool>,
 }
 
 #[derive(Clone, Debug)]
@@ -250,12 +254,13 @@ impl Default for DataInner {
     fn default() -> Self {
         Self {
             phone_data: PhoneCodeData::load().unwrap(),
-            up_prefix: "RS",
+            up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             event_log: EventLog::default(),
+            database_pool: None,
         }
     }
 }
