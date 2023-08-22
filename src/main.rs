@@ -216,6 +216,7 @@ async fn poise_framework(
 ) -> Result<Arc<Framework<Data, Error>>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
+    tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
@@ -258,7 +259,6 @@ async fn poise_framework(
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
             additional_prefixes: vec![
                 poise::Prefix::Literal(up_prefix_cloned),
-                poise::Prefix::Literal("rs!"),
                 poise::Prefix::Literal("hey bot,"),
                 poise::Prefix::Literal("hey bot"),
                 poise::Prefix::Literal("bot,"),

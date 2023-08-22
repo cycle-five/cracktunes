@@ -42,6 +42,7 @@ reqwest = {version = "0.11.18", features = ["blocking", "json"]}
 anyhow = "1.0.72"
 warp = "0.3.5"
 whois-rust = "1.5.1"
+rustls-webpki = "0.101.4"
 
 [dependencies.sqlx]
 version = "0.7.1"
@@ -108,3 +109,6 @@ features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"
+
+[dev-dependencies]
+rustls-webpki = "0.101.4"
