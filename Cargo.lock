@@ -2514,7 +2514,7 @@ dependencies = [
 [[package]]
 name = "rspotify"
 version = "0.11.7"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#89cf65914feceb8329637d829f19bf94c8f63a4d"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#d49bbae9ff085db4fa12e08f1fb4ebb02581f7bb"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2537,7 +2537,7 @@ dependencies = [
 [[package]]
 name = "rspotify-http"
 version = "0.11.7"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#89cf65914feceb8329637d829f19bf94c8f63a4d"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#d49bbae9ff085db4fa12e08f1fb4ebb02581f7bb"
 dependencies = [
  "async-trait",
  "log",
@@ -2550,12 +2550,12 @@ dependencies = [
 [[package]]
 name = "rspotify-macros"
 version = "0.11.7"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#89cf65914feceb8329637d829f19bf94c8f63a4d"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#d49bbae9ff085db4fa12e08f1fb4ebb02581f7bb"
 
 [[package]]
 name = "rspotify-model"
 version = "0.11.7"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#89cf65914feceb8329637d829f19bf94c8f63a4d"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#d49bbae9ff085db4fa12e08f1fb4ebb02581f7bb"
 dependencies = [
  "chrono",
  "enum_dispatch",
