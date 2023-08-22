@@ -47,7 +47,7 @@ mod tests {
         mock_db.expect_create_playlist().returning(|name, user_id| {
             Ok(Playlist {
                 id: 1,
-                name: name.clone().to_string(),
+                name: name.to_string(),
                 user_id: Some(user_id),
                 privacy: "public".to_string(),
             })
