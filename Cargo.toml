@@ -38,7 +38,7 @@ tracing-subscriber = "0.3.17"
 sys-info = "0.9.1"
 prometheus = {version = "0.13.3", features = ["process"]}
 config-file = {version="0.2.3", features = ["json"]}
-reqwest = {version = "0.11.18", features = ["blocking", "json"]}
+reqwest = {version = "0.11.20", features = ["blocking", "json"]}
 anyhow = "1.0.72"
 warp = "0.3.5"
 whois-rust = "1.5.1"
