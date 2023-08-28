@@ -53,7 +53,9 @@ where
             //return ffmpeg::from_attachment(attachment, Metadata::default(), &[]).await;
             let metadata = _file_metadata(url).await?;
             tracing::warn!("metadata: {:?}", metadata);
-            return ffmpeg::from_uri(url, metadata, &[]).await.map_err(|e: Error| Into::<CrackedError>::into(e).into())
+            return ffmpeg::from_uri(url, metadata, &[])
+                .await
+                .map_err(|e: Error| Into::<CrackedError>::into(e).into());
         };
 
         let ts = format!("{:.3}", time.as_secs_f64());

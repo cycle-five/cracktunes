@@ -110,7 +110,9 @@ where
         };
 
         let Some(time) = time else {
-            return ffmpeg(yt, metadata, &[]).await.map_err(|e| <CrackedError as Into<SongbirdError>>::into(CrackedError::Poise(e)));
+            return ffmpeg(yt, metadata, &[])
+                .await
+                .map_err(|e| <CrackedError as Into<SongbirdError>>::into(CrackedError::Poise(e)));
         };
 
         let ts = format!("{:.3}", time.as_secs_f64());
