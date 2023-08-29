@@ -311,6 +311,7 @@ impl SerenityHandler {
     }
 
     async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
+        let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
         for guild in &ready.guilds {
@@ -326,7 +327,7 @@ impl SerenityHandler {
 
             let guild_settings = settings
                 .entry(guild.id)
-                .or_insert_with(|| GuildSettings::new(guild.id));
+                .or_insert_with(|| GuildSettings::new(guild.id, Some(&prefix)));
 
             if let Err(err) = guild_settings.load_if_exists() {
                 tracing::error!("Failed to load guild {} settings due to {}", guild.id, err);

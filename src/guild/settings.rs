@@ -48,16 +48,21 @@ pub struct GuildSettings {
 }
 
 impl GuildSettings {
-    pub fn new(guild_id: GuildId) -> GuildSettings {
+    pub fn new(guild_id: GuildId, prefix: Option<&str>) -> GuildSettings {
         let allowed_domains: HashSet<String> = DEFAULT_ALLOWED_DOMAINS
             .iter()
             .map(|d| d.to_string())
             .collect();
 
+        let my_prefix = match prefix {
+            Some(p) => p.to_string(),
+            None => DEFAULT_PREFIX.to_string(),
+        };
+
         GuildSettings {
             guild_id,
-            prefix: DEFAULT_PREFIX.to_string(),
-            prefix_up: DEFAULT_PREFIX.to_string().to_ascii_uppercase(),
+            prefix: my_prefix.clone(),
+            prefix_up: my_prefix.to_string().to_ascii_uppercase(),
             autopause: false,
             allowed_domains,
             banned_domains: HashSet::new(),

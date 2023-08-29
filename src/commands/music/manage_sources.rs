@@ -21,6 +21,7 @@ use poise::serenity_prelude as serenity;
 /// Manage the domains that are allowed or banned.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
+    let prefix = ctx.data().bot_settings.get_prefix();
     let interaction = get_interaction(ctx).unwrap();
     let guild_id = interaction.guild_id.unwrap();
 
@@ -29,7 +30,7 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
 
     let guild_settings = settings
         .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id));
+        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
 
     // transform the domain sets from the settings into a string
     let allowed_str = guild_settings

@@ -13,6 +13,7 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
+    let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
@@ -49,7 +50,7 @@ pub async fn volume(
             let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = guild_settings_map
                 .entry(guild_id)
-                .or_insert_with(|| GuildSettings::new(guild_id))
+                .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)))
                 .clone();
             let asdf = guild_settings_map.get(&guild_id).unwrap().volume;
 
@@ -73,7 +74,7 @@ pub async fn volume(
     let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = guild_settings_map
         .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id));
+        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
     tracing::warn!(
         "guild_settings: {:?}",
         format!("{:?}", guild_settings).white(),
