@@ -20,7 +20,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     .await?;
 
     let mut boop_count = 0;
-    while let Some(mci) = serenity::CollectComponentInteraction::new(ctx)
+    while let Some(mci) = serenity::ComponentInteraction::new(ctx)
         .author_id(ctx.author().id)
         .channel_id(ctx.channel_id())
         .timeout(std::time::Duration::from_secs(120))
