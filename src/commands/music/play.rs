@@ -162,7 +162,7 @@ pub async fn play(
     let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
     let guild_settings = settings
         .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
+        .or_insert_with(|| GuildSettings::new(guild_id, Some(prefix)));
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -460,7 +460,7 @@ async fn match_url(
                 let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings
                     .entry(guild_id)
-                    .or_insert_with(|| GuildSettings::new(guild_id, Some(&ctx.prefix())));
+                    .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
 
                 let is_allowed = guild_settings
                     .allowed_domains
@@ -488,7 +488,7 @@ async fn match_url(
             let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings
                 .entry(guild_id)
-                .or_insert_with(|| GuildSettings::new(guild_id, Some(&ctx.prefix())));
+                .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
 
             if guild_settings.banned_domains.contains("youtube.com")
                 || (guild_settings.banned_domains.is_empty()
