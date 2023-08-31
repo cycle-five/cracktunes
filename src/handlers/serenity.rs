@@ -194,6 +194,7 @@ impl EventHandler for SerenityHandler {
             let mm = MyMessage(msg);
             tracing::info!("{}", mm);
         }
+        Result::Ok(())
     }
 
     async fn voice_state_update(
@@ -203,7 +204,7 @@ impl EventHandler for SerenityHandler {
         new: VoiceState,
     ) {
         // do nothing if this is a voice update event for a user, not a bot
-        if new.user_id != ctx.cache.current_user_id() {
+        if new.user_id != ctx.cache.current_user().id {
             return;
         }
 

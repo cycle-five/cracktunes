@@ -112,7 +112,7 @@ pub async fn update_queue_messages(
                 &http,
                 EditMessage::default()
                     .embed(embed)
-                    .components(|components| build_nav_btns(components, *page, num_pages)),
+                    .components(build_nav_btns(*page, num_pages)),
             )
             .await;
 
