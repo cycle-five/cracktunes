@@ -70,8 +70,12 @@ pub async fn authorize(
 
     //ctx.send("User authorized").await;
     check_reply(
-        ctx.send(|m| m.content("User authorized.").reply(true))
-            .await,
+        ctx.send(
+            CreateReply::default()
+                .content("User authorized.")
+                .reply(true),
+        )
+        .await,
     );
 
     Ok(())
@@ -136,10 +140,11 @@ pub async fn set_idle_timeout(
         .and_modify(|e| e.timeout = timeout);
 
     check_reply(
-        ctx.send(|m| {
-            m.content(format!("timeout set to {} seconds", timeout))
-                .reply(true)
-        })
+        ctx.send(
+            CreateReply::default()
+                .content(format!("timeout set to {} seconds", timeout))
+                .reply(true),
+        )
         .await,
     );
 

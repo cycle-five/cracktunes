@@ -13,7 +13,10 @@ use crate::{
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
 };
-use ::serenity::{builder::CreateMessage, gateway::ActivityData};
+use ::serenity::{
+    builder::{CreateMessage, EditMember},
+    gateway::ActivityData,
+};
 use colored::Colorize;
 use poise::serenity_prelude::{
     self as serenity, prelude::SerenityError, Channel, Guild, Member, Mentionable, UserId,
@@ -44,6 +47,28 @@ pub struct MyVoiceUserInfo {
 impl MyVoiceUserInfo {
     pub fn key(&self) -> (UserId, ChannelId) {
         (self.user_id, self.channel_id)
+    }
+}
+
+struct MyMessage(serenity::Message);
+impl fmt::Display for MyMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut result = String::new();
+        let msg = &self.0;
+        let name = msg.author.name.clone();
+        let content = msg.content.clone();
+        result.push_str(&format!("Message: {} {}", name.purple(), content.purple(),));
+        msg.embeds.iter().for_each(|x| {
+            result.push_str(&format!(
+                "{}{}{}",
+                x.title.as_ref().unwrap_or(&String::new()).purple(),
+                x.description.as_ref().unwrap_or(&String::new()).purple(),
+                x.fields.iter().fold(String::new(), |acc, x| {
+                    format!("{}{}{}", acc, x.name.purple(), x.value.purple())
+                })
+            ));
+        });
+        write!(f, "{}", result)
     }
 }
 
@@ -131,7 +156,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let mut new_member = new_member;
-            let role_id = serenity::RoleId(role_id);
+            let role_id = serenity::RoleId(NonZeroU64::new(role_id).unwrap());
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
@@ -144,35 +169,6 @@ impl EventHandler for SerenityHandler {
     }
 
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
-        struct MyMessage(serenity::Message);
-        impl fmt::Display for MyMessage {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let mut result = String::new();
-                let msg = &self.0;
-                // let guild_id = match msg.guild_id {
-                //     Some(guild_id) => guild_id,
-                //     None => {
-                //         tracing::warn!("Non-gateway message received: {:?}", msg);
-                //         GuildId(0)
-                //     }
-                // };
-                let name = msg.author.name.clone();
-                let content = msg.content.clone();
-                result.push_str(&format!("Message: {} {}", name.purple(), content.purple(),));
-                msg.embeds.iter().for_each(|x| {
-                    result.push_str(&format!(
-                        "{}{}{}",
-                        x.title.as_ref().unwrap_or(&String::new()).purple(),
-                        x.description.as_ref().unwrap_or(&String::new()).purple(),
-                        x.fields.iter().fold(String::new(), |acc, x| {
-                            format!("{}{}{}", acc, x.name.purple(), x.value.purple())
-                        })
-                    ));
-                });
-                write!(f, "{}", result)
-            }
-        }
-
         let guild_id = match msg.guild_id {
             Some(guild_id) => guild_id,
             None => {
@@ -181,7 +177,7 @@ impl EventHandler for SerenityHandler {
             }
         };
 
-        if *guild_id.as_u64() != 0 {
+        if guild_id.get() != 0 {
             let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
             let name = msg.author.name.clone();
             let guild_name = guild.name;
@@ -218,8 +214,8 @@ impl EventHandler for SerenityHandler {
         let manager = songbird::get(&ctx).await.unwrap();
         let guild_id = new.guild_id.unwrap();
 
-        if manager.get(guild_id).is_some() {
-            manager.remove(guild_id).await.ok();
+        if manager.get(guild_id.get()).is_some() {
+            manager.remove(guild_id.get()).await.ok();
         }
 
         update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
@@ -344,7 +340,7 @@ impl SerenityHandler {
         if user.id == new.user_id && !new.deaf {
             guild
                 .unwrap()
-                .edit_member(&ctx.http, new.user_id, |n| n.deafen(true))
+                .edit_member(&ctx.http, new.user_id, EditMember::default().deafen(true))
                 .await
                 .unwrap();
         }
@@ -414,7 +410,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 Ok(channel) => match channel {
                     Channel::Guild(channel) => channel.name,
                     Channel::Private(channel) => channel.name(),
-                    Channel::Category(channel) => channel.name,
+                    Channel::category(channel) => channel.name,
                     _ => String::from("unknown"),
                 },
                 Err(err) => {
@@ -484,7 +480,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.key()) {
-                    if let Some(kick_conf) = channels.get(&status.channel_id.0) {
+                    if let Some(kick_conf) = channels.get(&status.channel_id.get()) {
                         tracing::warn!("kick_conf: {}", format!("{:?}", kick_conf).blue());
                         if status.camera_status != cam.camera_status {
                             tracing::info!(
@@ -527,8 +523,10 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                     server_defeafen_member(ctx.clone(), *cam, guild.clone()).await,
                                     "deafen",
                                 );
-                                let dc_res2 =
-                                    (server_mute_member(ctx.clone(), *cam, guild).await, "mute");
+                                let dc_res2 = (
+                                    server_mute_member(ctx.clone(), *cam, guild.to_owned()).await,
+                                    "mute",
+                                );
 
                                 for (dc_res, state) in vec![dc_res1, dc_res2] {
                                     match dc_res {
@@ -542,16 +540,19 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                 || state == "mute" && kick_conf.send_msg_mute
                                                 || state == "disconnect" && kick_conf.send_msg_dc
                                             {
-                                                let channel = ChannelId(kick_conf.channel_id);
+                                                let channel = ChannelId(
+                                                    NonZeroU64::new(kick_conf.channel_id).unwrap(),
+                                                );
                                                 let _ = channel
-                                                    .send_message(&ctx.http, |m| {
-                                                        m.content(format!(
+                                                    .send_message(
+                                                        &ctx.http,
+                                                        CreateMessage::default().content(format!(
                                                             "{} {}: {}",
                                                             user.mention(),
                                                             kick_conf.dc_message,
                                                             state
-                                                        ))
-                                                    })
+                                                        )),
+                                                    )
                                                     .await;
                                                 // cam_status.remove(&cam.key());
                                             }
@@ -596,12 +597,14 @@ async fn disconnect_member(
     cam: MyVoiceUserInfo,
     guild: Guild,
 ) -> Result<Member, SerenityError> {
-    guild
-        .member(&ctx.http, cam.user_id)
-        .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.disconnect_member())
-        .await
+    let member = guild.member(&ctx.http, cam.user_id).await?;
+    member
+        .clone()
+        .into_owned()
+        .edit(&ctx.http, EditMember::default().disconnect_member())
+        .await?;
+
+    Ok(member.into_owned())
 }
 
 async fn server_defeafen_member(
@@ -609,12 +612,14 @@ async fn server_defeafen_member(
     cam: MyVoiceUserInfo,
     guild: Guild,
 ) -> Result<Member, SerenityError> {
-    guild
-        .member(&ctx.http, cam.user_id)
-        .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.deafen(true))
-        .await
+    let member = guild.member(&ctx.http, cam.user_id).await?;
+    member
+        .clone()
+        .into_owned()
+        .edit(&ctx.http, EditMember::default().deafen(true))
+        .await?;
+
+    Ok(member.into_owned())
 }
 
 async fn server_mute_member(
@@ -622,12 +627,13 @@ async fn server_mute_member(
     cam: MyVoiceUserInfo,
     guild: Guild,
 ) -> Result<Member, SerenityError> {
-    guild
-        .member(&ctx.http, cam.user_id)
-        .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.mute(true))
-        .await
+    let member = guild.member(&ctx.http, cam.user_id).await?;
+    member
+        .clone()
+        .into_owned()
+        .edit(&ctx.http, EditMember::default().mute(true))
+        .await?;
+    Ok(member.into_owned())
 }
 
 pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
