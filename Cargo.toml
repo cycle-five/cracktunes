@@ -14,11 +14,11 @@ playlist = ["sqlx"]
 shuttle = []
 
 [dependencies]
-async-trait = "0.1.72"
-time = {version = "0.3.25", default-features = false, features = ["serde"]}
+async-trait = "0.1.73"
+time = {version = "0.3.28", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
-chatgpt_rs = "1.1.13"
+chatgpt_rs = "1.2.0"
 colored = "2.0.4"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
@@ -64,7 +64,7 @@ branch = "no-oldtime"
 
 [dependencies.songbird]
 git = "https://github.com/serenity-rs/songbird"
-branch = "current"
+#branch = "next"
 version = "0.3.2"
 features = [
   "driver-core",
@@ -101,9 +101,12 @@ features = [
 ]
 
 [dependencies.poise]
-git = "https://github.com/serenity-rs/poise"
-branch = "serenity-next"
+# poise = { git = "https://github.com/scottbot95/poise.git", branch = "serenity-next" }
+#git = "https://github.com/serenity-rs/poise"
+#branch = "serenity-next"
 # version = "0.5.5"
+git = "https://github.com/scottbot95/poise.git"
+branch = "serenity-next"
 default-features = true
 
 [dependencies.tokio]

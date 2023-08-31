@@ -34,7 +34,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
             .await?;
 
         mci.create_interaction_response(ctx, |ir| {
-            ir.kind(serenity::InteractionResponseType::DeferredUpdateMessage)
+            ir.kind(serenity::InteractionResponseFlags::DeferredUpdateMessage)
         })
         .await?;
     }

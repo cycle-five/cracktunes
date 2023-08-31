@@ -13,13 +13,15 @@ use crate::{
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
 };
+use ::serenity::{builder::CreateMessage, gateway::ActivityData};
 use colored::Colorize;
 use poise::serenity_prelude::{
-    self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
+    self as serenity, prelude::SerenityError, Channel, Guild, Member, Mentionable, UserId,
 };
 use std::{
     collections::{HashMap, HashSet},
     fmt,
+    num::NonZeroU64,
     sync::{atomic::Ordering, Arc, Mutex},
 };
 use tokio::time::{Duration, Instant};
@@ -50,11 +52,10 @@ impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
-        ctx.set_activity(Activity::listening(format!(
+        ctx.set_activity(Some(ActivityData::listening(format!(
             "{}play",
             self.data.bot_settings.prefix
-        )))
-        .await;
+        ))));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
@@ -110,22 +111,19 @@ impl EventHandler for SerenityHandler {
             (None, _) => {}
             (_, None) => {}
             (Some(message), Some(channel)) => {
-                let channel = ChannelId(channel);
-                let x = channel
-                    .send_message(&ctx.http, |m| {
-                        if message.contains("{user}") {
-                            let new_msg = message
-                                .replace("{user}", new_member.user.mention().to_string().as_str());
-                            m.content(new_msg)
-                        } else {
-                            m.content(format_args!(
-                                "{} {user}",
-                                message,
-                                user = new_member.user.mention()
-                            ))
-                        }
-                    })
-                    .await;
+                let channel = ChannelId(NonZeroU64::new(channel).unwrap());
+                let mut m = CreateMessage::default();
+                if message.contains("{user}") {
+                    let new_msg =
+                        message.replace("{user}", new_member.user.mention().to_string().as_str());
+                    m = m.content(new_msg);
+                } else {
+                    m = m.content(
+                        format_args!("{} {user}", message, user = new_member.user.mention())
+                            .to_string(),
+                    );
+                }
+                let x = channel.send_message(&ctx.http, m).await;
                 tracing::info!("x: {:?}", x.unwrap());
             }
         };
@@ -179,7 +177,7 @@ impl EventHandler for SerenityHandler {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
-                GuildId(0)
+                GuildId(NonZeroU64::new(0).unwrap())
             }
         };
 
@@ -361,7 +359,7 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     // message would be sent to the #testing channel on the discord server.
     if config.sys_log_channel_id > 0 {
         let chan_id = config.sys_log_channel_id;
-        let message = ChannelId(chan_id)
+        let message = ChannelId(NonZeroU64::new(chan_id).unwrap())
             .send_message(&ctx, |m| {
                 m.embed(|e| {
                     e.title("System Resource Load")

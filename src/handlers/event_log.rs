@@ -1,6 +1,7 @@
 use crate::{handlers::serenity::voice_state_diff_str, Data, Error};
 use colored::Colorize;
-use poise::Event::*;
+//use poise::serenity_prelude::Event::*;
+use poise::serenity_prelude::FullEvent::*;
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::client::Context as SerenityContext;
 
@@ -21,30 +22,32 @@ impl<T: Serialize> Serialize for LogEntry<T> {
 
 pub async fn handle_event(
     ctx: &SerenityContext,
-    event: &poise::Event<'_>,
+    event: &poise::serenity_prelude::FullEvent,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = data_global.event_log.clone();
-    let event_name = event.name();
+    let event_name = event.snake_case_name();
     match event {
-        PresenceUpdate { new_data } => {
+        PresenceUpdate { new_data, ctx } => {
             let _ = new_data;
             tracing::trace!("Got a presence update: {:?}", new_data);
-            event_log.write_log_obj(event.name(), new_data)
+            event_log.write_log_obj(event.snake_case_name(), new_data)
         }
-        GuildMemberAddition { new_member } => {
+        GuildMemberAddition { new_member, ctx } => {
             tracing::info!("Got a new member: {:?}", new_member);
-            event_log.write_log_obj(event.name(), new_member)
+            event_log.write_log_obj(event.snake_case_name(), new_member)
         }
-        VoiceStateUpdate { old, new } => {
+        VoiceStateUpdate { old, new, ctx } => {
             tracing::debug!(
                 "VoiceStateUpdate: {}",
                 voice_state_diff_str(old.clone(), new).bright_yellow()
             );
-            event_log.write_log_obj(event.name(), &(old, new))
+            event_log.write_log_obj(event.snake_case_name(), &(old, new))
         }
-        Message { new_message } => event_log.write_log_obj(event.name(), &new_message),
-        TypingStart { event } => {
+        Message { new_message, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), &new_message)
+        }
+        TypingStart { event, ctx } => {
             let _ = event_log.write_log_obj(event_name, &event);
             let cache_http = ctx.http.clone();
             let channel = event
@@ -59,8 +62,8 @@ pub async fn handle_event(
             let guild = event
                 .guild_id
                 .unwrap_or_default()
-                .to_guild_cached(ctx.cache.clone())
-                .map(|guild| guild.name)
+                .to_guild_cached(&ctx.cache)
+                .map(|guild| guild.name.clone())
                 .unwrap_or("DM".to_string());
 
             tracing::info!(
@@ -73,51 +76,82 @@ pub async fn handle_event(
             );
             Ok(())
         }
-        ApplicationCommandPermissionsUpdate { permission } => {
-            event_log.write_log_obj(event.name(), permission)
+        CommandPermissionsUpdate { permission, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), permission)
         }
-        AutoModerationActionExecution { execution } => {
-            event_log.write_log_obj(event.name(), execution)
+        AutoModActionExecution { execution, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), execution)
         }
-        AutoModerationRuleCreate { rule } => event_log.write_log_obj(event.name(), rule),
-        AutoModerationRuleUpdate { rule } => event_log.write_log_obj(event.name(), rule),
-        AutoModerationRuleDelete { rule } => event_log.write_log_obj(event.name(), rule),
-        CategoryCreate { category } => event_log.write_log_obj(event.name(), category),
-        CategoryDelete { category } => event_log.write_log_obj(event.name(), category),
-        ChannelDelete { channel } => event_log.write_log_obj(event.name(), channel),
-        ChannelPinsUpdate { pin } => event_log.write_log_obj(event.name(), pin),
+        AutoModRuleCreate { rule, ctx: _ } => {
+            event_log.write_log_obj(event.snake_case_name(), rule)
+        }
+        AutoModRuleUpdate { rule, ctx: _ } => {
+            event_log.write_log_obj(event.snake_case_name(), rule)
+        }
+        AutoModRuleDelete { rule, ctx: _ } => {
+            event_log.write_log_obj(event.snake_case_name(), rule)
+        }
+        CategoryCreate { category, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), category)
+        }
+        CategoryDelete { category, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), category)
+        }
+        ChannelDelete {
+            channel,
+            ctx,
+            messages,
+        } => event_log.write_log_obj(event.snake_case_name(), &(channel, messages)),
+        ChannelPinsUpdate { pin, ctx } => event_log.write_log_obj(event.snake_case_name(), pin),
         #[cfg(feature = "cache")]
-        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
+        ChannelUpdate { old, new, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), &(old, new))
+        }
         #[cfg(not(feature = "cache"))]
-        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
-        poise::Event::GuildBanAddition {
+        ChannelUpdate { old, new, ctx } => {
+            event_log.write_log_obj(event.snake_case_name(), &(old, new))
+        }
+        GuildBanAddition {
             guild_id,
             banned_user,
-        } => event_log.write_log_obj(event.name(), &(guild_id, banned_user)),
-        poise::Event::GuildBanRemoval {
+            ctx,
+        } => event_log.write_log_obj(event.snake_case_name(), &(guild_id, banned_user)),
+        GuildBanRemoval {
             guild_id,
             unbanned_user,
-        } => event_log.write_log_obj(event.name(), &(guild_id, unbanned_user)),
+            ctx,
+        } => event_log.write_log_obj(event.snake_case_name(), &(guild_id, unbanned_user)),
         #[cfg(feature = "cache")]
-        GuildCreate { guild, is_new } => {
-            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
-        }
+        GuildCreate { guild, is_new, ctx } => event_log.write_log_obj(
+            event.snake_case_name(),
+            &serde_json::to_vec(&(guild, is_new)).unwrap(),
+        ),
         #[cfg(not(feature = "cache"))]
-        GuildCreate { guild, is_new } => {
-            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
-        }
+        GuildCreate { guild, is_new, ctx } => event_log.write_log_obj(
+            event.snake_case_name(),
+            &serde_json::to_vec(&(guild, is_new)).unwrap(),
+        ),
         #[cfg(feature = "cache")]
-        GuildDelete { incomplete, full } => event_log.write_log_obj(
-            event.name(),
+        GuildDelete {
+            incomplete,
+            full,
+            ctx,
+        } => event_log.write_log_obj(
+            event.snake_case_name(),
             &serde_json::to_vec(&(incomplete, full)).unwrap(),
         ),
         #[cfg(not(feature = "cache"))]
-        GuildDelete { incomplete, full } => event_log.write_obj(&(incomplete, full)),
+        GuildDelete {
+            incomplete,
+            full,
+            ctx,
+        } => event_log.write_obj(&(incomplete, full)),
         GuildEmojisUpdate {
             guild_id,
             current_state,
+            ctx,
         } => event_log.write_obj(&(guild_id, current_state)),
-        GuildIntegrationsUpdate { guild_id } => event_log.write_obj(&guild_id),
+        GuildIntegrationsUpdate { guild_id, ctx } => event_log.write_obj(&guild_id),
         // // poise::Event::GuildMemberAddition { new_member } => data_global.event_log
         // //     .lock()
         // //     .await
@@ -129,30 +163,36 @@ pub async fn handle_event(
             guild_id,
             user,
             member_data_global_if_available,
+            ctx,
         } => event_log.write_obj(&(guild_id, user, member_data_global_if_available)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildMemberRemoval {
+        GuildMemberRemoval {
             guild_id,
             user,
             member_data_if_available,
+            ctx,
         } => event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available)),
         #[cfg(feature = "cache")]
-        poise::Event::GuildMemberUpdate {
+        GuildMemberUpdate {
             old_if_available,
             new,
+            ctx,
         } => event_log.write_log_obj(event_name, &(old_if_available, new)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildMemberUpdate {
+        GuildMemberUpdate {
             old_if_available,
             new,
+            ctx,
+            event,
         } => event_log.write_log_obj(event_name, &(old_if_available, new)),
-        GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
-        poise::Event::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
+        GuildMembersChunk { chunk, ctx } => event_log.write_log_obj(event_name, chunk),
+        GuildRoleCreate { new, ctx } => event_log.write_log_obj(event_name, new),
         #[cfg(feature = "cache")]
-        poise::Event::GuildRoleDelete {
+        GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_global_if_available,
+            ctx,
         } => event_log.write_log_obj(
             event_name,
             &(
@@ -162,152 +202,179 @@ pub async fn handle_event(
             ),
         ),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildRoleDelete {
+        GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
+            ctx,
         } => event_log.write_log_obj(
             event_name,
             &(guild_id, removed_role_id, removed_role_data_if_available),
         ),
         #[cfg(feature = "cache")]
-        poise::Event::GuildRoleUpdate {
+        GuildRoleUpdate {
             old_data_global_if_available,
             new,
+            ctx,
         } => event_log.write_log_obj(event_name, &(old_data_global_if_available, new)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildRoleUpdate {
+        GuildRoleUpdate {
             new,
             old_data_if_available,
+            ctx,
         } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
-        poise::Event::GuildScheduledEventCreate { event } => {
-            event_log.write_log_obj(event_name, event)
-        }
-        poise::Event::GuildScheduledEventUpdate { event } => {
-            event_log.write_log_obj(event_name, event)
-        }
-        GuildScheduledEventDelete { event } => event_log.write_log_obj(event_name, event),
-        poise::Event::GuildScheduledEventUserAdd { subscribed } => {
+        GuildScheduledEventCreate { event, ctx } => event_log.write_log_obj(event_name, event),
+        GuildScheduledEventUpdate { event, ctx } => event_log.write_log_obj(event_name, event),
+        GuildScheduledEventDelete { event, ctx } => event_log.write_log_obj(event_name, event),
+        GuildScheduledEventUserAdd { subscribed, ctx } => {
             event_log.write_log_obj(event_name, subscribed)
         }
-        GuildScheduledEventUserRemove { unsubscribed } => {
+        GuildScheduledEventUserRemove { unsubscribed, ctx } => {
             event_log.write_log_obj(event_name, unsubscribed)
         }
-        poise::Event::GuildStickersUpdate {
+        GuildStickersUpdate {
             guild_id,
             current_state,
+            ctx,
         } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
-        GuildUnavailable { guild_id } => event_log.write_log_obj(event_name, &guild_id),
+        // GuildUnavailable { guild_id } => {
+        //     event_log.write_log_obj(event_name, &guild_id)
+        // },
         #[cfg(feature = "cache")]
-        poise::Event::GuildUpdate {
+        GuildUpdate {
             old_data_global_if_available,
             new_but_incomplete,
+            ctx,
         } => event_log.write_log_obj(
             event_name,
             &(old_data_global_if_available, new_but_incomplete),
         ),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildUpdate {
-            new_but_incomplete,
+        GuildUpdate {
             old_data_if_available,
-        } => event_log.write_log_obj(event_name, &(new_but_incomplete, old_data_if_available)),
-        IntegrationCreate { integration } => event_log.write_log_obj(event_name, integration),
-        IntegrationUpdate { integration } => event_log.write_log_obj(event_name, integration),
-        poise::Event::IntegrationDelete {
+            ctx,
+            new_data,
+        } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        IntegrationCreate { integration, ctx } => event_log.write_log_obj(event_name, integration),
+        IntegrationUpdate { integration, ctx } => event_log.write_log_obj(event_name, integration),
+        IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
+            ctx,
         } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        InteractionCreate { interaction } => event_log.write_log_obj(event_name, interaction),
-        InviteCreate { data } => event_log.write_log_obj(event_name, data),
-        InviteDelete { data } => event_log.write_log_obj(event_name, data),
+        InteractionCreate { interaction, ctx } => event_log.write_log_obj(event_name, interaction),
+        InviteCreate { data, ctx } => event_log.write_log_obj(event_name, data),
+        InviteDelete { data, ctx } => event_log.write_log_obj(event_name, data),
         MessageDelete {
             channel_id,
             deleted_message_id,
             guild_id,
+            ctx,
         } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
         MessageDeleteBulk {
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
+            ctx,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
         #[cfg(feature = "cache")]
-        poise::Event::MessageUpdate {
+        MessageUpdate {
             old_if_available,
             new,
             event,
+            ctx,
         } => event_log.write_obj(event_name, &(old_if_available, new, event)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::MessageUpdate {
+        MessageUpdate {
             old_if_available,
             new,
             event,
+            ctx,
         } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
-        ReactionAdd { add_reaction } => event_log.write_log_obj(event_name, add_reaction),
-        ReactionRemove { removed_reaction } => {
-            event_log.write_log_obj(event_name, removed_reaction)
-        }
-        poise::Event::ReactionRemoveAll {
+        ReactionAdd { add_reaction, ctx } => event_log.write_log_obj(event_name, add_reaction),
+        ReactionRemove {
+            removed_reaction,
+            ctx,
+        } => event_log.write_log_obj(event_name, removed_reaction),
+        ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
+            ctx,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
-        PresenceReplace { new_presences } => event_log.write_log_obj(event_name, new_presences),
+        PresenceReplace { ctx, presences } => event_log.write_log_obj(event_name, presences),
         // // poise::Event::PresenceUpdate { new_data_global } => data_global.event_log
         // //     .lock()
         // //     .await
         // //     .write_obj(new_data_global)
         // //     .await
         // //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        Ready { data_about_bot } => event_log.write_log_obj(event_name, data_about_bot),
-        Resume { event } => event_log.write_log_obj(event_name, event),
+        Ready {
+            data_about_bot,
+            ctx,
+        } => event_log.write_log_obj(event_name, data_about_bot),
+        Resume { event, ctx } => event_log.write_log_obj(event_name, event),
         // // poise::Event::ShardStageUpdate { ShardStageUpdateEvent{  } } => data_global.event_log
         // //     .lock()
         // //     .await
         // //     .write_obj(update)
         // //     .await
         // //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        StageInstanceCreate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+        StageInstanceCreate {
+            stage_instance,
+            ctx,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        StageInstanceDelete {
+            stage_instance,
+            ctx,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        StageInstanceUpdate {
+            stage_instance,
+            ctx,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        ThreadCreate { thread, ctx } => event_log.write_log_obj(event_name, thread),
+        ThreadDelete { thread, ctx } => event_log.write_log_obj(event_name, thread),
+        ThreadListSync {
+            thread_list_sync,
+            ctx,
+        } => event_log.write_log_obj(event_name, thread_list_sync),
+        ThreadMemberUpdate { thread_member, ctx } => {
+            event_log.write_log_obj(event_name, thread_member)
         }
-        StageInstanceDelete { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
-        }
-        StageInstanceUpdate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
-        }
-        ThreadCreate { thread } => event_log.write_log_obj(event_name, thread),
-        ThreadDelete { thread } => event_log.write_log_obj(event_name, thread),
-        ThreadListSync { thread_list_sync } => {
-            event_log.write_log_obj(event_name, thread_list_sync)
-        }
-        ThreadMemberUpdate { thread_member } => event_log.write_log_obj(event_name, thread_member),
-        poise::Event::ThreadMembersUpdate {
+        ThreadMembersUpdate {
             thread_members_update,
+            ctx,
         } => event_log.write_log_obj(event_name, thread_members_update),
-        ThreadUpdate { thread } => event_log.write_log_obj(event_name, thread),
+        ThreadUpdate { thread, ctx } => event_log.write_log_obj(event_name, thread),
         // // poise::Event::TypingStart { event } => data_global.event_log
         // //     .lock()
         // //     .await
         // //     .write_obj(event)
         // //     .await
         // //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
+        // UnknownEvent {
+        //     name,
+        //     raw,
+        //     kind,
+        //     value,
+        // } => event_log.write_log_obj(event_name, &(name, raw)),
         #[cfg(feature = "cache")]
         poise::Event::UserUpdate {
             old_data_global,
             new,
         } => event_log.write_log_obj(&(old_data_global, new)),
         #[cfg(not(feature = "cache"))]
-        UserUpdate { old_data, new } => event_log.write_log_obj(event_name, &(old_data, new)),
-        VoiceServerUpdate { update } => event_log.write_log_obj(event_name, update),
+        UserUpdate { old_data, new, ctx } => event_log.write_log_obj(event_name, &(old_data, new)),
+        VoiceServerUpdate { ctx, event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]
-        VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
+        VoiceStateUpdate { old, new, ctx } => event_log.write_obj(&(old, new)),
         WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
+            ctx,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
         _ => {
-            tracing::info!("{}", event.name().bright_green());
+            tracing::info!("{}", event.snake_case_name().bright_green());
             Ok(())
         }
     }

@@ -1,12 +1,4 @@
-use self::serenity::{
-    builder::{CreateComponents, CreateInputText},
-    collector::ModalInteractionCollectorBuilder,
-    futures::StreamExt,
-    model::prelude::{
-        component::{ActionRowComponent, InputTextStyle},
-        interaction::InteractionResponseType,
-    },
-};
+use self::serenity::builder::{CreateActionRow, CreateInputText};
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::messages::{
@@ -15,6 +7,10 @@ use crate::{
     },
     utils::get_interaction,
     Context, Error,
+};
+use ::serenity::{
+    all::{ActionRowComponent, InputTextStyle, InteractionResponseFlags},
+    collector::ModalInteractionCollector,
 };
 use poise::serenity_prelude as serenity;
 
@@ -66,14 +62,14 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
         .value(banned_str)
         .required(false);
 
-    let mut components = CreateComponents::default();
+    let mut components = CreateActionRow::default();
     components
         .create_action_row(|r| r.add_input_text(allowed_input))
         .create_action_row(|r| r.add_input_text(banned_input));
 
     interaction
         .create_interaction_response(&ctx.serenity_context().http, |r| {
-            r.kind(InteractionResponseType::Modal);
+            r.kind(InteractionResponseFlags::Modal);
             r.interaction_response_data(|d| {
                 d.title(DOMAIN_FORM_TITLE);
                 d.custom_id("manage_domains");
@@ -83,7 +79,8 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
 
     // collect the submitted data
-    let collector = ModalInteractionCollectorBuilder::new(ctx)
+    //ModalInteractionCollector::new(ctx);
+    let collector = ModalInteractionCollector::new(ctx)
         .filter(|int| int.data.custom_id == "manage_domains")
         .build();
 
@@ -118,7 +115,7 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
 
             // it's now safe to close the modal, so send a response to it
             int.create_interaction_response(&ctx.serenity_context().http, |r| {
-                r.kind(InteractionResponseType::DeferredUpdateMessage)
+                r.kind(InteractionResponseFlags::DeferredUpdateMessage)
             })
             .await
             .ok();

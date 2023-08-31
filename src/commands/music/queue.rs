@@ -1,12 +1,9 @@
 use self::serenity::{
-    builder::{CreateButton, CreateComponents, CreateEmbed},
+    all::ButtonStyle,
+    builder::{CreateButton, CreateEmbed},
     futures::StreamExt,
-    model::{
-        application::{component::ButtonStyle, interaction::InteractionResponseType},
-        channel::Message,
-        id::GuildId,
-    },
-    RwLock,
+    model::{channel::Message, id::GuildId},
+    prelude::RwLock,
 };
 use crate::{
     errors::CrackedError,
@@ -18,6 +15,7 @@ use crate::{
     utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
     Context, Data, Error,
 };
+use ::serenity::builder::CreateActionRow;
 use poise::serenity_prelude::{self as serenity};
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
@@ -57,7 +55,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             interaction
                 .create_interaction_response(&ctx.serenity_context().http, |response| {
                     response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .kind(serenity::InteractionResponseFlags::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             let num_pages = calculate_num_pages(&tracks);
 
@@ -112,8 +110,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut cib = message
         .await_component_interactions(ctx)
-        .timeout(Duration::from_secs(EMBED_TIMEOUT))
-        .build();
+        .timeout(Duration::from_secs(EMBED_TIMEOUT));
 
     while let Some(mci) = cib.next().await {
         let btn_id = &mci.data.custom_id;
@@ -134,8 +131,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             _ => continue,
         };
 
-        mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionResponseType::UpdateMessage);
+        mci.create_response(&ctx, |r| {
+            r.kind(serenity::InteractionResponseFlags);
             r.interaction_response_data(|d| {
                 d.add_embed(create_queue_embed(&tracks, *page_wlock));
                 d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
@@ -202,29 +199,49 @@ pub fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     embed
 }
 
-fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
-    CreateButton::default()
-        .custom_id(label.to_string().to_ascii_lowercase())
+fn build_single_nav_btn(label: &str, is_disabled: bool) -> &mut Vec<CreateButton> {
+    let mut res = vec![CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
         .disabled(is_disabled)
-        .to_owned()
+        .to_owned()];
+    &mut res
+}
+
+pub fn build_nav_btns_row(cant_left: bool, cant_right: bool) -> Vec<CreateButton> {
+    let mut row: Vec<CreateButton> = Vec::new();
+    if !cant_left {
+        row.append(build_single_nav_btn("<<", false));
+    }
+    if !cant_left {
+        row.append(build_single_nav_btn("<", false));
+    }
+    if !cant_right {
+        row.append(build_single_nav_btn(">", false));
+    }
+    if !cant_right {
+        row.append(build_single_nav_btn(">>", false));
+    }
+    row
 }
 
 pub fn build_nav_btns(
-    components: &mut CreateComponents,
+    //components: &mut Vec<CreateActionRow>,
     page: usize,
     num_pages: usize,
-) -> &mut CreateComponents {
-    components.create_action_row(|action_row| {
-        let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-
-        action_row
-            .add_button(build_single_nav_btn("<<", cant_left))
-            .add_button(build_single_nav_btn("<", cant_left))
-            .add_button(build_single_nav_btn(">", cant_right))
-            .add_button(build_single_nav_btn(">>", cant_right))
-    })
+) -> Vec<CreateActionRow> {
+    let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
+    let mut res = vec![CreateActionRow::Buttons(build_nav_btns_row(
+        cant_left, cant_right,
+    ))];
+    res
+    // components.create_action_row(|action_row| {
+    //     action_row
+    //         .add_button(build_single_nav_btn("<<", cant_left))
+    //         .add_button(build_single_nav_btn("<", cant_left))
+    //         .add_button(build_single_nav_btn(">", cant_right))
+    //         .add_button(build_single_nav_btn(">>", cant_right))
+    // })
 }
 
 fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {

@@ -1,5 +1,5 @@
 use self::serenity::model::prelude::UserId;
-use self::serenity::{model::id::GuildId, TypeMapKey};
+use self::serenity::{model::id::GuildId, prelude::TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};

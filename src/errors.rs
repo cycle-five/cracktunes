@@ -1,4 +1,4 @@
-use self::serenity::{model::mention::Mention, SerenityError};
+use self::serenity::{model::mention::Mention, prelude::SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
     FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, NO_GUILD_ID,
@@ -29,10 +29,6 @@ pub enum CrackedError {
     TrackFail(InputError),
     AlreadyConnected(Mention),
     Serenity(SerenityError),
-    #[cfg(feature = "shuttle")]
-    Shuttle(shuttle_runtime::Error),
-    #[cfg(feature = "shuttle")]
-    ShuttleCustom(shuttle_runtime::CustomError),
     SQLX(sqlx::Error),
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),

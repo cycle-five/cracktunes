@@ -3,7 +3,7 @@ use self::serenity::{
         channel::Message,
         id::{GuildId, UserId},
     },
-    RwLock, TypeMapKey,
+    prelude::{RwLock, TypeMapKey},
 };
 use poise::serenity_prelude as serenity;
 use std::{

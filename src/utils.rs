@@ -1,14 +1,5 @@
 use self::serenity::{
-    builder::CreateEmbed,
-    http::Http,
-    model::{
-        application::interaction::{
-            application_command::ApplicationCommandInteraction, InteractionResponseType,
-            MessageInteraction,
-        },
-        channel::Message,
-    },
-    Context as SerenityContext, SerenityError,
+    all::MessageInteraction, builder::CreateEmbed, http::Http, model::channel::Message,
 };
 use crate::{
     commands::{build_nav_btns, summon},
@@ -18,9 +9,17 @@ use crate::{
     metrics::COMMAND_EXECUTIONS,
     Context, Data, Error,
 };
-use ::serenity::futures::StreamExt;
+use ::serenity::{
+    all::CommandInteraction,
+    builder::{
+        CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
+    },
+    futures::StreamExt,
+    prelude::Context as SerenityContext,
+};
 use poise::{
-    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
+    serenity_prelude as serenity, CommandOrAutocompleteInteraction, CreateReply, FrameworkError,
     ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
@@ -29,10 +28,10 @@ use tokio::sync::RwLock;
 use url::Url;
 
 pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let e = CreateEmbed::default().description(format!("{message}"));
+    // let reply = CreateReply::default().embed(embed);
 
-    create_embed_response_poise(ctx, embed).await
+    create_embed_response_poise(ctx, &e).await
 }
 
 pub async fn create_response_poise_text(
@@ -48,27 +47,24 @@ pub async fn create_response_poise_text(
 
 pub async fn create_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
     create_embed_response(http, interaction, embed).await
 }
 
 pub async fn create_response_text(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     content: &str,
 ) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(content);
+    let embed = CreateEmbed::default().description(content);
     create_embed_response(http, interaction, embed).await
 }
 
 pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let mut embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction(ctx) {
         Some(mut interaction) => {
@@ -77,7 +73,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
             res.map(|_| ())
         }
         None => {
-            create_embed_response_poise(ctx, embed).await
+            create_embed_response_poise(ctx, &embed).await
             //return Err(Box::new(SerenityError::Other("No interaction found"))),
         }
     }
@@ -85,21 +81,19 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
 
 pub async fn edit_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     message: CrackedMessage,
 ) -> Result<Message, Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
     edit_embed_response(http, interaction, embed).await
 }
 
 pub async fn edit_response_text(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     content: &str,
 ) -> Result<Message, Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(content);
+    let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
 }
 
@@ -107,25 +101,29 @@ pub async fn create_embed_response_str(
     ctx: &Context<'_>,
     message_str: String,
 ) -> Result<Message, Error> {
-    ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
+    let embed = CreateEmbed::new().description(message_str);
+    ctx.send(poise::CreateReply::default().embed(embed))
         .await
         .unwrap()
         .into_message()
         .await
         .map_err(Into::into)
-    //.map_err(Into::into)
-    // Ok(())
 }
 
 pub async fn create_embed_response_poise(
     ctx: Context<'_>,
-    embed: CreateEmbed,
+    embed: &CreateEmbed,
 ) -> Result<(), Error> {
     match get_interaction(ctx) {
         Some(mut interaction) => {
-            create_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await
+            create_embed_response(
+                &ctx.serenity_context().http,
+                &mut interaction,
+                embed.clone(),
+            )
+            .await
         }
-        None => create_embed_response_prefix(&ctx, embed)
+        None => create_embed_response_prefix(&ctx, embed.clone())
             .await
             .map(|_| Ok(()))?,
     }
@@ -135,45 +133,48 @@ pub async fn create_embed_response_prefix(
     ctx: &Context<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
-    ctx.send(|builder| {
-        builder.embeds.append(&mut vec![embed]);
-        builder //.reply(true)
-    })
-    .await
-    .unwrap()
-    .into_message()
-    .await
-    .map_err(Into::into)
+    ctx.send(CreateReply::default().embed(embed))
+        .await
+        .unwrap()
+        .into_message()
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     interaction
-        .create_interaction_response(&http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| message.add_embed(embed.clone()))
-        })
+        .create_response(
+            &http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::default().embed(embed),
+            ),
+        )
         .await
         .map_err(Into::into)
 }
 
 pub async fn edit_embed_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     interaction
-        .edit_original_interaction_response(&http, |message| message.content(" ").add_embed(embed))
+        .edit_response(
+            &http,
+            EditInteractionResponse::default()
+                .content(" ")
+                .add_embed(embed),
+        )
         .await
         .map_err(Into::into)
 }
 
 pub enum ApplicationCommandOrMessageInteraction {
-    ApplicationCommand(ApplicationCommandInteraction),
+    ApplicationCommand(CommandInteraction),
     Message(MessageInteraction),
 }
 
@@ -183,8 +184,14 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
     }
 }
 
-impl From<ApplicationCommandInteraction> for ApplicationCommandOrMessageInteraction {
-    fn from(message: ApplicationCommandInteraction) -> Self {
+impl From<Box<MessageInteraction>> for ApplicationCommandOrMessageInteraction {
+    fn from(message: Box<MessageInteraction>) -> Self {
+        Self::Message(*message)
+    }
+}
+
+impl From<CommandInteraction> for ApplicationCommandOrMessageInteraction {
+    fn from(message: CommandInteraction) -> Self {
         Self::ApplicationCommand(message)
     }
 }
@@ -192,69 +199,67 @@ impl From<ApplicationCommandInteraction> for ApplicationCommandOrMessageInteract
 pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> Result<(), Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
-            .edit_original_interaction_response(&ctx.serenity_context().http, |message| {
-                message.content(" ").add_embed(embed)
-            })
+            .edit_response(
+                &ctx.serenity_context().http,
+                EditInteractionResponse::default()
+                    .content(" ")
+                    .add_embed(embed),
+            )
             .await
             .map(|_| Ok(()))?,
-        None => create_embed_response_poise(ctx, embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
+        None => create_embed_response_poise(ctx, &embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
     }
 }
 
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
     let metadata = track.metadata().clone();
-
-    tracing::warn!("metadata: {:?}", metadata);
-
-    embed.author(|author| author.name(CrackedMessage::NowPlaying));
-    metadata
-        .title
-        .as_ref()
-        .map(|title| embed.title(title.clone()));
-
-    metadata
-        .source_url
-        .as_ref()
-        .map(|source_url| embed.url(source_url.clone()));
-
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
 
-    embed.field("Progress", format!(">>> {} / {}", position, duration), true);
-
-    match metadata.channel {
-        Some(channel) => embed.field("Channel", format!(">>> {}", channel), true),
-        None => embed.field("Channel", ">>> N/A", true),
+    let channel = match metadata.channel.clone() {
+        Some(channel) => format!(">>> {}", channel), //embed.field("Channel", format!(">>> {}", channel), true),
+        None => ">>> N/A".to_owned(),                //embed.field("Channel", ">>> N/A", true),
     };
 
-    metadata
-        .thumbnail
-        .as_ref()
-        .map(|thumbnail| embed.thumbnail(thumbnail));
-
-    let source_url = metadata.source_url.unwrap_or_else(|| {
-        tracing::warn!("No source url found for track: {:?}", track);
-        "".to_string()
-    });
+    let source_url = match metadata.source_url.clone() {
+        Some(url) => {
+            tracing::warn!("No source url found for track: {:?}", track);
+            url
+        }
+        None => "".to_string(),
+    };
 
     let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-    embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
+    let footer = CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url);
+
+    tracing::warn!("metadata: {:?}", metadata);
+
+    let embed = CreateEmbed::default()
+        .author(CreateEmbedAuthor::new(
+            CrackedMessage::NowPlaying.to_string(),
+        ))
+        .title(metadata.title.unwrap_or_default())
+        .url(source_url)
+        .field("Progress", format!(">>> {} / {}", position, duration), true)
+        .field("Channel", channel, true)
+        .thumbnail(metadata.thumbnail.unwrap_or_default())
+        .footer(footer);
 
     embed
 }
 
 pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
+    //let mut embed = CreateEmbed::default();
     // let metadata = track_handle.metadata().clone();
 
     tracing::trace!("lyric: {}", lyric);
     tracing::trace!("track: {}", track);
     tracing::trace!("artists: {}", artists);
 
-    embed.author(|author| author.name(artists));
-    embed.title(track);
-    embed.description(lyric);
+    let embed = CreateEmbed::default()
+        .author(CreateEmbedAuthor::new(artists))
+        .title(track)
+        .description(lyric);
 
     // metadata
     //     .source_url
@@ -307,25 +312,27 @@ pub async fn create_paged_embed(
 
     let mut message = {
         let reply = ctx
-            .send(|m| {
-                m.embed(|e| {
-                    e.title(title.clone());
-                    e.author(|a| a.name(author.clone()));
-                    e.description(page_getter(0));
-                    e.footer(|f| f.text(format!("Page {}/{}", 1, num_pages)))
-                });
-                m.components(|components| build_nav_btns(components, 0, num_pages))
-            })
+            .send(
+                CreateReply::new()
+                    .embed(
+                        CreateEmbed::new()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(0))
+                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
+                    )
+                    .components(build_nav_btns(0, num_pages)),
+            )
             .await?;
         reply.into_message().await?
     };
 
-    let mut cib = message
+    while let Some(mci) = message
         .await_component_interactions(ctx)
         .timeout(Duration::from_secs(60 * 10))
-        .build();
-
-    while let Some(mci) = cib.next().await {
+        .next()
+        .await
+    {
         let btn_id = &mci.data.custom_id;
 
         let mut page_wlock = page.write().await;
@@ -338,30 +345,36 @@ pub async fn create_paged_embed(
             _ => continue,
         };
 
-        mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionResponseType::UpdateMessage);
-            r.interaction_response_data(|d| {
-                d.embed(|e| {
-                    e.title(title.clone());
-                    e.author(|a| a.name(author.clone()));
-                    e.description(page_getter(*page_wlock));
-                    e.footer(|f| f.text(format!("Page {}/{}", *page_wlock + 1, num_pages)))
-                });
-                d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
-            })
-        })
+        mci.create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::default()
+                    .embed(
+                        CreateEmbed::default()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(*page_wlock))
+                            .footer(CreateEmbedFooter::new(format!(
+                                "Page {}/{}",
+                                *page_wlock + 1,
+                                num_pages
+                            ))),
+                    )
+                    .components(build_nav_btns(*page_wlock, num_pages)),
+            ),
+        )
         .await?;
     }
 
     message
-        .edit(&ctx.serenity_context().http, |edit| {
-            let mut embed = CreateEmbed::default();
-            embed.description("Lryics timed out, run the command again to see them.");
-            edit.set_embed(embed);
-            edit.components(|f| f)
-        })
-        .await
-        .unwrap();
+        .edit(
+            &ctx.serenity_context().http,
+            EditMessage::default().embed(
+                CreateEmbed::default()
+                    .description("Lryics timed out, run the command again to see them."),
+            ),
+        )
+        .await?;
 
     Ok(())
 }
@@ -464,6 +477,8 @@ pub fn check_msg(result: Result<Message, Error>) {
     }
 }
 
+use serenity::prelude::SerenityError;
+
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
@@ -476,11 +491,11 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
-pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction> {
+pub fn get_interaction(ctx: Context<'_>) -> Option<CommandInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => Some(x.clone()),
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
         Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
     }
@@ -489,10 +504,8 @@ pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction
 pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => {
-                Some(x.clone().into())
-            }
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone().into()),
+            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
     }
@@ -501,8 +514,8 @@ pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessa
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
         Context::Application(ctx) => match ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
+            CommandOrAutocompleteInteraction::Command(x) => x.user.id,
+            CommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
         },
         Context::Prefix(ctx) => ctx.msg.author.id,
     }
@@ -530,7 +543,7 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
 
 pub async fn handle_error(
     ctx: &SerenityContext,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &mut CommandInteraction,
     err: CrackedError,
 ) {
     create_response_text(&ctx.http, interaction, &format!("{err}"))

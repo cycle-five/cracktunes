@@ -1,3 +1,5 @@
+use poise::CreateReply;
+
 use crate::{
     errors::CrackedError,
     messaging::message::CrackedMessage,
@@ -23,7 +25,8 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Set the prefix for the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+//#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, slash_command)]
 pub async fn set_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to set for the bot"] prefix: String,
@@ -94,8 +97,12 @@ pub async fn deauthorize(
 
     if res {
         check_reply(
-            ctx.send(|m| m.content("User authorized.").reply(true))
-                .await,
+            ctx.send(
+                CreateReply::default()
+                    .content("User authorized.")
+                    .reply(true),
+            )
+            .await,
         );
         Ok(())
     } else {

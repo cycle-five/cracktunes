@@ -39,7 +39,7 @@ impl EventHandler for IdleHandler {
         if self.limit > 0 && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
             let guild_id = self.guild_id?;
 
-            if self.manager.remove(guild_id).await.is_ok() {
+            if self.manager.remove(guild_id.0.get()).await.is_ok() {
                 self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
             }
         }

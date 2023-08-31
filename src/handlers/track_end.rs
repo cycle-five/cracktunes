@@ -1,7 +1,8 @@
-use self::serenity::{async_trait, http::Http, model::id::GuildId, Mutex};
+use self::serenity::{async_trait, http::Http, model::id::GuildId, prelude::Mutex};
+use ::serenity::builder::EditMessage;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 
 use crate::{
     commands::music::queue::{
@@ -53,7 +54,7 @@ impl EventHandler for TrackEndHandler {
         forget_skip_votes(&self.data, self.guild_id).await.ok();
 
         let channel = match handler.current_channel() {
-            Some(channel) => ChannelId(channel.0),
+            Some(channel) => ChannelId(NonZeroU64::new(channel.0).unwrap()),
             None => return None,
         };
         drop(handler);
@@ -107,10 +108,12 @@ pub async fn update_queue_messages(
         let embed = create_queue_embed(tracks, *page);
 
         let edit_message = message
-            .edit(&http, |edit| {
-                edit.set_embed(embed);
-                edit.components(|components| build_nav_btns(components, *page, num_pages))
-            })
+            .edit(
+                &http,
+                EditMessage::default()
+                    .embed(embed)
+                    .components(|components| build_nav_btns(components, *page, num_pages)),
+            )
             .await;
 
         if edit_message.is_err() {

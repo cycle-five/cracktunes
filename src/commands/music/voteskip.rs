@@ -17,7 +17,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let bot_channel_id = get_voice_channel_for_user(
         &ctx.serenity_context().cache.guild(guild_id).unwrap(),
-        &ctx.serenity_context().cache.current_user_id(),
+        &ctx.serenity_context().cache.current_user(),
     )
     .unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
