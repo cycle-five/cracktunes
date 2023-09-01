@@ -414,13 +414,18 @@ dependencies = [
  "colored",
  "config-file",
  "ctrlc",
+ "derivative",
  "dotenv",
  "ffprobe",
+ "futures-core",
+ "futures-util",
  "ipinfo",
  "lazy_static",
+ "log",
  "lyric_finder",
  "mockall",
  "once_cell",
+ "parking_lot",
  "poise",
  "prometheus",
  "rand",
@@ -2173,7 +2178,6 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.5.5"
-source = "git+https://github.com/scottbot95/poise.git?branch=serenity-next#134ccd26cc3df7953a53846dd8621bb2bfb3cb8a"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2191,7 +2195,6 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.5.5"
-source = "git+https://github.com/scottbot95/poise.git?branch=serenity-next#134ccd26cc3df7953a53846dd8621bb2bfb3cb8a"
 dependencies = [
  "darling",
  "proc-macro2",

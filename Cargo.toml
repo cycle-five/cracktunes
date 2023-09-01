@@ -14,7 +14,18 @@ playlist = ["sqlx"]
 shuttle = []
 
 [dependencies]
-async-trait = "0.1.73"
+tokio = { version = "1.21.1", default-features = false } # for async in general
+futures-core = { version = "0.3.13", default-features = false } # for async in general
+futures-util = { version = "0.3.13", default-features = false } # for async in general
+once_cell = { version = "1.7.2", default-features = false, features = ["std"] } # to store and set user data
+# poise_macros = { path = "macros", version = "0.5.5" } # remember to update the version on changes!
+async-trait = { version = "0.1.48", default-features = false } # various traits
+regex = { version = "1.6.0", default-features = false, features = ["std"] } # prefix
+log = { version = "0.4.14", default-features = false } # warning about weird state
+derivative = "2.2.0"
+parking_lot = "0.12.1"
+#
+#async-trait = "0.1.73"
 time = {version = "0.3.28", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
@@ -23,9 +34,9 @@ colored = "2.0.4"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
 lyric_finder = "0.1.4"
-once_cell = "1.18.0"
+#once_cell = "1.18.0"
 rand = "0.8.5"
-regex = "1.9.4"
+#regex = "1.9.4"
 mockall = "0.11.4"
 ipinfo = "2.1.0"
 serde_json = "1.0.105"
@@ -85,7 +96,7 @@ features = [
 [dependencies.serenity]
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
-version = "0.11.5" # "0.10.7"
+# version = "0.11.5" # "0.10.7"
 default-features = false
 features = [
   "builder",
@@ -106,13 +117,14 @@ features = [
 #git = "https://github.com/serenity-rs/poise"
 #branch = "serenity-next"
 # version = "0.5.5"
-git = "https://github.com/scottbot95/poise.git"
-branch = "serenity-next"
+# git = "https://github.com/scottbot95/poise.git"
+path = "../scottbot95_poise"
+# branch = "serenity-next"
 default-features = true
 
-[dependencies.tokio]
-version = "1.32.0"
-features = ["macros", "rt-multi-thread", "signal"]
+# [dependencies.tokio]
+# version = "1.32.0"
+# features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"
