@@ -1,24 +1,32 @@
 use crate::{Context, Error};
-use ::serenity::builder::{CreateActionRow, CreateButton};
+use ::serenity::{
+    all::{ActivityButton, ComponentInteraction},
+    builder::{CreateActionRow, CreateButton},
+    collector::ComponentInteractionCollector,
+};
 use poise::{serenity_prelude as serenity, CreateReply};
 
 /// Boop the bot!
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
-    let uuid_boop = ctx.id();
+    let uuid_boop = ctx.id().to_string();
 
     ctx.send(
         CreateReply::default()
             .content("I want some boops!")
-            .components(CreateActionRow::Buttons(
-                CreateButton::default().create_button(|b| {
-                    b.style(serenity::ButtonStyle::Primary)
-                        .label("Boop me!")
-                        .custom_id(uuid_boop)
-                ),
-            )),
+            .components(vec![CreateActionRow::Buttons(vec![CreateButton::new(
+                "boop",
+            )
+            .style(serenity::ButtonStyle::Primary)
+            .label("Boop me!")
+            .custom_id(uuid_boop)])]),
     )
     .await?;
+    // .push(ActivityButton::new(
+    //     ActivityButton::Style::Primary,
+    //     "Boop me!",
+    //     uuid_boop,
+    // ))
 
     let mut boop_count = 0;
     while let Some(mci) = serenity::ComponentInteraction::from(value)
