@@ -19,19 +19,19 @@ pub async fn volume(
             tracing::error!("guild_id is None");
             let mut embed = CreateEmbed::default();
             embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            create_embed_response_poise(ctx, &embed).await?;
             return Ok(());
         }
     };
 
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = match manager.get(guild_id) {
+    let call = match manager.get(guild_id.get()) {
         Some(call) => call,
         None => {
             tracing::error!("Can't get call from manager.");
             let mut embed = CreateEmbed::default();
             embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            create_embed_response_poise(ctx, &embed).await?;
             return Ok(());
         }
     };

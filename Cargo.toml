@@ -74,12 +74,14 @@ git = "https://github.com/cycle-five/rspotify"
 branch = "no-oldtime"
 
 [dependencies.songbird]
-git = "https://github.com/serenity-rs/songbird"
+#git = "https://github.com/serenity-rs/songbird"
 #branch = "next"
+#git = "https://github.com/cycle-five/songbird"
+path = "../songbird"
 version = "0.3.2"
 features = [
-  "driver-core",
   "driver",
+  "gateway",
   "rustls",
   "serenity",
   "builtin-queue",
@@ -89,28 +91,39 @@ features = [
 
 # To get additional codecs, you *must* add Symphonia yourself.
 # # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
-# [dependencies.symphonia]
-# version = "0.5.3"
-# features = ["all"]
+[dependencies.symphonia]
+version = "0.5.3"
+features = ["all"]
+
 
 [dependencies.serenity]
+default-features = false
+features = ["full", "unstable_discord_api", "rustls_backend"]
+# features = [
+#   "builder",
+#   "cache",
+#   "collector",
+#   "client",
+#   "gateway",
+#   "temp_cache",
+#   "model",
+#   "utils",
+#   "rustls_backend",
+#   "unstable_discord_api",
+#   "voice",
+# ]
+
+#features = ["builder", "client", "gateway", "model", "utils", "collector", "framework"]
+
+# version = "0.11.6"
+
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
-# version = "0.11.5" # "0.10.7"
-default-features = false
-features = [
-  "builder",
-  "cache",
-  "collector",
-  "client",
-  "gateway",
-  "temp_cache",
-  "model",
-  "utils",
-  "rustls_backend",
-  "unstable_discord_api",
-  "voice",
-]
+# [dependencies.serenity]
+# git = "https://github.com/serenity-rs/serenity"
+# branch = "next"
+# # version = "0.11.5" # "0.10.7"
+# default-features = false
 
 [dependencies.poise]
 # poise = { git = "https://github.com/scottbot95/poise.git", branch = "serenity-next" }
@@ -131,6 +144,19 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 
 [dev-dependencies]
 rustls-webpki = "0.101.4"
+serenity = {default-features = false, features = [
+  "builder",
+  "cache",
+  "collector",
+  "client",
+  "gateway",
+  "temp_cache",
+  "model",
+  "utils",
+  "rustls_backend",
+  "unstable_discord_api",
+  "voice",
+], git = "https://github.com/serenity-rs/serenity", branch = "next"}
 
 [profile.release]
 codegen-units=1

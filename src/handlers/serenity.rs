@@ -14,7 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use ::serenity::{
-    builder::{CreateMessage, EditMember},
+    builder::{CreateEmbed, CreateMessage, EditMember},
     gateway::ActivityData,
 };
 use colored::Colorize;
@@ -357,9 +357,11 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     if config.sys_log_channel_id > 0 {
         let chan_id = config.sys_log_channel_id;
         let message = ChannelId(NonZeroU64::new(chan_id).unwrap())
-            .send_message(&ctx, |m| {
-                m.embed(|e| {
-                    e.title("System Resource Load")
+            .send_message(
+                &ctx,
+                CreateMessage::default().embed(
+                    CreateEmbed::default()
+                        .title("System Resource Load")
                         .field(
                             "CPU Load Average",
                             format!("{:.2}%", cpu_load.one * 10.0),
@@ -373,9 +375,9 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
                                 mem_use.total as f32 / 1000.0
                             ),
                             false,
-                        )
-                })
-            })
+                        ),
+                ),
+            )
             .await;
         if let Err(why) = message {
             tracing::error!("Error sending message: {:?}", why);
@@ -394,7 +396,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
         }
     };
 
-    let voice_states = guild.voice_states;
+    let voice_states = &guild.voice_states;
     let mut cams = vec![];
     let mut output: String = "\n".to_string();
 
@@ -411,7 +413,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 Ok(channel) => match channel {
                     Channel::Guild(channel) => channel.name,
                     Channel::Private(channel) => channel.name(),
-                    Channel::category(channel) => channel.name,
+                    //Channel::(channel) => channel.name,
                     _ => String::from("unknown"),
                 },
                 Err(err) => {
@@ -723,9 +725,7 @@ pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String
             old.suppress, new.suppress
         ));
     }
-    if old.token != new.token {
-        result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
-    }
+
     if old.user_id != new.user_id {
         result.push_str(&format!(
             "user_id : {:?} -> {:?}\n",

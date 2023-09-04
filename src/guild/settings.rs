@@ -157,7 +157,7 @@ impl GuildSettings {
     }
 
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains(&user_id.0)
+        self.authorized_users.contains(&user_id.0.get())
     }
 
     pub fn set_default_volume(&mut self, volume: f32) {

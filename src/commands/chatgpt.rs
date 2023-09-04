@@ -1,5 +1,6 @@
 use crate::{utils::check_reply, Context, Error};
 use chatgpt::prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder};
+use poise::CreateReply;
 use url::Url;
 
 /// Talk with chatgpt.

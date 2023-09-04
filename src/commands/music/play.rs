@@ -21,6 +21,7 @@ use crate::{
     },
     Context, Error,
 };
+use ::serenity::builder::{CreateEmbedFooter, EditInteractionResponse};
 use poise::serenity_prelude::{self as serenity, Attachment};
 use songbird::{input::Restartable, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
@@ -81,9 +82,9 @@ pub async fn play(
     }
 
     if msg.is_none() && file.is_none() {
-        let mut embed = CreateEmbed::default();
-        embed.description(format!("{}", CrackedError::Other("No query provided!")));
-        create_embed_response_poise(ctx, embed).await?;
+        let mut embed = CreateEmbed::default()
+            .description(format!("{}", CrackedError::Other("No query provided!")));
+        create_embed_response_poise(ctx, &embed).await?;
         return Ok(());
     }
 
@@ -116,9 +117,9 @@ pub async fn play(
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            let mut embed =
+                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
+            create_embed_response_poise(ctx, &embed).await?;
             return Ok(());
         }
     };
@@ -131,9 +132,9 @@ pub async fn play(
             match summon_short(ctx).await {
                 Ok(_) => manager.get(guild_id).unwrap(),
                 Err(_) => {
-                    let mut embed = CreateEmbed::default();
-                    embed.description(format!("{}", CrackedError::NotConnected));
-                    create_embed_response_poise(ctx, embed).await?;
+                    let mut embed = CreateEmbed::default()
+                        .description(format!("{}", CrackedError::NotConnected));
+                    create_embed_response_poise(ctx, &embed).await?;
                     return Ok(());
                 }
             }
@@ -191,9 +192,12 @@ pub async fn play(
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
-                                .edit_original_interaction_response(
+                                .edit_response(
                                     &ctx.serenity_context().http,
-                                    |message| message.content(CrackedMessage::PlaylistQueued),
+                                    EditInteractionResponse::default().content(
+                                        crate::messaging::message::CrackedMessage::PlaylistQueued
+                                            .to_string(),
+                                    ),
                                 )
                                 .await?;
                         }
@@ -546,21 +550,7 @@ async fn create_queued_embed(
     track: &TrackHandle,
     estimated_time: Duration,
 ) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
     let metadata = track.metadata().clone();
-
-    embed.thumbnail(&metadata.thumbnail.unwrap_or_default());
-
-    embed.field(
-        title,
-        &format!(
-            "[**{}**]({})",
-            metadata.title.unwrap_or(QUEUE_NO_TITLE.to_string()),
-            metadata.source_url.unwrap_or(QUEUE_NO_SRC.to_string())
-        ),
-        false,
-    );
-
     let footer_text = format!(
         "{}{}\n{}{}",
         TRACK_DURATION,
@@ -569,7 +559,18 @@ async fn create_queued_embed(
         get_human_readable_timestamp(Some(estimated_time))
     );
 
-    embed.footer(|footer| footer.text(footer_text));
+    let embed = CreateEmbed::default()
+        .thumbnail(&metadata.thumbnail.unwrap_or_default())
+        .field(
+            title,
+            &format!(
+                "[**{}**]({})",
+                metadata.title.unwrap_or(QUEUE_NO_TITLE.to_string()),
+                metadata.source_url.unwrap_or(QUEUE_NO_SRC.to_string())
+            ),
+            false,
+        )
+        .footer(CreateEmbedFooter::new(footer_text));
     embed
 }
 
