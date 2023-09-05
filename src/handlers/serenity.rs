@@ -52,7 +52,7 @@ impl EventHandler for SerenityHandler {
 
         ctx.set_activity(Activity::listening(format!(
             "{}play",
-            self.data.bot_settings.prefix
+            self.data.bot_settings.get_prefix()
         )))
         .await;
 
@@ -260,15 +260,17 @@ impl EventHandler for SerenityHandler {
                         // We clone Context again here, because Arc is owned, so it moves to the
                         // new function.
                         log_system_load(ctx1.clone(), config1.clone()).await;
-                        tokio::time::sleep(Duration::from_secs(config1.video_status_poll_interval))
-                            .await;
+                        tokio::time::sleep(Duration::from_secs(
+                            config1.get_video_status_poll_interval(),
+                        ))
+                        .await;
                     }
                 });
             }
 
             let ctx3 = Arc::clone(&ctx);
 
-            if config.video_status_poll_interval > 0 {
+            if config.get_video_status_poll_interval() > 0 {
                 cam_status_loop(ctx3, config.clone(), guilds.clone()).await;
             }
 
@@ -336,7 +338,7 @@ impl SerenityHandler {
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
-        if self.data.bot_settings.self_deafen {
+        if self.data.bot_settings.self_deafen.is_some() {
             return;
         }
 
@@ -360,8 +362,7 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
 
     // We can use ChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
-    if config.sys_log_channel_id > 0 {
-        let chan_id = config.sys_log_channel_id;
+    if let Some(chan_id) = config.sys_log_channel_id {
         let message = ChannelId(chan_id)
             .send_message(&ctx, |m| {
                 m.embed(|e| {
@@ -455,15 +456,11 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
             target = "cam_status_loop",
             "Starting camera status check loop"
         );
-        let conf_guilds = config
-            .cam_kick
-            .iter()
-            .map(|x| x.guild_id)
-            .collect::<HashSet<_>>();
+        let cam_kick = config.cam_kick.clone().unwrap_or(vec![]);
+        let conf_guilds = cam_kick.iter().map(|x| x.guild_id).collect::<HashSet<_>>();
         let mut cam_status: HashMap<(UserId, ChannelId), MyVoiceUserInfo> =
             HashMap::<(UserId, ChannelId), MyVoiceUserInfo>::new();
-        let channels: HashMap<u64, &CamKickConfig> = config
-            .cam_kick
+        let channels: HashMap<u64, &CamKickConfig> = cam_kick
             .iter()
             .map(|x| (x.channel_id, x))
             .collect::<HashMap<_, _>>();
@@ -587,8 +584,11 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                 .sum();
 
             tracing::warn!("num new cams: {}", res);
-            tracing::warn!("Sleeping for {} seconds", config.video_status_poll_interval);
-            tokio::time::sleep(Duration::from_secs(config.video_status_poll_interval)).await;
+            tracing::warn!(
+                "Sleeping for {} seconds",
+                config.get_video_status_poll_interval()
+            );
+            tokio::time::sleep(Duration::from_secs(config.get_video_status_poll_interval())).await;
         }
     });
 }

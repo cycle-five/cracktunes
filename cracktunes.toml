@@ -1,10 +1,10 @@
-video_status_poll_interval = 120
-sys_log_channel_id = 0
-authorized_users = [ ]
-self_deafen = true
-volume = 1.0
-prefix = "r!"
-database_url = "sqlite:///data/crackedmusic.db"
+# These settings will override the settings for all guilds
+# only use them if you excplicitly want that.
+# video_status_poll_interval = 120
+# sys_log_channel_id = 0
+# global_authorized_users = [ ]
+# default_prefix = "r!"
+# database_url = "sqlite:///data/crackedmusic.db"
 
 [[cam_kick]]
 cammed_down_timeout = 0

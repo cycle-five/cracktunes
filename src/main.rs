@@ -269,10 +269,16 @@ async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+                    tracing::warn!("guild_id: {}", guild_id);
+                    for (k, v) in guild_settings_map.iter() {
+                        tracing::warn!("Guild: {} - {:?}", k, v);
+                    }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefix = &guild_settings.prefix;
                         let prefix_up = &guild_settings.prefix_up;
+
+                        tracing::warn!("Checking for prefix: {}", prefix);
 
                         if msg.content.starts_with(prefix) {
                             Ok(Some(msg.content.split_at(prefix.len())))
@@ -307,17 +313,20 @@ async fn poise_framework(
         command_check: Some(|ctx| {
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
-                if ctx.data().bot_settings.authorized_users.is_empty()
-                    || ctx
-                        .data()
-                        .bot_settings
-                        .authorized_users
-                        .contains(ctx.author().id.as_u64())
+                let user_id = *ctx.author().id.as_u64();
+                let asdf = vec![user_id];
+                if ctx
+                    .data()
+                    .bot_settings
+                    .authorized_users
+                    .as_ref()
+                    .unwrap_or(asdf.as_ref())
+                    .contains(&user_id)
                 {
                     return Ok(true);
                 }
 
-                let user_id = ctx.author().id.as_u64();
+                //let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();
 
                 ctx.data()
@@ -333,7 +342,7 @@ async fn poise_framework(
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
                             Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains(user_id))
+                                || guild_settings.authorized_users.contains(&user_id))
                         },
                     )
             })
@@ -347,14 +356,16 @@ async fn poise_framework(
         ..Default::default()
     };
     let guild_settings_map = config
+        .clone()
         .guild_settings_map
+        .unwrap_or(Default::default())
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();
 
-    let db_url = config.database_url.clone();
+    let db_url = config.get_database_url();
     let pool_opts = sqlx::sqlite::SqlitePoolOptions::new()
-        .connect(&db_url.clone())
+        .connect(&db_url)
         .await;
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {

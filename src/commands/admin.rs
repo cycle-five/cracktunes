@@ -1,5 +1,6 @@
 use crate::{
     errors::CrackedError,
+    guild::settings::GuildSettingsMap,
     messaging::message::CrackedMessage,
     utils::{check_reply, create_response_poise},
     Context, Error,
@@ -29,10 +30,9 @@ pub async fn set_prefix(
     #[description = "The prefix to set for the bot"] prefix: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
+    let mut data = ctx.serenity_context().data.write().await;
     let _entry = &data
-        .guild_settings_map
-        .lock()
+        .get_mut::<GuildSettingsMap>()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| e.prefix = prefix.clone())

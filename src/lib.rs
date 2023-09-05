@@ -1,8 +1,9 @@
 use crate::guild::settings::DEFAULT_PREFIX;
-use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 use crate::handlers::event_log::LogEntry;
 use commands::PhoneCodeData;
 use errors::CrackedError;
+use guild::settings::DEFAULT_DB_URL;
+use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -97,36 +98,19 @@ pub struct BotCredentials {
     pub spotify_client_secret: Option<String>,
     pub openai_key: Option<String>,
 }
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
-    pub video_status_poll_interval: u64,
-    pub authorized_users: Vec<u64>,
+    pub video_status_poll_interval: Option<u64>,
+    pub authorized_users: Option<Vec<u64>>,
     // Cammed down kicking config
-    pub cam_kick: Vec<CamKickConfig>,
-    pub sys_log_channel_id: u64,
-    pub self_deafen: bool,
-    pub volume: f32,
-    pub guild_settings_map: Vec<guild::settings::GuildSettings>,
-    pub prefix: String,
+    pub cam_kick: Option<Vec<CamKickConfig>>,
+    pub sys_log_channel_id: Option<u64>,
+    pub self_deafen: Option<bool>,
+    pub volume: Option<f32>,
+    pub guild_settings_map: Option<Vec<guild::settings::GuildSettings>>,
+    pub prefix: Option<String>,
     pub credentials: Option<BotCredentials>,
-    pub database_url: String,
-}
-
-impl Default for BotConfig {
-    fn default() -> Self {
-        Self {
-            video_status_poll_interval: 20,
-            authorized_users: vec![],
-            cam_kick: vec![],
-            sys_log_channel_id: 0,
-            self_deafen: true,
-            volume: DEFAULT_VOLUME_LEVEL,
-            guild_settings_map: vec![],
-            prefix: DEFAULT_PREFIX.to_string(),
-            credentials: None,
-            database_url: "sqlite:///data/cracked.db".to_string(),
-        }
-    }
+    pub database_url: Option<String>,
 }
 
 impl Display for BotConfig {
@@ -148,19 +132,40 @@ impl Display for BotConfig {
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
         ));
-        result.push_str(&format!("prefix: {}", self.prefix.clone()));
+        result.push_str(&format!(
+            "prefix: {}",
+            self.prefix
+                .as_ref()
+                .cloned()
+                .unwrap_or(DEFAULT_PREFIX.to_string())
+        ));
         write!(f, "{}", result)
     }
 }
 
 impl BotConfig {
     pub fn get_prefix(&self) -> String {
-        self.prefix.clone()
+        self.prefix
+            .as_ref()
+            .cloned()
+            .unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
     pub fn set_credentials(&mut self, creds: BotCredentials) -> BotConfig {
         self.credentials = Some(creds);
         self.clone()
+    }
+
+    pub fn get_video_status_poll_interval(&self) -> u64 {
+        self.video_status_poll_interval
+            .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
+    }
+
+    pub fn get_database_url(&self) -> String {
+        self.database_url
+            .as_ref()
+            .cloned()
+            .unwrap_or(DEFAULT_DB_URL.to_string())
     }
 }
 

@@ -31,15 +31,12 @@ fn test_load_config() {
 
     println!("config: {:?}", config);
 
-    assert_eq!(config.cam_kick.len(), 2);
-    assert_eq!(config.cam_kick[0].guild_id, *GuildId(0).as_u64());
-    assert_eq!(config.guild_settings_map.len(), 2);
-    assert_eq!(
-        config.guild_settings_map[0].welcome_settings.is_some(),
-        true
-    );
-    assert_eq!(
-        config.guild_settings_map[1].welcome_settings.is_some(),
-        false
-    );
+    let cam_kick = config.cam_kick.unwrap();
+    let guild_settings_map = config.guild_settings_map.unwrap();
+
+    assert_eq!(cam_kick.len(), 2);
+    assert_eq!(cam_kick[0].guild_id, *GuildId(0).as_u64());
+    assert_eq!(guild_settings_map.len(), 2);
+    assert_eq!(guild_settings_map[0].welcome_settings.is_some(), true);
+    assert_eq!(guild_settings_map[1].welcome_settings.is_some(), false);
 }
