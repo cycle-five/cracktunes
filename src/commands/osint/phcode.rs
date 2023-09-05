@@ -23,10 +23,13 @@ impl PhoneCodeData {
         let country_by_phone_code = phone_codes
             .iter()
             .map(|(k, v)| (v.clone(), k.clone()))
-            .fold(HashMap::new(), |mut acc, (k, v)| {
-                acc.entry(k).or_insert_with(Vec::new).push(v);
-                acc
-            });
+            .fold(
+                HashMap::new(),
+                |mut acc: HashMap<String, Vec<String>>, (k, v)| {
+                    acc.entry(k).or_default().push(v);
+                    acc
+                },
+            );
         Ok(Self {
             phone_codes,
             country_names,

@@ -11,22 +11,23 @@ pub async fn lyrics(
     // The artist field seems to really just get in the way as it's the literal youtube channel name
     // in many cases.
     // let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();
-    let query = if query.is_some() {
-        query.unwrap()
-    } else {
-        let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-        let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let query = match query {
+        Some(query) => query,
+        None => {
+            let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+            let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+            let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
-        let handler = call.lock().await;
-        let track_handle = handler
-            .queue()
-            .current()
-            .ok_or(CrackedError::NothingPlaying)?;
+            let handler = call.lock().await;
+            let track_handle = handler
+                .queue()
+                .current()
+                .ok_or(CrackedError::NothingPlaying)?;
 
-        let search_title = track_handle.metadata().title.clone().unwrap_or_default();
+            let search_title = track_handle.metadata().title.clone().unwrap_or_default();
 
-        search_title.clone()
+            search_title.clone()
+        }
     };
     tracing::warn!("searching for lyrics for {}", query);
 

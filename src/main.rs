@@ -12,7 +12,7 @@ use cracktunes::{
     BotConfig, Data,
 };
 use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
-use poise::serenity_prelude::{GuildId, UserId};
+use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
@@ -182,11 +182,11 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
             match get_interaction(ctx) {
-                Some(mut interaction) => {
+                Some(interaction) => {
                     check_interaction(
                         create_response_text(
                             &ctx.serenity_context().http,
-                            &mut interaction,
+                            &interaction,
                             &format!("{error}"),
                         )
                         .await,
@@ -209,9 +209,10 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-//fn poise_framework(config: BotConfig) -> FrameworkBuilder<Arc<data_global>, Error> {
+/// Create the poise framework from the bot config.
 async fn poise_framework(
     config: BotConfig,
+    //TODO: can this be create in this function instead of passed in?
     event_log: EventLog,
 ) -> Result<Arc<Framework<Data, Error>>, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
@@ -220,9 +221,7 @@ async fn poise_framework(
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
-        owners: vec![UserId(700411523264282685), UserId(285219649921220608)]
-            .into_iter()
-            .collect(),
+        //owners: vec![].into_iter().collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
@@ -294,22 +293,22 @@ async fn poise_framework(
             }),
             ..Default::default()
         },
-        /// The global error handler for all error cases that may occur
+        // The global error handler for all error cases that may occur
         on_error: |error| Box::pin(on_error(error)),
-        /// This code is run before every command
+        // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("Executing command {}...", ctx.command().qualified_name);
                 count_command(ctx.command().qualified_name.as_ref(), is_prefix(ctx));
             })
         },
-        /// This code is run after a command if it was successful (returned Ok)
+        // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("Executed command {}!", ctx.command().qualified_name);
             })
         },
-        /// Every command invocation must pass this check to continue execution
+        // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
                 tracing::info!("Checking command {}...", ctx.command().qualified_name);
@@ -347,8 +346,8 @@ async fn poise_framework(
                     )
             })
         }),
-        /// Enforce command checks even for owners (enforced by default)
-        /// Set to true to bypass checks, which is useful for testing
+        // Enforce command checks even for owners (enforced by default)
+        // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
         event_handler: |ctx, event, _framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, data_global).await })
@@ -358,7 +357,7 @@ async fn poise_framework(
     let guild_settings_map = config
         .clone()
         .guild_settings_map
-        .unwrap_or(Default::default())
+        .unwrap_or_default()
         .iter()
         .map(|gs| (gs.guild_id, gs.clone()))
         .collect::<HashMap<GuildId, GuildSettings>>();

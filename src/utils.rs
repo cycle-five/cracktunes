@@ -48,7 +48,7 @@ pub async fn create_response_poise_text(
 
 pub async fn create_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
@@ -58,7 +58,7 @@ pub async fn create_response(
 
 pub async fn create_response_text(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     content: &str,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
@@ -71,9 +71,8 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
     embed.description(format!("{message}"));
 
     match get_interaction(ctx) {
-        Some(mut interaction) => {
-            let res =
-                edit_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await;
+        Some(interaction) => {
+            let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
             res.map(|_| ())
         }
         None => {
@@ -85,7 +84,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
 
 pub async fn edit_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     message: CrackedMessage,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
@@ -95,7 +94,7 @@ pub async fn edit_response(
 
 pub async fn edit_response_text(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     content: &str,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
@@ -122,8 +121,8 @@ pub async fn create_embed_response_poise(
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     match get_interaction(ctx) {
-        Some(mut interaction) => {
-            create_embed_response(&ctx.serenity_context().http, &mut interaction, embed).await
+        Some(interaction) => {
+            create_embed_response(&ctx.serenity_context().http, &interaction, embed).await
         }
         None => create_embed_response_prefix(&ctx, embed)
             .await
@@ -148,7 +147,7 @@ pub async fn create_embed_response_prefix(
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     interaction
@@ -163,7 +162,7 @@ pub async fn create_embed_response(
 
 pub async fn edit_embed_response(
     http: &Arc<Http>,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     interaction
@@ -530,7 +529,7 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
 
 pub async fn handle_error(
     ctx: &SerenityContext,
-    interaction: &mut ApplicationCommandInteraction,
+    interaction: &ApplicationCommandInteraction,
     err: CrackedError,
 ) {
     create_response_text(&ctx.http, interaction, &format!("{err}"))

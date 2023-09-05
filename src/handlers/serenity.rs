@@ -456,7 +456,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
             target = "cam_status_loop",
             "Starting camera status check loop"
         );
-        let cam_kick = config.cam_kick.clone().unwrap_or(vec![]);
+        let cam_kick = config.cam_kick.clone().unwrap_or_default();
         let conf_guilds = cam_kick.iter().map(|x| x.guild_id).collect::<HashSet<_>>();
         let mut cam_status: HashMap<(UserId, ChannelId), MyVoiceUserInfo> =
             HashMap::<(UserId, ChannelId), MyVoiceUserInfo>::new();

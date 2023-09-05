@@ -154,7 +154,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .unwrap();
 
-    forget_queue_message(ctx.data(), &mut message, guild_id)
+    forget_queue_message(ctx.data(), &message, guild_id)
         .await
         .ok();
 
@@ -266,7 +266,7 @@ pub fn calculate_num_pages(tracks: &[TrackHandle]) -> usize {
 
 pub async fn forget_queue_message(
     data: &Data,
-    message: &mut Message,
+    message: &Message,
     guild_id: GuildId,
 ) -> Result<(), ()> {
     let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
