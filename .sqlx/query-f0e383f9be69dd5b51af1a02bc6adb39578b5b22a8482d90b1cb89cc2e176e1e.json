@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO playlist_track\n            (playlist_id, metadata_id, guild_id, channel_id)\n            VALUES (?, ?, ?, ?)\n            RETURNING id, playlist_id, metadata_id, guild_id, channel_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "playlist_id",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "metadata_id",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "guild_id",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "channel_id",
+        "ordinal": 4,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f0e383f9be69dd5b51af1a02bc6adb39578b5b22a8482d90b1cb89cc2e176e1e"
+}

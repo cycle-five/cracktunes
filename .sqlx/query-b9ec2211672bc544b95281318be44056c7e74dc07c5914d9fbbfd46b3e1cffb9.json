@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM user WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "discord_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "username",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "descriminator",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_seen",
+        "ordinal": 4,
+        "type_info": "Date"
+      },
+      {
+        "name": "creation_date",
+        "ordinal": 5,
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "b9ec2211672bc544b95281318be44056c7e74dc07c5914d9fbbfd46b3e1cffb9"
+}
