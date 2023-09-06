@@ -38,7 +38,7 @@ jobs:
 
       - name: Bump Cargo.lock
         run: |
-          sqlx database create
+          sqlx database create --database-url sqlite:///data/crackedmusic.db
           sqlx migrate run --source migrations/
           cargo sqlx prepare
           cargo build
