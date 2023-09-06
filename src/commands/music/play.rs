@@ -89,12 +89,26 @@ pub async fn play(
     }
 
     let mode = if is_prefix {
-        Mode::End
+        match msg
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or_default()
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+        {
+            "next" => Mode::Next,
+            "all" => Mode::All,
+            "reverse" => Mode::Reverse,
+            "shuffle" => Mode::Shuffle,
+            "jump" => Mode::Jump,
+            _ => Mode::End,
+        }
     } else {
         match mode
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or("next".to_string())
+            .unwrap_or_default()
             .as_str()
         {
             "next" => Mode::Next,
