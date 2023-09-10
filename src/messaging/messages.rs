@@ -2,6 +2,8 @@ pub const AUTOPAUSE_OFF: &str = "🤖 Autopause OFF!";
 pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
 
+pub const BANNED: &str = "Banned";
+
 pub const DOMAIN_FORM_ALLOWED_TITLE: &str = "Allowed domains";
 pub const DOMAIN_FORM_BANNED_TITLE: &str = "Banned domains";
 pub const DOMAIN_FORM_ALLOWED_PLACEHOLDER: &str =
@@ -79,5 +81,6 @@ pub const TRACK_NOT_FOUND: &str = "⚠️ **Could not play track!**\nYour requ
 pub const TRACK_INAPPROPRIATE: &str = "⚠️ **Could not play track!**\nThe video you requested may be inappropriate for some users, so sign-in is required.";
 pub const TRACK_TIME_TO_PLAY: &str = "Estimated time until play: ";
 pub const WAYBACK_SNAPSHOT: &str = "Wayback snapshot for";
+pub const KICKED: &str = "Kicked ";
 pub const VERSION_LATEST: &str = "Find the latest version [here]";
 pub const VERSION: &str = "Version";

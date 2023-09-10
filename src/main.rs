@@ -268,10 +268,10 @@ async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
-                    tracing::warn!("guild_id: {}", guild_id);
-                    for (k, v) in guild_settings_map.iter() {
-                        tracing::warn!("Guild: {} - {:?}", k, v);
-                    }
+                    // tracing::warn!("guild_id: {}", guild_id);
+                    // for (k, v) in guild_settings_map.iter() {
+                    //     tracing::warn!("Guild: {} - {:?}", k, v);
+                    // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefix = &guild_settings.prefix;

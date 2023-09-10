@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use self::serenity::model::mention::Mention;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, UserId};
 
 use crate::messaging::messages::*;
 
@@ -45,6 +45,8 @@ pub enum CrackedMessage {
     Stop,
     SocialMediaResponse { response: String },
     Summon { mention: Mention },
+    UserKicked { user_id: UserId },
+    UserBanned { user: String, user_id: UserId },
     WaybackSnapshot { url: String },
     Version { current: String },
     VoteSkip { mention: Mention, missing: usize },
@@ -100,6 +102,10 @@ impl Display for CrackedMessage {
             }
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
+            Self::UserBanned { user, user_id } => {
+                f.write_str(&format!("{} {} {}", BANNED, user, user_id))
+            }
             Self::Version { current } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)",
                 VERSION, current, RELEASES_LINK, current, VERSION_LATEST, RELEASES_LINK

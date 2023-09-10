@@ -38,6 +38,10 @@ pub async fn set_prefix(
         .and_modify(|e| e.prefix = prefix.clone())
         .and_modify(|e| e.prefix_up = prefix.to_uppercase());
 
+    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+
+    let _res = settings.map(|s| s.save()).unwrap();
+
     create_response_poise(
         ctx,
         CrackedMessage::Other(format!("Prefix set to {}", prefix)),
@@ -136,5 +140,77 @@ pub async fn set_idle_timeout(
         .await,
     );
 
+    Ok(())
+}
+
+/// Kick command to kick a user from the server based on their ID
+#[poise::command(prefix_command, slash_command, hide_in_help, owners_only, ephemeral)]
+pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            if let Err(e) = guild.kick(&ctx, user_id).await {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to kick user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(ctx, CrackedMessage::UserKicked { user_id }).await?;
+            }
+        }
+        None => {
+            create_response_poise(
+                ctx,
+                CrackedMessage::Other("This command can only be used in a guild.".to_string()),
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+/// Kick command to kick a user from the server based on their ID
+#[poise::command(prefix_command, slash_command, hide_in_help)]
+pub async fn ban(
+    ctx: Context<'_>,
+    user: serenity::model::user::User,
+    dmd: Option<u8>,
+    reason: Option<String>,
+) -> Result<(), Error> {
+    let dmd = dmd.unwrap_or(0);
+    let reason = reason.unwrap_or("No reason provided".to_string());
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            if let Err(e) = guild.ban_with_reason(&ctx, user.clone(), dmd, reason).await {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to ban user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserBanned {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            create_response_poise(
+                ctx,
+                CrackedMessage::Other("This command can only be used in a guild.".to_string()),
+            )
+            .await?;
+        }
+    }
     Ok(())
 }

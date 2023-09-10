@@ -77,6 +77,7 @@ pub async fn play(
             mode.clone()
                 .map(|s| s.replace("query_or_url:", ""))
                 .unwrap_or("".to_string())
+                + " "
                 + &msg.unwrap_or("".to_string()),
         );
     }
@@ -97,11 +98,11 @@ pub async fn play(
             .next()
             .unwrap_or_default()
         {
-            "next" => Mode::Next,
-            "all" => Mode::All,
-            "reverse" => Mode::Reverse,
-            "shuffle" => Mode::Shuffle,
-            "jump" => Mode::Jump,
+            "next:" => Mode::Next,
+            "all:" => Mode::All,
+            "reverse:" => Mode::Reverse,
+            "shuffle:" => Mode::Shuffle,
+            "jump:" => Mode::Jump,
             _ => Mode::End,
         }
     } else {
@@ -132,7 +133,7 @@ pub async fn play(
         Some(id) => id,
         None => {
             let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
+            embed.description(format!("{}", CrackedError::NoGuildId));
             create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
@@ -451,12 +452,14 @@ async fn match_mode(
 }
 
 use colored::Colorize;
+/// Matches a url (or query string) to a QueryType
 async fn match_url(
     ctx: &Context<'_>,
     url: &str,
     file: Option<Attachment>,
 ) -> Result<Option<QueryType>, Error> {
     // determine whether this is a link or a query string
+    tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
