@@ -41,7 +41,7 @@ config-file = {version="0.2.3", features = ["json"]}
 reqwest = {version = "0.11.20", features = ["blocking", "json"]}
 anyhow = "1.0.72"
 warp = "0.3.5"
-whois-rust = "1.5.1"
+whois-rust = "1.5.2"
 webpki = "0.22.1"
 
 [dependencies.sqlx]
