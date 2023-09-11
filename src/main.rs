@@ -15,6 +15,7 @@ use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
+use serenity::model::id::UserId;
 use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
@@ -221,7 +222,11 @@ async fn poise_framework(
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
-        //owners: vec![].into_iter().collect(),
+        owners: vec![1124878856491389012, 285219649921220608]
+            .iter()
+            .clone()
+            .map(|id| UserId(*id))
+            .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),

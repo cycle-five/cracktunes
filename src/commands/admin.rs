@@ -12,7 +12,14 @@ use crate::{
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("authorize", "deauthorize", "set_idle_timeout", "set_prefix"),
+    subcommands(
+        "authorize",
+        "deauthorize",
+        "set_idle_timeout",
+        "set_prefix",
+        "kick",
+        "ban"
+    ),
     ephemeral,
     owners_only,
     hide_in_help
@@ -173,7 +180,7 @@ pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Res
 }
 
 /// Kick command to kick a user from the server based on their ID
-#[poise::command(prefix_command, slash_command, hide_in_help)]
+#[poise::command(prefix_command, slash_command, hide_in_help, owners_only, ephemeral)]
 pub async fn ban(
     ctx: Context<'_>,
     user: serenity::model::user::User,
