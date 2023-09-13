@@ -40,6 +40,7 @@ pub struct GuildSettings {
     pub prefix: String,
     pub prefix_up: String,
     pub autopause: bool,
+    pub allow_all_domains: bool,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
@@ -66,6 +67,7 @@ impl GuildSettings {
             prefix: my_prefix.clone(),
             prefix_up: my_prefix.to_string().to_ascii_uppercase(),
             autopause: false,
+            allow_all_domains: true,
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
@@ -169,6 +171,10 @@ impl GuildSettings {
 
     pub fn set_default_volume(&mut self, volume: f32) {
         self.volume = volume;
+    }
+
+    pub fn set_allow_all_domains(&mut self, allow: bool) {
+        self.allow_all_domains = allow;
     }
 }
 

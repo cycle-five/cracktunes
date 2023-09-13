@@ -461,6 +461,7 @@ async fn match_url(
     // determine whether this is a link or a query string
     tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") => {
@@ -478,23 +479,24 @@ async fn match_url(
                 let guild_settings = settings
                     .entry(guild_id)
                     .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
+                if !guild_settings.allow_all_domains {
+                    let is_allowed = guild_settings
+                        .allowed_domains
+                        .iter()
+                        .any(|d| compare_domains(d, other));
 
-                let is_allowed = guild_settings
-                    .allowed_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
+                    let is_banned = guild_settings
+                        .banned_domains
+                        .iter()
+                        .any(|d| compare_domains(d, other));
 
-                let is_banned = guild_settings
-                    .banned_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
+                    if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
+                        let message = CrackedMessage::PlayDomainBanned {
+                            domain: other.to_string(),
+                        };
 
-                if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                    let message = CrackedMessage::PlayDomainBanned {
-                        domain: other.to_string(),
-                    };
-
-                    create_response_poise_text(ctx, message).await?;
+                        create_response_poise_text(ctx, message).await?;
+                    }
                 }
 
                 YouTube::extract(url)
@@ -506,10 +508,10 @@ async fn match_url(
             let guild_settings = settings
                 .entry(guild_id)
                 .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
-
-            if guild_settings.banned_domains.contains("youtube.com")
-                || (guild_settings.banned_domains.is_empty()
-                    && !guild_settings.allowed_domains.contains("youtube.com"))
+            if !guild_settings.allow_all_domains
+                && (guild_settings.banned_domains.contains("youtube.com")
+                    || (guild_settings.banned_domains.is_empty()
+                        && !guild_settings.allowed_domains.contains("youtube.com")))
             {
                 let message = CrackedMessage::PlayDomainBanned {
                     domain: "youtube.com".to_string(),

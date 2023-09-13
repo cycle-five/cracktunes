@@ -20,6 +20,7 @@ guild_id = 0
 prefix = "m/"
 prefix_up = "M/"
 authorized_users = [  ]
+allow_all_domains = true
 allowed_domains = [ "youtube.com" ]
 banned_domains = [ ]
 autopause = false

@@ -34,6 +34,7 @@ pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";
 pub const NOTHING_IS_PLAYING: &str = "🔈 Nothing is playing!";
 pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
+pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
 pub const ONETWOFT: &str = "https://12ft.io/";
 pub const PASSWORD_PWNED: &str = "⚠️ This password has been pwned!";
 pub const PASSWORD_SAFE: &str = "🔒 This password is safe!";
