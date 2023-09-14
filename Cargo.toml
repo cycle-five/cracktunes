@@ -18,7 +18,7 @@ async-trait = "0.1.72"
 time = {version = "0.3.25", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
-chatgpt_rs = "1.1.13"
+chatgpt_rs = "1.2.3"
 colored = "2.0.4"
 dotenv = "0.15.0"
 lazy_static = "1.4.0"
