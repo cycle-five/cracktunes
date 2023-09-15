@@ -81,6 +81,7 @@ pub const TRACK_DURATION: &str = "Track duration: ";
 pub const TRACK_NOT_FOUND: &str = "⚠️ **Could not play track!**\nYour request yielded no results.";
 pub const TRACK_INAPPROPRIATE: &str = "⚠️ **Could not play track!**\nThe video you requested may be inappropriate for some users, so sign-in is required.";
 pub const TRACK_TIME_TO_PLAY: &str = "Estimated time until play: ";
+pub const UNAUTHORIZED_USER: &str = "⚠️ You are not authorized to use this command!";
 pub const WAYBACK_SNAPSHOT: &str = "Wayback snapshot for";
 pub const KICKED: &str = "Kicked ";
 pub const VERSION_LATEST: &str = "Find the latest version [here]";

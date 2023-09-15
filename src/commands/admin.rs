@@ -110,7 +110,7 @@ pub async fn deauthorize(
         );
         Ok(())
     } else {
-        Err(CrackedError::Other("User did not exist in authorized list").into())
+        Err(CrackedError::UnauthorizedUser.into())
     }
 }
 
@@ -118,7 +118,6 @@ pub async fn deauthorize(
 #[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_idle_timeout(
     ctx: Context<'_>,
-    // #[description = "Idle timeout for the bot in minutes."] timeout: String,
     #[description = "Idle timeout for the bot in minutes."] timeout: u32,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
@@ -212,11 +211,9 @@ pub async fn ban(
             }
         }
         None => {
-            create_response_poise(
-                ctx,
-                CrackedMessage::Other("This command can only be used in a guild.".to_string()),
-            )
-            .await?;
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
         }
     }
     Ok(())
