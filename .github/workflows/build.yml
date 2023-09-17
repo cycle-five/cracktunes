@@ -9,23 +9,33 @@ jobs:
     strategy:
       matrix:
         rust-version: ['nightly', 'stable']
+        cache-key: ['']
     runs-on: ubuntu-latest
     steps:
       - name: Repository Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Install Toolchain
-        uses: actions-rs/toolchain@v1
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+          rustup default ${{ matrix.rust-version }}
+        shell: bash
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          toolchain: ${{ matrix.rust-version }}
-          profile: minimal
-          override: true
+          shared-key: ${{ matrix.cache-key }}
+      # - name: Install Toolchain
+      #   uses: actions-rs/toolchain@v1
+      #   with:
+      #     toolchain: ${{ matrix.rust-version }}
+      #     profile: minimal
+      #     override: true
       
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
+      # - name: Cache
+      #   uses: Swatinem/rust-cache@v2
 
       - name: Migrate database
         env:
