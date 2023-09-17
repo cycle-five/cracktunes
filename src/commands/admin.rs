@@ -149,6 +149,10 @@ pub async fn set_idle_timeout(
     Ok(())
 }
 
+//
+// There are user management admin commands
+//
+
 /// Kick command to kick a user from the server based on their ID
 #[poise::command(prefix_command, slash_command, hide_in_help, owners_only, ephemeral)]
 pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Result<(), Error> {
@@ -178,8 +182,8 @@ pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Res
     Ok(())
 }
 
-/// Kick command to kick a user from the server based on their ID
-#[poise::command(prefix_command, slash_command, hide_in_help, owners_only, ephemeral)]
+/// Ban a user from the server.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
 pub async fn ban(
     ctx: Context<'_>,
     user: serenity::model::user::User,
@@ -203,6 +207,78 @@ pub async fn ban(
                 create_response_poise(
                     ctx,
                     CrackedMessage::UserBanned {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Mute a user.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            if let Err(e) = guild
+                .edit_member(&ctx, user.clone().id, |m| m.mute(true))
+                .await
+            {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to mute user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserMuted {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Deafen a user.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            if let Err(e) = guild
+                .edit_member(&ctx, user.clone().id, |m| m.deafen(true))
+                .await
+            {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to deafen user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserMuted {
                         user: user.name.clone(),
                         user_id: user.clone().id,
                     },

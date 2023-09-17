@@ -3,6 +3,8 @@ pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
 
 pub const BANNED: &str = "Banned";
+pub const DEAFENED: &str = "Deafened";
+pub const MUTED: &str = "Muted";
 
 pub const DOMAIN_FORM_ALLOWED_TITLE: &str = "Allowed domains";
 pub const DOMAIN_FORM_BANNED_TITLE: &str = "Banned domains";

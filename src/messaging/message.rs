@@ -47,6 +47,8 @@ pub enum CrackedMessage {
     Summon { mention: Mention },
     UserKicked { user_id: UserId },
     UserBanned { user: String, user_id: UserId },
+    UserMuted { user: String, user_id: UserId },
+    UserDeafened { user: String, user_id: UserId },
     WaybackSnapshot { url: String },
     Version { current: String },
     VoteSkip { mention: Mention, missing: usize },
@@ -105,6 +107,12 @@ impl Display for CrackedMessage {
             Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
             Self::UserBanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", BANNED, user, user_id))
+            }
+            Self::UserDeafened { user, user_id } => {
+                f.write_str(&format!("{} {} {}", DEAFENED, user, user_id))
+            }
+            Self::UserMuted { user, user_id } => {
+                f.write_str(&format!("{} {} {}", MUTED, user, user_id))
             }
             Self::Version { current } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)",
