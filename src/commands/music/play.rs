@@ -479,7 +479,7 @@ async fn match_url(
                 let guild_settings = settings
                     .entry(guild_id)
                     .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
-                if !guild_settings.allow_all_domains {
+                if !guild_settings.allow_all_domains.unwrap() {
                     let is_allowed = guild_settings
                         .allowed_domains
                         .iter()
@@ -508,7 +508,7 @@ async fn match_url(
             let guild_settings = settings
                 .entry(guild_id)
                 .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
-            if !guild_settings.allow_all_domains
+            if !guild_settings.allow_all_domains.unwrap()
                 && (guild_settings.banned_domains.contains("youtube.com")
                     || (guild_settings.banned_domains.is_empty()
                         && !guild_settings.allowed_domains.contains("youtube.com")))

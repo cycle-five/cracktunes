@@ -13,6 +13,7 @@ use std::{
 
 use crate::errors::CrackedError;
 
+pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
@@ -40,7 +41,7 @@ pub struct GuildSettings {
     pub prefix: String,
     pub prefix_up: String,
     pub autopause: bool,
-    pub allow_all_domains: bool,
+    pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
@@ -67,7 +68,7 @@ impl GuildSettings {
             prefix: my_prefix.clone(),
             prefix_up: my_prefix.to_string().to_ascii_uppercase(),
             autopause: false,
-            allow_all_domains: true,
+            allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
@@ -174,7 +175,7 @@ impl GuildSettings {
     }
 
     pub fn set_allow_all_domains(&mut self, allow: bool) {
-        self.allow_all_domains = allow;
+        self.allow_all_domains = Some(allow);
     }
 }
 
