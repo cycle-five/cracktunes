@@ -1,10 +1,14 @@
 pub const AUTOPAUSE_OFF: &str = "🤖 Autopause OFF!";
 pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
+pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
 pub const BANNED: &str = "Banned";
+pub const UNBANNED: &str = "Unbanned";
 pub const DEAFENED: &str = "Deafened";
+pub const UNDEAFENED: &str = "Undeafened";
 pub const MUTED: &str = "Muted";
+pub const UNMUTED: &str = "Unmuted";
 
 pub const DOMAIN_FORM_ALLOWED_TITLE: &str = "Allowed domains";
 pub const DOMAIN_FORM_BANNED_TITLE: &str = "Banned domains";
@@ -65,6 +69,8 @@ pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
 pub const REMOVED_QUEUE_MULTIPLE: &str = "❌ Removed multiple tracks from queue!";
 pub const REMOVED_QUEUE: &str = "❌ Removed from queue";
 pub const RESUMED: &str = "▶️ Resumed!";
+pub const ROLE_CREATED: &str = "📝 Created role!";
+pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
 pub const SEARCHING: &str = "🔎 Searching...";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";
@@ -83,8 +89,11 @@ pub const TRACK_DURATION: &str = "Track duration: ";
 pub const TRACK_NOT_FOUND: &str = "⚠️ **Could not play track!**\nYour request yielded no results.";
 pub const TRACK_INAPPROPRIATE: &str = "⚠️ **Could not play track!**\nThe video you requested may be inappropriate for some users, so sign-in is required.";
 pub const TRACK_TIME_TO_PLAY: &str = "Estimated time until play: ";
+pub const TEXT_CHANNEL_CREATED: &str = "📝 Created text channel!";
 pub const UNAUTHORIZED_USER: &str = "⚠️ You are not authorized to use this command!";
 pub const WAYBACK_SNAPSHOT: &str = "Wayback snapshot for";
 pub const KICKED: &str = "Kicked ";
 pub const VERSION_LATEST: &str = "Find the latest version [here]";
 pub const VERSION: &str = "Version";
+pub const VOLUME: &str = "🔊 Volume";
+pub const VOICE_CHANNEL_CREATED: &str = "🔊 Created voice channel!";

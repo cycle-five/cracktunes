@@ -1,3 +1,5 @@
+use std::{f32::consts::E, io::Write};
+
 use crate::{
     errors::CrackedError,
     guild::settings::GuildSettingsMap,
@@ -18,7 +20,16 @@ use crate::{
         "set_idle_timeout",
         "set_prefix",
         "kick",
-        "ban"
+        "ban",
+        "unban",
+        "mute",
+        "unmute",
+        "deafen",
+        "undeafen",
+        "create_voice_channel",
+        "create_text_channel",
+        "create_role",
+        "audit_logs",
     ),
     ephemeral,
     owners_only,
@@ -294,3 +305,474 @@ pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
     }
     Ok(())
 }
+
+/// Undeafen a user.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            if let Err(e) = guild
+                .edit_member(&ctx, user.clone().id, |m| m.deafen(false))
+                .await
+            {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to undeafen user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserMuted {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Retreive audit logs.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            let logs = guild.audit_logs(&ctx, None, None, None, None).await?;
+            // open a file to write to
+            let mut file = std::fs::File::create("audit_logs.txt")?;
+            // write the logs to the file
+            file.write_all(format!("{:?}", logs).as_bytes())?;
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Unban a user from the server.
+/// TODO: Add a way to unban a user by their ID.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn unban(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            if let Err(e) = guild.unban(&ctx, user.clone()).await {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to unban user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserUnbanned {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Unmute a user.]
+/// TODO: Add a way to unmute a user by their ID.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            if let Err(e) = guild
+                .edit_member(&ctx, user.clone().id, |m| m.mute(false))
+                .await
+            {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::UserUnmuted {
+                        user: user.name.clone(),
+                        user_id: user.clone().id,
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Create voice channel.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            if let Err(e) = guild
+                .create_channel(&ctx, |c| {
+                    c.name(channel_name.clone())
+                        .kind(serenity::model::channel::ChannelType::Voice)
+                })
+                .await
+            {
+                // Handle error, send error message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+                )
+                .await?;
+            } else {
+                // Send success message
+                create_response_poise(
+                    ctx,
+                    CrackedMessage::VoiceChannelCreated {
+                        channel_name: channel_name.clone(),
+                    },
+                )
+                .await?;
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Create text channel.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            match guild
+                .create_channel(&ctx, |c| {
+                    c.name(channel_name)
+                        .kind(serenity::model::channel::ChannelType::Text)
+                })
+                .await
+            {
+                Err(e) => {
+                    // Handle error, send error message
+                    create_response_poise(
+                        ctx,
+                        CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+                    )
+                    .await?;
+                }
+                Ok(channel) => {
+                    // Send success message
+                    create_response_poise(
+                        ctx,
+                        CrackedMessage::TextChannelCreated {
+                            channel_name: channel.name.clone(),
+                            channel_id: channel.id,
+                        },
+                    )
+                    .await?;
+                }
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+// /// Create category.
+// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// pub async fn create_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
+//     match ctx.guild_id() {
+//         Some(guild) => {
+//             let guild = guild.to_partial_guild(&ctx).await?;
+//             match guild
+//                 .create_(&ctx, |c| {
+//                     c.name(category_name)
+//                         .kind(serenity::model::channel::ChannelType::Category)
+//                 })
+//                 .await
+//             {
+//                 Err(e) => {
+//                     // Handle error, send error message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::Other(format!("Failed to create category: {}", e)),
+//                     )
+//                     .await?;
+//                 }
+//                 Some(category) => {
+//                     // Send success message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::CategoryCreated {
+//                             category_name: category_name.clone(),
+//                         },
+//                     )
+//                     .await?;
+//                 }
+//             }
+//         }
+//         None => {
+//             return Result::Err(
+//                 CrackedError::Other("This command can only be used in a guild.").into(),
+//             );
+//         }
+//     }
+//     Ok(())
+// }
+
+/// Create role.
+#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
+    match ctx.guild_id() {
+        Some(guild) => {
+            let guild = guild.to_partial_guild(&ctx).await?;
+            match guild
+                .create_role(&ctx, |r| {
+                    r.name(role_name)
+                    //.colour(serenity::model::guild::RoleColor::from_rgb(0, 0, 0))
+                })
+                .await
+            {
+                Err(e) => {
+                    // Handle error, send error message
+                    create_response_poise(
+                        ctx,
+                        CrackedMessage::Other(format!("Failed to create role: {}", e)),
+                    )
+                    .await?;
+                }
+                Ok(role) => {
+                    // Send success message
+                    create_response_poise(
+                        ctx,
+                        CrackedMessage::RoleCreated {
+                            role_name: role.name.clone(),
+                            role_id: role.id,
+                        },
+                    )
+                    .await?;
+                }
+            }
+        }
+        None => {
+            return Result::Err(
+                CrackedError::Other("This command can only be used in a guild.").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+// /// Delete channel.
+// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// pub async fn delete_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
+//     match ctx.guild_id() {
+//         Some(guild) => {
+//             let guild = guild.to_partial_guild(&ctx).await?;
+//             let channel = guild
+//                 .channels(&ctx)
+//                 .await?
+//                 .into_iter()
+//                 .find(|channel_id, guild_channel| channel_id.name == channel_name);
+//             if let Some((channel_id, guild_chan)) = channel {
+//                 if let Err(e) = guild_chan.delete(&ctx).await {
+//                     // Handle error, send error message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::Other(format!("Failed to delete channel: {}", e)),
+//                     )
+//                     .await?;
+//                 } else {
+//                     // Send success message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::ChannelDeleted {
+//                             channel_name: channel_name.clone(),
+//                         },
+//                     )
+//                     .await?;
+//                 }
+//             } else {
+//                 create_response_poise(ctx, CrackedMessage::Other("Channel not found.".to_string()))
+//                     .await?;
+//             }
+//         }
+//         None => {
+//             return Result::Err(
+//                 CrackedError::Other("This command can only be used in a guild.".to_string()).into(),
+//             );
+//         }
+//     }
+//     Ok(())
+// }
+
+// /// Delete role.
+// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// pub async fn delete_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
+//     match ctx.guild_id() {
+//         Some(guild) => {
+//             let guild = guild.to_partial_guild(&ctx).await?;
+//             let role = guild
+//                 .roles(&ctx)
+//                 .await?
+//                 .into_iter()
+//                 .find(|r| r.name == role_name);
+//             if let Some(role) = role {
+//                 if let Err(e) = role.delete(&ctx).await {
+//                     // Handle error, send error message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::Other(format!("Failed to delete role: {}", e)),
+//                     )
+//                     .await?;
+//                 } else {
+//                     // Send success message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::RoleDeleted {
+//                             role_name: role_name.clone(),
+//                         },
+//                     )
+//                     .await?;
+//                 }
+//             } else {
+//                 create_response_poise(ctx, CrackedMessage::Other("Role not found.".to_string()))
+//                     .await?;
+//             }
+//         }
+//         None => {
+//             return Result::Err(
+//                 CrackedError::Other("This command can only be used in a guild.".to_string()).into(),
+//             );
+//         }
+//     }
+//     Ok(())
+// }
+
+// /// Delete category.
+// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
+//     match ctx.guild_id() {
+//         Some(guild) => {
+//             let guild = guild.to_partial_guild(&ctx).await?;
+//             let category = guild
+//                 .channels(&ctx)
+//                 .await?
+//                 .into_iter()
+//                 .find(|c| c.name == category_name);
+//             if let Some(category) = category {
+//                 if let Err(e) = category.delete(&ctx).await {
+//                     // Handle error, send error message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::Other(format!("Failed to delete category: {}", e)),
+//                     )
+//                     .await?;
+//                 } else {
+//                     // Send success message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::CategoryDeleted {
+//                             category_name: category_name.clone(),
+//                         },
+//                     )
+//                     .await?;
+//                 }
+//             } else {
+//                 create_response_poise(
+//                     ctx,
+//                     CrackedMessage::Other("Category not found.".to_string()),
+//                 )
+//                 .await?;
+//             }
+//         }
+//         None => {
+//             return Result::Err(
+//                 CrackedError::Other("This command can only be used in a guild.".to_string()).into(),
+//             );
+//         }
+//     }
+//     Ok(())
+// }
+
+// /// Delete role.
+// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// pub async fn delete_role_by_id(ctx: Context<'_>, role_id: u64) -> Result<(), Error> {
+//     match ctx.guild_id() {
+//         Some(guild) => {
+//             let guild = guild.to_partial_guild(&ctx).await?;
+//             let role = guild
+//                 .roles(&ctx)
+//                 .await?
+//                 .into_iter()
+//                 .find(|r| r.id == role_id);
+//             if let Some(role) = role {
+//                 if let Err(e) = role.delete(&ctx).await {
+//                     // Handle error, send error message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::Other(format!("Failed to delete role: {}", e)),
+//                     )
+//                     .await?;
+//                 } else {
+//                     // Send success message
+//                     create_response_poise(
+//                         ctx,
+//                         CrackedMessage::RoleDeleted {
+//                             role_name: role.name.clone(),
+//                         },
+//                     )
+//                     .await?;
+//                 }
+//             } else {
+//                 create_response_poise(ctx, CrackedMessage::Other("Role not found.".to_string()))
+//                     .await?;
+//             }
+//         }
+//         None => {
+//             return Result::Err(
+//                 CrackedError::Other("This command can only be used in a guild.".to_string()).into(),
+//             );
+//         }
+//     }
+//     Ok(())
+// }

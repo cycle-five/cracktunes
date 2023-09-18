@@ -12,6 +12,10 @@ pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
     CountryName(String),
+    ChannelDeleted {
+        channel_id: serenity::ChannelId,
+        channel_name: String,
+    },
     Clear,
     DomainInfo(String),
     Error,
@@ -30,28 +34,86 @@ pub enum CrackedMessage {
     PhoneNumberInfo(String),
     PhoneNumberInfoError,
     PlayAllFailed,
-    PlayDomainBanned { domain: String },
+    PlayDomainBanned {
+        domain: String,
+    },
     PlaylistCreated(String),
     PlaylistQueued,
     RemoveMultiple,
     Resume,
-    ScanResult { result: String },
+    RoleCreated {
+        role_id: serenity::RoleId,
+        role_name: String,
+    },
+    RoleDeleted {
+        role_id: serenity::RoleId,
+        role_name: String,
+    },
+    ScanResult {
+        result: String,
+    },
     Search,
-    Seek { timestamp: String },
+    Seek {
+        timestamp: String,
+    },
     Shuffle,
     Skip,
     SkipAll,
-    SkipTo { title: String, url: String },
+    SkipTo {
+        title: String,
+        url: String,
+    },
     Stop,
-    SocialMediaResponse { response: String },
-    Summon { mention: Mention },
-    UserKicked { user_id: UserId },
-    UserBanned { user: String, user_id: UserId },
-    UserMuted { user: String, user_id: UserId },
-    UserDeafened { user: String, user_id: UserId },
-    WaybackSnapshot { url: String },
-    Version { current: String },
-    VoteSkip { mention: Mention, missing: usize },
+    SocialMediaResponse {
+        response: String,
+    },
+    Summon {
+        mention: Mention,
+    },
+    TextChannelCreated {
+        channel_id: serenity::ChannelId,
+        channel_name: String,
+    },
+    UserKicked {
+        user_id: UserId,
+    },
+    UserBanned {
+        user: String,
+        user_id: UserId,
+    },
+    UserUnbanned {
+        user: String,
+        user_id: UserId,
+    },
+    UserMuted {
+        user: String,
+        user_id: UserId,
+    },
+    UserUnmuted {
+        user: String,
+        user_id: UserId,
+    },
+    UserDeafened {
+        user: String,
+        user_id: UserId,
+    },
+    UserUndeafened {
+        user: String,
+        user_id: UserId,
+    },
+    WaybackSnapshot {
+        url: String,
+    },
+    Version {
+        current: String,
+    },
+    VoteSkip {
+        mention: Mention,
+        missing: usize,
+    },
+    VoiceChannelCreated {
+        channel_name: String,
+    },
 }
 
 impl Display for CrackedMessage {
@@ -64,6 +126,13 @@ impl Display for CrackedMessage {
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
             Self::CountryName(name) => f.write_str(name),
             Self::Clear => f.write_str(CLEARED),
+            Self::ChannelDeleted {
+                channel_id,
+                channel_name,
+            } => f.write_str(&format!(
+                "{} {} {}",
+                CHANNEL_DELETED, channel_id, channel_name
+            )),
             Self::DomainInfo(info) => f.write_str(info),
             Self::Error => f.write_str(ERROR),
             Self::Leaving => f.write_str(LEAVING),
@@ -89,6 +158,12 @@ impl Display for CrackedMessage {
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),
+            Self::RoleCreated { role_id, role_name } => {
+                f.write_str(&format!("{} {} {}", ROLE_CREATED, role_id, role_name))
+            }
+            Self::RoleDeleted { role_id, role_name } => {
+                f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
+            }
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
@@ -103,10 +178,23 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
             }
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
+            Self::TextChannelCreated {
+                channel_id,
+                channel_name,
+            } => f.write_str(&format!(
+                "{} {} {}",
+                TEXT_CHANNEL_CREATED, channel_id, channel_name
+            )),
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
             Self::UserBanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", BANNED, user, user_id))
+            }
+            Self::UserUnbanned { user, user_id } => {
+                f.write_str(&format!("{} {} {}", UNBANNED, user, user_id))
+            }
+            Self::UserUndeafened { user, user_id } => {
+                f.write_str(&format!("{} {} {}", UNDEAFENED, user, user_id))
             }
             Self::UserDeafened { user, user_id } => {
                 f.write_str(&format!("{} {} {}", DEAFENED, user, user_id))
@@ -114,10 +202,16 @@ impl Display for CrackedMessage {
             Self::UserMuted { user, user_id } => {
                 f.write_str(&format!("{} {} {}", MUTED, user, user_id))
             }
+            Self::UserUnmuted { user, user_id } => {
+                f.write_str(&format!("{} {} {}", UNMUTED, user, user_id))
+            }
             Self::Version { current } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)",
                 VERSION, current, RELEASES_LINK, current, VERSION_LATEST, RELEASES_LINK
             )),
+            Self::VoiceChannelCreated { channel_name } => {
+                f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
+            }
         }
     }
 }
