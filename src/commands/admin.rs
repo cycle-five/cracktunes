@@ -1,4 +1,4 @@
-use std::{f32::consts::E, io::Write};
+use std::io::Write;
 
 use crate::{
     errors::CrackedError,

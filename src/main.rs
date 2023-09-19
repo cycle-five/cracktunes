@@ -222,11 +222,11 @@ async fn poise_framework(
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
-        owners: [1124878856491389012, 285219649921220608]
-            .iter()
-            .clone()
-            .map(|id| UserId(*id))
-            .collect(),
+        // owners: [1124878856491389012, 285219649921220608]
+        //     .iter()
+        //     .clone()
+        //     .map(|id| UserId(*id))
+        //     .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
