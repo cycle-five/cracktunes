@@ -5,10 +5,7 @@ use crate::{Context, Error};
 #[poise::command(slash_command, prefix_command)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let start = std::time::Instant::now();
-    let msg = ctx
-        .say("Pong!")
-        .await
-        .expect("failed to send message to channel");
+    let msg = ctx.say("Pong!").await?;
     let end = std::time::Instant::now();
     let _ = msg
         .edit(ctx, |m| {

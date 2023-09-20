@@ -133,7 +133,7 @@ pub async fn broadcast(
     #[description = "The message to broadcast"] message: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
-    let http = ctx.http().clone();
+    let http = ctx.http();
     let serenity_ctx = ctx.serenity_context().clone();
     let guilds = data.guild_settings_map.lock().unwrap().clone();
 
