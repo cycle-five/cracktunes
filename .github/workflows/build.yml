@@ -24,18 +24,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
-      # - name: Install Toolchain
-      #   uses: actions-rs/toolchain@v1
-      #   with:
-      #     toolchain: ${{ matrix.rust-version }}
-      #     profile: minimal
-      #     override: true
       
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-
-      # - name: Cache
-      #   uses: Swatinem/rust-cache@v2
 
       - name: Migrate database
         env:

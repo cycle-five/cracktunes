@@ -4,6 +4,7 @@
 # sys_log_channel_id = 0
 # global_authorized_users = [ ]
 # default_prefix = "r!"
+owners = [ ]
 database_url = "sqlite://./data/crackedmusic.db"
 
 [[cam_kick]]
