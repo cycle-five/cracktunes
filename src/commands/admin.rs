@@ -13,7 +13,7 @@ use crate::{
 /// Admin commands.
 #[poise::command(
     prefix_command,
-    slash_command,
+    //slash_command,
     subcommands(
         "authorize",
         "deauthorize",
@@ -42,7 +42,7 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Set the prefix for the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to set for the bot"] prefix: String,
@@ -70,7 +70,7 @@ pub async fn set_prefix(
 }
 
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
@@ -97,7 +97,7 @@ pub async fn authorize(
 }
 
 /// Deauthorize a user from using the bot.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,
@@ -126,7 +126,7 @@ pub async fn deauthorize(
 }
 
 /// Set the idle timeout for the bot in vc.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_idle_timeout(
     ctx: Context<'_>,
     #[description = "Idle timeout for the bot in minutes."] timeout: u32,
@@ -165,7 +165,7 @@ pub async fn set_idle_timeout(
 //
 
 /// Kick command to kick a user from the server based on their ID
-#[poise::command(prefix_command, slash_command, hide_in_help, owners_only, ephemeral)]
+#[poise::command(prefix_command, hide_in_help, owners_only, ephemeral)]
 pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -194,7 +194,7 @@ pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Res
 }
 
 /// Ban a user from the server.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn ban(
     ctx: Context<'_>,
     user: serenity::model::user::User,
@@ -235,7 +235,7 @@ pub async fn ban(
 }
 
 /// Mute a user.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -271,7 +271,7 @@ pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result
 }
 
 /// Deafen a user.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -307,7 +307,7 @@ pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
 }
 
 /// Undeafen a user.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -343,7 +343,7 @@ pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Re
 }
 
 /// Retreive audit logs.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -365,7 +365,7 @@ pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Unban a user from the server.
 /// TODO: Add a way to unban a user by their ID.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn unban(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -400,7 +400,7 @@ pub async fn unban(ctx: Context<'_>, user: serenity::model::user::User) -> Resul
 
 /// Unmute a user.]
 /// TODO: Add a way to unmute a user by their ID.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -436,7 +436,7 @@ pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
 }
 
 /// Create voice channel.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -475,7 +475,7 @@ pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Res
 }
 
 /// Create text channel.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -518,7 +518,7 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
 }
 
 // /// Create category.
-// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// #[poise::command(prefix_command, , owners_only, ephemeral)]
 // pub async fn create_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
 //     match ctx.guild_id() {
 //         Some(guild) => {
@@ -560,7 +560,7 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
 // }
 
 /// Create role.
-#[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -603,7 +603,7 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
 }
 
 // /// Delete channel.
-// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// #[poise::command(prefix_command, owners_only, ephemeral)]
 // pub async fn delete_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
 //     match ctx.guild_id() {
 //         Some(guild) => {
@@ -646,7 +646,7 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
 // }
 
 // /// Delete role.
-// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// #[poise::command(prefix_command, , owners_only, ephemeral)]
 // pub async fn delete_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
 //     match ctx.guild_id() {
 //         Some(guild) => {
@@ -689,7 +689,7 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
 // }
 
 // /// Delete category.
-// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// #[poise::command(prefix_command, , owners_only, ephemeral)]
 // pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
 //     match ctx.guild_id() {
 //         Some(guild) => {
@@ -735,7 +735,7 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
 // }
 
 // /// Delete role.
-// #[poise::command(prefix_command, slash_command, owners_only, ephemeral)]
+// #[poise::command(prefix_command, owners_only, ephemeral)]
 // pub async fn delete_role_by_id(ctx: Context<'_>, role_id: u64) -> Result<(), Error> {
 //     match ctx.guild_id() {
 //         Some(guild) => {

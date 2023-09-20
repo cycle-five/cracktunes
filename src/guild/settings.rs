@@ -1,7 +1,7 @@
 use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -29,6 +29,12 @@ lazy_static! {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LogSettings {
+    all_log_channel: Option<u64>,
+    join_leave_log_channel: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
@@ -49,6 +55,7 @@ pub struct GuildSettings {
     pub self_deafen: bool,
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
+    pub log_settings: Option<LogSettings>,
 }
 
 impl GuildSettings {
@@ -76,6 +83,7 @@ impl GuildSettings {
             self_deafen: true,
             timeout: DEFAULT_IDLE_TIMEOUT,
             welcome_settings: None,
+            log_settings: None,
         }
     }
 
@@ -176,6 +184,70 @@ impl GuildSettings {
 
     pub fn set_allow_all_domains(&mut self, allow: bool) {
         self.allow_all_domains = Some(allow);
+    }
+
+    pub fn set_timeout(&mut self, timeout: u32) {
+        self.timeout = timeout;
+    }
+
+    pub fn set_welcome_settings(&mut self, channel_id: u64, message: &str) {
+        self.welcome_settings = Some(WelcomeSettings {
+            channel_id: Some(channel_id),
+            message: Some(message.to_string()),
+            auto_role: None,
+        });
+    }
+
+    pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
+        self.log_settings = Some(LogSettings {
+            all_log_channel: Some(all_log_channel),
+            join_leave_log_channel: Some(join_leave_log_channel),
+        });
+    }
+
+    pub fn set_auto_role(&mut self, auto_role: u64) {
+        if let Some(welcome_settings) = &mut self.welcome_settings {
+            welcome_settings.auto_role = Some(auto_role);
+        }
+    }
+
+    pub fn set_prefix(&mut self, prefix: &str) {
+        self.prefix = prefix.to_string();
+        self.prefix_up = prefix.to_string().to_ascii_uppercase();
+    }
+
+    pub fn get_prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    pub fn set_all_log_channel(&mut self, channel_id: u64) {
+        if let Some(log_settings) = &mut self.log_settings {
+            log_settings.all_log_channel = Some(channel_id);
+        }
+    }
+
+    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) {
+        if let Some(log_settings) = &mut self.log_settings {
+            log_settings.join_leave_log_channel = Some(channel_id);
+        }
+    }
+
+    pub fn get_all_log_channel(&self) -> Option<ChannelId> {
+        if let Some(log_settings) = &self.log_settings {
+            if let Some(channel_id) = log_settings.all_log_channel {
+                return Some(ChannelId(channel_id));
+            }
+        }
+        None
+    }
+
+    pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
+        if let Some(log_settings) = &self.log_settings {
+            if let Some(channel_id) = log_settings.join_leave_log_channel {
+                return Some(ChannelId(channel_id));
+            }
+        }
+        None
     }
 }
 

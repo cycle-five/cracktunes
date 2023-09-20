@@ -17,7 +17,7 @@ use crate::{
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise,
-        get_human_readable_timestamp, get_interaction, summon_short,
+        get_human_readable_timestamp, get_interaction,
     },
     Context, Error,
 };
@@ -144,7 +144,8 @@ pub async fn play(
         Some(call) => call,
         None => {
             // try to join a voice channel if not in one just yet
-            match summon_short(ctx).await {
+            //match summon_short(ctx).await {
+            match manager.join(guild_id, ctx.channel_id()).await.1 {
                 Ok(_) => manager.get(guild_id).unwrap(),
                 Err(_) => {
                     let mut embed = CreateEmbed::default();

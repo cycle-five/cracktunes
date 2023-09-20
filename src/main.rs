@@ -15,7 +15,6 @@ use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
 use poise::serenity_prelude::GuildId;
 use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
-use serenity::model::id::UserId;
 use songbird::serenity::SerenityInit;
 use std::env;
 use std::{
@@ -316,19 +315,51 @@ async fn poise_framework(
         // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
-                tracing::info!("Checking command {}...", ctx.command().qualified_name);
+                let command = ctx.command().qualified_name.clone();
+                tracing::info!("Checking command {}...", command);
                 let user_id = *ctx.author().id.as_u64();
-                let asdf = vec![user_id];
-                if ctx
-                    .data()
-                    .bot_settings
-                    .authorized_users
-                    .as_ref()
-                    .unwrap_or(asdf.as_ref())
-                    .contains(&user_id)
-                {
+                // ctx.author_member().await.map_or_else(
+                //     || {
+                //         tracing::info!("Author not found in guild");
+                //         Ok(false)
+                //     },
+                //     |member| {
+                //         tracing::info!("Author found in guild");
+                //         Ok(member.permissions().contains(serenity::model::permissions::ADMINISTRATOR))
+                //     },
+                // )?;
+                //let asdf = vec![user_id];
+                let music_commands = vec![
+                    "play",
+                    "pause",
+                    "resume",
+                    "stop",
+                    "skip",
+                    "seek",
+                    "volume",
+                    "now_playing",
+                    "queue",
+                    "repeat",
+                    "shuffle",
+                    "clear",
+                    "remove",
+                    "grab",
+                    "create_playlist",
+                    "delete_playlist",
+                ];
+                if music_commands.contains(&command.as_str()) {
                     return Ok(true);
                 }
+                // if ctx
+                //     .data()
+                //     .bot_settings
+                //     .authorized_users
+                //     .as_ref()
+                //     .unwrap_or(asdf.as_ref())
+                //     .contains(&user_id)
+                // {
+                //     return Ok(true);
+                // }
 
                 //let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();

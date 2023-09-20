@@ -1,4 +1,4 @@
-use crate::{handlers::serenity::voice_state_diff_str, Data, Error};
+use crate::{handlers::serenity::voice_state_diff_str, utils::create_log_embed, Data, Error};
 use colored::Colorize;
 use poise::Event::*;
 use serde::{ser::SerializeStruct, Serialize};
@@ -34,6 +34,22 @@ pub async fn handle_event(
         }
         GuildMemberAddition { new_member } => {
             tracing::info!("Got a new member: {:?}", new_member);
+            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let channel_id = guild_settings
+                .get(&new_member.guild_id)
+                .unwrap()
+                .get_join_leave_log_channel()
+                .unwrap();
+            let title = format!("Member Joined: {}", new_member.user.name);
+            let description = format!(
+                "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                new_member.user.name,
+                new_member.user.id,
+                new_member.user.created_at(),
+                new_member.joined_at
+            );
+            let avatar_url = new_member.avatar_url().unwrap_or_default();
+            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
             event_log.write_log_obj(event.name(), new_member)
         }
         VoiceStateUpdate { old, new } => {
