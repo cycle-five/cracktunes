@@ -4,7 +4,7 @@ use crate::{
     errors::CrackedError,
     guild::settings::GuildSettingsMap,
     messaging::message::CrackedMessage,
-    utils::{check_reply, create_response_poise},
+    utils::{check_reply, create_response_poise, get_current_voice_channel_id},
     Context, Error,
 };
 // use chrono::NaiveTime;
@@ -19,6 +19,7 @@ use crate::{
         "deauthorize",
         "set_idle_timeout",
         "set_prefix",
+        "set_join_leave_log_channel",
         "kick",
         "ban",
         "unban",
@@ -125,6 +126,33 @@ pub async fn deauthorize(
     }
 }
 
+/// Broadcast a message to all guilds.
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn broadcast(
+    ctx: Context<'_>,
+    #[description = "The message to broadcast"] message: String,
+) -> Result<(), Error> {
+    let data = ctx.data();
+    let http = ctx.http().clone();
+    let serenity_ctx = ctx.serenity_context().clone();
+    let guilds = data.guild_settings_map.lock().unwrap().clone();
+
+    for (guild_id, _settings) in guilds.iter() {
+        let message = message.clone();
+
+        let channel_id = get_current_voice_channel_id(&serenity_ctx, *guild_id)
+            .await
+            .expect("Failed to get current voice channel id");
+
+        channel_id
+            .send_message(&http, |m| m.content(message.clone()))
+            .await
+            .unwrap();
+    }
+
+    Ok(())
+}
+
 /// Set the idle timeout for the bot in vc.
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_idle_timeout(
@@ -194,7 +222,7 @@ pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Res
 }
 
 /// Ban a user from the server.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn ban(
     ctx: Context<'_>,
     user: serenity::model::user::User,
@@ -235,7 +263,7 @@ pub async fn ban(
 }
 
 /// Mute a user.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -271,7 +299,7 @@ pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result
 }
 
 /// Deafen a user.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -307,7 +335,7 @@ pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
 }
 
 /// Undeafen a user.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -343,7 +371,7 @@ pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Re
 }
 
 /// Retreive audit logs.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -365,7 +393,7 @@ pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Unban a user from the server.
 /// TODO: Add a way to unban a user by their ID.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn unban(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -400,7 +428,7 @@ pub async fn unban(ctx: Context<'_>, user: serenity::model::user::User) -> Resul
 
 /// Unmute a user.]
 /// TODO: Add a way to unmute a user by their ID.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -436,7 +464,7 @@ pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
 }
 
 /// Create voice channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -475,7 +503,7 @@ pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Res
 }
 
 /// Create text channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -514,6 +542,33 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
             );
         }
     }
+    Ok(())
+}
+
+/// Set the join-leave log channel.
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn set_join_leave_log_channel(
+    ctx: Context<'_>,
+    channel_id: serenity::model::id::ChannelId,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let mut data = ctx.serenity_context().data.write().await;
+    let _entry = &data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| e.set_join_leave_log_channel(channel_id.0));
+
+    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+
+    let _res = settings.map(|s| s.save()).unwrap();
+
+    create_response_poise(
+        ctx,
+        CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -560,7 +615,7 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
 // }
 
 /// Create role.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {

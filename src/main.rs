@@ -12,7 +12,7 @@ use cracktunes::{
     BotConfig, Data,
 };
 use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
-use poise::serenity_prelude::GuildId;
+use poise::serenity_prelude::{GuildId, UserId};
 use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
@@ -221,11 +221,13 @@ async fn poise_framework(
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
-        // owners: [1124878856491389012, 285219649921220608]
-        //     .iter()
-        //     .clone()
-        //     .map(|id| UserId(*id))
-        //     .collect(),
+        owners: config
+            .owners
+            .as_ref()
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|id| UserId(*id))
+            .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
