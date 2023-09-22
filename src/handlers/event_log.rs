@@ -52,6 +52,44 @@ pub async fn handle_event(
             create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
             event_log.write_log_obj(event.name(), new_member)
         }
+        // #[cfg(not(feature = "cache"))]
+        // poise::Event::GuildMemberRemoval {
+        //     guild_id,
+        //     user,
+        //     member_data_global_if_available,
+        // } => event_log.write_obj(&(guild_id, user, member_data_global_if_available)),
+        // #[cfg(feature = "cache")]
+        poise::Event::GuildMemberRemoval {
+            guild_id,
+            user,
+            member_data_if_available,
+        } => {
+            tracing::info!("Member left: {:?}", member_data_if_available);
+            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let channel_id = guild_settings
+                .get(guild_id)
+                .unwrap()
+                .get_join_leave_log_channel()
+                .unwrap();
+            let title = format!("Member Left: {}", user.name);
+            let description = format!(
+                "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                user.name,
+                user.id,
+                user.created_at(),
+                member_data_if_available
+                    .clone()
+                    .map(|m| m.joined_at)
+                    .flatten()
+            );
+            let avatar_url = member_data_if_available
+                .clone()
+                .map(|m| m.avatar_url())
+                .unwrap_or_default()
+                .unwrap_or_default();
+            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
+            event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available))
+        }
         VoiceStateUpdate { old, new } => {
             tracing::debug!(
                 "VoiceStateUpdate: {}",
@@ -134,24 +172,6 @@ pub async fn handle_event(
             current_state,
         } => event_log.write_obj(&(guild_id, current_state)),
         GuildIntegrationsUpdate { guild_id } => event_log.write_obj(&guild_id),
-        // // poise::Event::GuildMemberAddition { new_member } => data_global.event_log
-        // //     .lock()
-        // //     .await
-        // //     .write_obj(&new_member)
-        // //     .await
-        // //     .map_err(|e| CrackedError::SerdeStream(e).into()),
-        #[cfg(feature = "cache")]
-        poise::Event::GuildMemberRemoval {
-            guild_id,
-            user,
-            member_data_global_if_available,
-        } => event_log.write_obj(&(guild_id, user, member_data_global_if_available)),
-        #[cfg(not(feature = "cache"))]
-        poise::Event::GuildMemberRemoval {
-            guild_id,
-            user,
-            member_data_if_available,
-        } => event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available)),
         #[cfg(feature = "cache")]
         poise::Event::GuildMemberUpdate {
             old_if_available,
@@ -161,7 +181,49 @@ pub async fn handle_event(
         poise::Event::GuildMemberUpdate {
             old_if_available,
             new,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new)),
+        } => {
+            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let channel_id = guild_settings
+                .get(&new.guild_id)
+                .unwrap()
+                .get_join_leave_log_channel()
+                .unwrap();
+            if let Some(old) = old_if_available {
+                if old.pending && !new.pending {
+                    let title = format!("Member Approved: {}", new.user.name);
+                    let description = format!(
+                        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                        new.user.name,
+                        new.user.id,
+                        new.user.created_at(),
+                        new.joined_at
+                    );
+                    let avatar_url = new.avatar_url().unwrap_or_default();
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                //let old = old.clone();
+                // let title = format!("Member Updated: {}", old.user.name);
+                // let description = format!(
+                //     "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                //     old.user.name,
+                //     old.user.id,
+                //     old.user.created_at(),
+                //     old.joined_at
+                // );
+            }
+            let title = format!("Member Updated: {}", new.user.name);
+            let description = format!(
+                "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                new.user.name,
+                new.user.id,
+                new.user.created_at(),
+                new.joined_at
+            );
+            let avatar_url = new.avatar_url().unwrap_or_default();
+            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
+            event_log.write_log_obj(event_name, &(old_if_available, new))
+        }
         GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
         poise::Event::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
         #[cfg(feature = "cache")]
