@@ -28,6 +28,26 @@ use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use url::Url;
 
+pub async fn create_log_embed(
+    channel: &serenity::ChannelId,
+    http: &Arc<Http>,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, Error> {
+    let mut embed = CreateEmbed::default();
+    embed.title(title);
+    embed.description(description);
+    embed.thumbnail(avatar_url);
+    tracing::warn!("sending log embed: {:?}", embed);
+    tracing::warn!("thumbnail url: {:?}", avatar_url);
+
+    channel
+        .send_message(http, |m| m.set_embed(embed))
+        .await
+        .map_err(Into::into)
+}
+
 pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
     embed.description(format!("{message}"));
@@ -548,4 +568,23 @@ pub fn count_command(command: &str, is_prefix: bool) {
             tracing::error!("Failed to get metric: {}", e);
         }
     };
+}
+
+/// Gets the channel id that the bot is currently playing in for a given guild.
+pub async fn get_current_voice_channel_id(
+    ctx: &SerenityContext,
+    guild_id: serenity::GuildId,
+) -> Option<serenity::ChannelId> {
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Failed to get songbird manager")
+        .clone();
+
+    let call_lock = manager.get(guild_id)?;
+    let call = call_lock.lock().await;
+
+    let channel_id = call.current_channel()?;
+    let serenity_channel_id = serenity::ChannelId(channel_id.0);
+
+    Some(serenity_channel_id)
 }

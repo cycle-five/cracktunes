@@ -12,7 +12,7 @@ use cracktunes::{
     BotConfig, Data,
 };
 use cracktunes::{is_prefix, BotCredentials, DataInner, EventLog};
-use poise::serenity_prelude::GuildId;
+use poise::serenity_prelude::{GuildId, UserId};
 use poise::{serenity_prelude as serenity, Framework};
 use prometheus::{Encoder, TextEncoder};
 use songbird::serenity::SerenityInit;
@@ -221,7 +221,13 @@ async fn poise_framework(
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
     let options = poise::FrameworkOptions::<_, Error> {
-        //owners: vec![].into_iter().collect(),
+        owners: config
+            .owners
+            .as_ref()
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|id| UserId(*id))
+            .collect(),
         commands: vec![
             commands::admin(),
             commands::autopause(),
@@ -268,10 +274,10 @@ async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
-                    tracing::warn!("guild_id: {}", guild_id);
-                    for (k, v) in guild_settings_map.iter() {
-                        tracing::warn!("Guild: {} - {:?}", k, v);
-                    }
+                    // tracing::warn!("guild_id: {}", guild_id);
+                    // for (k, v) in guild_settings_map.iter() {
+                    //     tracing::warn!("Guild: {} - {:?}", k, v);
+                    // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefix = &guild_settings.prefix;
@@ -311,19 +317,51 @@ async fn poise_framework(
         // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
-                tracing::info!("Checking command {}...", ctx.command().qualified_name);
+                let command = ctx.command().qualified_name.clone();
+                tracing::info!("Checking command {}...", command);
                 let user_id = *ctx.author().id.as_u64();
-                let asdf = vec![user_id];
-                if ctx
-                    .data()
-                    .bot_settings
-                    .authorized_users
-                    .as_ref()
-                    .unwrap_or(asdf.as_ref())
-                    .contains(&user_id)
-                {
+                // ctx.author_member().await.map_or_else(
+                //     || {
+                //         tracing::info!("Author not found in guild");
+                //         Ok(false)
+                //     },
+                //     |member| {
+                //         tracing::info!("Author found in guild");
+                //         Ok(member.permissions().contains(serenity::model::permissions::ADMINISTRATOR))
+                //     },
+                // )?;
+                //let asdf = vec![user_id];
+                let music_commands = vec![
+                    "play",
+                    "pause",
+                    "resume",
+                    "stop",
+                    "skip",
+                    "seek",
+                    "volume",
+                    "now_playing",
+                    "queue",
+                    "repeat",
+                    "shuffle",
+                    "clear",
+                    "remove",
+                    "grab",
+                    "create_playlist",
+                    "delete_playlist",
+                ];
+                if music_commands.contains(&command.as_str()) {
                     return Ok(true);
                 }
+                // if ctx
+                //     .data()
+                //     .bot_settings
+                //     .authorized_users
+                //     .as_ref()
+                //     .unwrap_or(asdf.as_ref())
+                //     .contains(&user_id)
+                // {
+                //     return Ok(true);
+                // }
 
                 //let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();

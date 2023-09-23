@@ -2,7 +2,8 @@ use self::serenity::{model::mention::Mention, SerenityError};
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
     FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_WRONG_CHANNEL, NOTHING_IS_PLAYING, NO_GUILD_ID,
-    PLAYLIST_FAILED, QUEUE_IS_EMPTY, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
+    NO_GUILD_SETTINGS, PLAYLIST_FAILED, QUEUE_IS_EMPTY, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
+    UNAUTHORIZED_USER,
 };
 use crate::Error;
 use poise::serenity_prelude as serenity;
@@ -19,6 +20,7 @@ pub enum CrackedError {
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NoGuildId,
+    NoGuildSettings,
     AuthorDisconnected(Mention),
     WrongVoiceChannel,
     InvalidIP(String),
@@ -36,6 +38,7 @@ pub enum CrackedError {
     SQLX(sqlx::Error),
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
+    UnauthorizedUser,
     IO(std::io::Error),
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
@@ -65,6 +68,7 @@ impl Display for CrackedError {
             )),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
+            Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }
@@ -97,6 +101,7 @@ impl Display for CrackedError {
             Self::SQLX(err) => f.write_str(&format!("{err}")),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
+            Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
             Self::Serde(err) => f.write_str(&format!("{err}")),

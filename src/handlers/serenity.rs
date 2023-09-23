@@ -214,12 +214,41 @@ impl EventHandler for SerenityHandler {
         }
 
         if new.channel_id.is_some() {
-            return self.self_deafen(&ctx, new.guild_id, new).await;
+            // check the data struct with this guild to see self deafen settings
+            // if self deafen is false, deafen the bot
+            // if self deafen is true, do nothing
+            // if self deafen is None, do nothing
+            let do_i_deafen = self
+                .data
+                .guild_settings_map
+                .lock()
+                .unwrap()
+                .get(&new.guild_id.unwrap())
+                .map(|x| x.self_deafen)
+                .unwrap_or_else(|| true);
+            if !do_i_deafen {
+                return self.self_deafen(&ctx, new.guild_id, new).await;
+            }
+            return;
         }
 
         let manager = songbird::get(&ctx).await.unwrap();
         let guild_id = new.guild_id.unwrap();
 
+        // This is a voice state update event for the bot
+        // However there is no channel_id, so the bot has been disconnected
+        // from the voice channel
+        // This somehow clears the queue?
+        // TODO: Figure out why this clears the queue
+        // TODO: Figure out why there is a voice state update event when the bot is disconnected
+        // from the voice channel
+        // ANSWER: This is because the bot is deafened, so it's a voice state update event
+        // Q: What if the bot is not deafened?
+        // A: Then there is no voice state update event
+        // Q: Then how do we know when the bot is disconnected from the voice channel?
+        // A: We don't
+        // Q: Fuck you :(
+        // A:
         if manager.get(guild_id).is_some() {
             manager.remove(guild_id).await.ok();
         }

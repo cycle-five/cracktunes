@@ -17,7 +17,7 @@ use crate::{
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise,
-        get_human_readable_timestamp, get_interaction, summon_short,
+        get_human_readable_timestamp, get_interaction,
     },
     Context, Error,
 };
@@ -77,6 +77,7 @@ pub async fn play(
             mode.clone()
                 .map(|s| s.replace("query_or_url:", ""))
                 .unwrap_or("".to_string())
+                + " "
                 + &msg.unwrap_or("".to_string()),
         );
     }
@@ -97,11 +98,11 @@ pub async fn play(
             .next()
             .unwrap_or_default()
         {
-            "next" => Mode::Next,
-            "all" => Mode::All,
-            "reverse" => Mode::Reverse,
-            "shuffle" => Mode::Shuffle,
-            "jump" => Mode::Jump,
+            "next:" => Mode::Next,
+            "all:" => Mode::All,
+            "reverse:" => Mode::Reverse,
+            "shuffle:" => Mode::Shuffle,
+            "jump:" => Mode::Jump,
             _ => Mode::End,
         }
     } else {
@@ -132,7 +133,7 @@ pub async fn play(
         Some(id) => id,
         None => {
             let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
+            embed.description(format!("{}", CrackedError::NoGuildId));
             create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
@@ -143,7 +144,8 @@ pub async fn play(
         Some(call) => call,
         None => {
             // try to join a voice channel if not in one just yet
-            match summon_short(ctx).await {
+            //match summon_short(ctx).await {
+            match manager.join(guild_id, ctx.channel_id()).await.1 {
                 Ok(_) => manager.get(guild_id).unwrap(),
                 Err(_) => {
                     let mut embed = CreateEmbed::default();
@@ -451,13 +453,16 @@ async fn match_mode(
 }
 
 use colored::Colorize;
+/// Matches a url (or query string) to a QueryType
 async fn match_url(
     ctx: &Context<'_>,
     url: &str,
     file: Option<Attachment>,
 ) -> Result<Option<QueryType>, Error> {
     // determine whether this is a link or a query string
+    tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") => {
@@ -475,23 +480,24 @@ async fn match_url(
                 let guild_settings = settings
                     .entry(guild_id)
                     .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
+                if !guild_settings.allow_all_domains.unwrap_or(true) {
+                    let is_allowed = guild_settings
+                        .allowed_domains
+                        .iter()
+                        .any(|d| compare_domains(d, other));
 
-                let is_allowed = guild_settings
-                    .allowed_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
+                    let is_banned = guild_settings
+                        .banned_domains
+                        .iter()
+                        .any(|d| compare_domains(d, other));
 
-                let is_banned = guild_settings
-                    .banned_domains
-                    .iter()
-                    .any(|d| compare_domains(d, other));
+                    if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
+                        let message = CrackedMessage::PlayDomainBanned {
+                            domain: other.to_string(),
+                        };
 
-                if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                    let message = CrackedMessage::PlayDomainBanned {
-                        domain: other.to_string(),
-                    };
-
-                    create_response_poise_text(ctx, message).await?;
+                        create_response_poise_text(ctx, message).await?;
+                    }
                 }
 
                 YouTube::extract(url)
@@ -503,10 +509,10 @@ async fn match_url(
             let guild_settings = settings
                 .entry(guild_id)
                 .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
-
-            if guild_settings.banned_domains.contains("youtube.com")
-                || (guild_settings.banned_domains.is_empty()
-                    && !guild_settings.allowed_domains.contains("youtube.com"))
+            if !guild_settings.allow_all_domains.unwrap_or(true)
+                && (guild_settings.banned_domains.contains("youtube.com")
+                    || (guild_settings.banned_domains.is_empty()
+                        && !guild_settings.allowed_domains.contains("youtube.com")))
             {
                 let message = CrackedMessage::PlayDomainBanned {
                     domain: "youtube.com".to_string(),

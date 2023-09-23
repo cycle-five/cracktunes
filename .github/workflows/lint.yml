@@ -4,29 +4,32 @@ on:
   workflow_call:
 
 jobs:
-  clippy:
-    name: Clippy
+  lint:
+    name: Fmt and clippy
+    strategy:
+      matrix:
+        rust-version: ['nightly', 'stable']
+        cache-key: ['']
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Install stable toolchain
-        id: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: clippy
-          profile: minimal
-          override: true
+        uses: actions/checkout@v4
+      
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+          rustup default ${{ matrix.rust-version }}
+          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
+        shell: bash
 
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
       
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.cache-key }}
+
       - name: Migrate database
         env:
           DATABASE_URL: sqlite://./data/crackedmusic.db
@@ -34,25 +37,11 @@ jobs:
           sqlx database create
           sqlx migrate run --source migrations/
           cargo sqlx prepare -- --tests
-
-      - name: Run clippy
-        run: cargo clippy --all -- -D clippy::all -D warnings
-
-  rustfmt:
-    name: Format
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: rustfmt
-          profile: minimal
-          override: true
-
+        
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        if: success() || failure()
+        run: cargo clippy --all -- -D clippy::all -D warnings
+        

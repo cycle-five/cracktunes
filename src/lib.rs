@@ -101,7 +101,7 @@ pub struct BotCredentials {
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: Option<u64>,
-    pub authorized_users: Option<Vec<u64>>,
+    pub owners: Option<Vec<u64>>,
     // Cammed down kicking config
     pub cam_kick: Option<Vec<CamKickConfig>>,
     pub sys_log_channel_id: Option<u64>,
@@ -120,7 +120,7 @@ impl Display for BotConfig {
             "video_status_poll_interval: {:?}\n",
             self.video_status_poll_interval
         ));
-        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
+        result.push_str(&format!("authorized_users: {:?}\n", self.owners));
         result.push_str(&format!("cam_kick: {:?}\n", self.cam_kick));
         result.push_str(&format!(
             "sys_log_channel_id: {:?}\n",
