@@ -1,6 +1,6 @@
 [package]
 name = "cracktunes"
-version = "0.2.8"
+version = "0.2.9"
 authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
 edition = "2018"
 description = "A Discord music bot built on Rust and Crack."
