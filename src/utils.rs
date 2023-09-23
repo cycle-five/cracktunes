@@ -39,6 +39,8 @@ pub async fn create_log_embed(
     embed.title(title);
     embed.description(description);
     embed.thumbnail(avatar_url);
+    tracing::warn!("sending log embed: {:?}", embed);
+    tracing::warn!("thumbnail url: {:?}", avatar_url);
 
     channel
         .send_message(http, |m| m.set_embed(embed))

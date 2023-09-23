@@ -48,7 +48,8 @@ pub async fn handle_event(
                 new_member.user.created_at(),
                 new_member.joined_at
             );
-            let avatar_url = new_member.avatar_url().unwrap_or_default();
+            let avatar_url = new_member.user.avatar_url().unwrap_or_default();
+            tracing::warn!("Avatar URL: {}", avatar_url);
             create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
             event_log.write_log_obj(event.name(), new_member)
         }
@@ -77,16 +78,9 @@ pub async fn handle_event(
                 user.name,
                 user.id,
                 user.created_at(),
-                member_data_if_available
-                    .clone()
-                    .map(|m| m.joined_at)
-                    .flatten()
+                member_data_if_available.clone().and_then(|m| m.joined_at)
             );
-            let avatar_url = member_data_if_available
-                .clone()
-                .map(|m| m.avatar_url())
-                .unwrap_or_default()
-                .unwrap_or_default();
+            let avatar_url = user.avatar_url().unwrap_or_default();
             create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
             event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available))
         }
