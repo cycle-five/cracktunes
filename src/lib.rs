@@ -111,6 +111,7 @@ pub struct BotConfig {
     pub prefix: Option<String>,
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
+    pub users_to_log: Option<Vec<u64>>,
 }
 
 impl Display for BotConfig {

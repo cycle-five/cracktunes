@@ -26,6 +26,9 @@ pub async fn handle_event(
 ) -> Result<(), Error> {
     let event_log = data_global.event_log.clone();
     let event_name = event.name();
+    if let Err(e) = log_user(ctx, data_global.bot_settings.users_to_log.clone()).await {
+        tracing::error!("Error logging user: {}", e);
+    }
     match event {
         PresenceUpdate { new_data } => {
             let _ = new_data;
@@ -35,31 +38,34 @@ pub async fn handle_event(
         GuildMemberAddition { new_member } => {
             tracing::info!("Got a new member: {:?}", new_member);
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            let channel_id = guild_settings
+            match guild_settings
                 .get(&new_member.guild_id)
                 .unwrap()
                 .get_join_leave_log_channel()
-                .unwrap();
-            let title = format!("Member Joined: {}", new_member.user.name);
-            let description = format!(
-                "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-                new_member.user.name,
-                new_member.user.id,
-                new_member.user.created_at(),
-                new_member.joined_at
-            );
-            let avatar_url = new_member.user.avatar_url().unwrap_or_default();
-            tracing::warn!("Avatar URL: {}", avatar_url);
-            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
+            {
+                Some(channel_id) => {
+                    let title = format!("Member Joined: {}", new_member.user.name);
+                    let description = format!(
+                        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                        new_member.user.name,
+                        new_member.user.id,
+                        new_member.user.created_at(),
+                        new_member.joined_at
+                    );
+                    let avatar_url = new_member.user.avatar_url().unwrap_or_default();
+                    tracing::warn!("Avatar URL: {}", avatar_url);
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                None => {
+                    tracing::warn!(
+                        "No join/leave log channel set for guild {}",
+                        new_member.guild_id
+                    );
+                }
+            }
             event_log.write_log_obj(event.name(), new_member)
         }
-        // #[cfg(not(feature = "cache"))]
-        // poise::Event::GuildMemberRemoval {
-        //     guild_id,
-        //     user,
-        //     member_data_global_if_available,
-        // } => event_log.write_obj(&(guild_id, user, member_data_global_if_available)),
-        // #[cfg(feature = "cache")]
         poise::Event::GuildMemberRemoval {
             guild_id,
             user,
@@ -67,21 +73,28 @@ pub async fn handle_event(
         } => {
             tracing::info!("Member left: {:?}", member_data_if_available);
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            let channel_id = guild_settings
+            match guild_settings
                 .get(guild_id)
                 .unwrap()
                 .get_join_leave_log_channel()
-                .unwrap();
-            let title = format!("Member Left: {}", user.name);
-            let description = format!(
-                "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-                user.name,
-                user.id,
-                user.created_at(),
-                member_data_if_available.clone().and_then(|m| m.joined_at)
-            );
-            let avatar_url = user.avatar_url().unwrap_or_default();
-            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
+            {
+                Some(channel_id) => {
+                    let title = format!("Member Left: {}", user.name);
+                    let description = format!(
+                        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+                        user.name,
+                        user.id,
+                        user.created_at(),
+                        member_data_if_available.clone().and_then(|m| m.joined_at)
+                    );
+                    let avatar_url = user.avatar_url().unwrap_or_default();
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                None => {
+                    tracing::warn!("No join/leave log channel set for guild {}", guild_id);
+                }
+            }
             event_log.write_log_obj(event_name, &(guild_id, user, member_data_if_available))
         }
         VoiceStateUpdate { old, new } => {
@@ -177,36 +190,11 @@ pub async fn handle_event(
             new,
         } => {
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            let channel_id = guild_settings
+            let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .unwrap()
-                .get_join_leave_log_channel()
-                .unwrap();
-            if let Some(old) = old_if_available {
-                if old.pending && !new.pending {
-                    let title = format!("Member Approved: {}", new.user.name);
-                    let description = format!(
-                        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-                        new.user.name,
-                        new.user.id,
-                        new.user.created_at(),
-                        new.joined_at
-                    );
-                    let avatar_url = new.avatar_url().unwrap_or_default();
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
-                }
-                //let old = old.clone();
-                // let title = format!("Member Updated: {}", old.user.name);
-                // let description = format!(
-                //     "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-                //     old.user.name,
-                //     old.user.id,
-                //     old.user.created_at(),
-                //     old.joined_at
-                // );
-            }
-            let title = format!("Member Updated: {}", new.user.name);
+                .get_join_leave_log_channel();
+
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
                 new.user.name,
@@ -215,7 +203,51 @@ pub async fn handle_event(
                 new.joined_at
             );
             let avatar_url = new.avatar_url().unwrap_or_default();
-            create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await?;
+
+            // if let Some(old) = old_if_available {
+            //         create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+            //             .await?;
+            //     }
+            //let old = old.clone();
+            // let title = format!("Member Updated: {}", old.user.name);
+            // let description = format!(
+            //     "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+            //     old.user.name,
+            //     old.user.id,
+            //     old.user.created_at(),
+            //     old.joined_at
+            // );
+            //}
+            //let title = format!("Member Approved: {}", new.user.name);
+            //let title = format!("Member Updated: {}", new.user.name);
+            match (maybe_log_channel, old_if_available) {
+                (Some(channel_id), Some(old)) => {
+                    let title = if old.pending && !new.pending {
+                        format!("Member Approved: {}", new.user.name)
+                    } else {
+                        format!("Member Updated: {}", new.user.name)
+                    };
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                (None, Some(old)) => {
+                    let title = if old.pending && !new.pending {
+                        format!("Member Approved: {}", new.user.name)
+                    } else {
+                        format!("Member Updated: {}", new.user.name)
+                    };
+                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
+                    tracing::warn!(title);
+                }
+                (Some(channel_id), None) => {
+                    let title = format!("Member Updated: {}", new.user.name);
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                (None, None) => {
+                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
+                }
+            }
             event_log.write_log_obj(event_name, &(old_if_available, new))
         }
         GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
@@ -452,3 +484,21 @@ pub async fn handle_event(
 //     VoiceServerUpdate,
 //     WebhooksUpdate,
 // }
+
+async fn log_user(ctx: &SerenityContext, users_to_log: Option<Vec<u64>>) -> Result<(), Error> {
+    let current_user = ctx.http.get_current_user().await.unwrap();
+    if users_to_log
+        .unwrap_or_default()
+        .contains(&current_user.id.0)
+    {
+        let user_str = format!("User: {:?}", current_user).purple();
+        tracing::info!("{}", user_str);
+        let guilds = current_user.guilds(&ctx.http).await.unwrap();
+        for guild in guilds {
+            let guild_str =
+                format!("Guild: {} / {} / {:?}", guild.name, guild.id, guild).bright_green();
+            tracing::info!("{}", guild_str);
+        }
+    }
+    Ok(())
+}
