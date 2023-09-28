@@ -17,6 +17,7 @@ use crate::{
     subcommands(
         "authorize",
         "deauthorize",
+        "broadcast_voice",
         "set_idle_timeout",
         "set_prefix",
         "set_join_leave_log_channel",
@@ -126,11 +127,13 @@ pub async fn deauthorize(
     }
 }
 
-/// Broadcast a message to all guilds.
+/// Broadcast a message to all guilds where the bot is currently in a voice channel.
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
-pub async fn broadcast(
+pub async fn broadcast_voice(
     ctx: Context<'_>,
-    #[description = "The message to broadcast"] message: String,
+    #[rest]
+    #[description = "The message to broadcast"]
+    message: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
     let http = ctx.http();
@@ -140,14 +143,17 @@ pub async fn broadcast(
     for (guild_id, _settings) in guilds.iter() {
         let message = message.clone();
 
-        let channel_id = get_current_voice_channel_id(&serenity_ctx, *guild_id)
-            .await
-            .expect("Failed to get current voice channel id");
+        let channel_id_opt = get_current_voice_channel_id(&serenity_ctx, *guild_id).await;
 
-        channel_id
-            .send_message(&http, |m| m.content(message.clone()))
-            .await
-            .unwrap();
+        match channel_id_opt {
+            Some(channel_id) => {
+                channel_id
+                    .send_message(&http, |m| m.content(message.clone()))
+                    .await
+                    .unwrap();
+            }
+            None => {}
+        }
     }
 
     Ok(())

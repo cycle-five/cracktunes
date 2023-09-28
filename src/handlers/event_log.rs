@@ -7,13 +7,18 @@ use serenity::client::Context as SerenityContext;
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
     pub name: String,
+    pub notes: String,
     pub event: T,
 }
 
 impl<T: Serialize> Serialize for LogEntry<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("LogEntry", 2)?;
+        let n = if self.notes.is_empty() { 2 } else { 3 };
+        let mut state = serializer.serialize_struct("LogEntry", n)?;
         state.serialize_field("name", &self.name)?;
+        if !self.notes.is_empty() {
+            state.serialize_field("notes", &self.notes)?;
+        }
         state.serialize_field("event", &self.event)?;
         state.end()
     }
@@ -26,7 +31,7 @@ pub async fn handle_event(
 ) -> Result<(), Error> {
     let event_log = data_global.event_log.clone();
     let event_name = event.name();
-    if let Err(e) = log_user(ctx, data_global.bot_settings.users_to_log.clone()).await {
+    if let Err(e) = log_current_user(ctx, data_global.bot_settings.users_to_log.clone()).await {
         tracing::error!("Error logging user: {}", e);
     }
     match event {
@@ -147,9 +152,6 @@ pub async fn handle_event(
         CategoryDelete { category } => event_log.write_log_obj(event.name(), category),
         ChannelDelete { channel } => event_log.write_log_obj(event.name(), channel),
         ChannelPinsUpdate { pin } => event_log.write_log_obj(event.name(), pin),
-        #[cfg(feature = "cache")]
-        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
-        #[cfg(not(feature = "cache"))]
         ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
         poise::Event::GuildBanAddition {
             guild_id,
@@ -203,52 +205,45 @@ pub async fn handle_event(
                 new.joined_at
             );
             let avatar_url = new.avatar_url().unwrap_or_default();
+            let mut notes = "";
+            let mut title: String = String::from("");
 
-            // if let Some(old) = old_if_available {
-            //         create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-            //             .await?;
-            //     }
-            //let old = old.clone();
-            // let title = format!("Member Updated: {}", old.user.name);
-            // let description = format!(
-            //     "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-            //     old.user.name,
-            //     old.user.id,
-            //     old.user.created_at(),
-            //     old.joined_at
-            // );
-            //}
-            //let title = format!("Member Approved: {}", new.user.name);
-            //let title = format!("Member Updated: {}", new.user.name);
             match (maybe_log_channel, old_if_available) {
-                (Some(channel_id), Some(old)) => {
-                    let title = if old.pending && !new.pending {
-                        format!("Member Approved: {}", new.user.name)
+                (Some(_), Some(old)) => {
+                    if old.pending && !new.pending {
+                        notes = "Click Verify";
+                        title = format!("Member Approved: {}", new.user.name);
                     } else {
-                        format!("Member Updated: {}", new.user.name)
+                        title = format!("Member Updated: {}", new.user.name);
                     };
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
                 }
                 (None, Some(old)) => {
-                    let title = if old.pending && !new.pending {
-                        format!("Member Approved: {}", new.user.name)
+                    if old.pending && !new.pending {
+                        notes = "Click Verify";
+                        title = format!("Member Approved: {}", new.user.name);
                     } else {
-                        format!("Member Updated: {}", new.user.name)
+                        title = format!("Member Updated: {}", new.user.name);
                     };
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
                     tracing::warn!(title);
                 }
-                (Some(channel_id), None) => {
-                    let title = format!("Member Updated: {}", new.user.name);
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
+                (Some(_), None) => {
+                    title = format!("Member Updated: {}", new.user.name);
                 }
                 (None, None) => {
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
                 }
             }
-            event_log.write_log_obj(event_name, &(old_if_available, new))
+            match maybe_log_channel {
+                Some(channel_id) => {
+                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                        .await?;
+                }
+                None => {
+                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
+                }
+            }
+            event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
         GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
         poise::Event::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
@@ -484,8 +479,10 @@ pub async fn handle_event(
 //     VoiceServerUpdate,
 //     WebhooksUpdate,
 // }
-
-async fn log_user(ctx: &SerenityContext, users_to_log: Option<Vec<u64>>) -> Result<(), Error> {
+async fn log_current_user(
+    ctx: &SerenityContext,
+    users_to_log: Option<Vec<u64>>,
+) -> Result<(), Error> {
     let current_user = ctx.http.get_current_user().await.unwrap();
     if users_to_log
         .unwrap_or_default()

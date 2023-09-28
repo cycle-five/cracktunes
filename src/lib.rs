@@ -220,8 +220,18 @@ impl EventLog {
     }
 
     pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
+        self.write_log_obj_note(name, None, obj)
+    }
+
+    pub fn write_log_obj_note<T: serde::Serialize>(
+        &self,
+        name: &str,
+        notes: Option<&str>,
+        obj: &T,
+    ) -> Result<(), Error> {
         let entry = LogEntry {
             name: name.to_string(),
+            notes: notes.unwrap_or("").to_string(),
             event: obj,
         };
         let mut buf = serde_json::to_vec(&entry).unwrap();
@@ -293,39 +303,3 @@ impl std::ops::Deref for Data {
 //         &mut self.0
 //     }
 // }
-
-// shuttle library code for poise
-#[cfg(feature = "shuttle")]
-use std::net::SocketAddr;
-
-/// A wrapper type for [poise::Framework] so we can implement [shuttle_runtime::Service] for it.
-#[cfg(feature = "shuttle")]
-pub struct PoiseService<T, E>(pub Arc<poise::Framework<T, E>>);
-
-#[cfg(feature = "shuttle")]
-#[shuttle_runtime::async_trait]
-impl<T, E> shuttle_runtime::Service for PoiseService<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-{
-    async fn bind(mut self, _addr: SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        self.0
-            .start()
-            .await
-            .map_err(shuttle_runtime::CustomError::new)?;
-
-        Ok(())
-    }
-}
-
-#[cfg(feature = "shuttle")]
-impl<T, E> From<Arc<poise::Framework<T, E>>> for PoiseService<T, E> {
-    fn from(framework: Arc<poise::Framework<T, E>>) -> Self {
-        Self(framework)
-    }
-}
-
-#[cfg(feature = "shuttle")]
-/// The return type that should be returned from the [shuttle_runtime::main] function.
-pub type ShuttlePoise<T, E> = Result<PoiseService<T, E>, shuttle_runtime::Error>;
