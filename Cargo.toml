@@ -42,10 +42,10 @@ reqwest = {version = "0.11.20", features = ["blocking", "json"]}
 anyhow = "1.0.72"
 warp = "0.3.5"
 whois-rust = "1.5.1"
-webpki = "0.22.1"
+webpki = "0.22.2"
 
 [dependencies.sqlx]
-version = "0.7.1"
+version = "0.7.2"
 default-features = false
 optional = true
 features = [
@@ -111,4 +111,4 @@ features = ["macros", "rt-multi-thread", "signal"]
 git = "https://github.com/cycle-five/ffprobe-rs"
 
 [dev-dependencies]
-webpki = "0.22.1"
+webpki = "0.22.2"
