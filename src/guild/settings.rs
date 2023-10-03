@@ -28,10 +28,59 @@ lazy_static! {
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct LogSettings {
     all_log_channel: Option<u64>,
+    member_log_channel: Option<u64>,
     join_leave_log_channel: Option<u64>,
+    voice_log_channel: Option<u64>,
+}
+
+impl LogSettings {
+    pub fn get_all_log_channel(&self) -> Option<ChannelId> {
+        if let Some(channel_id) = self.all_log_channel {
+            return Some(ChannelId(channel_id));
+        }
+        None
+    }
+
+    pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
+        if let Some(channel_id) = self.join_leave_log_channel {
+            return Some(ChannelId(channel_id));
+        }
+        None
+    }
+
+    pub fn get_member_log_channel(&self) -> Option<ChannelId> {
+        if let Some(channel_id) = self.member_log_channel {
+            return Some(ChannelId(channel_id));
+        }
+        None
+    }
+
+    pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
+        if let Some(channel_id) = self.voice_log_channel {
+            return Some(ChannelId(channel_id));
+        }
+        None
+    }
+
+    pub fn set_all_log_channel(&mut self, channel_id: u64) {
+        self.all_log_channel = Some(channel_id);
+    }
+
+    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
+        self.join_leave_log_channel = Some(channel_id);
+        self
+    }
+
+    pub fn set_member_log_channel(&mut self, channel_id: u64) {
+        self.member_log_channel = Some(channel_id);
+    }
+
+    pub fn set_voice_log_channel(&mut self, channel_id: u64) {
+        self.voice_log_channel = Some(channel_id);
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -201,7 +250,9 @@ impl GuildSettings {
     pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
+            member_log_channel: None,
             join_leave_log_channel: Some(join_leave_log_channel),
+            voice_log_channel: None,
         });
     }
 
@@ -229,14 +280,20 @@ impl GuildSettings {
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
+        } else {
+            let mut log_settings = LogSettings::default();
+            log_settings.set_join_leave_log_channel(channel_id);
+            self.log_settings = Some(log_settings);
         }
+    }
+
+    pub fn get_log_channel(&self, _name: &str) -> Option<ChannelId> {
+        self.get_all_log_channel()
     }
 
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         if let Some(log_settings) = &self.log_settings {
-            if let Some(channel_id) = log_settings.all_log_channel {
-                return Some(ChannelId(channel_id));
-            }
+            return log_settings.get_all_log_channel();
         }
         None
     }

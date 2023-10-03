@@ -1,6 +1,6 @@
 use crate::{handlers::serenity::voice_state_diff_str, utils::create_log_embed, Data, Error};
 use colored::Colorize;
-use poise::Event::*;
+use poise::{serenity_prelude::GuildId, Event::*};
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::client::Context as SerenityContext;
 
@@ -77,12 +77,21 @@ pub async fn handle_event(
             member_data_if_available,
         } => {
             tracing::info!("Member left: {:?}", member_data_if_available);
-            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            match guild_settings
-                .get(guild_id)
-                .unwrap()
-                .get_join_leave_log_channel()
-            {
+            pub fn get_log_channel(
+                channel_name: &str,
+                guild_id: &GuildId,
+                data: &Data,
+                //guild_settings_map: HashMap<GuildId, GuildSettings>,
+            ) -> Option<serenity::model::id::ChannelId> {
+                let guild_settings_map = data.guild_settings_map.lock().unwrap().clone();
+                guild_settings_map
+                    .get(&guild_id.into())
+                    .map(|x| x.get_log_channel(channel_name))
+                    .unwrap()
+                //.map(|channel_id| serenity::model::id::ChannelId(channel_id))
+            }
+
+            match get_log_channel("join_leave", guild_id, data_global) {
                 Some(channel_id) => {
                     let title = format!("Member Left: {}", user.name);
                     let description = format!(
@@ -194,8 +203,8 @@ pub async fn handle_event(
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
-                .unwrap()
-                .get_join_leave_log_channel();
+                .map(|x| x.get_join_leave_log_channel())
+                .unwrap();
 
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
@@ -204,7 +213,19 @@ pub async fn handle_event(
                 new.user.created_at(),
                 new.joined_at
             );
-            let avatar_url = new.avatar_url().unwrap_or_default();
+            let mut avatar_url = new.avatar_url().unwrap_or(
+                old_if_available
+                    .clone()
+                    .map(|x| x.avatar_url().unwrap_or_default())
+                    .unwrap_or_default(),
+            );
+            if avatar_url.is_empty() {
+                avatar_url = new.user.avatar_url().unwrap_or_default().clone();
+            }
+            if avatar_url.is_empty() {
+                avatar_url = new.user.default_avatar_url().clone();
+            }
+
             let mut notes = "";
             let mut title: String = String::from("");
 
