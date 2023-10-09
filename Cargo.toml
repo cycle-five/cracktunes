@@ -104,7 +104,7 @@ version = "0.5.5"
 default-features = true
 
 [dependencies.tokio]
-version = "1.32.0"
+version = "1.33.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.ffprobe]
