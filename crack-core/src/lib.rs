@@ -4,8 +4,8 @@ use errors::CrackedError;
 use guild::settings::DEFAULT_DB_URL;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
-use serde::{Deserialize, Serialize};
 use reqwest::blocking::get;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -204,30 +204,31 @@ impl PhoneCodeData {
         })
     }
 
-fn load_data(file_name: &str, url: &str) -> Result<HashMap<String, String>, CrackedError> {
-    match fs::read_to_string(file_name) {
-        Ok(contents) => {
-            serde_json::from_str(&contents).map_err(|_| CrackedError::Other("Failed to parse file"))
+    fn load_data(file_name: &str, url: &str) -> Result<HashMap<String, String>, CrackedError> {
+        match fs::read_to_string(file_name) {
+            Ok(contents) => serde_json::from_str(&contents)
+                .map_err(|_| CrackedError::Other("Failed to parse file")),
+            Err(_) => Self::download_and_parse(url, file_name),
         }
-        Err(_) => Self::download_and_parse(url, file_name),
     }
-}
 
-fn download_and_parse(url: &str, file_name: &str) -> Result<HashMap<String, String>, CrackedError> {
-    let response = get(url).map_err(|_| CrackedError::Other("Failed to download"))?;
-    let content = response
-        .text()
-        .map_err(|_| CrackedError::Other("Failed to read response"))?;
+    fn download_and_parse(
+        url: &str,
+        file_name: &str,
+    ) -> Result<HashMap<String, String>, CrackedError> {
+        let response = get(url).map_err(|_| CrackedError::Other("Failed to download"))?;
+        let content = response
+            .text()
+            .map_err(|_| CrackedError::Other("Failed to read response"))?;
 
-    // Save to local file
-    let mut file =
-        fs::File::create(file_name).map_err(|_| CrackedError::Other("Failed to create file"))?;
-    file.write_all(content.as_bytes())
-        .map_err(|_| CrackedError::Other("Failed to write file"))?;
+        // Save to local file
+        let mut file = fs::File::create(file_name)
+            .map_err(|_| CrackedError::Other("Failed to create file"))?;
+        file.write_all(content.as_bytes())
+            .map_err(|_| CrackedError::Other("Failed to write file"))?;
 
-    serde_json::from_str(&content).map_err(|_| CrackedError::Other("Failed to parse file"))
-}
-
+        serde_json::from_str(&content).map_err(|_| CrackedError::Other("Failed to parse file"))
+    }
 
     pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
         self.country_by_phone_code.get(phone_code).cloned()

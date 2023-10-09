@@ -1,7 +1,18 @@
-use std::{sync::Arc, time::Duration, collections::HashMap, process::exit};
+use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
-use crack_core::{EventLog, BotConfig, Data, Error, commands, guild::settings::{GuildSettingsMap, GuildSettings}, is_prefix, metrics::COMMAND_ERRORS, utils::{get_interaction, check_interaction, create_response_text, check_reply, count_command}, PhoneCodeData, handlers::{handle_event, SerenityHandler}, DataInner};
-use poise::{Framework, serenity_prelude::{UserId, GuildId, GatewayIntents}};
+use crack_core::{
+    commands,
+    guild::settings::{GuildSettings, GuildSettingsMap},
+    handlers::{handle_event, SerenityHandler},
+    is_prefix,
+    metrics::COMMAND_ERRORS,
+    utils::{check_interaction, check_reply, count_command, create_response_text, get_interaction},
+    BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
+};
+use poise::{
+    serenity_prelude::{GatewayIntents, GuildId, UserId},
+    Framework,
+};
 use songbird::serenity::SerenityInit;
 use std::sync::Mutex;
 

@@ -1,17 +1,12 @@
 use crack_config::poise_framework;
-use crack_core::metrics::{ REGISTRY};
+use crack_core::metrics::REGISTRY;
+use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
-use crack_core::{
-    BotConfig, 
-};
 use crack_core::{BotCredentials, EventLog};
-use poise::{serenity_prelude as serenity};
+use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
-use std::{
-    collections::HashMap,
-    sync::{Arc},
-};
+use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
 use warp::Filter;
 
@@ -158,5 +153,3 @@ fn init_logging() {
 
     tracing::warn!("Hello, world!");
 }
-
-
