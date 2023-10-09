@@ -21,6 +21,7 @@ pub enum CrackedError {
     NotConnected,
     NoGuildId,
     NoGuildSettings,
+    NoLogChannel,
     AuthorDisconnected(Mention),
     WrongVoiceChannel,
     InvalidIP(String),
@@ -69,6 +70,7 @@ impl Display for CrackedError {
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
+            Self::NoLogChannel => f.write_str("No log channel"),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }

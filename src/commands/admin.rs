@@ -17,6 +17,8 @@ use crate::{
     subcommands(
         "authorize",
         "deauthorize",
+        "broadcast_voice",
+        "get_settings",
         "set_idle_timeout",
         "set_prefix",
         "set_join_leave_log_channel",
@@ -80,13 +82,16 @@ pub async fn authorize(
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
 
-    data.guild_settings_map
+    let _res = data
+        .guild_settings_map
         .lock()
         .unwrap()
-        .get_mut(&guild_id)
-        .expect("Failed to get guild settings map")
-        .authorized_users
-        .insert(id);
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.authorized_users.insert(id);
+            e.save().unwrap();
+        })
+        .key();
 
     //ctx.send("User authorized").await;
     check_reply(
@@ -106,18 +111,19 @@ pub async fn deauthorize(
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
-    let res = data
+    let mut guild_settings = data
         .guild_settings_map
         .lock()
         .unwrap()
         .get_mut(&guild_id)
         .expect("Failed to get guild settings map")
-        .authorized_users
-        .remove(&id);
+        .clone();
+    let res = guild_settings.authorized_users.remove(&id);
+    guild_settings.save()?;
 
     if res {
         check_reply(
-            ctx.send(|m| m.content("User authorized.").reply(true))
+            ctx.send(|m| m.content("User deauthorized.").reply(true))
                 .await,
         );
         Ok(())
@@ -126,11 +132,13 @@ pub async fn deauthorize(
     }
 }
 
-/// Broadcast a message to all guilds.
+/// Broadcast a message to all guilds where the bot is currently in a voice channel.
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
-pub async fn broadcast(
+pub async fn broadcast_voice(
     ctx: Context<'_>,
-    #[description = "The message to broadcast"] message: String,
+    #[rest]
+    #[description = "The message to broadcast"]
+    message: String,
 ) -> Result<(), Error> {
     let data = ctx.data();
     let http = ctx.http();
@@ -140,14 +148,14 @@ pub async fn broadcast(
     for (guild_id, _settings) in guilds.iter() {
         let message = message.clone();
 
-        let channel_id = get_current_voice_channel_id(&serenity_ctx, *guild_id)
-            .await
-            .expect("Failed to get current voice channel id");
+        let channel_id_opt = get_current_voice_channel_id(&serenity_ctx, *guild_id).await;
 
-        channel_id
-            .send_message(&http, |m| m.content(message.clone()))
-            .await
-            .unwrap();
+        if let Some(channel_id) = channel_id_opt {
+            channel_id
+                .send_message(&http, |m| m.content(message.clone()))
+                .await
+                .unwrap();
+        }
     }
 
     Ok(())
@@ -566,6 +574,22 @@ pub async fn set_join_leave_log_channel(
     create_response_poise(
         ctx,
         CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Get the current bot settings for this guild.
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+    let settings = guild_settings_map.get(&guild_id).unwrap();
+
+    create_response_poise(
+        ctx,
+        CrackedMessage::Other(format!("Settings: {:?}", settings)),
     )
     .await?;
 

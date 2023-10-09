@@ -233,9 +233,9 @@ async fn poise_framework(
             commands::autopause(),
             commands::boop(),
             commands::coinflip(),
-            commands::create_playlist(),
-            commands::delete_playlist(),
-            commands::chatgpt(),
+            //commands::create_playlist(),
+            //commands::delete_playlist(),
+            //commands::chatgpt(),
             commands::clear(),
             commands::help(),
             commands::leave(),
@@ -257,7 +257,7 @@ async fn poise_framework(
             commands::version(),
             commands::volume(),
             commands::queue(),
-            commands::osint(),
+            //commands::osint(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
@@ -386,7 +386,7 @@ async fn poise_framework(
         }),
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
-        skip_checks_for_owners: false,
+        skip_checks_for_owners: true,
         event_handler: |ctx, event, _framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, data_global).await })
         },

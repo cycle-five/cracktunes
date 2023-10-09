@@ -36,9 +36,10 @@ pub async fn create_log_embed(
     avatar_url: &str,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
-    embed.title(title);
-    embed.description(description);
-    embed.thumbnail(avatar_url);
+    embed
+        .title(title)
+        .description(description)
+        .thumbnail(avatar_url);
     tracing::warn!("sending log embed: {:?}", embed);
     tracing::warn!("thumbnail url: {:?}", avatar_url);
 

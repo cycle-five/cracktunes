@@ -15,7 +15,7 @@ shuttle = []
 
 [dependencies]
 async-trait = "0.1.72"
-time = {version = "0.3.25", default-features = false, features = ["serde"]}
+time = {version = "0.3.29", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 ctrlc = "3.4.0"
 chatgpt_rs = "1.1.13"
@@ -45,7 +45,7 @@ whois-rust = "1.5.1"
 webpki = "0.22.2"
 
 [dependencies.sqlx]
-version = "0.7.1"
+version = "0.7.2"
 default-features = false
 optional = true
 features = [
