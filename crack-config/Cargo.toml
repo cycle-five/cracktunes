@@ -1,0 +1,19 @@
+[package]
+name = "crack-config"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["osint"]
+osint = ["crack-osint"]
+
+[dependencies]
+crack-osint = { workspace = true, optional = true}
+reqwest = { workspace = true }
+poise = { workspace = true }
+tracing = { workspace = true }
+crack-core = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+songbird = { workspace = true }

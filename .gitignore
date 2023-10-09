@@ -1,5 +1,6 @@
 # build artifacts
 /target/
+/*/target/
 
 # data generated during runtime
 /data/

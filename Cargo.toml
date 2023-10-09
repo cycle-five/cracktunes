@@ -1,53 +1,24 @@
-[package]
-name = "cracktunes"
-version = "0.2.9"
-authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
-edition = "2018"
-description = "A Discord music bot built on Rust and Crack."
-repository = "https://github.com/cycle-five/cracktunes"
-license = "MIT"
-keywords = ["discord", "music-bot", "rust"]
+[workspace]
+members = [
+    "cracktunes",
+    "crack-core",
+    "crack-osint",
+    "crack-config",
+]
+resolver = "2"
 
-[features]
-default = ["playlist"]
-playlist = ["sqlx"]
-shuttle = []
-
-[dependencies]
-async-trait = "0.1.72"
-time = {version = "0.3.29", default-features = false, features = ["serde"]}
-audiopus = "0.3.0-rc.0"
-ctrlc = "3.4.0"
-chatgpt_rs = "1.1.13"
-colored = "2.0.4"
-dotenv = "0.15.0"
-lazy_static = "1.4.0"
-lyric_finder = "0.1.4"
-once_cell = "1.18.0"
-rand = "0.8.5"
-regex = "1.9.4"
-mockall = "0.11.4"
-ipinfo = "2.1.0"
-serde_json = "1.0.105"
-url = "2.4.1"
-sha1 = "0.10.5"
-serde = { version = "1.0.188", features = ["derive", "rc"] }
-serde_stream = { version = "1.0.1", features = ["tokio"]}
+[workspace.dependencies]
+crack-core = { path = "crack-core", default-features = true, version = "0.2.9" }
+crack-osint = { path = "crack-osint", default-features = true, version = "0.1.0" }
+crack-config = { path = "crack-config", default-features = true, version = "0.1.0" }
+tungstenite = "0.20.1"
+reqwest = {version = "0.11.22", features = ["blocking", "json"]}
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
-sys-info = "0.9.1"
-prometheus = {version = "0.13.3", features = ["process"]}
-config-file = {version="0.2.3", features = ["json"]}
-reqwest = {version = "0.11.20", features = ["blocking", "json"]}
-anyhow = "1.0.72"
-warp = "0.3.5"
-whois-rust = "1.5.1"
-webpki = "0.22.2"
 
-[dependencies.sqlx]
+[workspace.dependencies.sqlx]
 version = "0.7.2"
 default-features = false
-optional = true
 features = [
   "runtime-tokio",
   "tls-rustls",
@@ -58,31 +29,7 @@ features = [
   "migrate",
 ]
 
-[dependencies.rspotify]
-git = "https://github.com/cycle-five/rspotify"
-branch = "no-oldtime"
-
-[dependencies.songbird]
-git = "https://github.com/serenity-rs/songbird"
-branch = "current"
-version = "0.3.2"
-features = [
-  "driver-core",
-  "driver",
-  "rustls",
-  "serenity",
-  "builtin-queue",
-  "yt-dlp",
-  "audiopus",
-]
-
-# To get additional codecs, you *must* add Symphonia yourself.
-# # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
-# [dependencies.symphonia]
-# version = "0.5.3"
-# features = ["all"]
-
-[dependencies.serenity]
+[workspace.dependencies.serenity]
 version = "0.11.6"
 default-features = false
 features = [
@@ -99,16 +46,27 @@ features = [
   "voice",
 ]
 
-[dependencies.poise]
+[workspace.dependencies.songbird]
+git = "https://github.com/serenity-rs/songbird"
+branch = "current"
+version = "0.3.2"
+features = [
+  "driver-core",
+  "driver",
+  "rustls",
+  "serenity",
+  "builtin-queue",
+  "yt-dlp",
+  "audiopus",
+]
+
+[workspace.dependencies.poise]
 version = "0.5.5"
 default-features = true
 
-[dependencies.tokio]
+[workspace.dependencies.tokio]
 version = "1.32.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
-[dependencies.ffprobe]
-git = "https://github.com/cycle-five/ffprobe-rs"
-
-[dev-dependencies]
-webpki = "0.22.2"
+# [workspace.dev-dependencies]
+# tungstenite = "0.20.1"

@@ -1,0 +1,26 @@
+[package]
+name = "cracktunes"
+version = "0.2.9"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["playlist", "osint"]
+playlist = ["crack-core/sqlx", "sqlx"]
+osint = ["crack-osint"]
+
+
+[dependencies]
+crack-core = { workspace = true }
+crack-config = { workspace = true }
+crack-osint = { workspace = true, optional = true}
+sqlx = {workspace = true, optional = true}
+poise = { workspace = true }
+tokio = { workspace = true }
+songbird = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+prometheus = {version = "0.13.3", features = ["process"]}
+warp = "0.3.5"
+config-file = {version="0.2.3", features = ["json"]}
+dotenv = "0.15.0"
