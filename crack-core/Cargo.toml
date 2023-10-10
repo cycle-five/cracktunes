@@ -1,0 +1,64 @@
+[package]
+name = "crack-core"
+version = "0.2.9"
+authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
+edition = "2018"
+description = "A Discord music bot built on Rust and Crack."
+repository = "https://github.com/cycle-five/cracktunes"
+license = "MIT"
+keywords = ["discord", "music-bot", "rust"]
+
+[features]
+default = ["playlist", "chatgpt"]
+playlist = ["sqlx"]
+shuttle = []
+chatgpt = ["chatgpt_rs"]
+
+[dependencies]
+#async-trait = "0.1.72"
+# time = {version = "0.3.29", default-features = false, features = ["serde"]}
+audiopus = "0.3.0-rc.0"
+#ctrlc = "3.4.0"
+chatgpt_rs = { version = "1.2.3", optional = true }
+colored = "2.0.4"
+#dotenv = "0.15.0"
+lazy_static = "1.4.0"
+lyric_finder = "0.1.4"
+# once_cell = "1.18.0"
+rand = "0.8.5"
+regex = "1.10.0"
+#mockall = "0.11.4"
+serde_json = "1.0.107"
+url = "2.4.1"
+# sha1 = "0.10.5"
+serde = { version = "1.0.188", features = ["derive", "rc"] }
+serde_stream = { version = "1.0.1", features = ["tokio"]}
+sys-info = "0.9.1"
+prometheus = {version = "0.13.3", features = ["process"]}
+#config-file = {version="0.2.3", features = ["json"]}
+anyhow = "1.0.75"
+#webpki = "0.22.2"
+tracing = { workspace = true }
+reqwest = { workspace = true }
+sqlx = {workspace = true, optional = true}
+serenity = { workspace = true }
+songbird = { workspace = true }
+tokio = { workspace = true }
+poise = { workspace = true }
+
+[dependencies.rspotify]
+git = "https://github.com/cycle-five/rspotify"
+branch = "no-oldtime"
+
+# To get additional codecs, you *must* add Symphonia yourself.
+# # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
+# [dependencies.symphonia]
+# version = "0.5.3"
+# features = ["all"]
+
+
+[dependencies.ffprobe]
+git = "https://github.com/cycle-five/ffprobe-rs"
+
+# [dev-dependencies]
+# webpki = "0.22.2"

@@ -36,7 +36,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare -- --tests
+          cargo sqlx prepare --workspace -- --tests
         
       - name: Run cargo fmt
         run: cargo fmt --all -- --check

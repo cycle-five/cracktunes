@@ -1,0 +1,54 @@
+prefix = "rs!"
+video_status_poll_interval = 120
+sys_log_channel_id = 0
+authorized_users = [ ]
+self_deafen = true
+volume = 0.3
+database_url = "sqlite://./data/crackedmusic.db"
+
+[[cam_kick]]
+cammed_down_timeout = 0
+guild_id = 0
+channel_id = 0
+dc_message = "You have been violated from the voice channel for not having a camera on."
+send_msg_deafen = false
+send_msg_mute = false
+send_msg_dc = false
+
+[[cam_kick]]
+cammed_down_timeout = 0
+guild_id = 1
+channel_id = 0
+dc_message = "You have been violated from the voice channel for not having a camera on."
+send_msg_deafen = false
+send_msg_mute = false
+send_msg_dc = false
+
+[[guild_settings_map]]
+prefix = "m!"
+prefix_up = "M!"
+guild_id = 0
+authorized_users = [ 0 ]
+allowed_domains = [ "youtube.com" ]
+banned_domains = [ ]
+autopause = false
+self_deafen = true
+volume = 0.3
+timeout = 0
+[guild_settings_map.welcome_settings]
+channel_id = 0 
+autorole = 0 
+
+[[guild_settings_map]]
+guild_id = 1
+prefix = "m/"
+prefix_up = "M/"
+authorized_users = [ 0 ]
+allowed_domains = [ "youtube.com" ]
+banned_domains = [ ]
+autopause = false
+self_deafen = true
+volume = 0.3
+timeout = 0
+
+[[guild_cache]]
