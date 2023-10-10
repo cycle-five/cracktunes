@@ -16,7 +16,7 @@ chatgpt = ["chatgpt_rs"]
 
 [dependencies]
 #async-trait = "0.1.72"
-time = {version = "0.3.29", default-features = false, features = ["serde"]}
+# time = {version = "0.3.29", default-features = false, features = ["serde"]}
 audiopus = "0.3.0-rc.0"
 #ctrlc = "3.4.0"
 chatgpt_rs = { version = "1.2.3", optional = true }
@@ -26,9 +26,9 @@ lazy_static = "1.4.0"
 lyric_finder = "0.1.4"
 # once_cell = "1.18.0"
 rand = "0.8.5"
-regex = "1.9.4"
+regex = "1.10.0"
 #mockall = "0.11.4"
-serde_json = "1.0.105"
+serde_json = "1.0.107"
 url = "2.4.1"
 # sha1 = "0.10.5"
 serde = { version = "1.0.188", features = ["derive", "rc"] }
@@ -36,7 +36,7 @@ serde_stream = { version = "1.0.1", features = ["tokio"]}
 sys-info = "0.9.1"
 prometheus = {version = "0.13.3", features = ["process"]}
 #config-file = {version="0.2.3", features = ["json"]}
-anyhow = "1.0.72"
+anyhow = "1.0.75"
 #webpki = "0.22.2"
 tracing = { workspace = true }
 reqwest = { workspace = true }
