@@ -10,7 +10,9 @@ LICENSE
 README.md
 
 # Cargo files
+.cargo
 /target/
+/*/target/
 
 # Submodules
 /dep-installer-hack/

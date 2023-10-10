@@ -13,13 +13,6 @@ RUN apt-get update -y && apt-get install -y \
 
 WORKDIR "/app"
 
-# Cache cargo build dependencies by creating a dummy source
-RUN mkdir src
-RUN echo "fn main() {}" > src/main.rs
-COPY Cargo.toml ./
-COPY Cargo.lock ./
-RUN cargo build --release --locked
-
 COPY . .
 RUN ls -al . && ls -al data
 ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
@@ -40,7 +33,7 @@ RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/down
 
 RUN yt-dlp -v -h
 
-COPY --from=build /app/target/release/cracktunes .
+COPY --from=build /app/cracktunes/target/release/cracktunes .
 COPY --from=build /app/data  /data
 RUN ls -al / && ls -al /data
 
