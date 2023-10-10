@@ -11,8 +11,8 @@ resolver = "2"
 crack-core = { path = "crack-core", default-features = true, version = "0.2.9" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1.0" }
 crack-config = { path = "crack-config", default-features = true, version = "0.1.0" }
-tungstenite = "0.20.1"
-async-tungstenite = "0.23.0"
+tungstenite = "^0.20.1"
+async-tungstenite = "^0.23.0"
 reqwest = {version = "0.11.22", features = ["blocking", "json"]}
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
@@ -32,6 +32,8 @@ features = [
 
 [workspace.dependencies.serenity]
 version = "0.11.6"
+#git = "https://github.com/serenity-rs/serenity"
+#branch = "current"
 default-features = false
 features = [
   "builder",

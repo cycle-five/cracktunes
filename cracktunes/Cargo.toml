@@ -30,5 +30,5 @@ config-file = {version="0.2.3", features = ["json"]}
 dotenv = "0.15.0"
 
 [dev-dependencies]
-tungstenite = { version = "0.20.1" }
-async-tungstenite = "0.23.0"
+tungstenite = "^0.20.1"
+async-tungstenite = "^0.23.0"
