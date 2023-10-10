@@ -68,5 +68,5 @@ default-features = true
 version = "1.33.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
-# [workspace.dev-dependencies]
-# tungstenite = "0.20.1"
+[workspace.dev-dependencies]
+tungstenite = "0.20.1"
