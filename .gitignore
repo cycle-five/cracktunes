@@ -4,6 +4,7 @@
 
 # data generated during runtime
 /data/
+/*/data/
 /logs/
 
 # configuration / secrets
