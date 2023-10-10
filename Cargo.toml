@@ -61,11 +61,11 @@ features = [
 ]
 
 [workspace.dependencies.poise]
-version = "0.5.5"
+version = "0.5.6"
 default-features = true
 
 [workspace.dependencies.tokio]
-version = "1.32.0"
+version = "1.33.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
 # [workspace.dev-dependencies]
