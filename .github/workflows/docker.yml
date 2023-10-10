@@ -32,7 +32,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare
+          cargo sqlx prepare --workspace
       - 
         name: Build Docker Image
         env:
@@ -74,7 +74,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare
+          cargo sqlx prepare --workspace
       - 
         name: Build & Push Docker Image
         uses: docker/build-push-action@v5
