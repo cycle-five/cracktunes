@@ -10,8 +10,7 @@ jobs:
       matrix:
         rust-version: ['nightly', 'stable']
         cache-key: ['']
-    # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Repository Checkout
         uses: actions/checkout@v4
