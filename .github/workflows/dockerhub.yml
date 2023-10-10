@@ -51,7 +51,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare
+          cargo sqlx prepare --workspace
       -
         name: Build and push
         uses: docker/build-push-action@v4
