@@ -33,7 +33,7 @@ RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/down
 
 RUN yt-dlp -v -h
 
-COPY --from=build /app/cracktunes/target/release/cracktunes .
+COPY --from=build /app/target/release/cracktunes .
 COPY --from=build /app/data  /data
 RUN ls -al / && ls -al /data
 
