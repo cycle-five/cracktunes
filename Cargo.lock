@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "async-tungstenite 0.23.0",
@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "async-trait",
  "async-tungstenite 0.23.0",
@@ -3146,6 +3146,8 @@ dependencies = [
  "smallvec",
  "sqlformat",
  "thiserror",
+ "tokio",
+ "tokio-stream",
  "tracing",
  "url",
  "webpki-roots 0.24.0",
@@ -3186,6 +3188,7 @@ dependencies = [
  "sqlx-sqlite",
  "syn 1.0.109",
  "tempfile",
+ "tokio",
  "url",
 ]
 
