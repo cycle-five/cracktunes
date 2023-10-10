@@ -56,7 +56,12 @@ impl Playlist {
         user_id: i64,
     ) -> Result<Playlist, CrackedError> {
         if Self::get_user(pool, user_id).await.is_none() {
-            Self::insert_user(pool, user_id, name.to_string()).await?;
+            match Self::insert_user(pool, user_id, "FAKENAME".to_string()).await {
+                Ok(_) => (),
+                Err(e) => {
+                    return Err(CrackedError::SQLX(e));
+                }
+            }
             // return Err(CrackedError::Other(
             //     "(playlist::create) User does not exist",
             // ));

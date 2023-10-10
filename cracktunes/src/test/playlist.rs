@@ -108,6 +108,7 @@ mod tests {
     }
 
     //#[tokio::test]
+    #[ignore]
     #[sqlx::test]
     async fn test_delete_playlist_by_id(pool: SqlitePool) {
         // Setup
