@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::playlist::{Playlist, PlaylistTrack};
+    use crack_core::playlist::{Playlist, PlaylistTrack};
 
     #[cfg(test)]
     use mockall::automock;

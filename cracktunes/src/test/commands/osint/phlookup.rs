@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use osint::fetch_phone_number_info;
+    use crack_osint::fetch_phone_number_info;
 
     #[tokio::test]
     #[ignore]

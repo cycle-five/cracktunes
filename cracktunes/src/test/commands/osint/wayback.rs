@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use osint::wayback::fetch_wayback_snapshot;
+    use crack_osint::wayback::fetch_wayback_snapshot;
 
     #[tokio::test]
     async fn test_wayback_valid_url() {

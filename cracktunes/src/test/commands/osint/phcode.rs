@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use osint::{fetch_country_by_calling_code, PhoneCodeData};
+    use crack_osint::{fetch_country_by_calling_code, PhoneCodeData};
 
     #[test]
     fn test_fetch_country_by_calling_code_valid_code() {
