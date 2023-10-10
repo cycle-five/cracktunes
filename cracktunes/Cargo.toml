@@ -21,6 +21,7 @@ songbird = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tungstenite = { workspace = true }
+async-tungstenite = { workspace = true }
 async-trait = { version = "0.1.73" }
 mockall = { version = "0.11.4" }
 prometheus = {version = "0.13.3", features = ["process"]}
@@ -30,3 +31,4 @@ dotenv = "0.15.0"
 
 [dev-dependencies]
 tungstenite = { version = "0.20.1" }
+async-tungstenite = "0.23.0"

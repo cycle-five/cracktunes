@@ -12,6 +12,7 @@ crack-core = { path = "crack-core", default-features = true, version = "0.2.9" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1.0" }
 crack-config = { path = "crack-config", default-features = true, version = "0.1.0" }
 tungstenite = "0.20.1"
+async-tungstenite = "0.23.0"
 reqwest = {version = "0.11.22", features = ["blocking", "json"]}
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
@@ -67,6 +68,3 @@ default-features = true
 [workspace.dependencies.tokio]
 version = "1.33.0"
 features = ["macros", "rt-multi-thread", "signal"]
-
-[workspace.dev-dependencies]
-tungstenite = "0.20.1"
