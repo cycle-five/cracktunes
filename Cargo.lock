@@ -476,6 +476,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "tungstenite 0.20.1",
  "warp",
 ]
 
@@ -3130,8 +3131,6 @@ dependencies = [
  "smallvec",
  "sqlformat",
  "thiserror",
- "tokio",
- "tokio-stream",
  "tracing",
  "url",
  "webpki-roots 0.24.0",
@@ -3172,7 +3171,6 @@ dependencies = [
  "sqlx-sqlite",
  "syn 1.0.109",
  "tempfile",
- "tokio",
  "url",
 ]
 

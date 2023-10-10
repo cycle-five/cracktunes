@@ -21,7 +21,8 @@ env:
 jobs:
   push:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - 
         name: Repository Checkout

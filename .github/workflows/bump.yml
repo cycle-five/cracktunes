@@ -15,17 +15,17 @@ on:
 jobs:
   bump:
     name: Bump version
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install Toolchain
-        uses: actions-rs/toolchain@v2
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
 
       - name: Install cargo-bump
         run: cargo install cargo-bump
@@ -40,7 +40,7 @@ jobs:
         run: |
           sqlx database create --database-url sqlite://./data/crackedmusic.db
           sqlx migrate run --database-url sqlite://./data/crackedmusic.db --source migrations/
-          cargo sqlx prepare --database-url sqlite://./data/crackedmusic.db
+          cargo sqlx prepare --workspace --database-url sqlite://./data/crackedmusic.db
           cargo build
 
       - name: Get latest version
