@@ -1,3 +1,4 @@
+use config_file::FromConfigFile;
 use crack_config::poise_framework;
 use crack_core::metrics::REGISTRY;
 use crack_core::BotConfig;
