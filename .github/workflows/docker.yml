@@ -49,11 +49,11 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v4
       - 
-        name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-      - 
         name: Cache
         uses: Swatinem/rust-cache@v2
+      - 
+        name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
       -
         name: Registry Login
         uses: docker/login-action@v3

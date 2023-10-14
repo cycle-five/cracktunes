@@ -39,11 +39,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - 
-        name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-      - 
         name: Cache
         uses: Swatinem/rust-cache@v2
+      - 
+        name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
       -
         name: Migrate database
         env:
