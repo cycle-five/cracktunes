@@ -23,12 +23,12 @@ jobs:
           rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
         shell: bash
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-      
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
 
       - name: Migrate database
         env:
