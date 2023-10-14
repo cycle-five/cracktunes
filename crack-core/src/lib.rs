@@ -185,8 +185,8 @@ pub struct PhoneCodeData {
 
 impl PhoneCodeData {
     pub fn load() -> Result<Self, CrackedError> {
-        let phone_codes = Self::load_data("../data/phone.json", "http://country.io/phone.json")?;
-        let country_names = Self::load_data("../data/names.json", "http://country.io/names.json")?;
+        let phone_codes = Self::load_data("./data/phone.json", "http://country.io/phone.json")?;
+        let country_names = Self::load_data("./data/names.json", "http://country.io/names.json")?;
         let country_by_phone_code = phone_codes
             .iter()
             .map(|(k, v)| (v.clone(), k.clone()))
