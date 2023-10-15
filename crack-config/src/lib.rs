@@ -1,5 +1,4 @@
-use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
-
+use colored::Colorize;
 use crack_core::{
     commands,
     guild::settings::{GuildSettings, GuildSettingsMap},
@@ -15,6 +14,7 @@ use poise::{
 };
 use songbird::serenity::SerenityInit;
 use std::sync::Mutex;
+use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -23,6 +23,19 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // and forward the rest to the default handler
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
+        poise::FrameworkError::EventHandler { error, event, .. } => match event {
+            poise::Event::PresenceUpdate { .. } => { /* Ignore PresenceUpdate is terminal logging, too spammy */
+            }
+            _ => {
+                tracing::warn!(
+                    "{} {} {} {}",
+                    "Error in event handler for ".yellow(),
+                    event.name().yellow().italic(),
+                    " event: ".yellow(),
+                    error.to_string().yellow().bold(),
+                );
+            }
+        },
         poise::FrameworkError::Command { error, ctx } => {
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])

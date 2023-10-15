@@ -17,3 +17,4 @@ crack-core = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
+colored = "2.0"

@@ -1,8 +1,10 @@
 use std::io::Write;
 
+use poise::serenity_prelude::Channel;
+
 use crate::{
     errors::CrackedError,
-    guild::settings::GuildSettingsMap,
+    guild::settings::{GuildSettingsMap, WelcomeSettings},
     messaging::message::CrackedMessage,
     utils::{check_reply, create_response_poise, get_current_voice_channel_id},
     Context, Error,
@@ -22,6 +24,7 @@ use crate::{
         "set_idle_timeout",
         "set_prefix",
         "set_join_leave_log_channel",
+        "set_all_log_channel",
         "kick",
         "ban",
         "unban",
@@ -580,6 +583,33 @@ pub async fn set_join_leave_log_channel(
     Ok(())
 }
 
+/// Set the join-leave log channel.
+#[poise::command(prefix_command, owners_only, hide_in_help)]
+pub async fn set_all_log_channel(
+    ctx: Context<'_>,
+    channel_id: serenity::model::id::ChannelId,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let mut data = ctx.serenity_context().data.write().await;
+    let _entry = &data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| e.set_all_log_channel(channel_id.0));
+
+    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+
+    let _res = settings.map(|s| s.save()).unwrap();
+
+    create_response_poise(
+        ctx,
+        CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// Get the current bot settings for this guild.
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
@@ -855,3 +885,26 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
 //     }
 //     Ok(())
 // }
+
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn set_welcome_settings(
+    ctx: Context<'_>,
+    #[description = "The channel to send welcome messages"] channel: Channel,
+    #[description = "Welcome message template use {user} for username"] message: String,
+) -> Result<(), Error> {
+    let welcome_settings = WelcomeSettings {
+        channel_id: Some(channel.id().0),
+        message: Some(message.clone()),
+        auto_role: None,
+    };
+    let _res = ctx
+        .data()
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .entry(ctx.guild_id().unwrap())
+        .and_modify(|e| {
+            e.welcome_settings = Some(welcome_settings.clone());
+        });
+    Ok(())
+}

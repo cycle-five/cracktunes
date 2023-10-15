@@ -4,6 +4,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
+    http_utils,
     messaging::message::CrackedMessage,
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
@@ -465,11 +466,12 @@ async fn match_url(
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
-            Some("open.spotify.com") => {
-                tracing::error!("spotify: {}", url);
+            Some("open.spotify.com") | Some("spotify.link") => {
+                let final_url = http_utils::resolve_final_url(url).await?;
+                tracing::error!("spotify: {} -> {}", url, final_url);
                 let spotify = SPOTIFY.lock().await;
                 let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
-                Some(Spotify::extract(spotify, url).await?)
+                Some(Spotify::extract(spotify, &final_url).await?)
             }
             Some("cdn.discordapp.com") => {
                 tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());

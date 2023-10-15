@@ -20,6 +20,7 @@ pub mod connection;
 pub mod errors;
 pub mod guild;
 pub mod handlers;
+pub mod http_utils;
 pub mod messaging;
 pub mod metrics;
 pub mod playlist;
@@ -28,8 +29,8 @@ pub mod utils;
 
 //pub extern crate osint;
 
-// #[cfg(test)]
-// pub mod test;
+#[cfg(test)]
+pub mod test;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;

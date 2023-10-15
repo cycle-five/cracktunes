@@ -17,7 +17,8 @@ lazy_static! {
     pub static ref SPOTIFY: Mutex<Result<ClientCredsSpotify, CrackedError>> =
         Mutex::new(Err(CrackedError::Other("no auth attempts")));
     pub static ref SPOTIFY_QUERY_REGEX: Regex =
-        Regex::new(r"spotify.com/(?P<media_type>.+)/(?P<media_id>.*?)(?:\?|$)").unwrap();
+        Regex::new(r"spotify.link/.*|spotify.com/(?P<media_type>.+)/(?P<media_id>.*?)(?:\?|$)")
+            .unwrap();
 }
 
 #[derive(Clone, Copy)]
