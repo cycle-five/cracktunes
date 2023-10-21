@@ -30,7 +30,12 @@ lazy_static! {
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct LogSettings {
+    // TODO: Decide if I want to have separate raw events and all log channels.
     all_log_channel: Option<u64>,
+    raw_event_log_channel: Option<u64>,
+    // TODO: Decide on what level of granularity I want for logging options.
+    // Also should they be able to overlap?
+    server_log_channel: Option<u64>,
     member_log_channel: Option<u64>,
     join_leave_log_channel: Option<u64>,
     voice_log_channel: Option<u64>,
@@ -38,35 +43,33 @@ pub struct LogSettings {
 
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
-        if let Some(channel_id) = self.all_log_channel {
-            return Some(ChannelId(channel_id));
-        }
-        None
+        self.all_log_channel.map(ChannelId).or(None)
+    }
+
+    pub fn get_server_log_channel(&self) -> Option<ChannelId> {
+        self.server_log_channel.map(ChannelId).or(None)
     }
 
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
-        if let Some(channel_id) = self.join_leave_log_channel {
-            return Some(ChannelId(channel_id));
-        }
-        None
+        self.join_leave_log_channel.map(ChannelId).or(None)
     }
 
     pub fn get_member_log_channel(&self) -> Option<ChannelId> {
-        if let Some(channel_id) = self.member_log_channel {
-            return Some(ChannelId(channel_id));
-        }
-        None
+        self.member_log_channel.map(ChannelId).or(None)
     }
 
     pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
-        if let Some(channel_id) = self.voice_log_channel {
-            return Some(ChannelId(channel_id));
-        }
-        None
+        self.voice_log_channel.map(ChannelId).or(None)
     }
 
-    pub fn set_all_log_channel(&mut self, channel_id: u64) {
+    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
         self.all_log_channel = Some(channel_id);
+        self
+    }
+
+    pub fn set_server_log_channel(&mut self, channel_id: u64) -> &mut Self {
+        self.server_log_channel = Some(channel_id);
+        self
     }
 
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
@@ -74,12 +77,14 @@ impl LogSettings {
         self
     }
 
-    pub fn set_member_log_channel(&mut self, channel_id: u64) {
+    pub fn set_member_log_channel(&mut self, channel_id: u64) -> &mut Self {
         self.member_log_channel = Some(channel_id);
+        self
     }
 
-    pub fn set_voice_log_channel(&mut self, channel_id: u64) {
+    pub fn set_voice_log_channel(&mut self, channel_id: u64) -> &mut Self {
         self.voice_log_channel = Some(channel_id);
+        self
     }
 }
 
@@ -250,6 +255,8 @@ impl GuildSettings {
     pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
+            raw_event_log_channel: None,
+            server_log_channel: None,
             member_log_channel: None,
             join_leave_log_channel: Some(join_leave_log_channel),
             voice_log_channel: None,
@@ -274,6 +281,10 @@ impl GuildSettings {
     pub fn set_all_log_channel(&mut self, channel_id: u64) {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
+        } else {
+            let mut log_settings = LogSettings::default();
+            log_settings.set_all_log_channel(channel_id);
+            self.log_settings = Some(log_settings);
         }
     }
 
@@ -284,6 +295,84 @@ impl GuildSettings {
             let mut log_settings = LogSettings::default();
             log_settings.set_join_leave_log_channel(channel_id);
             self.log_settings = Some(log_settings);
+        }
+    }
+
+    pub fn get_log_channel_type(&self, event: &poise::Event<'_>) -> Option<ChannelId> {
+        if let Some(log_settings) = &self.log_settings {
+            match event {
+                poise::Event::GuildBanRemoval { .. }
+                | poise::Event::GuildMemberAddition { .. }
+                | poise::Event::GuildMemberRemoval { .. }
+                | poise::Event::GuildScheduledEventCreate { .. }
+                | poise::Event::GuildScheduledEventUpdate { .. }
+                | poise::Event::GuildScheduledEventDelete { .. }
+                | poise::Event::GuildScheduledEventUserAdd { .. }
+                | poise::Event::GuildScheduledEventUserRemove { .. }
+                | poise::Event::GuildStickersUpdate { .. }
+                | poise::Event::GuildBanAddition { .. }
+                | poise::Event::GuildCreate { .. }
+                | poise::Event::GuildDelete { .. }
+                | poise::Event::GuildEmojisUpdate { .. }
+                | poise::Event::GuildIntegrationsUpdate { .. }
+                | poise::Event::GuildMemberUpdate { .. }
+                | poise::Event::GuildMembersChunk { .. }
+                | poise::Event::GuildRoleCreate { .. }
+                | poise::Event::GuildRoleDelete { .. }
+                | poise::Event::GuildRoleUpdate { .. }
+                | poise::Event::GuildUnavailable { .. }
+                | poise::Event::GuildUpdate { .. } => log_settings
+                    .get_server_log_channel()
+                    .or(log_settings.get_all_log_channel()),
+                poise::Event::Message { .. }
+                | poise::Event::PresenceReplace { .. }
+                | poise::Event::Resume { .. }
+                | poise::Event::ShardStageUpdate { .. }
+                | poise::Event::WebhookUpdate { .. }
+                | poise::Event::ApplicationCommandPermissionsUpdate { .. }
+                | poise::Event::AutoModerationActionExecution { .. }
+                | poise::Event::AutoModerationRuleCreate { .. }
+                | poise::Event::AutoModerationRuleUpdate { .. }
+                | poise::Event::AutoModerationRuleDelete { .. }
+                | poise::Event::CacheReady { .. }
+                | poise::Event::ChannelCreate { .. }
+                | poise::Event::CategoryCreate { .. }
+                | poise::Event::CategoryDelete { .. }
+                | poise::Event::ChannelDelete { .. }
+                | poise::Event::ChannelPinsUpdate { .. }
+                | poise::Event::ChannelUpdate { .. }
+                | poise::Event::IntegrationCreate { .. }
+                | poise::Event::IntegrationUpdate { .. }
+                | poise::Event::IntegrationDelete { .. }
+                | poise::Event::InteractionCreate { .. }
+                | poise::Event::InviteCreate { .. }
+                | poise::Event::InviteDelete { .. }
+                | poise::Event::MessageDelete { .. }
+                | poise::Event::MessageDeleteBulk { .. }
+                | poise::Event::MessageUpdate { .. }
+                | poise::Event::ReactionAdd { .. }
+                | poise::Event::ReactionRemove { .. }
+                | poise::Event::ReactionRemoveAll { .. }
+                | poise::Event::PresenceUpdate { .. }
+                | poise::Event::Ready { .. }
+                | poise::Event::StageInstanceCreate { .. }
+                | poise::Event::StageInstanceDelete { .. }
+                | poise::Event::StageInstanceUpdate { .. }
+                | poise::Event::ThreadCreate { .. }
+                | poise::Event::ThreadDelete { .. }
+                | poise::Event::ThreadListSync { .. }
+                | poise::Event::ThreadMemberUpdate { .. }
+                | poise::Event::ThreadMembersUpdate { .. }
+                | poise::Event::ThreadUpdate { .. }
+                | poise::Event::TypingStart { .. }
+                | poise::Event::Unknown { .. }
+                | poise::Event::UserUpdate { .. }
+                | poise::Event::VoiceServerUpdate { .. }
+                | poise::Event::VoiceStateUpdate { .. } => log_settings.get_all_log_channel(),
+                _ => todo!(),
+            }
+        } else {
+            None
         }
     }
 

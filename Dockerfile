@@ -29,7 +29,7 @@ RUN apt-get update -y \
        && apt-get clean -y \
        && rm -rf /var/lib/apt/lists/*
 
-RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.07.06/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
+RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.10.13/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
 
 RUN yt-dlp -v -h
 

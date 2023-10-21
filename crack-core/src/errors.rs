@@ -6,7 +6,7 @@ use crate::messaging::messages::{
     UNAUTHORIZED_USER,
 };
 use crate::Error;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
 use songbird::input::error::{DcaError, Error as InputError};
 use std::fmt;
@@ -32,10 +32,6 @@ pub enum CrackedError {
     TrackFail(InputError),
     AlreadyConnected(Mention),
     Serenity(SerenityError),
-    #[cfg(feature = "shuttle")]
-    Shuttle(shuttle_runtime::Error),
-    #[cfg(feature = "shuttle")]
-    ShuttleCustom(shuttle_runtime::CustomError),
     SQLX(sqlx::Error),
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
@@ -46,6 +42,7 @@ pub enum CrackedError {
     Songbird(songbird::input::error::Error),
     Poise(Error),
     Anyhow(anyhow::Error),
+    LogChannelWarning(&'static str, GuildId),
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -96,10 +93,6 @@ impl Display for CrackedError {
                 _ => f.write_str(&format!("{err}")),
             },
             Self::Serenity(err) => f.write_str(&format!("{err}")),
-            #[cfg(feature = "shuttle")]
-            Self::Shuttle(err) => f.write_str(&format!("{err}")),
-            #[cfg(feature = "shuttle")]
-            Self::ShuttleCustom(err) => f.write_str(&format!("{err}")),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
@@ -111,6 +104,9 @@ impl Display for CrackedError {
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
+            Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
+                "No log channel set for {event_name} in {guild_id}",
+            )),
         }
     }
 }
@@ -228,14 +224,6 @@ impl From<serde_stream::Error> for CrackedError {
 impl From<std::io::Error> for CrackedError {
     fn from(err: std::io::Error) -> Self {
         Self::IO(err)
-    }
-}
-
-#[cfg(feature = "shuttle")]
-/// Provides an implementation to convert a [`shuttle_service::CustomError`] to a [`CrackedError`].
-impl From<shuttle_service::CustomError> for CrackedError {
-    fn from(err: shuttle_service::CustomError) -> Self {
-        Self::ShuttleCustom(err)
     }
 }
 

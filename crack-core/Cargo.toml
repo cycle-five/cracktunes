@@ -1,22 +1,20 @@
 [package]
 name = "crack-core"
-version = "0.2.10"
+version = "0.2.11"
 authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
-edition = "2018"
+edition = "2021"
 description = "A Discord music bot built on Rust and Crack."
 repository = "https://github.com/cycle-five/cracktunes"
 license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-default = ["playlist", "chatgpt"]
+default = ["playlist"]
 playlist = ["sqlx"]
 shuttle = []
-chatgpt = ["chatgpt_rs"]
 
 [dependencies]
 audiopus = "0.3.0-rc.0"
-chatgpt_rs = { version = "1.2.3", optional = true }
 colored = "2.0.4"
 lazy_static = "1.4.0"
 lyric_finder = "0.1.4"
@@ -29,6 +27,7 @@ serde_stream = { version = "1.0.1", features = ["tokio"]}
 sys-info = "0.9.1"
 prometheus = {version = "0.13.3", features = ["process"]}
 anyhow = "1.0.75"
+proc-macro2 = "1.0.69"
 tracing = { workspace = true }
 reqwest = { workspace = true }
 sqlx = {workspace = true, optional = true}
