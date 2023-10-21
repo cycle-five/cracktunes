@@ -62,9 +62,11 @@ pub async fn get_channel_id(
     match guild_settings
         .lock()
         .unwrap()
-        .get(guild_id)
-        .map(|x| x.get_log_channel_type(&event))
-        .unwrap_or(None)
+        .entry(*guild_id)
+        .or_default()
+        .get_log_channel_type(event)
+        // .map(|x| x.get_log_channel_type(&event))
+        // .unwrap_or(None)
     {
         Some(channel_id) => Ok(channel_id),
         None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
@@ -171,6 +173,41 @@ pub async fn log_voice_state_update(
     create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
+pub async fn log_typing_start(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    event: &serenity::model::prelude::TypingStartEvent,
+) -> Result<serenity::model::prelude::Message, Error> {
+    let user = event.user_id.to_user(http.clone()).await?;
+    let channel_name = http
+        .get_channel(channel_id.0)
+        .await
+        .ok()
+        .map(|x| x.to_string())
+        .unwrap_or_default();
+    let guild = event
+        .guild_id
+        .unwrap_or_default()
+        .to_partial_guild(http.clone())
+        .await?
+        .name;
+    tracing::info!(
+        "{}{} / {} / {} / {}",
+        "TypingStart: ".bright_green(),
+        user.name.bright_yellow(),
+        user.id.to_string().bright_yellow(),
+        channel_name.bright_yellow(),
+        guild.bright_yellow(),
+    );
+    let title = format!("Typing Start: {}", event.user_id);
+    let description = format!(
+        "User: {}\nID: {}\nChannel: {}",
+        user.name, event.user_id, event.channel_id
+    );
+    let avatar_url = user.avatar_url().unwrap_or_default();
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+}
+
 pub async fn log_message(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -187,18 +224,18 @@ pub async fn log_message(
 
 pub async fn handle_event(
     ctx: &SerenityContext,
-    event: &poise::Event<'_>,
+    event_in: &poise::Event<'_>,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);
-    let event_name = event.name();
+    let event_name = event_in.name();
     let guild_settings = &data_global.guild_settings_map;
-    match event {
+    match event_in {
         PresenceUpdate { new_data } => {
             log_event!(
                 log_presence_update,
                 guild_settings,
-                event,
+                event_in,
                 new_data,
                 &new_data.guild_id.unwrap(),
                 &ctx.http,
@@ -210,7 +247,7 @@ pub async fn handle_event(
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
-                event,
+                event_in,
                 new_member,
                 &new_member.guild_id,
                 &ctx.http,
@@ -227,7 +264,7 @@ pub async fn handle_event(
             log_event!(
                 log_guild_member_removal,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 guild_id,
                 &ctx.http,
@@ -240,7 +277,7 @@ pub async fn handle_event(
             log_event!(
                 log_voice_state_update,
                 guild_settings,
-                event,
+                event_in,
                 log_data,
                 &new.guild_id.unwrap(),
                 &ctx.http,
@@ -252,7 +289,7 @@ pub async fn handle_event(
             log_event!(
                 log_message,
                 guild_settings,
-                event,
+                event_in,
                 new_message,
                 &new_message.guild_id.unwrap(),
                 &ctx.http,
@@ -261,39 +298,42 @@ pub async fn handle_event(
             )
         }
         TypingStart { event } => {
-            let _ = event_log.write_log_obj(event_name, &event);
-            let cache_http = ctx.http.clone();
-            let channel = event
-                .channel_id
-                .to_channel_cached(ctx.cache.clone())
-                .unwrap();
-            let user = event.user_id.to_user(cache_http.clone()).await.unwrap();
-            let channel_name = channel
-                .guild()
-                .map(|guild| guild.name)
-                .unwrap_or("DM".to_string());
-            let guild = event
-                .guild_id
-                .unwrap_or_default()
-                .to_guild_cached(ctx.cache.clone())
-                .map(|guild| guild.name)
-                .unwrap_or("DM".to_string());
+            // let cache_http = ctx.http.clone()
+            log_event!(
+                log_typing_start,
+                guild_settings,
+                event_in,
+                event,
+                &event.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+            // let _ = event_log.write_log_obj(event_name, &event);
+            // let cache_http = ctx.http.clone();
+            // let channel = event
+            //     .channel_id
+            //     .to_channel_cached(ctx.cache.clone())
+            //     .unwrap();
+            // let user = event.user_id.to_user(cache_http.clone()).await.unwrap();
+            // let channel_name = channel
+            //     .guild()
+            //     .map(|guild| guild.name)
+            //     .unwrap_or("DM".to_string());
+            // let guild = event
+            //     .guild_id
+            //     .unwrap_or_default()
+            //     .to_guild_cached(ctx.cache.clone())
+            //     .map(|guild| guild.name)
+            //     .unwrap_or("DM".to_string());
 
-            tracing::info!(
-                "{}{} / {} / {} / {}",
-                "TypingStart: ".bright_green(),
-                user.name.bright_yellow(),
-                user.id.to_string().bright_yellow(),
-                channel_name.bright_yellow(),
-                guild.bright_yellow(),
-            );
-            Ok(())
+            // Ok(())
         }
         ApplicationCommandPermissionsUpdate { permission } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 permission,
                 &permission.guild_id,
                 &ctx.http,
@@ -305,7 +345,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 execution,
                 &execution.guild_id,
                 &ctx.http,
@@ -316,7 +356,7 @@ pub async fn handle_event(
         AutoModerationRuleCreate { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             rule,
             &rule.guild_id,
             &ctx.http,
@@ -326,7 +366,7 @@ pub async fn handle_event(
         AutoModerationRuleUpdate { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             rule,
             &rule.guild_id,
             &ctx.http,
@@ -336,7 +376,7 @@ pub async fn handle_event(
         AutoModerationRuleDelete { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             rule,
             &rule.guild_id,
             &ctx.http,
@@ -346,7 +386,7 @@ pub async fn handle_event(
         CategoryCreate { category } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             category,
             &category.guild_id,
             &ctx.http,
@@ -356,7 +396,7 @@ pub async fn handle_event(
         CategoryDelete { category } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             category,
             &category.guild_id,
             &ctx.http,
@@ -366,7 +406,7 @@ pub async fn handle_event(
         ChannelDelete { channel } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             channel,
             &channel.guild_id,
             &ctx.http,
@@ -376,7 +416,7 @@ pub async fn handle_event(
         ChannelPinsUpdate { pin } => log_event!(
             log_unimplemented_event,
             guild_settings,
-            event,
+            event_in,
             pin,
             &pin.guild_id.unwrap_or_default(),
             &ctx.http,
@@ -388,7 +428,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &(old, new),
                 &guild_id,
                 &ctx.http,
@@ -404,7 +444,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 guild_id,
                 &ctx.http,
@@ -420,7 +460,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 guild_id,
                 &ctx.http,
@@ -433,7 +473,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &guild,
                 &guild.id,
                 &ctx.http,
@@ -446,7 +486,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &(guild, is_new),
                 &guild.id,
                 &ctx.http,
@@ -460,7 +500,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 &incomplete.id,
                 &ctx.http,
@@ -474,7 +514,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 &incomplete.id,
                 &ctx.http,
@@ -490,7 +530,7 @@ pub async fn handle_event(
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
-                event,
+                event_in,
                 &log_data,
                 guild_id,
                 &ctx.http,
@@ -498,12 +538,36 @@ pub async fn handle_event(
                 event_name
             )
         }
-        GuildIntegrationsUpdate { guild_id } => event_log.write_obj(&guild_id),
+        GuildIntegrationsUpdate { guild_id } => {
+            let log_data = guild_id;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         #[cfg(feature = "cache")]
         poise::Event::GuildMemberUpdate {
             old_if_available,
             new,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new)),
+        } => {
+            let log_data = (old_if_available, new);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         #[cfg(not(feature = "cache"))]
         poise::Event::GuildMemberUpdate {
             old_if_available,
@@ -718,7 +782,7 @@ pub async fn handle_event(
             belongs_to_channel_id,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
         _ => {
-            tracing::info!("{}", event.name().bright_green());
+            tracing::info!("{}", event_in.name().bright_green());
             Ok(())
         }
     }

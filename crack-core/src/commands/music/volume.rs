@@ -24,82 +24,91 @@ pub async fn volume(
             return Ok(());
         }
     };
+    let embed = {
+        let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+        let call = match manager.get(guild_id) {
+            Some(call) => call,
+            None => {
+                tracing::error!("Can't get call from manager.");
+                let mut embed = CreateEmbed::default();
+                embed.description(format!("{}", CrackedError::NotConnected));
+                create_embed_response_poise(ctx, embed).await?;
+                return Ok(());
+            }
+        };
 
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            tracing::error!("Can't get call from manager.");
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
+        let handler = call.lock().await;
+        let track_handle: Option<TrackHandle> = handler.queue().current();
+        let to_set = match level {
+            Some(arg) => Some(arg as isize),
+            None => {
+                let volume_track = match track_handle {
+                    Some(handle) => handle.get_info().await.unwrap().volume,
+                    None => 0.0,
+                };
+                ctx.data()
+                    .guild_settings_map
+                    .lock()
+                    .unwrap()
+                    .entry(guild_id)
+                    .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
+                let guild_settings = ctx
+                    .data()
+                    .guild_settings_map
+                    .lock()
+                    .unwrap()
+                    .get(&guild_id)
+                    .unwrap()
+                    .clone();
+                let asdf = guild_settings.volume;
 
-    let to_set = match level {
-        Some(arg) => Some(arg as isize),
-        None => {
-            let handler = call.lock().await;
-            let track_handle: Option<TrackHandle> = handler.queue().current();
+                tracing::warn!(
+                    "asdf: {} guild_settings: {:?}",
+                    format!("{:?}", guild_settings).white(),
+                    asdf,
+                );
+                let mut embed = CreateEmbed::default();
+                embed.description(format!(
+                    "Current volume is {:.0}% in settings, {:.0}% in track.",
+                    guild_settings.volume * 100.0,
+                    volume_track * 100.0
+                ));
+                create_embed_response_poise(ctx, embed).await?;
+                return Ok(());
+            }
+        };
 
-            let volume_track = match track_handle {
-                Some(handle) => handle.get_info().await.unwrap().volume,
-                None => 0.0,
-            };
-            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+        let new_vol = to_set.unwrap() as f32 / 100.0;
+        let old_vol = {
+            // let handler = call.lock().await;
+            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap();
             let guild_settings = guild_settings_map
                 .entry(guild_id)
-                .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)))
-                .clone();
-            let asdf = guild_settings_map.get(&guild_id).unwrap().volume;
-
+                .and_modify(|guild_settings| {
+                    guild_settings.set_volume(new_vol);
+                })
+                .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)).set_volume(new_vol));
             tracing::warn!(
-                "asdf: {} guild_settings: {:?}",
+                "guild_settings: {:?}",
                 format!("{:?}", guild_settings).white(),
-                asdf,
             );
-            let mut embed = CreateEmbed::default();
-            embed.description(format!(
-                "Current volume is {:.0}% in settings, {:.0}% in track.",
-                guild_settings.volume * 100.0,
-                volume_track * 100.0
-            ));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
+            guild_settings.old_volume
+        };
+
+        {
+            let embed = create_volume_embed(old_vol, new_vol);
+            let track_handle: TrackHandle = match track_handle {
+                Some(handle) => handle,
+                None => {
+                    create_embed_response_poise(ctx, embed).await?;
+                    return Ok(());
+                }
+            };
+            track_handle.set_volume(new_vol).unwrap();
+            embed
         }
     };
-
-    let handler = call.lock().await;
-    let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let guild_settings = guild_settings_map
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
-    tracing::warn!(
-        "guild_settings: {:?}",
-        format!("{:?}", guild_settings).white(),
-    );
-    let new_volume = to_set.unwrap() as f32 / 100.0;
-    let old_volume = guild_settings.volume;
-
-    guild_settings.volume = new_volume;
-    ctx.data()
-        .guild_settings_map
-        .lock()
-        .unwrap()
-        .insert(guild_id, guild_settings.clone());
-
-    let embed = create_volume_embed(old_volume, new_volume);
-    let track_handle: TrackHandle = match handler.queue().current() {
-        Some(handle) => handle,
-        None => {
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
-    track_handle.set_volume(new_volume).unwrap();
-    create_embed_response_poise(ctx, embed).await?;
-    Ok(())
+    create_embed_response_poise(ctx, embed).await
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

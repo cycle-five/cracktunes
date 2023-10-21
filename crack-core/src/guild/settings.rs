@@ -1,5 +1,6 @@
 use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
+use colored::Colorize;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
@@ -117,6 +118,7 @@ pub struct GuildSettings {
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
+    pub old_volume: f32,
     pub volume: f32,
     pub self_deafen: bool,
     pub timeout: u32,
@@ -145,6 +147,7 @@ impl GuildSettings {
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
+            old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
             timeout: DEFAULT_IDLE_TIMEOUT,
@@ -244,8 +247,12 @@ impl GuildSettings {
         self.authorized_users.contains(&user_id.0)
     }
 
-    pub fn set_default_volume(&mut self, volume: f32) {
-        self.volume = volume;
+    pub fn set_volume(&self, volume: f32) -> Self {
+        Self {
+            old_volume: self.volume,
+            volume,
+            ..self.clone()
+        }
     }
 
     pub fn set_allow_all_domains(&mut self, allow: bool) {
@@ -310,81 +317,84 @@ impl GuildSettings {
         }
     }
 
-    pub fn get_log_channel_type(&self, event: &poise::Event<'_>) -> Option<ChannelId> {
-        if let Some(log_settings) = &self.log_settings {
-            match event {
-                poise::Event::GuildBanRemoval { .. }
-                | poise::Event::GuildMemberAddition { .. }
-                | poise::Event::GuildMemberRemoval { .. }
-                | poise::Event::GuildScheduledEventCreate { .. }
-                | poise::Event::GuildScheduledEventUpdate { .. }
-                | poise::Event::GuildScheduledEventDelete { .. }
-                | poise::Event::GuildScheduledEventUserAdd { .. }
-                | poise::Event::GuildScheduledEventUserRemove { .. }
-                | poise::Event::GuildStickersUpdate { .. }
-                | poise::Event::GuildBanAddition { .. }
-                | poise::Event::GuildCreate { .. }
-                | poise::Event::GuildDelete { .. }
-                | poise::Event::GuildEmojisUpdate { .. }
-                | poise::Event::GuildIntegrationsUpdate { .. }
-                | poise::Event::GuildMemberUpdate { .. }
-                | poise::Event::GuildMembersChunk { .. }
-                | poise::Event::GuildRoleCreate { .. }
-                | poise::Event::GuildRoleDelete { .. }
-                | poise::Event::GuildRoleUpdate { .. }
-                | poise::Event::GuildUnavailable { .. }
-                | poise::Event::GuildUpdate { .. } => log_settings
-                    .get_server_log_channel()
-                    .or(log_settings.get_all_log_channel()),
-                poise::Event::Message { .. }
-                | poise::Event::PresenceReplace { .. }
-                | poise::Event::Resume { .. }
-                | poise::Event::ShardStageUpdate { .. }
-                | poise::Event::WebhookUpdate { .. }
-                | poise::Event::ApplicationCommandPermissionsUpdate { .. }
-                | poise::Event::AutoModerationActionExecution { .. }
-                | poise::Event::AutoModerationRuleCreate { .. }
-                | poise::Event::AutoModerationRuleUpdate { .. }
-                | poise::Event::AutoModerationRuleDelete { .. }
-                | poise::Event::CacheReady { .. }
-                | poise::Event::ChannelCreate { .. }
-                | poise::Event::CategoryCreate { .. }
-                | poise::Event::CategoryDelete { .. }
-                | poise::Event::ChannelDelete { .. }
-                | poise::Event::ChannelPinsUpdate { .. }
-                | poise::Event::ChannelUpdate { .. }
-                | poise::Event::IntegrationCreate { .. }
-                | poise::Event::IntegrationUpdate { .. }
-                | poise::Event::IntegrationDelete { .. }
-                | poise::Event::InteractionCreate { .. }
-                | poise::Event::InviteCreate { .. }
-                | poise::Event::InviteDelete { .. }
-                | poise::Event::MessageDelete { .. }
-                | poise::Event::MessageDeleteBulk { .. }
-                | poise::Event::MessageUpdate { .. }
-                | poise::Event::ReactionAdd { .. }
-                | poise::Event::ReactionRemove { .. }
-                | poise::Event::ReactionRemoveAll { .. }
-                | poise::Event::PresenceUpdate { .. }
-                | poise::Event::Ready { .. }
-                | poise::Event::StageInstanceCreate { .. }
-                | poise::Event::StageInstanceDelete { .. }
-                | poise::Event::StageInstanceUpdate { .. }
-                | poise::Event::ThreadCreate { .. }
-                | poise::Event::ThreadDelete { .. }
-                | poise::Event::ThreadListSync { .. }
-                | poise::Event::ThreadMemberUpdate { .. }
-                | poise::Event::ThreadMembersUpdate { .. }
-                | poise::Event::ThreadUpdate { .. }
-                | poise::Event::TypingStart { .. }
-                | poise::Event::Unknown { .. }
-                | poise::Event::UserUpdate { .. }
-                | poise::Event::VoiceServerUpdate { .. }
-                | poise::Event::VoiceStateUpdate { .. } => log_settings.get_all_log_channel(),
-                _ => todo!(),
+    pub fn get_log_channel_type(&mut self, event: &poise::Event<'_>) -> Option<ChannelId> {
+        let log_settings = self.log_settings.get_or_insert(LogSettings::default());
+        match event {
+            poise::Event::GuildBanRemoval { .. }
+            | poise::Event::GuildMemberAddition { .. }
+            | poise::Event::GuildMemberRemoval { .. }
+            | poise::Event::GuildScheduledEventCreate { .. }
+            | poise::Event::GuildScheduledEventUpdate { .. }
+            | poise::Event::GuildScheduledEventDelete { .. }
+            | poise::Event::GuildScheduledEventUserAdd { .. }
+            | poise::Event::GuildScheduledEventUserRemove { .. }
+            | poise::Event::GuildStickersUpdate { .. }
+            | poise::Event::GuildBanAddition { .. }
+            | poise::Event::GuildCreate { .. }
+            | poise::Event::GuildDelete { .. }
+            | poise::Event::GuildEmojisUpdate { .. }
+            | poise::Event::GuildIntegrationsUpdate { .. }
+            | poise::Event::GuildMemberUpdate { .. }
+            | poise::Event::GuildMembersChunk { .. }
+            | poise::Event::GuildRoleCreate { .. }
+            | poise::Event::GuildRoleDelete { .. }
+            | poise::Event::GuildRoleUpdate { .. }
+            | poise::Event::GuildUnavailable { .. }
+            | poise::Event::GuildUpdate { .. } => log_settings
+                .get_server_log_channel()
+                .or(log_settings.get_all_log_channel()),
+            poise::Event::Message { .. }
+            | poise::Event::PresenceReplace { .. }
+            | poise::Event::Resume { .. }
+            | poise::Event::ShardStageUpdate { .. }
+            | poise::Event::WebhookUpdate { .. }
+            | poise::Event::ApplicationCommandPermissionsUpdate { .. }
+            | poise::Event::AutoModerationActionExecution { .. }
+            | poise::Event::AutoModerationRuleCreate { .. }
+            | poise::Event::AutoModerationRuleUpdate { .. }
+            | poise::Event::AutoModerationRuleDelete { .. }
+            | poise::Event::CacheReady { .. }
+            | poise::Event::ChannelCreate { .. }
+            | poise::Event::CategoryCreate { .. }
+            | poise::Event::CategoryDelete { .. }
+            | poise::Event::ChannelDelete { .. }
+            | poise::Event::ChannelPinsUpdate { .. }
+            | poise::Event::ChannelUpdate { .. }
+            | poise::Event::IntegrationCreate { .. }
+            | poise::Event::IntegrationUpdate { .. }
+            | poise::Event::IntegrationDelete { .. }
+            | poise::Event::InteractionCreate { .. }
+            | poise::Event::InviteCreate { .. }
+            | poise::Event::InviteDelete { .. }
+            | poise::Event::MessageDelete { .. }
+            | poise::Event::MessageDeleteBulk { .. }
+            | poise::Event::MessageUpdate { .. }
+            | poise::Event::ReactionAdd { .. }
+            | poise::Event::ReactionRemove { .. }
+            | poise::Event::ReactionRemoveAll { .. }
+            | poise::Event::PresenceUpdate { .. }
+            | poise::Event::Ready { .. }
+            | poise::Event::StageInstanceCreate { .. }
+            | poise::Event::StageInstanceDelete { .. }
+            | poise::Event::StageInstanceUpdate { .. }
+            | poise::Event::ThreadCreate { .. }
+            | poise::Event::ThreadDelete { .. }
+            | poise::Event::ThreadListSync { .. }
+            | poise::Event::ThreadMemberUpdate { .. }
+            | poise::Event::ThreadMembersUpdate { .. }
+            | poise::Event::ThreadUpdate { .. }
+            | poise::Event::TypingStart { .. }
+            | poise::Event::Unknown { .. }
+            | poise::Event::UserUpdate { .. }
+            | poise::Event::VoiceServerUpdate { .. }
+            | poise::Event::VoiceStateUpdate { .. } => {
+                tracing::warn!(
+                    "{}",
+                    format!("Event: {:?}", event).as_str().to_string().white()
+                );
+                log_settings.get_all_log_channel()
             }
-        } else {
-            None
+            _ => todo!(),
         }
     }
 
