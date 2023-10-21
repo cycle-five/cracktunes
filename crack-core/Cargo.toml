@@ -1,7 +1,7 @@
 [package]
 name = "crack-core"
-version = "0.2.11"
-authors = ["Cycle Five <cycle.five@proton.me>", "aquelemiguel"]
+version = "0.2.12"
+authors = ["CycleFive <cycle.five@proton.me>", "aquelemiguel"]
 edition = "2021"
 description = "A Discord music bot built on Rust and Crack."
 repository = "https://github.com/cycle-five/cracktunes"
