@@ -41,25 +41,37 @@ pub struct LogSettings {
     voice_log_channel: Option<u64>,
 }
 
+const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
+
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
-        self.all_log_channel.map(ChannelId).or(None)
+        self.all_log_channel
+            .map(ChannelId)
+            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_server_log_channel(&self) -> Option<ChannelId> {
-        self.server_log_channel.map(ChannelId).or(None)
+        self.server_log_channel
+            .map(ChannelId)
+            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
-        self.join_leave_log_channel.map(ChannelId).or(None)
+        self.join_leave_log_channel
+            .map(ChannelId)
+            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_member_log_channel(&self) -> Option<ChannelId> {
-        self.member_log_channel.map(ChannelId).or(None)
+        self.member_log_channel
+            .map(ChannelId)
+            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
-        self.voice_log_channel.map(ChannelId).or(None)
+        self.voice_log_channel
+            .map(ChannelId)
+            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {

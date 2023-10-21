@@ -13,7 +13,7 @@ use poise::{
     Event::*,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::client::Context as SerenityContext;
+use serenity::{client::Context as SerenityContext, http::Http};
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -47,68 +47,74 @@ pub fn get_log_channel(
         .unwrap()
 }
 
-pub struct HandleEventData<'a> {
-    guild_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
-    event_log: crate::EventLog,
-    event: poise::Event<'a>,
-    #[allow(dead_code)]
-    ctx: &'a SerenityContext,
-}
-
-impl HandleEventData<'_> {
-    pub async fn get_channel_id(self, guild_id: &GuildId) -> Result<ChannelId, CrackedError> {
-        match self
-            .guild_settings
-            .lock()
-            .unwrap()
-            .get(guild_id)
-            .map(|x| x.get_log_channel_type(&self.event))
-            .unwrap_or(None)
-        {
-            Some(channel_id) => Ok(channel_id),
-            None => Err(CrackedError::LogChannelWarning(
-                self.event.name(),
-                *guild_id,
-            )),
-        }
-    }
-
-    pub fn internal_log<T: Serialize>(&self, log_data: &T) -> Result<(), CrackedError> {
-        self.event_log
-            .write_log_obj(self.event.name(), &log_data)
-            .map_err(CrackedError::Poise)
-    }
-}
-
-// macro_rules! handle_event {
-//     ($handle_event_data:expr, $guild_id:expr, $log_data:expr, $block:expr) => {{
-//         let _ = $handle_event_data
-//             .event_log
-//             .write_log_obj($handle_event_data.event.name(), &$log_data);
-//         if let Some(channel_id) = $handle_event_data
-//             .guild_settings
-//             .lock()
-//             .unwrap()
-//             .get(&$guild_id)
-//             .map(|x| x.get_log_channel_type(&$handle_event_data.event))
-//         {
-//             let channel_id_func = $block;
-//             channel_id_func(channel_id).await?;
-//         } else {
-//             tracing::warn!(
-//                 "No log channel set for {} guild {}",
-//                 $handle_event_data.event.name(),
-//                 $guild_id
-//             );
-//         };
-//         Ok(())
-//     }};
+// #[derive(Clone)]
+// pub struct HandleEventData<'a> {
+//     guild_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+//     event: &'a poise::Event<'a>,
+//     ctx: &'a SerenityContext,
 // }
 
-pub async fn some_chan_func(
-    ctx: &SerenityContext,
-    new_member: &Member,
+pub async fn get_channel_id(
+    guild_settings: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+    guild_id: &GuildId,
+    event: &poise::Event<'_>,
+) -> Result<ChannelId, CrackedError> {
+    match guild_settings
+        .lock()
+        .unwrap()
+        .get(guild_id)
+        .map(|x| x.get_log_channel_type(&event))
+        .unwrap_or(None)
+    {
+        Some(channel_id) => Ok(channel_id),
+        None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
+    }
+}
+
+macro_rules! log_event {
+    ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
+        // if let Some(log_func) = $maybe_log_func {
+        //     let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        //     log_func(channel_id, $http, $log_data).await?;
+        // }
+        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        $log_func(channel_id, $http, $log_data).await?;
+        $event_log.write_log_obj($event_name, $log_data)
+    }}; // ($event_log:expr, $event_name:expr, $log_data:expr) => {{
+        //     $event_log.write_log_obj($event_name, $log_data)
+        // }};
+}
+
+pub async fn log_unimplemented_event<T: Serialize>(
     channel_id: ChannelId,
+    _http: &Arc<Http>,
+    _log_data: T,
+) -> Result<serenity::model::prelude::Message, Error> {
+    Err(CrackedError::UnimplementedEvent(channel_id, std::any::type_name::<T>()).into())
+}
+
+pub async fn log_guild_member_removal(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildId, &serenity::model::prelude::User, &Option<Member>),
+) -> Result<serenity::model::prelude::Message, Error> {
+    let &(_guild_id, user, member_data_if_available) = log_data;
+    let title = format!("Member Left: {}", user.name);
+    let description = format!(
+        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
+        user.name,
+        user.id,
+        user.created_at(),
+        member_data_if_available.clone().and_then(|m| m.joined_at)
+    );
+    let avatar_url = user.avatar_url().unwrap_or_default();
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+}
+
+pub async fn log_guild_member_addition(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    new_member: &Member,
 ) -> Result<serenity::model::prelude::Message, Error> {
     let title = format!("Member Joined: {}", new_member.user.name);
     let description = format!(
@@ -119,15 +125,14 @@ pub async fn some_chan_func(
         new_member.joined_at
     );
     let avatar_url = new_member.user.avatar_url().unwrap_or_default();
-    tracing::warn!("Avatar URL: {}", avatar_url);
-    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
-pub async fn log_presence_update<'a, 'b>(
-    ctx: &'a SerenityContext,
-    new_data: &'b Presence,
+pub async fn log_presence_update(
     channel_id: ChannelId,
-) -> Result<(), Error> {
+    http: &Arc<Http>,
+    new_data: &Presence,
+) -> Result<serenity::model::prelude::Message, Error> {
     let title = format!(
         "Presence Update: {}",
         new_data.user.name.clone().unwrap_or_default()
@@ -143,9 +148,41 @@ pub async fn log_presence_update<'a, 'b>(
         user_id = new_data.user.id,
         user_avatar = new_data.user.avatar.clone().unwrap_or_default(),
     );
-    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-        .await
-        .map(|_| ())
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+}
+
+pub async fn log_voice_state_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(
+        &Option<serenity::model::prelude::VoiceState>,
+        &serenity::model::prelude::VoiceState,
+    ),
+) -> Result<serenity::model::prelude::Message, Error> {
+    let &(old, new) = log_data;
+    let title = format!("Voice State Update: {}", new.user_id);
+    let description = voice_state_diff_str(old, new);
+
+    let avatar_url = new
+        .member
+        .clone()
+        .and_then(|x| x.user.avatar_url())
+        .unwrap_or_default();
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+}
+
+pub async fn log_message(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    new_message: &serenity::model::prelude::Message,
+) -> Result<serenity::model::prelude::Message, Error> {
+    let title = format!("Message: {}", new_message.author.name);
+    let description = format!(
+        "User: {}\nID: {}\nChannel: {}\nMessage: {}",
+        new_message.author.name, new_message.author.id, new_message.channel_id, new_message.content
+    );
+    let avatar_url = new_message.author.avatar_url().unwrap_or_default();
+    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 pub async fn handle_event(
@@ -153,42 +190,33 @@ pub async fn handle_event(
     event: &poise::Event<'_>,
     data_global: &Data,
 ) -> Result<(), Error> {
-    let event_log = data_global.event_log.clone();
+    let event_log = Arc::new(&data_global.event_log);
     let event_name = event.name();
-    let handle_event_data = HandleEventData {
-        guild_settings: Arc::clone(&data_global.guild_settings_map),
-        event_log: event_log.clone(),
-        event: event.clone(),
-        ctx,
-    };
+    let guild_settings = &data_global.guild_settings_map;
     match event {
         PresenceUpdate { new_data } => {
-            handle_event_data.internal_log::<Presence>(new_data)?;
-            let channel_id = handle_event_data
-                .get_channel_id(&new_data.guild_id.unwrap())
-                .await?;
-            log_presence_update(ctx, new_data, channel_id).await
+            log_event!(
+                log_presence_update,
+                guild_settings,
+                event,
+                new_data,
+                &new_data.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         GuildMemberAddition { new_member } => {
-            tracing::info!("Got a new member: {:?}", new_member);
-            let log_data = new_member;
-            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            match guild_settings
-                .get(&new_member.guild_id)
-                .unwrap()
-                .get_log_channel_type(event)
-            {
-                Some(channel_id) => {
-                    some_chan_func(ctx, new_member, channel_id).await?;
-                }
-                None => {
-                    tracing::warn!(
-                        "No join/leave log channel set for guild {}",
-                        new_member.guild_id
-                    );
-                }
-            };
-            event_log.write_log_obj(event.name(), log_data)
+            log_event!(
+                log_guild_member_addition,
+                guild_settings,
+                event,
+                new_member,
+                &new_member.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         poise::Event::GuildMemberRemoval {
             guild_id,
@@ -196,40 +224,42 @@ pub async fn handle_event(
             member_data_if_available,
         } => {
             let log_data = (guild_id, user, member_data_if_available);
-            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            tracing::info!("Member left: {:?}", member_data_if_available);
-            match guild_settings
-                .get(guild_id)
-                .unwrap()
-                .get_log_channel_type(event)
-            {
-                Some(channel_id) => {
-                    let title = format!("Member Left: {}", user.name);
-                    let description = format!(
-                        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-                        user.name,
-                        user.id,
-                        user.created_at(),
-                        member_data_if_available.clone().and_then(|m| m.joined_at)
-                    );
-                    let avatar_url = user.avatar_url().unwrap_or_default();
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
-                }
-                None => {
-                    tracing::warn!("No join/leave log channel set for guild {}", guild_id);
-                }
-            }
-            event_log.write_log_obj(event_name, &log_data)
+            log_event!(
+                log_guild_member_removal,
+                guild_settings,
+                event,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         VoiceStateUpdate { old, new } => {
-            tracing::debug!(
-                "VoiceStateUpdate: {}",
-                voice_state_diff_str(old.clone(), new).bright_yellow()
-            );
-            event_log.write_log_obj(event.name(), &(old, new))
+            let log_data = &(old, new);
+            log_event!(
+                log_voice_state_update,
+                guild_settings,
+                event,
+                log_data,
+                &new.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
-        Message { new_message } => event_log.write_log_obj(event.name(), &new_message),
+        Message { new_message } => {
+            log_event!(
+                log_message,
+                guild_settings,
+                event,
+                new_message,
+                &new_message.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         TypingStart { event } => {
             let _ = event_log.write_log_obj(event_name, &event);
             let cache_http = ctx.http.clone();
@@ -260,46 +290,214 @@ pub async fn handle_event(
             Ok(())
         }
         ApplicationCommandPermissionsUpdate { permission } => {
-            event_log.write_log_obj(event.name(), permission)
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                permission,
+                &permission.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         AutoModerationActionExecution { execution } => {
-            event_log.write_log_obj(event.name(), execution)
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                execution,
+                &execution.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
-        AutoModerationRuleCreate { rule } => event_log.write_log_obj(event.name(), rule),
-        AutoModerationRuleUpdate { rule } => event_log.write_log_obj(event.name(), rule),
-        AutoModerationRuleDelete { rule } => event_log.write_log_obj(event.name(), rule),
-        CategoryCreate { category } => event_log.write_log_obj(event.name(), category),
-        CategoryDelete { category } => event_log.write_log_obj(event.name(), category),
-        ChannelDelete { channel } => event_log.write_log_obj(event.name(), channel),
-        ChannelPinsUpdate { pin } => event_log.write_log_obj(event.name(), pin),
-        ChannelUpdate { old, new } => event_log.write_log_obj(event.name(), &(old, new)),
+        AutoModerationRuleCreate { rule } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            rule,
+            &rule.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        AutoModerationRuleUpdate { rule } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            rule,
+            &rule.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        AutoModerationRuleDelete { rule } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            rule,
+            &rule.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        CategoryCreate { category } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            category,
+            &category.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        CategoryDelete { category } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            category,
+            &category.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        ChannelDelete { channel } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            channel,
+            &channel.guild_id,
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        ChannelPinsUpdate { pin } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event,
+            pin,
+            &pin.guild_id.unwrap_or_default(),
+            &ctx.http,
+            event_log,
+            event_name
+        ),
+        ChannelUpdate { old, new } => {
+            let guild_id = new.clone().guild().map_or(GuildId(0), |x| x.guild_id);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &(old, new),
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         poise::Event::GuildBanAddition {
             guild_id,
             banned_user,
-        } => event_log.write_log_obj(event.name(), &(guild_id, banned_user)),
+        } => {
+            let log_data = (guild_id, banned_user);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         poise::Event::GuildBanRemoval {
             guild_id,
             unbanned_user,
-        } => event_log.write_log_obj(event.name(), &(guild_id, unbanned_user)),
+        } => {
+            let log_data = (guild_id, unbanned_user);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         #[cfg(feature = "cache")]
-        GuildCreate { guild, is_new } => {
-            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
+        GuildCreate { guild } => {
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &guild,
+                &guild.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         #[cfg(not(feature = "cache"))]
         GuildCreate { guild, is_new } => {
-            event_log.write_log_obj(event.name(), &serde_json::to_vec(&(guild, is_new)).unwrap())
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &(guild, is_new),
+                &guild.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         #[cfg(feature = "cache")]
-        GuildDelete { incomplete, full } => event_log.write_log_obj(
-            event.name(),
-            &serde_json::to_vec(&(incomplete, full)).unwrap(),
-        ),
+        GuildDelete { incomplete } => {
+            let log_data = (incomplete);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &log_data,
+                &incomplete.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         #[cfg(not(feature = "cache"))]
-        GuildDelete { incomplete, full } => event_log.write_obj(&(incomplete, full)),
+        GuildDelete { incomplete, full } => {
+            let log_data = (incomplete, full);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &log_data,
+                &incomplete.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         GuildEmojisUpdate {
             guild_id,
             current_state,
-        } => event_log.write_obj(&(guild_id, current_state)),
+        } => {
+            let log_data = (guild_id, current_state);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         GuildIntegrationsUpdate { guild_id } => event_log.write_obj(&guild_id),
         #[cfg(feature = "cache")]
         poise::Event::GuildMemberUpdate {

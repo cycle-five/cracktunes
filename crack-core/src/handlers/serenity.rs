@@ -662,7 +662,7 @@ async fn server_mute_member(
         .await
 }
 
-pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {

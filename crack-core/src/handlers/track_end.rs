@@ -52,16 +52,17 @@ impl EventHandler for TrackEndHandler {
 
         forget_skip_votes(&self.data, self.guild_id).await.ok();
 
-        let channel = match handler.current_channel() {
-            Some(channel) => ChannelId(channel.0),
-            None => return None,
-        };
-        drop(handler);
+        if let Some(channel) = handler.current_channel() {
+            tracing::warn!("Sending now playing message");
+            let chan_id = ChannelId(channel.0);
 
-        send_now_playing(channel, self.http.clone(), self.call.clone())
-            .await
-            .ok();
-
+            send_now_playing(chan_id, self.http.clone(), self.call.clone())
+                .await
+                .ok();
+        } else {
+            tracing::warn!("No channel to send now playing message");
+        }
+        // drop(handler);
         None
     }
 }

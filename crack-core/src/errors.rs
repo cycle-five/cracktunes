@@ -6,7 +6,7 @@ use crate::messaging::messages::{
     UNAUTHORIZED_USER,
 };
 use crate::Error;
-use poise::serenity_prelude::{self as serenity, GuildId};
+use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
 use songbird::input::error::{DcaError, Error as InputError};
 use std::fmt;
@@ -43,6 +43,7 @@ pub enum CrackedError {
     Poise(Error),
     Anyhow(anyhow::Error),
     LogChannelWarning(&'static str, GuildId),
+    UnimplementedEvent(ChannelId, &'static str),
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -106,6 +107,9 @@ impl Display for CrackedError {
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
+            )),
+            Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
+                "Unimplemented event {value} for channel {channel}",
             )),
         }
     }
