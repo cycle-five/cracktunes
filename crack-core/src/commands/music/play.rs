@@ -17,7 +17,7 @@ use crate::{
     },
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
-        create_response_poise_text, edit_embed_response_poise, edit_response_poise,
+        create_response_poise_text, edit_embed_response_poise, edit_response_poise, get_guild_name,
         get_human_readable_timestamp, get_interaction,
     },
     Context, Error,
@@ -49,7 +49,7 @@ pub enum QueryType {
 
 /// Get the guild name (guild-only)
 #[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn get_guild_name(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!(
         "The name of this guild is: {}",
         ctx.partial_guild().await.unwrap().name
@@ -177,9 +177,13 @@ pub async fn play(
     let handler = call.lock().await;
 
     let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let guild_settings = settings
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id, Some(prefix)));
+    let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+        GuildSettings::new(
+            guild_id,
+            Some(prefix),
+            get_guild_name(ctx.serenity_context(), guild_id),
+        )
+    });
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -479,9 +483,13 @@ async fn match_url(
             }
             Some(other) => {
                 let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-                let guild_settings = settings
-                    .entry(guild_id)
-                    .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
+                let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+                    GuildSettings::new(
+                        guild_id,
+                        Some(ctx.prefix()),
+                        get_guild_name(ctx.serenity_context(), guild_id),
+                    )
+                });
                 if !guild_settings.allow_all_domains.unwrap_or(true) {
                     let is_allowed = guild_settings
                         .allowed_domains
@@ -508,9 +516,13 @@ async fn match_url(
         },
         Err(_) => {
             let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-            let guild_settings = settings
-                .entry(guild_id)
-                .or_insert_with(|| GuildSettings::new(guild_id, Some(ctx.prefix())));
+            let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+                GuildSettings::new(
+                    guild_id,
+                    Some(ctx.prefix()),
+                    get_guild_name(ctx.serenity_context(), guild_id),
+                )
+            });
             if !guild_settings.allow_all_domains.unwrap_or(true)
                 && (guild_settings.banned_domains.contains("youtube.com")
                     || (guild_settings.banned_domains.is_empty()

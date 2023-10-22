@@ -11,6 +11,7 @@ use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
+    utils::get_guild_name,
     BotConfig, CamKickConfig, Data,
 };
 use colored::Colorize;
@@ -356,9 +357,9 @@ impl SerenityHandler {
                 }
             };
 
-            let guild_settings = settings
-                .entry(guild.id)
-                .or_insert_with(|| GuildSettings::new(guild.id, Some(&prefix)));
+            let guild_settings = settings.entry(guild.id).or_insert_with(|| {
+                GuildSettings::new(guild.id, Some(&prefix), get_guild_name(ctx, guild.id))
+            });
 
             if let Err(err) = guild_settings.load_if_exists() {
                 tracing::error!("Failed to load guild {} settings due to {}", guild.id, err);

@@ -1,7 +1,7 @@
 use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::utils::create_embed_response_poise;
+use crate::utils::{create_embed_response_poise, get_guild_name};
 use crate::{Context, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
@@ -51,7 +51,13 @@ pub async fn volume(
                     .lock()
                     .unwrap()
                     .entry(guild_id)
-                    .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
+                    .or_insert_with(|| {
+                        GuildSettings::new(
+                            guild_id,
+                            Some(&prefix),
+                            get_guild_name(ctx.serenity_context(), guild_id),
+                        )
+                    });
                 let guild_settings = ctx
                     .data()
                     .guild_settings_map
@@ -87,7 +93,14 @@ pub async fn volume(
                 .and_modify(|guild_settings| {
                     guild_settings.set_volume(new_vol);
                 })
-                .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)).set_volume(new_vol));
+                .or_insert_with(|| {
+                    GuildSettings::new(
+                        guild_id,
+                        Some(&prefix),
+                        get_guild_name(ctx.serenity_context(), guild_id),
+                    )
+                    .set_volume(new_vol)
+                });
             tracing::warn!(
                 "guild_settings: {:?}",
                 format!("{:?}", guild_settings).white(),

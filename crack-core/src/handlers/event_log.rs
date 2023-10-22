@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -9,7 +9,7 @@ use crate::{
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{ChannelId, GuildId, Member, Presence},
+    serenity_prelude::{ChannelId, ClientStatus, GuildId, Member, Presence},
     Event::*,
 };
 use serde::{ser::SerializeStruct, Serialize};
@@ -40,7 +40,7 @@ pub fn get_log_channel(
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.lock().unwrap();
+    let guild_settings_map = data.guild_settings_map.lock().unwrap().clone();
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -55,36 +55,40 @@ pub fn get_log_channel(
 // }
 
 pub async fn get_channel_id(
-    guild_settings: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+    guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
     event: &poise::Event<'_>,
 ) -> Result<ChannelId, CrackedError> {
-    match guild_settings
+    let initial_values = vec![1165246445654388746];
+    let hashset: HashSet<_> = initial_values.into_iter().collect();
+    let guild_settings = &guild_settings_map.lock().unwrap().clone();
+    let ignore_channels = &guild_settings
+        .get(guild_id)
+        .map(|x| x.ignored_channels.clone())
+        .unwrap_or(hashset);
+    match guild_settings_map
         .lock()
         .unwrap()
         .entry(*guild_id)
         .or_default()
         .get_log_channel_type(event)
-        // .map(|x| x.get_log_channel_type(&event))
-        // .unwrap_or(None)
     {
-        Some(channel_id) => Ok(channel_id),
+        Some(channel_id) => {
+            if ignore_channels.contains(&channel_id.0) {
+                return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+            }
+            Ok(channel_id)
+        }
         None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
     }
 }
 
 macro_rules! log_event {
     ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
-        // if let Some(log_func) = $maybe_log_func {
-        //     let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        //     log_func(channel_id, $http, $log_data).await?;
-        // }
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
         $log_func(channel_id, $http, $log_data).await?;
         $event_log.write_log_obj($event_name, $log_data)
-    }}; // ($event_log:expr, $event_name:expr, $log_data:expr) => {{
-        //     $event_log.write_log_obj($event_name, $log_data)
-        // }};
+    }};
 }
 
 pub async fn log_unimplemented_event<T: Serialize>(
@@ -130,21 +134,146 @@ pub async fn log_guild_member_addition(
     create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
+struct PresencePrinter {
+    presence: Option<Presence>,
+}
+
+impl std::fmt::Display for PresencePrinter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(presence) = self.presence.clone() {
+            let activities_str = presence
+                .activities
+                .iter()
+                .map(|activity| format!("{}\n", ActivityPrinter { activity }))
+                .collect::<Vec<_>>()
+                .join(", ");
+            write!(
+                f,
+                "Status: {}\nClientStatus: {}\nActivities: {}\nGuildId: {}\nUser: {}\n",
+                presence.status.name(),
+                presence
+                    .client_status
+                    .map(|x| ClientStatusPrinter {
+                        client_status: Some(x)
+                    }
+                    .to_string())
+                    .unwrap_or_default(),
+                activities_str,
+                presence.guild_id.map(|x| x.to_string()).unwrap_or_default(),
+                PresenceUserPrinter {
+                    user: presence.user
+                }
+            )
+        } else {
+            write!(f, "None")
+        }
+    }
+}
+
+struct PresenceUserPrinter {
+    user: serenity::model::prelude::PresenceUser,
+}
+
+impl std::fmt::Display for PresenceUserPrinter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+                f,
+                "User: {:?}\nID: {:?}\nDiscriminator: {:?}\nAvatar: {:?}\nBot: {:?}\nMFA Enabled: {:?}\nVerified: {:?}\nEmail: {:?}\nPublic Flags: {:?}\n",
+                self.user.name,
+                self.user.id,
+                self.user.discriminator,
+                self.user.avatar,
+                self.user.bot,
+                self.user.mfa_enabled,
+                self.user.verified,
+                self.user.email,
+                self.user.public_flags,
+            )
+    }
+}
+
+struct ActivityPrinter<'a> {
+    activity: &'a serenity::model::prelude::Activity,
+}
+
+impl std::fmt::Display for ActivityPrinter<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let activity = self.activity.clone();
+        let mut activity_str = String::new();
+        if let Some(url) = activity.url {
+            activity_str.push_str(&format!("URL: {}\n", url));
+        }
+        if let Some(application_id) = activity.application_id {
+            activity_str.push_str(&format!("Application ID: {}\n", application_id));
+        }
+        if let Some(timestamps) = activity.timestamps {
+            activity_str.push_str(&format!("Timestamps: {:?}\n", timestamps));
+        }
+        if let Some(details) = activity.details {
+            activity_str.push_str(&format!("Details: {}\n", details));
+        }
+        if let Some(state) = activity.state {
+            activity_str.push_str(&format!("State: {}\n", state));
+        }
+        if let Some(emoji) = activity.emoji {
+            activity_str.push_str(&format!("Emoji: {:?}\n", emoji));
+        }
+        if let Some(party) = activity.party {
+            activity_str.push_str(&format!("Party: {:?}\n", party));
+        }
+        if let Some(assets) = activity.assets {
+            activity_str.push_str(&format!("Assets: {:?}\n", assets));
+        }
+        if let Some(secrets) = activity.secrets {
+            activity_str.push_str(&format!("Secrets: {:?}\n", secrets));
+        }
+        if let Some(instance) = activity.instance {
+            activity_str.push_str(&format!("Instance: {:?}\n", instance));
+        }
+        if let Some(flags) = activity.flags {
+            activity_str.push_str(&format!("Flags: {:?}\n", flags));
+        }
+        write!(f, "{}", activity_str)
+    }
+}
+struct ClientStatusPrinter {
+    client_status: Option<ClientStatus>,
+}
+
+impl std::fmt::Display for ClientStatusPrinter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(client_status) = self.client_status.clone() {
+            let desktop = client_status.desktop.unwrap_or_default();
+            let mobile = client_status.mobile.unwrap_or_default();
+            let web = client_status.web.unwrap_or_default();
+            write!(
+                f,
+                "Desktop: {}\nMobile: {}\nWeb: {}",
+                desktop.name(),
+                mobile.name(),
+                web.name()
+            )
+        } else {
+            write!(f, "None")
+        }
+    }
+}
+
 pub async fn log_presence_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
     new_data: &Presence,
 ) -> Result<serenity::model::prelude::Message, Error> {
+    let presence_str = PresencePrinter {
+        presence: Some(new_data.clone()),
+    }
+    .to_string();
+
     let title = format!(
         "Presence Update: {}",
         new_data.user.name.clone().unwrap_or_default()
     );
-    let description = format!(
-        "User: {}\nID: {}\nPresence Falgs: {:?}",
-        new_data.user.name.clone().unwrap_or_default(),
-        new_data.user.id,
-        new_data.user.public_flags.unwrap_or_default(),
-    );
+    let description = presence_str;
     let avatar_url = format!(
         "https://cdn.discordapp.com/{user_id}/{user_avatar}.png",
         user_id = new_data.user.id,
@@ -286,6 +415,9 @@ pub async fn handle_event(
             )
         }
         Message { new_message } => {
+            if new_message.author.id == ctx.cache.current_user_id() {
+                return Ok(());
+            }
             log_event!(
                 log_message,
                 guild_settings,
@@ -309,25 +441,6 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-            // let _ = event_log.write_log_obj(event_name, &event);
-            // let cache_http = ctx.http.clone();
-            // let channel = event
-            //     .channel_id
-            //     .to_channel_cached(ctx.cache.clone())
-            //     .unwrap();
-            // let user = event.user_id.to_user(cache_http.clone()).await.unwrap();
-            // let channel_name = channel
-            //     .guild()
-            //     .map(|guild| guild.name)
-            //     .unwrap_or("DM".to_string());
-            // let guild = event
-            //     .guild_id
-            //     .unwrap_or_default()
-            //     .to_guild_cached(ctx.cache.clone())
-            //     .map(|guild| guild.name)
-            //     .unwrap_or("DM".to_string());
-
-            // Ok(())
         }
         ApplicationCommandPermissionsUpdate { permission } => {
             log_event!(

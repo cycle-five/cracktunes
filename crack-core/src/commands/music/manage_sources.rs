@@ -28,9 +28,14 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
     let mut data = ctx.serenity_context().data.write().await;
     let settings = data.get_mut::<GuildSettingsMap>().unwrap();
 
-    let guild_settings = settings
-        .entry(guild_id)
-        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix)));
+    use crate::utils::get_guild_name;
+    let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+        GuildSettings::new(
+            guild_id,
+            Some(&prefix),
+            get_guild_name(ctx.serenity_context(), guild_id),
+        )
+    });
 
     // transform the domain sets from the settings into a string
     let allowed_str = guild_settings

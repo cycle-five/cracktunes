@@ -20,7 +20,7 @@ pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_DB_URL: &str = "sqlite:///data/cracktunes.db";
+pub(crate) const DEFAULT_DB_URL: &str = "sqlite:///data/crackedmusic.db";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 
@@ -111,6 +111,7 @@ pub struct WelcomeSettings {
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
+    pub guild_name: String,
     pub prefix: String,
     pub prefix_up: String,
     pub autopause: bool,
@@ -118,6 +119,7 @@ pub struct GuildSettings {
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
+    pub ignored_channels: HashSet<u64>,
     pub old_volume: f32,
     pub volume: f32,
     pub self_deafen: bool,
@@ -127,7 +129,11 @@ pub struct GuildSettings {
 }
 
 impl GuildSettings {
-    pub fn new(guild_id: GuildId, prefix: Option<&str>) -> GuildSettings {
+    pub fn new(
+        guild_id: GuildId,
+        prefix: Option<&str>,
+        guild_name: Option<String>,
+    ) -> GuildSettings {
         let allowed_domains: HashSet<String> = DEFAULT_ALLOWED_DOMAINS
             .iter()
             .map(|d| d.to_string())
@@ -138,8 +144,10 @@ impl GuildSettings {
             None => DEFAULT_PREFIX.to_string(),
         };
 
+        let guild_name = guild_name.map(|x| x.to_string()).unwrap_or_default();
         GuildSettings {
             guild_id,
+            guild_name,
             prefix: my_prefix.clone(),
             prefix_up: my_prefix.to_string().to_ascii_uppercase(),
             autopause: false,
@@ -147,6 +155,7 @@ impl GuildSettings {
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
+            ignored_channels: HashSet::new(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
@@ -157,7 +166,12 @@ impl GuildSettings {
     }
 
     pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
-        let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
+        let path = format!(
+            "{}/{}-{}.json",
+            SETTINGS_PATH.as_str(),
+            self.guild_name,
+            self.guild_id,
+        );
         if !Path::new(&path).exists() {
             return Ok(());
         }
@@ -165,7 +179,12 @@ impl GuildSettings {
     }
 
     pub fn load(&mut self) -> Result<(), CrackedError> {
-        let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
+        let path = format!(
+            "{}/{}-{}.json",
+            SETTINGS_PATH.as_str(),
+            self.guild_name,
+            self.guild_id,
+        );
         let file = OpenOptions::new().read(true).open(path)?;
         let reader = BufReader::new(file);
         *self = serde_json::from_reader::<_, GuildSettings>(reader)?;
@@ -175,14 +194,24 @@ impl GuildSettings {
     pub fn save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
-        let path = format!("{}/{}.json", SETTINGS_PATH.as_str(), self.guild_id);
+        let path = format!(
+            "{}/{}-{}.json",
+            SETTINGS_PATH.as_str(),
+            self.guild_name,
+            self.guild_id
+        );
 
         let file = OpenOptions::new()
             .write(true)
-            .truncate(true)
+            .truncate(false)
             .create(true)
             .open(path)?;
 
+        // let reader = BufReader::new(file);
+        // let old_file = serde_json::from_reader::<_, GuildSettings>(reader)?;
+
+        // if *self != old_file {
+        // }
         let writer = BufWriter::new(file);
         serde_json::to_writer(writer, self)?;
         Ok(())
