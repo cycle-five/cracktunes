@@ -1,6 +1,5 @@
 use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
-use colored::Colorize;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
@@ -120,12 +119,18 @@ pub struct GuildSettings {
     pub banned_domains: HashSet<String>,
     pub authorized_users: HashSet<u64>,
     pub ignored_channels: HashSet<u64>,
+    #[serde(default = "volume_default")]
     pub old_volume: f32,
+    #[serde(default = "volume_default")]
     pub volume: f32,
     pub self_deafen: bool,
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
     pub log_settings: Option<LogSettings>,
+}
+
+fn volume_default() -> f32 {
+    DEFAULT_VOLUME_LEVEL
 }
 
 impl GuildSettings {
@@ -417,10 +422,10 @@ impl GuildSettings {
             | poise::Event::UserUpdate { .. }
             | poise::Event::VoiceServerUpdate { .. }
             | poise::Event::VoiceStateUpdate { .. } => {
-                tracing::warn!(
-                    "{}",
-                    format!("Event: {:?}", event).as_str().to_string().white()
-                );
+                // tracing::warn!(
+                //     "{}",
+                //     format!("Event: {:?}", event).as_str().to_string().white()
+                // );
                 log_settings.get_all_log_channel()
             }
             _ => todo!(),

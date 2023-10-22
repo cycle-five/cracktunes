@@ -140,6 +140,10 @@ pub async fn poise_framework(
                     // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
+                        if guild_settings.prefix != "" {
+                            return Ok(None);
+                        }
+
                         let prefix = &guild_settings.prefix;
                         let prefix_up = &guild_settings.prefix_up;
 
