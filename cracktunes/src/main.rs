@@ -20,7 +20,7 @@ fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .worker_threads(4)
+        //.worker_threads(16)
         .build()
         .unwrap();
 
