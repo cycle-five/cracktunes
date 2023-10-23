@@ -67,10 +67,15 @@ pub async fn summon(
     }
 
     // join the channel
-    manager.join(guild.id, channel_id).await.1?;
+    let (call, result) = manager.join(guild.id, channel_id).await;
+    let _ = result.map_err(|e| {
+        tracing::error!("Error joining channel: {:?}", e);
+        CrackedError::JoinChannelError(e)
+    })?;
 
     // unregister existing events and register idle notifier
-    if let Some(call) = manager.get(guild.id) {
+    //if let Some(call) = manager.get(guild.id)
+    {
         let mut handler = call.lock().await;
 
         handler.remove_all_global_events();

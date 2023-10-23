@@ -181,7 +181,7 @@ impl VoiceEventHandler for Receiver {
 
 pub async fn register_voice_handler(
     handler_lock: Arc<RwLock<Call>>,
-    data: Arc<RwLock<Vec<u8>>>,
+    buffer: Arc<RwLock<Vec<u8>>>,
     conn_result: Result<(), JoinError>,
 ) {
     if let Ok(_) = conn_result {
@@ -190,21 +190,21 @@ pub async fn register_voice_handler(
 
         handler.add_global_event(
             CoreEvent::SpeakingStateUpdate.into(),
-            Receiver::new(data.clone()),
+            Receiver::new(buffer.clone()),
         );
 
         handler.add_global_event(
             CoreEvent::SpeakingUpdate.into(),
-            Receiver::new(data.clone()),
+            Receiver::new(buffer.clone()),
         );
 
-        handler.add_global_event(CoreEvent::VoicePacket.into(), Receiver::new(data.clone()));
+        handler.add_global_event(CoreEvent::VoicePacket.into(), Receiver::new(buffer.clone()));
 
-        handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(data.clone()));
+        handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(buffer.clone()));
 
         handler.add_global_event(
             CoreEvent::ClientDisconnect.into(),
-            Receiver::new(data.clone()),
+            Receiver::new(buffer.clone()),
         );
     }
 }

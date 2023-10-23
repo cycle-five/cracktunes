@@ -614,14 +614,16 @@ pub async fn set_all_log_channel(
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let settings = guild_settings_map.get(&guild_id).unwrap();
+    {
+        let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+        let settings = guild_settings_map.get(&guild_id).unwrap();
 
-    create_response_poise(
-        ctx,
-        CrackedMessage::Other(format!("Settings: {:?}", settings)),
-    )
-    .await?;
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings: {:?}", settings)),
+        )
+        .await?;
+    }
 
     Ok(())
 }

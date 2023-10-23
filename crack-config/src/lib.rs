@@ -13,8 +13,8 @@ use poise::{
     Framework,
 };
 use songbird::serenity::SerenityInit;
-use std::sync::Mutex;
-use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+use std::{collections::HashMap, iter::FromIterator, process::exit, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Mutex};
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -79,7 +79,12 @@ pub async fn poise_framework(
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
+    // let mut owners = HashSet::new();
+    // for owner in config.owners.unwrap_or_default().into_iter() {
+    //     owners.insert(UserId(owner));
+    // }
     let options = poise::FrameworkOptions::<_, Error> {
+        #[cfg(feature = "set_owners_from_config")]
         owners: config
             .owners
             .as_ref()
