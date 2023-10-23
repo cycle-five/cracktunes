@@ -170,7 +170,18 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    create_response_poise_text(&ctx, CrackedMessage::Search).await?;
+    match get_interaction(ctx.clone()) {
+        Some(interaction) => {
+            interaction.defer(ctx.http()).await.unwrap();
+            interaction
+                .create_interaction_response(&ctx.serenity_context().http, |response| {
+                    response
+                        .kind(serenity::InteractionResponseType::DeferredChannelMessageWithSource)
+                })
+                .await?;
+        }
+        None => create_response_poise_text(&ctx, CrackedMessage::Search).await?,
+    };
 
     match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
 
