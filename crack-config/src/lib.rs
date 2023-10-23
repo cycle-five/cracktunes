@@ -9,12 +9,14 @@ use crack_core::{
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
 use poise::{
-    serenity_prelude::{GatewayIntents, GuildId, UserId},
+    serenity_prelude::{GatewayIntents, GuildId},
+    // #[cfg(feature = "set_owners_from_config")]
+    // UserId,
     Framework,
 };
 use songbird::serenity::SerenityInit;
-use std::{collections::HashMap, iter::FromIterator, process::exit, sync::Arc, time::Duration};
-use std::{collections::HashSet, sync::Mutex};
+use std::sync::Mutex;
+use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {

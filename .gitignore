@@ -9,7 +9,7 @@
 
 # configuration / secrets
 Secrets.toml
-.env*
+.env.*
 
 # IDE config
 .vscode/
