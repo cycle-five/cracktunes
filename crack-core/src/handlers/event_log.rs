@@ -91,6 +91,7 @@ pub async fn get_channel_id(
 }
 
 macro_rules! log_event {
+    // #[cfg(feature="no_log")]
     ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
         $log_func(channel_id, $http, $log_data).await?;
