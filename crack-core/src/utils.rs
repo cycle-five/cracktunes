@@ -157,7 +157,7 @@ pub async fn create_embed_response_prefix(
 ) -> Result<Message, Error> {
     ctx.send(|builder| {
         builder.embeds.append(&mut vec![embed]);
-        builder //.reply(true)
+        builder
     })
     .await
     .unwrap()
