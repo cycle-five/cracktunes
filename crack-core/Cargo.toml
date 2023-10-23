@@ -28,6 +28,7 @@ sys-info = "0.9.1"
 prometheus = {version = "0.13.3", features = ["process"]}
 anyhow = "1.0.75"
 proc-macro2 = "1.0.69"
+typemap_rev = "0.3.0"
 tracing = { workspace = true }
 reqwest = { workspace = true }
 sqlx = {workspace = true, optional = true}

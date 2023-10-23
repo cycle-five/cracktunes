@@ -61,7 +61,14 @@ pub async fn get_channel_id(
 ) -> Result<ChannelId, CrackedError> {
     let initial_values = vec![1165246445654388746];
     let hashset: HashSet<_> = initial_values.into_iter().collect();
-    let guild_settings = &guild_settings_map.lock().unwrap().clone();
+    let guild_settings = match guild_settings_map.lock() {
+        Ok(x) => x.clone(),
+        Err(e) => {
+            let err_string = e.to_string();
+            tracing::error!("Failed to lock guild_settings_map: {err_string}");
+            return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+        }
+    };
     let ignore_channels = &guild_settings
         .get(guild_id)
         .map(|x| x.ignored_channels.clone())

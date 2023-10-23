@@ -170,7 +170,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    match get_interaction(ctx.clone()) {
+    match get_interaction(ctx) {
         Some(interaction) => {
             interaction.defer(ctx.http()).await.unwrap();
             interaction
