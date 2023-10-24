@@ -13,6 +13,7 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
+    tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
@@ -24,8 +25,20 @@ pub async fn volume(
             return Ok(());
         }
     };
+    tracing::error!("guild_id: {:?}", guild_id);
     let embed = {
-        let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+        tracing::error!("embed");
+        let manager = match songbird::get(ctx.serenity_context()).await {
+            Some(manager) => manager,
+            None => {
+                tracing::error!("Can't get manager.");
+                let mut embed = CreateEmbed::default();
+                embed.description(format!("{}", CrackedError::NotConnected));
+                create_embed_response_poise(ctx, embed).await?;
+                return Ok(());
+            }
+        };
+        tracing::error!("manager: {:?}", manager);
         let call = match manager.get(guild_id) {
             Some(call) => call,
             None => {
@@ -36,9 +49,16 @@ pub async fn volume(
                 return Ok(());
             }
         };
+        tracing::error!("call: {:?}", call);
 
         let handler = call.lock().await;
+
+        tracing::error!("handler: {:?}", handler);
+
         let track_handle: Option<TrackHandle> = handler.queue().current();
+
+        tracing::error!("track_handle: {:?}", track_handle);
+
         let to_set = match level {
             Some(arg) => Some(arg as isize),
             None => {
@@ -84,6 +104,8 @@ pub async fn volume(
             }
         };
 
+        tracing::error!("to_set: {:?}", to_set);
+
         let new_vol = to_set.unwrap() as f32 / 100.0;
         let old_vol = {
             // let handler = call.lock().await;
@@ -94,12 +116,24 @@ pub async fn volume(
                     guild_settings.set_volume(new_vol);
                 })
                 .or_insert_with(|| {
-                    GuildSettings::new(
+                    let guild_settings = GuildSettings::new(
                         guild_id,
                         Some(&prefix),
                         get_guild_name(ctx.serenity_context(), guild_id),
                     )
                     .set_volume(new_vol)
+                    .clone();
+                    match guild_settings.save() {
+                        Ok(_) => (),
+                        Err(e) => {
+                            tracing::error!("Error saving guild_settings: {:?}", e);
+                        }
+                    }
+                    tracing::warn!(
+                        "guild_settings: {:?}",
+                        format!("{:?}", guild_settings).white(),
+                    );
+                    guild_settings
                 });
             tracing::warn!(
                 "guild_settings: {:?}",
@@ -108,18 +142,18 @@ pub async fn volume(
             guild_settings.old_volume
         };
 
-        {
-            let embed = create_volume_embed(old_vol, new_vol);
-            let track_handle: TrackHandle = match track_handle {
-                Some(handle) => handle,
-                None => {
-                    create_embed_response_poise(ctx, embed).await?;
-                    return Ok(());
-                }
-            };
-            track_handle.set_volume(new_vol).unwrap();
-            embed
-        }
+        let embed = create_volume_embed(old_vol, new_vol);
+        let track_handle: TrackHandle = match track_handle {
+            Some(handle) => handle,
+            None => {
+                create_embed_response_poise(ctx, embed).await?;
+                return Ok(());
+            }
+        };
+        track_handle.set_volume(new_vol).unwrap();
+        tracing::error!("track_handle: {:?}", track_handle);
+        tracing::error!("embed: {:?}", embed);
+        embed
     };
     create_embed_response_poise(ctx, embed).await
 }

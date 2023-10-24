@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::{mem, slice};
 
-use songbird::error::JoinError;
 use songbird::{Call, CoreEvent};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
@@ -18,6 +17,8 @@ use songbird::{
 
 use serenity::{client::Context as SerenityContext, model::gateway::Ready};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::errors::CrackedError;
 
 // use crate::{Context, Error};
 // use typemap_rev::TypeMap;
@@ -179,34 +180,36 @@ impl VoiceEventHandler for Receiver {
     }
 }
 
-pub async fn register_voice_handler(
-    handler_lock: Arc<RwLock<Call>>,
+pub async fn register_voice_handlers(
     buffer: Arc<RwLock<Vec<u8>>>,
-    conn_result: Result<(), JoinError>,
-) {
-    if let Ok(_) = conn_result {
-        // NOTE: this skips listening for the actual connection result.
-        let mut handler = handler_lock.write().await;
+    handler_lock: Arc<tokio::sync::Mutex<Call>>,
+) -> Result<(), CrackedError> {
+    // NOTE: this skips listening for the actual connection result.
+    let mut handler = handler_lock.lock().await;
+    // .map_err(|e| {
+    //     tracing::error!("Error locking handler: {:?}", e);
+    //     CrackedError::RSpotifyLockError(format!("{e:?}"))
+    // })?;
 
-        handler.add_global_event(
-            CoreEvent::SpeakingStateUpdate.into(),
-            Receiver::new(buffer.clone()),
-        );
+    handler.add_global_event(
+        CoreEvent::SpeakingStateUpdate.into(),
+        Receiver::new(buffer.clone()),
+    );
 
-        handler.add_global_event(
-            CoreEvent::SpeakingUpdate.into(),
-            Receiver::new(buffer.clone()),
-        );
+    handler.add_global_event(
+        CoreEvent::SpeakingUpdate.into(),
+        Receiver::new(buffer.clone()),
+    );
 
-        handler.add_global_event(CoreEvent::VoicePacket.into(), Receiver::new(buffer.clone()));
+    handler.add_global_event(CoreEvent::VoicePacket.into(), Receiver::new(buffer.clone()));
 
-        handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(buffer.clone()));
+    handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(buffer.clone()));
 
-        handler.add_global_event(
-            CoreEvent::ClientDisconnect.into(),
-            Receiver::new(buffer.clone()),
-        );
-    }
+    handler.add_global_event(
+        CoreEvent::ClientDisconnect.into(),
+        Receiver::new(buffer.clone()),
+    );
+    Ok(())
 }
 
 // #[command]

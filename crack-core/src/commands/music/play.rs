@@ -196,6 +196,7 @@ pub async fn play(
         )
     });
 
+    tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
     queue

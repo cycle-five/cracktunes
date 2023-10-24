@@ -12,6 +12,7 @@ keywords = ["discord", "music-bot", "rust"]
 default = ["playlist"]
 playlist = ["sqlx"]
 shuttle = []
+log_all = []
 
 [dependencies]
 audiopus = "0.3.0-rc.0"

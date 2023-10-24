@@ -54,12 +54,12 @@ pub struct CamKickConfig {
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 30,
+            cammed_down_timeout: 0,
             guild_id: 0,
             channel_id: 0,
             dc_message: "You have been violated for being cammed down for too long.".to_string(),
             send_msg_deafen: false,
-            send_msg_mute: true,
+            send_msg_mute: false,
             send_msg_dc: false,
         }
     }
@@ -150,16 +150,16 @@ impl Display for BotConfig {
 }
 
 impl BotConfig {
+    pub fn set_credentials(&mut self, creds: BotCredentials) -> &mut Self {
+        self.credentials = Some(creds);
+        self
+    }
+
     pub fn get_prefix(&self) -> String {
         self.prefix
             .as_ref()
             .cloned()
             .unwrap_or(DEFAULT_PREFIX.to_string())
-    }
-
-    pub fn set_credentials(&mut self, creds: BotCredentials) -> BotConfig {
-        self.credentials = Some(creds);
-        self.clone()
     }
 
     pub fn get_video_status_poll_interval(&self) -> u64 {

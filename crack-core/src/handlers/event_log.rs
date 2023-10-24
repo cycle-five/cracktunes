@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
@@ -47,47 +47,36 @@ pub fn get_log_channel(
         .unwrap()
 }
 
-// #[derive(Clone)]
-// pub struct HandleEventData<'a> {
-//     guild_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
-//     event: &'a poise::Event<'a>,
-//     ctx: &'a SerenityContext,
-// }
-
 pub async fn get_channel_id(
     guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
     event: &poise::Event<'_>,
 ) -> Result<ChannelId, CrackedError> {
-    let initial_values = vec![1165246445654388746];
-    let hashset: HashSet<_> = initial_values.into_iter().collect();
-    let guild_settings = match guild_settings_map.lock() {
-        Ok(x) => x.clone(),
-        Err(e) => {
-            let err_string = e.to_string();
-            tracing::error!("Failed to lock guild_settings_map: {err_string}");
-            return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+    // let initial_values: Vec<u64> = vec![1165246445654388746];
+    // let hashset: HashSet<_> = initial_values.into_iter().collect();
+
+    let x = {
+        let guild_settings_map = guild_settings_map.lock().unwrap().clone();
+
+        let guild_settings = guild_settings_map
+            .get(guild_id)
+            .map(Ok)
+            .unwrap_or_else(|| {
+                tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
+                Err(CrackedError::LogChannelWarning(event.name(), *guild_id))
+            })?
+            .clone();
+        match guild_settings.get_log_channel_type(event) {
+            Some(channel_id) => {
+                if guild_settings.ignored_channels.contains(&channel_id.0) {
+                    return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+                }
+                Ok(channel_id)
+            }
+            None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
         }
     };
-    let ignore_channels = &guild_settings
-        .get(guild_id)
-        .map(|x| x.ignored_channels.clone())
-        .unwrap_or(hashset);
-    match guild_settings_map
-        .lock()
-        .unwrap()
-        .entry(*guild_id)
-        .or_default()
-        .get_log_channel_type(event)
-    {
-        Some(channel_id) => {
-            if ignore_channels.contains(&channel_id.0) {
-                return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
-            }
-            Ok(channel_id)
-        }
-        None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
-    }
+    x
 }
 
 macro_rules! log_event {
@@ -369,16 +358,24 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
     match event_in {
         PresenceUpdate { new_data } => {
-            log_event!(
-                log_presence_update,
-                guild_settings,
-                event_in,
-                new_data,
-                &new_data.guild_id.unwrap(),
-                &ctx.http,
-                event_log,
-                event_name
-            )
+            #[cfg(feature = "log_all")]
+            {
+                log_event!(
+                    log_presence_update,
+                    guild_settings,
+                    event_in,
+                    new_data,
+                    &new_data.guild_id.unwrap(),
+                    &ctx.http,
+                    event_log,
+                    event_name
+                )
+            }
+            #[cfg(not(feature = "log_all"))]
+            {
+                let _ = new_data;
+                Ok(())
+            }
         }
         GuildMemberAddition { new_member } => {
             log_event!(
@@ -866,7 +863,42 @@ pub async fn handle_event(
             removed_from_message_id,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
         PresenceReplace { new_presences } => event_log.write_log_obj(event_name, new_presences),
-        Ready { data_about_bot } => event_log.write_log_obj(event_name, data_about_bot),
+        Ready { data_about_bot } => {
+            tracing::info!("{} is connected!", data_about_bot.user.name);
+
+            // ctx.set_activity(Activity::listening(format!(
+            //     "{}play",
+            //     data_global.bot_settings.get_prefix()
+            // )))
+            // .await;
+
+            // // attempts to authenticate to spotify
+            // *SPOTIFY.lock().await = Spotify::auth(None).await;
+
+            // // loads serialized guild settings
+            // tracing::warn!("Loading guilds' settings");
+            // let guild_settings_map =
+            //     load_guilds_settings(&ctx, &data_about_bot.guilds, data_global).await;
+
+            // // These are the guild settings defined in the config file.
+            // // Should they always override the ones in the database?
+            // // tracing::warn!("Merging guilds' settings");
+            // // self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
+            // //     .await;
+
+            // // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
+            // // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
+            // data_global
+            //     .guild_settings_map
+            //     .lock()
+            //     .unwrap()
+            //     .iter()
+            //     .for_each(|(k, v)| {
+            //         tracing::warn!("Saving Guild: {}", k);
+            //         v.save().expect("Error saving guild settings");
+            //     });
+            event_log.write_log_obj(event_name, data_about_bot)
+        }
         Resume { event } => event_log.write_log_obj(event_name, event),
         StageInstanceCreate { stage_instance } => {
             event_log.write_log_obj(event_name, stage_instance)
@@ -902,6 +934,10 @@ pub async fn handle_event(
             guild_id,
             belongs_to_channel_id,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
+        CacheReady { guilds } => {
+            tracing::info!("{}: {}", event_in.name().bright_green(), guilds.len());
+            Ok(())
+        }
         _ => {
             tracing::info!("{}", event_in.name().bright_green());
             Ok(())
