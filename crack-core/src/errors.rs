@@ -36,6 +36,7 @@ pub enum CrackedError {
     QueueEmpty,
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
+    RSpotifyLockError(String),
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
@@ -114,6 +115,7 @@ impl Display for CrackedError {
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
+            CrackedError::RSpotifyLockError(_) => todo!(),
         }
     }
 }

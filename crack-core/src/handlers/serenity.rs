@@ -346,16 +346,16 @@ impl SerenityHandler {
         let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
+        let settings = match data.get_mut::<GuildSettingsMap>() {
+            Some(settings) => settings,
+            None => {
+                tracing::error!("Guild settings not found");
+                data.insert::<GuildSettingsMap>(HashMap::default());
+                data.get_mut::<GuildSettingsMap>().unwrap()
+            }
+        };
         for guild in &ready.guilds {
             tracing::info!("Loading guild settings for {:?}", guild);
-            let settings = match data.get_mut::<GuildSettingsMap>() {
-                Some(settings) => settings,
-                None => {
-                    tracing::error!("Guild settings not found");
-                    data.insert::<GuildSettingsMap>(HashMap::default());
-                    data.get_mut::<GuildSettingsMap>().unwrap()
-                }
-            };
 
             let guild_settings = settings.entry(guild.id).or_insert_with(|| {
                 GuildSettings::new(guild.id, Some(&prefix), get_guild_name(ctx, guild.id))
@@ -433,7 +433,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
     let voice_states = guild.voice_states;
     let mut cams = vec![];
-    let mut output: String = "\n".to_string();
+    let mut output: String = format!("{}\n", guild.name.bright_green());
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
@@ -467,7 +467,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
             cams.push(info);
             output.push_str(&format!(
-                "({}|{})({}|{})|{}\n",
+                "{}|{}|{}|{}|{}\n",
                 &user.name,
                 &user.id,
                 &channel_name,

@@ -187,7 +187,7 @@ impl GuildSettings {
         let path = format!(
             "{}/{}-{}.json",
             SETTINGS_PATH.as_str(),
-            self.guild_name,
+            self.get_guild_name(),
             self.guild_id,
         );
         let file = OpenOptions::new().read(true).open(path)?;
@@ -202,7 +202,7 @@ impl GuildSettings {
         let path = format!(
             "{}/{}-{}.json",
             SETTINGS_PATH.as_str(),
-            self.guild_name,
+            self.get_guild_name(),
             self.guild_id
         );
 
@@ -281,28 +281,29 @@ impl GuildSettings {
         self.authorized_users.contains(&user_id.0)
     }
 
-    pub fn set_volume(&self, volume: f32) -> Self {
-        Self {
-            old_volume: self.volume,
-            volume,
-            ..self.clone()
-        }
+    pub fn set_volume(&mut self, volume: f32) -> &mut Self {
+        self.old_volume = self.volume;
+        self.volume = volume;
+        self
     }
 
-    pub fn set_allow_all_domains(&mut self, allow: bool) {
+    pub fn set_allow_all_domains(&mut self, allow: bool) -> &mut Self {
         self.allow_all_domains = Some(allow);
+        self
     }
 
-    pub fn set_timeout(&mut self, timeout: u32) {
+    pub fn set_timeout(&mut self, timeout: u32) -> &mut Self {
         self.timeout = timeout;
+        self
     }
 
-    pub fn set_welcome_settings(&mut self, channel_id: u64, message: &str) {
+    pub fn set_welcome_settings(&mut self, channel_id: u64, message: &str) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
             auto_role: None,
         });
+        self
     }
 
     pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
@@ -325,6 +326,17 @@ impl GuildSettings {
     pub fn set_prefix(&mut self, prefix: &str) {
         self.prefix = prefix.to_string();
         self.prefix_up = prefix.to_string().to_ascii_uppercase();
+    }
+
+    pub fn get_guild_name(&self) -> &str {
+        let guild_name = {
+            if self.guild_name.is_empty() {
+                "UNSET"
+            } else {
+                self.guild_name.as_str()
+            }
+        };
+        guild_name
     }
 
     pub fn get_prefix(&self) -> &str {

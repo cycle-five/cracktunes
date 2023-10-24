@@ -150,16 +150,16 @@ impl Display for BotConfig {
 }
 
 impl BotConfig {
+    pub fn set_credentials(&mut self, creds: BotCredentials) -> &mut Self {
+        self.credentials = Some(creds);
+        self
+    }
+
     pub fn get_prefix(&self) -> String {
         self.prefix
             .as_ref()
             .cloned()
             .unwrap_or(DEFAULT_PREFIX.to_string())
-    }
-
-    pub fn set_credentials(&mut self, creds: BotCredentials) -> BotConfig {
-        self.credentials = Some(creds);
-        self.clone()
     }
 
     pub fn get_video_status_poll_interval(&self) -> u64 {

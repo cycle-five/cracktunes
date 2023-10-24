@@ -94,12 +94,20 @@ pub async fn volume(
                     guild_settings.set_volume(new_vol);
                 })
                 .or_insert_with(|| {
-                    GuildSettings::new(
+                    let guild_settings = GuildSettings::new(
                         guild_id,
                         Some(&prefix),
                         get_guild_name(ctx.serenity_context(), guild_id),
                     )
                     .set_volume(new_vol)
+                    .clone();
+                    match guild_settings.save() {
+                        Ok(_) => (),
+                        Err(e) => {
+                            tracing::error!("Error saving guild_settings: {:?}", e);
+                        }
+                    }
+                    guild_settings
                 });
             tracing::warn!(
                 "guild_settings: {:?}",

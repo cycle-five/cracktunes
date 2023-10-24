@@ -369,16 +369,24 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
     match event_in {
         PresenceUpdate { new_data } => {
-            log_event!(
-                log_presence_update,
-                guild_settings,
-                event_in,
-                new_data,
-                &new_data.guild_id.unwrap(),
-                &ctx.http,
-                event_log,
-                event_name
-            )
+            #[cfg(feature = "log_all")]
+            {
+                log_event!(
+                    log_presence_update,
+                    guild_settings,
+                    event_in,
+                    new_data,
+                    &new_data.guild_id.unwrap(),
+                    &ctx.http,
+                    event_log,
+                    event_name
+                )
+            }
+            #[cfg(not(feature = "log_all"))]
+            {
+                let _ = new_data;
+                Ok(())
+            }
         }
         GuildMemberAddition { new_member } => {
             log_event!(
@@ -902,6 +910,10 @@ pub async fn handle_event(
             guild_id,
             belongs_to_channel_id,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
+        CacheReady { guilds } => {
+            tracing::info!("{}: {}", event_in.name().bright_green(), guilds.len());
+            Ok(())
+        }
         _ => {
             tracing::info!("{}", event_in.name().bright_green());
             Ok(())
