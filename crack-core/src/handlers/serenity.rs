@@ -14,6 +14,7 @@ use crate::{
     utils::get_guild_name,
     BotConfig, CamKickConfig, Data,
 };
+use ::serenity::model::guild;
 use colored::Colorize;
 use poise::serenity_prelude::{
     self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
@@ -355,15 +356,36 @@ impl SerenityHandler {
             }
         };
         for guild in &ready.guilds {
-            tracing::info!("Loading guild settings for {:?}", guild);
+            let guild_id = guild.id;
+            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match,
+                None => {
+                    tracing::error!("Guild not found in cache");
+                    continue;
+                }
+            };
+            tracing::info!("Loading guild settings for {:?}", guild_full);
 
-            let guild_settings = settings.entry(guild.id).or_insert_with(|| {
-                GuildSettings::new(guild.id, Some(&prefix), get_guild_name(ctx, guild.id))
-            });
+            let mut default =
+                GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
 
-            if let Err(err) = guild_settings.load_if_exists() {
-                tracing::error!("Failed to load guild {} settings due to {}", guild.id, err);
+            if let Err(err) = default.load_if_exists() {
+                tracing::error!(
+                    "Failed to load guild {} settings due to {}",
+                    guild_full.id,
+                    err
+                );
             }
+
+            let guild_settings = settings.insert(guild_full.id, default);
+
+            tracing::info!(
+                "Guild loaded: {}",
+                guild_settings
+                    .map(|x| x.to_string())
+                    .unwrap_or("EMPTY".to_string())
+                    .white()
+            );
         }
     }
 

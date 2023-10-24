@@ -3,6 +3,7 @@ use self::serenity::{model::id::GuildId, TypeMapKey};
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -133,6 +134,31 @@ fn volume_default() -> f32 {
     DEFAULT_VOLUME_LEVEL
 }
 
+impl Display for GuildSettings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
+            self.guild_id,
+            self.guild_name,
+            self.prefix,
+            self.prefix_up,
+            self.autopause,
+            self.allow_all_domains.unwrap_or(true),
+            self.allowed_domains,
+            self.banned_domains,
+            self.authorized_users,
+            self.ignored_channels,
+            self.old_volume,
+            self.volume,
+            self.self_deafen,
+            self.timeout,
+            self.welcome_settings,
+            self.log_settings,
+        )
+    }
+}
+
 impl GuildSettings {
     pub fn new(
         guild_id: GuildId,
@@ -192,7 +218,9 @@ impl GuildSettings {
         );
         let file = OpenOptions::new().read(true).open(path)?;
         let reader = BufReader::new(file);
-        *self = serde_json::from_reader::<_, GuildSettings>(reader)?;
+        let mut loaded_guild = serde_json::from_reader::<_, GuildSettings>(reader)?;
+        loaded_guild.guild_name = self.guild_name.clone();
+        *self = loaded_guild;
         Ok(())
     }
 
