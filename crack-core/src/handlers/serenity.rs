@@ -11,10 +11,8 @@ use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::get_guild_name,
     BotConfig, CamKickConfig, Data,
 };
-use ::serenity::model::guild;
 use colored::Colorize;
 use poise::serenity_prelude::{
     self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
