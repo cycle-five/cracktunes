@@ -54,12 +54,12 @@ pub struct CamKickConfig {
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 30,
+            cammed_down_timeout: 0,
             guild_id: 0,
             channel_id: 0,
             dc_message: "You have been violated for being cammed down for too long.".to_string(),
             send_msg_deafen: false,
-            send_msg_mute: true,
+            send_msg_mute: false,
             send_msg_dc: false,
         }
     }
