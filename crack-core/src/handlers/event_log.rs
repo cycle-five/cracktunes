@@ -67,13 +67,13 @@ pub async fn get_channel_id(
 
         let guild_settings = guild_settings_map
             .get(guild_id)
-            .map(|x| Ok(x))
+            .map(Ok)
             .unwrap_or_else(|| {
                 tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
                 Err(CrackedError::LogChannelWarning(event.name(), *guild_id))
             })?
             .clone();
-        let chan_res = match guild_settings.get_log_channel_type(event) {
+        match guild_settings.get_log_channel_type(event) {
             Some(channel_id) => {
                 if guild_settings.ignored_channels.contains(&channel_id.0) {
                     return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
@@ -81,8 +81,7 @@ pub async fn get_channel_id(
                 Ok(channel_id)
             }
             None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
-        };
-        chan_res
+        }
     };
     x
 }

@@ -397,10 +397,7 @@ impl GuildSettings {
     }
 
     pub fn get_log_channel_type(&self, event: &poise::Event<'_>) -> Option<ChannelId> {
-        let log_settings = self
-            .log_settings
-            .clone()
-            .unwrap_or_else(|| LogSettings::default());
+        let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
             poise::Event::GuildBanRemoval { .. }
             | poise::Event::GuildMemberAddition { .. }

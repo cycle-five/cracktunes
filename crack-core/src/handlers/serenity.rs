@@ -71,7 +71,7 @@ impl EventHandler for SerenityHandler {
                 tracing::info!("Guild {} settings: {:?}", key, value);
 
                 data_write.insert(*key, value.clone());
-                x = x + 1;
+                x += 1;
             }
             x
         };
