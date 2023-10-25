@@ -5,11 +5,12 @@ use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     env,
     fs::{create_dir_all, OpenOptions},
-    io::{BufReader, BufWriter},
+    io::BufReader,
     path::Path,
 };
 
@@ -238,15 +239,17 @@ impl GuildSettings {
         );
         tracing::warn!("path: {:?}", path);
 
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
             .open(path)?;
         tracing::warn!("file: {:?}", file);
 
-        let writer = BufWriter::new(file);
-        serde_json::to_writer(writer, self)?;
+        // let mut writer = &BufWriter::new(file);
+        let pretty_data = serde_json::to_string_pretty(self)?;
+        file.write_all(pretty_data.as_bytes())?;
+        file.flush()?;
         Ok(())
     }
 

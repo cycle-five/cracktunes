@@ -72,3 +72,7 @@ default-features = true
 [workspace.dependencies.tokio]
 version = "1.33.0"
 features = ["macros", "rt-multi-thread", "signal"]
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

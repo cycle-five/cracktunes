@@ -47,13 +47,6 @@ pub fn get_log_channel(
         .unwrap()
 }
 
-// #[derive(Clone)]
-// pub struct HandleEventData<'a> {
-//     guild_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
-//     event: &'a poise::Event<'a>,
-//     ctx: &'a SerenityContext,
-// }
-
 pub async fn get_channel_id(
     guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,

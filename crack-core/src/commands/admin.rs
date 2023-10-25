@@ -63,7 +63,10 @@ pub async fn set_prefix(
         .and_modify(|e| e.prefix = prefix.clone())
         .and_modify(|e| e.prefix_up = prefix.to_uppercase());
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
@@ -571,7 +574,10 @@ pub async fn set_join_leave_log_channel(
         .entry(guild_id)
         .and_modify(|e| e.set_join_leave_log_channel(channel_id.0));
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
@@ -598,7 +604,10 @@ pub async fn set_all_log_channel(
         .entry(guild_id)
         .and_modify(|e| e.set_all_log_channel(channel_id.0));
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
