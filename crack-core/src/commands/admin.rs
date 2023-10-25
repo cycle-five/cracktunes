@@ -21,6 +21,7 @@ use crate::{
         "deauthorize",
         "broadcast_voice",
         "get_settings",
+        "print_settings",
         "set_idle_timeout",
         "set_prefix",
         "set_join_leave_log_channel",
@@ -625,6 +626,31 @@ pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
     }
 
+    Ok(())
+}
+
+/// Get the current bot settings for this guild.
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+
+    for (guild_id, settings) in guild_settings_map.iter() {
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+        )
+        .await?;
+    }
+
+    let guild_settings_map = ctx.serenity_context().data.read().await;
+
+    for (guild_id, settings) in guild_settings_map.get::<GuildSettingsMap>().unwrap().iter() {
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+        )
+        .await?;
+    }
     Ok(())
 }
 

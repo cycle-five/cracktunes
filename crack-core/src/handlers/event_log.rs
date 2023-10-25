@@ -4,12 +4,16 @@ use std::{
 };
 
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, handlers::serenity::voice_state_diff_str,
-    utils::create_log_embed, Data, Error,
+    errors::CrackedError,
+    guild::{load_guilds_settings, settings::GuildSettings},
+    handlers::serenity::voice_state_diff_str,
+    sources::spotify::{Spotify, SPOTIFY},
+    utils::create_log_embed,
+    Data, Error,
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{ChannelId, ClientStatus, GuildId, Member, Presence},
+    serenity_prelude::{Activity, ChannelId, ClientStatus, GuildId, Member, Presence},
     Event::*,
 };
 use serde::{ser::SerializeStruct, Serialize};
@@ -874,7 +878,42 @@ pub async fn handle_event(
             removed_from_message_id,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
         PresenceReplace { new_presences } => event_log.write_log_obj(event_name, new_presences),
-        Ready { data_about_bot } => event_log.write_log_obj(event_name, data_about_bot),
+        Ready { data_about_bot } => {
+            tracing::info!("{} is connected!", data_about_bot.user.name);
+
+            // ctx.set_activity(Activity::listening(format!(
+            //     "{}play",
+            //     data_global.bot_settings.get_prefix()
+            // )))
+            // .await;
+
+            // // attempts to authenticate to spotify
+            // *SPOTIFY.lock().await = Spotify::auth(None).await;
+
+            // // loads serialized guild settings
+            // tracing::warn!("Loading guilds' settings");
+            // let guild_settings_map =
+            //     load_guilds_settings(&ctx, &data_about_bot.guilds, data_global).await;
+
+            // // These are the guild settings defined in the config file.
+            // // Should they always override the ones in the database?
+            // // tracing::warn!("Merging guilds' settings");
+            // // self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
+            // //     .await;
+
+            // // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
+            // // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
+            // data_global
+            //     .guild_settings_map
+            //     .lock()
+            //     .unwrap()
+            //     .iter()
+            //     .for_each(|(k, v)| {
+            //         tracing::warn!("Saving Guild: {}", k);
+            //         v.save().expect("Error saving guild settings");
+            //     });
+            event_log.write_log_obj(event_name, data_about_bot)
+        }
         Resume { event } => event_log.write_log_obj(event_name, event),
         StageInstanceCreate { stage_instance } => {
             event_log.write_log_obj(event_name, stage_instance)

@@ -1,7 +1,8 @@
 use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
+use ::serenity::prelude::Context;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, ChannelId};
+use poise::serenity_prelude::{self as serenity, ChannelId, UnavailableGuild};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::{
@@ -13,6 +14,7 @@ use std::{
 };
 
 use crate::errors::CrackedError;
+use crate::Data;
 
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
@@ -233,18 +235,15 @@ impl GuildSettings {
             self.get_guild_name(),
             self.guild_id
         );
+        tracing::warn!("path: {:?}", path);
 
         let file = OpenOptions::new()
             .write(true)
-            .truncate(false)
+            .truncate(true)
             .create(true)
             .open(path)?;
+        tracing::warn!("file: {:?}", file);
 
-        // let reader = BufReader::new(file);
-        // let old_file = serde_json::from_reader::<_, GuildSettings>(reader)?;
-
-        // if *self != old_file {
-        // }
         let writer = BufWriter::new(file);
         serde_json::to_writer(writer, self)?;
         Ok(())
@@ -491,6 +490,74 @@ impl GuildSettings {
         }
         None
     }
+}
+
+use self::serenity::{Context as SerenityContext, EventHandler};
+pub async fn load_guilds_settings(
+    ctx: &SerenityContext,
+    guilds: &[UnavailableGuild],
+    data_new: &Data,
+) -> HashMap<GuildId, GuildSettings> {
+    let prefix = data_new.bot_settings.get_prefix();
+    tracing::info!("Loading guilds' settings");
+    let mut data = ctx.data.write().await;
+    let settings = match data.get_mut::<GuildSettingsMap>() {
+        Some(settings) => settings,
+        None => {
+            tracing::error!("Guild settings not found");
+            data.insert::<GuildSettingsMap>(HashMap::default());
+            data.get_mut::<GuildSettingsMap>().unwrap()
+        }
+    };
+    for guild in guilds {
+        let guild_id = guild.id;
+        let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+            Some(guild_match) => guild_match,
+            None => {
+                tracing::error!("Guild not found in cache");
+                continue;
+            }
+        };
+        tracing::info!(
+            "Loading guild settings for {}, {}",
+            guild_full.id,
+            guild_full.name.clone()
+        );
+
+        let mut default =
+            GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
+
+        let _ = default.load_if_exists().map_err(|err| {
+            tracing::error!(
+                "Failed to load guild {} settings due to {}",
+                default.guild_id,
+                err
+            );
+        });
+
+        tracing::warn!("GuildSettings: {:?}", default);
+
+        let _ = settings.insert(default.guild_id, default.clone());
+
+        let guild_settings = settings.get(&default.guild_id);
+
+        guild_settings
+            .map(|x| {
+                tracing::info!("saving guild {}...", x);
+                x.save().expect("Error saving guild settings");
+                x
+            })
+            .or_else(|| {
+                tracing::error!("Guild not found in settings map");
+                None
+            });
+    }
+    let data_read = ctx.data.read().await;
+    let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
+    guild_settings_map_read
+    // .get::<GuildSettingsMap>()
+    // .unwrap()
+    // .clone()
 }
 
 pub struct GuildSettingsMap;

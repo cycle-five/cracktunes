@@ -61,14 +61,25 @@ impl EventHandler for SerenityHandler {
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
-        self.load_guilds_settings(&ctx, &ready).await;
+        let guild_settings_map = self.load_guilds_settings(&ctx, &ready).await;
+
+        for (key, value) in guild_settings_map.iter() {
+            tracing::info!("Guild {} settings: {:?}", key, value);
+            self.data
+                .guild_settings_map
+                .lock()
+                .unwrap()
+                .insert(*key, value.clone());
+        }
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
-        tracing::warn!("Merging guilds' settings");
-        self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
-            .await;
+        // tracing::warn!("Merging guilds' settings");
+        // self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
+        //     .await;
 
+        // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
+        // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
         self.data
             .guild_settings_map
             .lock()
@@ -310,7 +321,7 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-    async fn merge_guild_settings(
+    async fn _merge_guild_settings(
         &self,
         ctx: &SerenityContext,
         _ready: &Ready,
@@ -341,7 +352,11 @@ impl SerenityHandler {
         );
     }
 
-    async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
+    async fn load_guilds_settings(
+        &self,
+        ctx: &SerenityContext,
+        ready: &Ready,
+    ) -> HashMap<GuildId, GuildSettings> {
         let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
         let mut data = ctx.data.write().await;
@@ -362,29 +377,46 @@ impl SerenityHandler {
                     continue;
                 }
             };
-            tracing::info!("Loading guild settings for {:?}", guild_full);
+            tracing::info!(
+                "Loading guild settings for {}, {}",
+                guild_full.id,
+                guild_full.name.clone()
+            );
 
             let mut default =
                 GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
 
-            if let Err(err) = default.load_if_exists() {
+            let _ = default.load_if_exists().map_err(|err| {
                 tracing::error!(
                     "Failed to load guild {} settings due to {}",
-                    guild_full.id,
+                    default.guild_id,
                     err
                 );
-            }
+            });
 
-            let guild_settings = settings.insert(guild_full.id, default);
+            tracing::warn!("GuildSettings: {:?}", default);
 
-            tracing::info!(
-                "Guild loaded: {}",
-                guild_settings
-                    .map(|x| x.to_string())
-                    .unwrap_or("EMPTY".to_string())
-                    .white()
-            );
+            let _ = settings.insert(default.guild_id, default.clone());
+
+            let guild_settings = settings.get(&default.guild_id);
+
+            guild_settings
+                .map(|x| {
+                    tracing::info!("saving guild {}...", x);
+                    x.save().expect("Error saving guild settings");
+                    x
+                })
+                .or_else(|| {
+                    tracing::error!("Guild not found in settings map");
+                    None
+                });
         }
+        let data_read = ctx.data.read().await;
+        let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
+        guild_settings_map_read
+        // .get::<GuildSettingsMap>()
+        // .unwrap()
+        // .clone()
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
