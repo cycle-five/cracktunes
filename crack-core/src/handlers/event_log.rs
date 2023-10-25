@@ -1,19 +1,15 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
 use crate::{
-    errors::CrackedError,
-    guild::{load_guilds_settings, settings::GuildSettings},
-    handlers::serenity::voice_state_diff_str,
-    sources::spotify::{Spotify, SPOTIFY},
-    utils::create_log_embed,
-    Data, Error,
+    errors::CrackedError, guild::settings::GuildSettings, handlers::serenity::voice_state_diff_str,
+    utils::create_log_embed, Data, Error,
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{Activity, ChannelId, ClientStatus, GuildId, Member, Presence},
+    serenity_prelude::{ChannelId, ClientStatus, GuildId, Member, Presence},
     Event::*,
 };
 use serde::{ser::SerializeStruct, Serialize};
@@ -63,35 +59,32 @@ pub async fn get_channel_id(
     guild_id: &GuildId,
     event: &poise::Event<'_>,
 ) -> Result<ChannelId, CrackedError> {
-    let initial_values = vec![1165246445654388746];
-    let hashset: HashSet<_> = initial_values.into_iter().collect();
-    let guild_settings = match guild_settings_map.lock() {
-        Ok(x) => x.clone(),
-        Err(e) => {
-            let err_string = e.to_string();
-            tracing::error!("Failed to lock guild_settings_map: {err_string}");
-            return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
-        }
-    };
-    let ignore_channels = &guild_settings
-        .get(guild_id)
-        .map(|x| x.ignored_channels.clone())
-        .unwrap_or(hashset);
-    match guild_settings_map
-        .lock()
-        .unwrap()
-        .entry(*guild_id)
-        .or_default()
-        .get_log_channel_type(event)
-    {
-        Some(channel_id) => {
-            if ignore_channels.contains(&channel_id.0) {
-                return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+    // let initial_values: Vec<u64> = vec![1165246445654388746];
+    // let hashset: HashSet<_> = initial_values.into_iter().collect();
+
+    let x = {
+        let guild_settings_map = guild_settings_map.lock().unwrap().clone();
+
+        let guild_settings = guild_settings_map
+            .get(guild_id)
+            .map(|x| Ok(x))
+            .unwrap_or_else(|| {
+                tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
+                Err(CrackedError::LogChannelWarning(event.name(), *guild_id))
+            })?
+            .clone();
+        let chan_res = match guild_settings.get_log_channel_type(event) {
+            Some(channel_id) => {
+                if guild_settings.ignored_channels.contains(&channel_id.0) {
+                    return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+                }
+                Ok(channel_id)
             }
-            Ok(channel_id)
-        }
-        None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
-    }
+            None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
+        };
+        chan_res
+    };
+    x
 }
 
 macro_rules! log_event {

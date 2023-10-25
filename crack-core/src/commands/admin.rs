@@ -4,9 +4,9 @@ use poise::serenity_prelude::Channel;
 
 use crate::{
     errors::CrackedError,
-    guild::settings::{GuildSettingsMap, WelcomeSettings},
+    guild::settings::{GuildSettings, GuildSettingsMap, WelcomeSettings},
     messaging::message::CrackedMessage,
-    utils::{check_reply, create_response_poise, get_current_voice_channel_id},
+    utils::{check_reply, create_response_poise, get_current_voice_channel_id, get_guild_name},
     Context, Error,
 };
 // use chrono::NaiveTime;
@@ -616,12 +616,21 @@ pub async fn set_all_log_channel(
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     {
-        let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
-        let settings = guild_settings_map.get(&guild_id).unwrap();
+        let settings_ro = {
+            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap();
+            let settings = guild_settings_map
+                .entry(guild_id)
+                .or_insert(GuildSettings::new(
+                    guild_id,
+                    Some(ctx.prefix()),
+                    get_guild_name(ctx.serenity_context(), guild_id),
+                ));
+            settings.clone()
+        };
 
         create_response_poise(
             ctx,
-            CrackedMessage::Other(format!("Settings: {:?}", settings)),
+            CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
         )
         .await?;
     }

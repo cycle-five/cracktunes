@@ -63,14 +63,20 @@ impl EventHandler for SerenityHandler {
         tracing::warn!("Loading guilds' settings");
         let guild_settings_map = self.load_guilds_settings(&ctx, &ready).await;
 
-        for (key, value) in guild_settings_map.iter() {
-            tracing::info!("Guild {} settings: {:?}", key, value);
-            self.data
-                .guild_settings_map
-                .lock()
-                .unwrap()
-                .insert(*key, value.clone());
-        }
+        let num_inserted = {
+            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+
+            let mut x = 0;
+            for (key, value) in guild_settings_map.iter() {
+                tracing::info!("Guild {} settings: {:?}", key, value);
+
+                data_write.insert(*key, value.clone());
+                x = x + 1;
+            }
+            x
+        };
+
+        tracing::warn!("num_inserted: {}", num_inserted);
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
@@ -80,15 +86,22 @@ impl EventHandler for SerenityHandler {
 
         // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
         // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
-        self.data
-            .guild_settings_map
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|(k, v)| {
-                tracing::warn!("Saving Guild: {}", k);
-                v.save().expect("Error saving guild settings");
-            });
+        // let num_saved = {
+        //     let mut x = 0;
+        //     self.data
+        //         .guild_settings_map
+        //         .lock()
+        //         .unwrap()
+        //         .iter()
+        //         .for_each(|(k, v)| {
+        //             tracing::warn!("Saving Guild: {}", k);
+        //             x = x + 1;
+        //             v.save().expect("Error saving guild settings");
+        //         });
+        //     x
+        // };
+
+        // tracing::warn!("num_saved: {}", num_saved);
     }
 
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {

@@ -1,8 +1,8 @@
 use self::serenity::model::prelude::UserId;
 use self::serenity::{model::id::GuildId, TypeMapKey};
-use ::serenity::prelude::Context;
+//use ::serenity::prelude::Context;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, ChannelId, UnavailableGuild};
+use poise::serenity_prelude::{self as serenity, ChannelId};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::{
@@ -14,7 +14,7 @@ use std::{
 };
 
 use crate::errors::CrackedError;
-use crate::Data;
+//use crate::Data;
 
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
@@ -178,6 +178,7 @@ impl GuildSettings {
         };
 
         let guild_name = guild_name.map(|x| x.to_string()).unwrap_or_default();
+        let asdf: Vec<u64> = vec![1165246445654388746];
         GuildSettings {
             guild_id,
             guild_name,
@@ -188,7 +189,7 @@ impl GuildSettings {
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: HashSet::new(),
-            ignored_channels: HashSet::new(),
+            ignored_channels: asdf.into_iter().collect(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
@@ -355,6 +356,11 @@ impl GuildSettings {
         self.prefix_up = prefix.to_string().to_ascii_uppercase();
     }
 
+    pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
+        self.ignored_channels = ignored_channels;
+        self
+    }
+
     pub fn get_guild_name(&self) -> &str {
         let guild_name = {
             if self.guild_name.is_empty() {
@@ -390,8 +396,11 @@ impl GuildSettings {
         }
     }
 
-    pub fn get_log_channel_type(&mut self, event: &poise::Event<'_>) -> Option<ChannelId> {
-        let log_settings = self.log_settings.get_or_insert(LogSettings::default());
+    pub fn get_log_channel_type(&self, event: &poise::Event<'_>) -> Option<ChannelId> {
+        let log_settings = self
+            .log_settings
+            .clone()
+            .unwrap_or_else(|| LogSettings::default());
         match event {
             poise::Event::GuildBanRemoval { .. }
             | poise::Event::GuildMemberAddition { .. }
@@ -492,73 +501,73 @@ impl GuildSettings {
     }
 }
 
-use self::serenity::{Context as SerenityContext, EventHandler};
-pub async fn load_guilds_settings(
-    ctx: &SerenityContext,
-    guilds: &[UnavailableGuild],
-    data_new: &Data,
-) -> HashMap<GuildId, GuildSettings> {
-    let prefix = data_new.bot_settings.get_prefix();
-    tracing::info!("Loading guilds' settings");
-    let mut data = ctx.data.write().await;
-    let settings = match data.get_mut::<GuildSettingsMap>() {
-        Some(settings) => settings,
-        None => {
-            tracing::error!("Guild settings not found");
-            data.insert::<GuildSettingsMap>(HashMap::default());
-            data.get_mut::<GuildSettingsMap>().unwrap()
-        }
-    };
-    for guild in guilds {
-        let guild_id = guild.id;
-        let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
-            Some(guild_match) => guild_match,
-            None => {
-                tracing::error!("Guild not found in cache");
-                continue;
-            }
-        };
-        tracing::info!(
-            "Loading guild settings for {}, {}",
-            guild_full.id,
-            guild_full.name.clone()
-        );
+// use self::serenity::{Context as SerenityContext, EventHandler};
+// pub async fn load_guilds_settings(
+//     ctx: &SerenityContext,
+//     guilds: &[UnavailableGuild],
+//     data_new: &Data,
+// ) -> HashMap<GuildId, GuildSettings> {
+//     let prefix = data_new.bot_settings.get_prefix();
+//     tracing::info!("Loading guilds' settings");
+//     let mut data = ctx.data.write().await;
+//     let settings = match data.get_mut::<GuildSettingsMap>() {
+//         Some(settings) => settings,
+//         None => {
+//             tracing::error!("Guild settings not found");
+//             data.insert::<GuildSettingsMap>(HashMap::default());
+//             data.get_mut::<GuildSettingsMap>().unwrap()
+//         }
+//     };
+//     for guild in guilds {
+//         let guild_id = guild.id;
+//         let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+//             Some(guild_match) => guild_match,
+//             None => {
+//                 tracing::error!("Guild not found in cache");
+//                 continue;
+//             }
+//         };
+//         tracing::info!(
+//             "Loading guild settings for {}, {}",
+//             guild_full.id,
+//             guild_full.name.clone()
+//         );
 
-        let mut default =
-            GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
+//         let mut default =
+//             GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
 
-        let _ = default.load_if_exists().map_err(|err| {
-            tracing::error!(
-                "Failed to load guild {} settings due to {}",
-                default.guild_id,
-                err
-            );
-        });
+//         let _ = default.load_if_exists().map_err(|err| {
+//             tracing::error!(
+//                 "Failed to load guild {} settings due to {}",
+//                 default.guild_id,
+//                 err
+//             );
+//         });
 
-        tracing::warn!("GuildSettings: {:?}", default);
+//         tracing::warn!("GuildSettings: {:?}", default);
 
-        let _ = settings.insert(default.guild_id, default.clone());
+//         let _ = settings.insert(default.guild_id, default.clone());
 
-        let guild_settings = settings.get(&default.guild_id);
+//         let guild_settings = settings.get(&default.guild_id);
 
-        guild_settings
-            .map(|x| {
-                tracing::info!("saving guild {}...", x);
-                x.save().expect("Error saving guild settings");
-                x
-            })
-            .or_else(|| {
-                tracing::error!("Guild not found in settings map");
-                None
-            });
-    }
-    let data_read = ctx.data.read().await;
-    let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
-    guild_settings_map_read
-    // .get::<GuildSettingsMap>()
-    // .unwrap()
-    // .clone()
-}
+//         guild_settings
+//             .map(|x| {
+//                 tracing::info!("saving guild {}...", x);
+//                 x.save().expect("Error saving guild settings");
+//                 x
+//             })
+//             .or_else(|| {
+//                 tracing::error!("Guild not found in settings map");
+//                 None
+//             });
+//     }
+//     let data_read = ctx.data.read().await;
+//     let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
+//     guild_settings_map_read
+//     // .get::<GuildSettingsMap>()
+//     // .unwrap()
+//     // .clone()
+// }
 
 pub struct GuildSettingsMap;
 
