@@ -61,13 +61,15 @@ impl EventHandler for SerenityHandler {
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
-        let guild_settings_map = self.load_guilds_settings(&ctx, &ready).await;
+        let _ = self.load_guilds_settings(&ctx, &ready).await;
 
         let num_inserted = {
+            let lock = ctx.data.read().await;
+            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
             let mut data_write = self.data.guild_settings_map.lock().unwrap();
 
             let mut x = 0;
-            for (key, value) in guild_settings_map.iter() {
+            for (key, value) in guild_settings_map.clone().iter() {
                 tracing::info!("Guild {} settings: {:?}", key, value);
 
                 data_write.insert(*key, value.clone());
@@ -365,11 +367,7 @@ impl SerenityHandler {
         );
     }
 
-    async fn load_guilds_settings(
-        &self,
-        ctx: &SerenityContext,
-        ready: &Ready,
-    ) -> HashMap<GuildId, GuildSettings> {
+    async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
         let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
         tracing::info!("Loading guilds' settings");
@@ -427,8 +425,8 @@ impl SerenityHandler {
         }
         tracing::error!("guild_settings_map");
         tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
-        let ret_map = self.data.guild_settings_map.lock().unwrap().clone();
-        ret_map
+        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
+        // ret_map
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
