@@ -79,15 +79,6 @@ pub async fn get_channel_id(
     x
 }
 
-macro_rules! log_event {
-    // #[cfg(feature="no_log")]
-    ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
-        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $http, $log_data).await?;
-        $event_log.write_log_obj($event_name, $log_data)
-    }};
-}
-
 pub async fn log_unimplemented_event<T: Serialize>(
     channel_id: ChannelId,
     _http: &Arc<Http>,
@@ -348,6 +339,36 @@ pub async fn log_message(
     create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
+macro_rules! log_event {
+    // #[cfg(feature="no_log")]
+    ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
+        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        $log_func(channel_id, $http, $log_data).await?;
+        $event_log.write_log_obj($event_name, $log_data)
+    }};
+}
+
+/// Macro to concisely generate the handle_event match statement
+// macro_rules! handle_macro {
+//     ($guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr, $(
+//         $fn_name:ident => $variant_name:ident { $( $arg_name:ident: $arg_type:ty ),* },
+//     )*) => {
+//         $($variant_name { $( $arg_name, )* }  => {
+//             let log_data = ($( $arg_name, )*);
+//             log_event!(
+//                 $fn_name,
+//                 $guild_settings,
+//                 $event,
+//                 $log_data,
+//                 $guild_id,
+//                 $http,
+//                 $event_log,
+//                 $event_name
+//             )
+//         })*
+//     };
+// }
+
 pub async fn handle_event(
     ctx: &SerenityContext,
     event_in: &poise::Event<'_>,
@@ -356,6 +377,16 @@ pub async fn handle_event(
     let event_log = Arc::new(&data_global.event_log);
     let event_name = event_in.name();
     let guild_settings = &data_global.guild_settings_map;
+    //     match event_in {
+    //         handle_macro! (
+    //             guild_settings, event_in, &log_data, guild_id, &ctx.http, event_log, event_name,
+    //             guild_member_addition => GuildMemberAddition { new_member: serenity::Member },
+    //             guild_member_removal => GuildMemberRemoval { guild_id: serenity::GuildId, user: serenity::User, member_data_if_available: Option<serenity::Member> },
+    //         );
+    //         _ => todo!()
+    //     }
+    // }
+
     match event_in {
         PresenceUpdate { new_data } => {
             #[cfg(feature = "log_all")]
@@ -865,38 +896,6 @@ pub async fn handle_event(
         PresenceReplace { new_presences } => event_log.write_log_obj(event_name, new_presences),
         Ready { data_about_bot } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
-
-            // ctx.set_activity(Activity::listening(format!(
-            //     "{}play",
-            //     data_global.bot_settings.get_prefix()
-            // )))
-            // .await;
-
-            // // attempts to authenticate to spotify
-            // *SPOTIFY.lock().await = Spotify::auth(None).await;
-
-            // // loads serialized guild settings
-            // tracing::warn!("Loading guilds' settings");
-            // let guild_settings_map =
-            //     load_guilds_settings(&ctx, &data_about_bot.guilds, data_global).await;
-
-            // // These are the guild settings defined in the config file.
-            // // Should they always override the ones in the database?
-            // // tracing::warn!("Merging guilds' settings");
-            // // self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
-            // //     .await;
-
-            // // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
-            // // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
-            // data_global
-            //     .guild_settings_map
-            //     .lock()
-            //     .unwrap()
-            //     .iter()
-            //     .for_each(|(k, v)| {
-            //         tracing::warn!("Saving Guild: {}", k);
-            //         v.save().expect("Error saving guild settings");
-            //     });
             event_log.write_log_obj(event_name, data_about_bot)
         }
         Resume { event } => event_log.write_log_obj(event_name, event),
@@ -940,6 +939,7 @@ pub async fn handle_event(
         }
         _ => {
             tracing::info!("{}", event_in.name().bright_green());
+            // event_log.write_log_obj(event_name, event_in);
             Ok(())
         }
     }
