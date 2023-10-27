@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e -o pipefail
+set -x
+
 if [ $# -eq 0 ]; then
 	echo "Usage: $0 [all|server(s)]"
 	exit 1
