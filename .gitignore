@@ -9,7 +9,9 @@
 
 # configuration / secrets
 Secrets.toml
-.env*
+.env
+.env.old
+cracktunes.env
 
 # IDE config
 .vscode/

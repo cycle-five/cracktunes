@@ -4,9 +4,9 @@ use poise::serenity_prelude::Channel;
 
 use crate::{
     errors::CrackedError,
-    guild::settings::{GuildSettingsMap, WelcomeSettings},
+    guild::settings::{GuildSettings, GuildSettingsMap, WelcomeSettings},
     messaging::message::CrackedMessage,
-    utils::{check_reply, create_response_poise, get_current_voice_channel_id},
+    utils::{check_reply, create_response_poise, get_current_voice_channel_id, get_guild_name},
     Context, Error,
 };
 // use chrono::NaiveTime;
@@ -21,6 +21,7 @@ use crate::{
         "deauthorize",
         "broadcast_voice",
         "get_settings",
+        "print_settings",
         "set_idle_timeout",
         "set_prefix",
         "set_join_leave_log_channel",
@@ -62,7 +63,10 @@ pub async fn set_prefix(
         .and_modify(|e| e.prefix = prefix.clone())
         .and_modify(|e| e.prefix_up = prefix.to_uppercase());
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
@@ -570,7 +574,10 @@ pub async fn set_join_leave_log_channel(
         .entry(guild_id)
         .and_modify(|e| e.set_join_leave_log_channel(channel_id.0));
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
@@ -597,7 +604,10 @@ pub async fn set_all_log_channel(
         .entry(guild_id)
         .and_modify(|e| e.set_all_log_channel(channel_id.0));
 
-    let settings = data.get::<GuildSettingsMap>().unwrap().get(&guild_id);
+    let settings = data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .get_mut(&guild_id);
 
     let _res = settings.map(|s| s.save()).unwrap();
 
@@ -614,15 +624,51 @@ pub async fn set_all_log_channel(
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
+    {
+        let settings_ro = {
+            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap();
+            let settings = guild_settings_map
+                .entry(guild_id)
+                .or_insert(GuildSettings::new(
+                    guild_id,
+                    Some(ctx.prefix()),
+                    get_guild_name(ctx.serenity_context(), guild_id),
+                ));
+            settings.clone()
+        };
+
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Get the current bot settings for this guild.
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
-    let settings = guild_settings_map.get(&guild_id).unwrap();
 
-    create_response_poise(
-        ctx,
-        CrackedMessage::Other(format!("Settings: {:?}", settings)),
-    )
-    .await?;
+    for (guild_id, settings) in guild_settings_map.iter() {
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+        )
+        .await?;
+    }
 
+    let guild_settings_map = ctx.serenity_context().data.read().await;
+
+    for (guild_id, settings) in guild_settings_map.get::<GuildSettingsMap>().unwrap().iter() {
+        create_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+        )
+        .await?;
+    }
     Ok(())
 }
 

@@ -40,3 +40,12 @@ fn test_load_config() {
     assert_eq!(guild_settings_map[0].welcome_settings.is_some(), true);
     assert_eq!(guild_settings_map[1].welcome_settings.is_some(), false);
 }
+
+#[test]
+fn test_load_config2() {
+    let config = BotConfig::from_config_file("./src/test/cracktunes2.toml").unwrap();
+
+    println!("config: {:?}", config);
+
+    // Test defaults here, this should be empty.
+}

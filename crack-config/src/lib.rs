@@ -9,7 +9,9 @@ use crack_core::{
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
 use poise::{
-    serenity_prelude::{GatewayIntents, GuildId, UserId},
+    serenity_prelude::{GatewayIntents, GuildId},
+    // #[cfg(feature = "set_owners_from_config")]
+    // UserId,
     Framework,
 };
 use songbird::serenity::SerenityInit;
@@ -79,7 +81,12 @@ pub async fn poise_framework(
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
+    // let mut owners = HashSet::new();
+    // for owner in config.owners.unwrap_or_default().into_iter() {
+    //     owners.insert(UserId(owner));
+    // }
     let options = poise::FrameworkOptions::<_, Error> {
+        #[cfg(feature = "set_owners_from_config")]
         owners: config
             .owners
             .as_ref()
@@ -140,6 +147,10 @@ pub async fn poise_framework(
                     // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
+                        if guild_settings.prefix.is_empty() {
+                            return Ok(None);
+                        }
+
                         let prefix = &guild_settings.prefix;
                         let prefix_up = &guild_settings.prefix_up;
 

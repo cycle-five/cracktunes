@@ -6,43 +6,47 @@ use crate::messaging::messages::{
     UNAUTHORIZED_USER,
 };
 use crate::Error;
-use poise::serenity_prelude::{self as serenity, GuildId};
+use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
+use songbird::error::JoinError;
 use songbird::input::error::{DcaError, Error as InputError};
-use std::fmt;
+use std::fmt::{self};
 use std::fmt::{Debug, Display};
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
 pub enum CrackedError {
-    Other(&'static str),
-    QueueEmpty,
+    AlreadyConnected(Mention),
+    AuthorDisconnected(Mention),
+    AuthorNotFound,
+    Anyhow(anyhow::Error),
+    JoinChannelError(JoinError),
+    LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NoGuildId,
     NoGuildSettings,
     NoLogChannel,
-    AuthorDisconnected(Mention),
-    WrongVoiceChannel,
-    InvalidIP(String),
-    AuthorNotFound,
     NothingPlaying,
+    Other(&'static str),
+    InvalidIP(String),
     PlayListFail,
     ParseTimeFail,
-    TrackFail(InputError),
-    AlreadyConnected(Mention),
-    Serenity(SerenityError),
-    SQLX(sqlx::Error),
+    IO(std::io::Error),
+    QueueEmpty,
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
-    UnauthorizedUser,
-    IO(std::io::Error),
+    RSpotifyLockError(String),
+    SQLX(sqlx::Error),
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
     Songbird(songbird::input::error::Error),
+    Serenity(SerenityError),
     Poise(Error),
-    Anyhow(anyhow::Error),
-    LogChannelWarning(&'static str, GuildId),
+    TrackFail(InputError),
+    UnauthorizedUser,
+    UnimplementedEvent(ChannelId, &'static str),
+    WrongVoiceChannel,
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -59,8 +63,12 @@ unsafe impl Sync for CrackedError {}
 impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AuthorDisconnected(mention) => {
+                f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
+            }
+            Self::Anyhow(err) => f.write_str(&format!("{err}")),
+            Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Other(msg) => f.write_str(msg),
-            Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),
@@ -68,9 +76,6 @@ impl Display for CrackedError {
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
-            Self::AuthorDisconnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
-            }
             Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),
             Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
             Self::AlreadyConnected(mention) => {
@@ -103,10 +108,14 @@ impl Display for CrackedError {
             Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
-            Self::Anyhow(err) => f.write_str(&format!("{err}")),
+            Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
             )),
+            Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
+                "Unimplemented event {value} for channel {channel}",
+            )),
+            CrackedError::RSpotifyLockError(_) => todo!(),
         }
     }
 }

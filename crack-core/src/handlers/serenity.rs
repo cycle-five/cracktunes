@@ -61,23 +61,49 @@ impl EventHandler for SerenityHandler {
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
-        self.load_guilds_settings(&ctx, &ready).await;
+        let _ = self.load_guilds_settings(&ctx, &ready).await;
+
+        let num_inserted = {
+            let lock = ctx.data.read().await;
+            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+
+            let mut x = 0;
+            for (key, value) in guild_settings_map.clone().iter() {
+                tracing::info!("Guild {} settings: {:?}", key, value);
+
+                data_write.insert(*key, value.clone());
+                x += 1;
+            }
+            x
+        };
+
+        tracing::warn!("num_inserted: {}", num_inserted);
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
-        tracing::warn!("Merging guilds' settings");
-        self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
-            .await;
+        // tracing::warn!("Merging guilds' settings");
+        // self.merge_guild_settings(&ctx, &ready, self.data.guild_settings_map.clone())
+        //     .await;
 
-        self.data
-            .guild_settings_map
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|(k, v)| {
-                tracing::warn!("Saving Guild: {}", k);
-                v.save().expect("Error saving guild settings");
-            });
+        // *self.data.guild_settings_map.lock().unwrap() = guild_settings_map;
+        // let mut guild_settings_map = self.data().guild_settings_map.lock().unwrap();
+        // let num_saved = {
+        //     let mut x = 0;
+        //     self.data
+        //         .guild_settings_map
+        //         .lock()
+        //         .unwrap()
+        //         .iter()
+        //         .for_each(|(k, v)| {
+        //             tracing::warn!("Saving Guild: {}", k);
+        //             x = x + 1;
+        //             v.save().expect("Error saving guild settings");
+        //         });
+        //     x
+        // };
+
+        // tracing::warn!("num_saved: {}", num_saved);
     }
 
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
@@ -310,7 +336,7 @@ impl EventHandler for SerenityHandler {
 }
 
 impl SerenityHandler {
-    async fn merge_guild_settings(
+    async fn _merge_guild_settings(
         &self,
         ctx: &SerenityContext,
         _ready: &Ready,
@@ -343,27 +369,64 @@ impl SerenityHandler {
 
     async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
+        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
         tracing::info!("Loading guilds' settings");
-        let mut data = ctx.data.write().await;
+        // let mut data = ctx.data.write().await;
+        // let settings = match data.get_mut::<GuildSettingsMap>() {
+        //     Some(settings) => settings,
+        //     None => {
+        //         tracing::error!("Guild settings not found");
+        //         data.insert::<GuildSettingsMap>(HashMap::default());
+        //         data.get_mut::<GuildSettingsMap>().unwrap()
+        //     }
+        // };
         for guild in &ready.guilds {
-            tracing::info!("Loading guild settings for {:?}", guild);
-            let settings = match data.get_mut::<GuildSettingsMap>() {
-                Some(settings) => settings,
+            let guild_id = guild.id;
+            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match,
                 None => {
-                    tracing::error!("Guild settings not found");
-                    data.insert::<GuildSettingsMap>(HashMap::default());
-                    data.get_mut::<GuildSettingsMap>().unwrap()
+                    tracing::error!("Guild not found in cache");
+                    continue;
                 }
             };
+            tracing::info!(
+                "Loading guild settings for {}, {}",
+                guild_full.id,
+                guild_full.name.clone()
+            );
 
-            let guild_settings = settings
-                .entry(guild.id)
-                .or_insert_with(|| GuildSettings::new(guild.id, Some(&prefix)));
+            let mut default =
+                GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
 
-            if let Err(err) = guild_settings.load_if_exists() {
-                tracing::error!("Failed to load guild {} settings due to {}", guild.id, err);
-            }
+            let _ = default.load_if_exists().map_err(|err| {
+                tracing::error!(
+                    "Failed to load guild {} settings due to {}",
+                    default.guild_id,
+                    err
+                );
+            });
+
+            tracing::warn!("GuildSettings: {:?}", default);
+
+            let _ = guild_settings_map.insert(default.guild_id, default.clone());
+
+            let guild_settings = guild_settings_map.get_mut(&default.guild_id);
+
+            guild_settings
+                .map(|x| {
+                    x.save().expect("Error saving guild settings");
+                    tracing::info!("saving guild {}...", x);
+                    x
+                })
+                .or_else(|| {
+                    tracing::error!("Guild not found in settings map");
+                    None
+                });
         }
+        tracing::error!("guild_settings_map");
+        tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
+        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
+        // ret_map
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
@@ -432,7 +495,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
     let voice_states = guild.voice_states;
     let mut cams = vec![];
-    let mut output: String = "\n".to_string();
+    let mut output: String = format!("{}\n", guild.name.bright_green());
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
@@ -466,7 +529,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
             cams.push(info);
             output.push_str(&format!(
-                "({}|{})({}|{})|{}\n",
+                "{}|{}|{}|{}|{}\n",
                 &user.name,
                 &user.id,
                 &channel_name,
@@ -662,7 +725,7 @@ async fn server_mute_member(
         .await
 }
 
-pub fn voice_state_diff_str(old: Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> String {
     let old = match old {
         Some(old) => old,
         None => {

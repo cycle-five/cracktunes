@@ -40,8 +40,8 @@ pub async fn create_log_embed(
         .title(title)
         .description(description)
         .thumbnail(avatar_url);
-    tracing::warn!("sending log embed: {:?}", embed);
-    tracing::warn!("thumbnail url: {:?}", avatar_url);
+    tracing::debug!("sending log embed: {:?}", embed);
+    tracing::debug!("thumbnail url: {:?}", avatar_url);
 
     channel
         .send_message(http, |m| m.set_embed(embed))
@@ -157,7 +157,7 @@ pub async fn create_embed_response_prefix(
 ) -> Result<Message, Error> {
     ctx.send(|builder| {
         builder.embeds.append(&mut vec![embed]);
-        builder //.reply(true)
+        builder
     })
     .await
     .unwrap()
@@ -588,4 +588,9 @@ pub async fn get_current_voice_channel_id(
     let serenity_channel_id = serenity::ChannelId(channel_id.0);
 
     Some(serenity_channel_id)
+}
+
+pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {
+    let guild = ctx.cache.guild(guild_id)?;
+    Some(guild.name)
 }

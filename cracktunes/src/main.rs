@@ -20,7 +20,7 @@ fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .worker_threads(4)
+        //.worker_threads(16)
         .build()
         .unwrap();
 
@@ -89,14 +89,15 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
     let openai_key = load_key("OPENAI_KEY".to_string()).ok();
 
-    let config = match BotConfig::from_config_file("./cracktunes.toml") {
+    let config_res = BotConfig::from_config_file("./cracktunes.toml");
+    let mut config = match config_res {
         Ok(config) => config,
         Err(error) => {
             tracing::warn!("Using default config: {:?}", error);
             BotConfig::default()
         }
-    }
-    .set_credentials(BotCredentials {
+    };
+    let config_with_creds = config.set_credentials(BotCredentials {
         discord_token,
         discord_app_id,
         spotify_client_id,
@@ -104,7 +105,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         openai_key,
     });
 
-    Ok(config)
+    Ok(config_with_creds.clone())
 }
 
 #[instrument]

@@ -9,7 +9,7 @@ use crate::{
 };
 use poise::serenity_prelude as serenity;
 use songbird::{Event, TrackEvent};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
 #[poise::command(
@@ -67,12 +67,27 @@ pub async fn summon(
     }
 
     // join the channel
-    manager.join(guild.id, channel_id).await.1?;
+    let (call, result) = manager.join(guild.id, channel_id).await;
+    result.map_err(|e| {
+        tracing::error!("Error joining channel: {:?}", e);
+        CrackedError::JoinChannelError(e)
+    })?;
+    let buffer = {
+        // // Open the data lock in write mode, so keys can be inserted to it.
+        // let mut data = ctx.data().write().await;
 
-    // unregister existing events and register idle notifier
-    if let Some(call) = manager.get(guild.id) {
+        // // So, we have to insert the same type to it.
+        // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
+        let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+        data.clone()
+    };
+
+    use crate::handlers::voice::register_voice_handlers;
+
+    let _ = register_voice_handlers(buffer, call.clone()).await;
+    {
         let mut handler = call.lock().await;
-
+        // unregister existing events and register idle notifier
         handler.remove_all_global_events();
 
         let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
@@ -103,18 +118,18 @@ pub async fn summon(
                 data: ctx.data().clone(),
             },
         );
-    }
 
-    if send_reply.unwrap_or(true) {
-        let text = CrackedMessage::Summon {
-            mention: channel_id.mention(),
+        if send_reply.unwrap_or(true) {
+            let text = CrackedMessage::Summon {
+                mention: channel_id.mention(),
+            }
+            .to_string();
+            ctx.send(|m| {
+                m.ephemeral = true;
+                m.content(text)
+            })
+            .await?;
         }
-        .to_string();
-        ctx.send(|m| {
-            m.ephemeral = true;
-            m.content(text)
-        })
-        .await?;
     }
 
     Ok(())
