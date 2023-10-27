@@ -1,3 +1,4 @@
+#[cfg(feature = "osint")]
 #[cfg(test)]
 mod tests {
     use crack_osint::wayback::fetch_wayback_snapshot;
