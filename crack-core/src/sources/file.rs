@@ -1,12 +1,11 @@
+/*
 use self::serenity::async_trait;
 use crate::Error;
 use crate::{commands::play::QueryType, errors::CrackedError};
 use ::serenity::json::Value;
+use audiopus::Result as SongbirdResult;
 use poise::serenity_prelude as serenity;
-use songbird::input::{
-    error::Result as SongbirdResult, restartable::Restart, Codec, Container, Input, Metadata,
-    Restartable,
-};
+use songbird::input::{Input, Metadata};
 use std::time::Duration;
 use url::Url;
 
@@ -99,3 +98,4 @@ async fn _file_metadata(url: &str) -> SongbirdResult<Metadata> {
 
     Ok(metadata)
 }
+*/

@@ -1,5 +1,5 @@
+use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
-use self::serenity::{model::id::GuildId, TypeMapKey};
 //use ::serenity::prelude::Context;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId};
@@ -13,6 +13,7 @@ use std::{
     io::BufReader,
     path::Path,
 };
+use typemap_rev::TypeMapKey;
 
 use crate::errors::CrackedError;
 //use crate::Data;
@@ -50,7 +51,7 @@ const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         self.all_log_channel
-            .map(ChannelId)
+            .map(|x| ChannelId(x))
             .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
     }
 

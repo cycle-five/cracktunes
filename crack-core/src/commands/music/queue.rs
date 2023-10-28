@@ -1,12 +1,8 @@
 use self::serenity::{
-    builder::{CreateButton, CreateComponents, CreateEmbed},
+    builder::{CreateButton, CreateEmbed},
     futures::StreamExt,
-    model::{
-        application::{component::ButtonStyle, interaction::InteractionResponseType},
-        channel::Message,
-        id::GuildId,
-    },
-    RwLock,
+    model::{application::interaction::InteractionResponseType, channel::Message, id::GuildId},
+    prelude::RwLock,
 };
 use crate::{
     errors::CrackedError,
@@ -19,6 +15,7 @@ use crate::{
     Context, Data, Error,
 };
 use poise::serenity_prelude::{self as serenity};
+use serenity::ButtonStyle;
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
     cmp::{max, min},

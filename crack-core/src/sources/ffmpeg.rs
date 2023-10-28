@@ -1,3 +1,4 @@
+/*
 use crate::Error;
 use poise::serenity_prelude as prelude;
 use songbird::input::{Codec, Container, Input, Metadata, Reader};
@@ -194,3 +195,4 @@ pub async fn from_bytes(
 
 //     Ok(metadata)
 // }
+*/

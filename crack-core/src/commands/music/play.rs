@@ -22,8 +22,12 @@ use crate::{
     },
     Context, Error,
 };
-use poise::serenity_prelude::{self as serenity, Attachment};
-use songbird::{input::YoutubeDl, tracks::TrackHandle, Call};
+use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use songbird::{
+    input::{File as FileInput, YoutubeDl},
+    tracks::TrackHandle,
+    Call,
+};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use url::Url;
@@ -267,7 +271,7 @@ async fn match_mode(
         Mode::End => match query_type.clone() {
             QueryType::Keywords(_) | QueryType::VideoLink(_) => {
                 tracing::trace!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                let queue = enqueue_track(&call, &query_type).await?;
+                let queue = enqueue_track(ctx.http(), &call, &query_type).await?;
                 update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
                     .await;
             }
@@ -280,7 +284,8 @@ async fn match_mode(
 
                 for url in urls.iter() {
                     let queue =
-                        enqueue_track(&call, &QueryType::VideoLink(url.to_string())).await?;
+                        enqueue_track(ctx.http(), &call, &QueryType::VideoLink(url.to_string()))
+                            .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -293,23 +298,20 @@ async fn match_mode(
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
                 for keywords in keywords_list.iter() {
-                    let queue =
-                        enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
+                    let queue = enqueue_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords.to_string()),
                     )
-                    .await;
+                    .await?;
+                    update_queue_messages(&ctx.http(), ctx.data(), &queue, guild_id).await;
                 }
             }
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
-                        enqueue_track(&call, &QueryType::File(file)).await?;
-                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
-                    .await;
+                        enqueue_track(ctx.http(), &call, &QueryType::File(file)).await?;
+                update_queue_messages(&ctx.http(), ctx.data(), &queue, guild_id).await;
             }
         },
         Mode::Next => match query_type.clone() {
@@ -317,7 +319,7 @@ async fn match_mode(
                 tracing::trace!(
                     "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
-                let queue = insert_track(&call, &query_type, 1).await?;
+                let queue = insert_track(ctx.http(), &call, &query_type, 1).await?;
                 update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
                     .await;
             }
@@ -329,7 +331,9 @@ async fn match_mode(
                 let urls = vec!["".to_string()];
 
                 for (idx, url) in urls.into_iter().enumerate() {
-                    let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
+                    let queue =
+                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), idx + 1)
+                            .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -347,9 +351,13 @@ async fn match_mode(
                     1
                 };
                 for (idx, keywords) in keywords_list.into_iter().enumerate() {
-                    let queue =
-                        insert_track(&call, &QueryType::Keywords(keywords), idx + q_not_empty)
-                            .await?;
+                    let queue = insert_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords),
+                        idx + q_not_empty,
+                    )
+                    .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -365,7 +373,7 @@ async fn match_mode(
                 tracing::trace!(
                     "Mode::Jump, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
-                let mut queue = enqueue_track(&call, &query_type).await?;
+                let mut queue = enqueue_track(ctx.http(), &call, &query_type).await?;
 
                 if !queue_was_empty {
                     rotate_tracks(&call, 1).await.ok();
@@ -391,7 +399,8 @@ async fn match_mode(
 
                 for (i, url) in urls.into_iter().enumerate() {
                     let mut queue =
-                        insert_track(&call, &QueryType::VideoLink(url), insert_idx).await?;
+                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), insert_idx)
+                            .await?;
 
                     if i == 0 && !queue_was_empty {
                         queue = force_skip_top_track(&call.lock().await).await?;
@@ -413,8 +422,13 @@ async fn match_mode(
                 let mut insert_idx = 1;
 
                 for (i, keywords) in keywords_list.into_iter().enumerate() {
-                    let mut queue =
-                        insert_track(&call, &QueryType::Keywords(keywords), insert_idx).await?;
+                    let mut queue = insert_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords),
+                        insert_idx,
+                    )
+                    .await?;
 
                     if i == 0 && !queue_was_empty {
                         queue = force_skip_top_track(&call.lock().await).await?;
@@ -440,7 +454,7 @@ async fn match_mode(
                     .ok_or(CrackedError::Other("failed to fetch playlist"))?
                     .into_iter()
                     .for_each(|track| async {
-                        let _ = enqueue_track(&call, &QueryType::File(track)).await;
+                        let _ = enqueue_track(ctx.http(), &call, &QueryType::File(track)).await;
                     });
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
@@ -462,7 +476,12 @@ async fn match_mode(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
                 for keywords in keywords_list.into_iter() {
-                    let queue = enqueue_track(&call, &QueryType::Keywords(keywords)).await?;
+                    let queue = enqueue_track(
+                        ctx.serenity_context().http,
+                        &call,
+                        &QueryType::Keywords(keywords),
+                    )
+                    .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -635,36 +654,38 @@ async fn create_queued_embed(
     embed
 }
 
-async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedError> {
+async fn get_track_source(http: Http, query_type: QueryType) -> YoutubeDl {
     match query_type {
-        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true).await.map_err(|e| {
-            tracing::error!("error: {}", e);
-            e.into()
-        }),
+        QueryType::VideoLink(query) => YoutubeDl::new(http, query),
         QueryType::Keywords(query) => {
-            YouTubeRestartable::ytdl_search(query, true)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error: {}", e);
-                    e.into()
-                })
+            YoutubeDl::new(http, query)
+            // YouTubeRestartable::ytdl_search(query, true)
+            //     .await
+            //     .map_err(|e| {
+            //         tracing::error!("error: {}", e);
+            //         e.into()
+            //     })
         }
-        QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
-            .await
-            .map_err(|e| {
-                tracing::error!("error: {}", e);
-                e.into()
-            }),
+        QueryType::File(file) => {
+            FileInput::new(file.url.to_owned())
+            // FileRestartable::download(file.url.to_owned(), true)
+            // .await
+            // .map_err(|e| {
+            //     tracing::error!("error: {}", e);
+            //     e.into()
+            // }),
+        }
         _ => unreachable!(),
     }
 }
 
 async fn enqueue_track(
+    http: Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let source = get_track_source(query_type.clone()).await?;
+    let source = get_track_source(http, query_type.clone()).into();
 
     let mut handler = call.lock().await;
     handler.enqueue_source(source.into());
@@ -673,6 +694,7 @@ async fn enqueue_track(
 }
 
 async fn insert_track(
+    http: Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
     idx: usize,
@@ -683,7 +705,7 @@ async fn insert_track(
     tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
 
     if queue_size <= 1 {
-        let queue = enqueue_track(call, query_type).await?;
+        let queue = enqueue_track(http, call, query_type).await?;
         return Ok(queue);
     }
 
@@ -692,7 +714,7 @@ async fn insert_track(
         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
-    enqueue_track(call, query_type).await?;
+    enqueue_track(http, call, query_type).await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {

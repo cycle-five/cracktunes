@@ -14,9 +14,7 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use colored::Colorize;
-use poise::serenity_prelude::{
-    self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
-};
+use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, Mentionable, UserId};
 use std::{
     collections::{HashMap, HashSet},
     fmt,

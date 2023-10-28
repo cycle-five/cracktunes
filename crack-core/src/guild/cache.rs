@@ -1,15 +1,14 @@
-use self::serenity::{
-    model::{
-        channel::Message,
-        id::{GuildId, UserId},
-    },
-    RwLock, TypeMapKey,
+use self::serenity::model::{
+    channel::Message,
+    id::{GuildId, UserId},
 };
 use poise::serenity_prelude as serenity;
+use std::sync::RwLock;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use typemap_rev::TypeMapKey;
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
 
