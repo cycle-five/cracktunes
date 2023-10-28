@@ -1,7 +1,8 @@
-use self::serenity::{async_trait, http::Http, model::id::GuildId, Mutex};
+use self::serenity::{async_trait, http::Http, model::id::GuildId};
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::{
     commands::music::queue::{
@@ -54,7 +55,7 @@ impl EventHandler for TrackEndHandler {
 
         if let Some(channel) = handler.current_channel() {
             tracing::warn!("Sending now playing message");
-            let chan_id = ChannelId(channel.0);
+            let chan_id = songbird::id::ChannelId(channel.0);
 
             send_now_playing(chan_id, self.http.clone(), self.call.clone())
                 .await
