@@ -13,7 +13,7 @@ use crate::{
     sources::{
         file::FileRestartable,
         spotify::{Spotify, SPOTIFY},
-        youtube::{YouTube, YouTubeRestartable},
+        // youtube::{YouTube, YouTubeRestartable},
     },
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
@@ -23,7 +23,7 @@ use crate::{
     Context, Error,
 };
 use poise::serenity_prelude::{self as serenity, Attachment};
-use songbird::{input::Restartable, tracks::TrackHandle, Call};
+use songbird::{input::YoutubeDl, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use url::Url;
@@ -175,8 +175,7 @@ pub async fn play(
             interaction.defer(ctx.http()).await.unwrap();
             interaction
                 .create_interaction_response(&ctx.serenity_context().http, |response| {
-                    response
-                        .kind(serenity::InteractionResponseType::DeferredChannelMessageWithSource)
+                    response.kind(serenity::MessageInteraction::InteractionType::Message)
                 })
                 .await?;
         }
@@ -274,9 +273,10 @@ async fn match_mode(
             }
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::PlayListFail)?;
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
+                let urls = vec!["".to_string()];
 
                 for url in urls.iter() {
                     let queue =
@@ -323,9 +323,10 @@ async fn match_mode(
             }
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                let urls = vec!["".to_string()];
 
                 for (idx, url) in urls.into_iter().enumerate() {
                     let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
@@ -376,10 +377,16 @@ async fn match_mode(
             }
             QueryType::PlaylistLink(url) => {
                 tracing::error!("Mode::Jump, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::PlayListFail)?;
-
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
+                let _src = YoutubeDl::new(ctx.serenity_context().http, url);
+                // .ok_or(CrackedError::Other("failed to fetch playlist"))?
+                // .into_iter()
+                // .for_each(|track| async {
+                //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
+                // });
+                let urls = vec!["".to_string()];
                 let mut insert_idx = 1;
 
                 for (i, url) in urls.into_iter().enumerate() {
@@ -428,20 +435,27 @@ async fn match_mode(
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                YoutubeDl::ytdl(url)
                     .await
-                    .ok_or(CrackedError::PlayListFail)?;
+                    .ok_or(CrackedError::Other("failed to fetch playlist"))?
+                    .into_iter()
+                    .for_each(|track| async {
+                        let _ = enqueue_track(&call, &QueryType::File(track)).await;
+                    });
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
 
-                for url in urls.into_iter() {
-                    let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                // for url in urls.into_iter() {
+                //     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
+                //     update_queue_messages(
+                //         &ctx.serenity_context().http,
+                //         ctx.data(),
+                //         &queue,
+                //         guild_id,
+                //     )
+                //     .await;
+                // }
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!(
@@ -522,7 +536,8 @@ async fn match_url(
                     }
                 }
 
-                YouTube::extract(url)
+                //YouTube::extract(url)
+                YoutubeDl::new(ctx.serenity_context().http, url.to_string())
             }
             None => None,
         },

@@ -179,7 +179,7 @@ pub async fn edit_embed_response(
 }
 
 pub enum ApplicationCommandOrMessageInteraction {
-    ApplicationCommand(ApplicationCommandOrMessageInteraction),
+    CommandOrAutocompleteInteraction,
     Message(MessageInteraction),
 }
 
