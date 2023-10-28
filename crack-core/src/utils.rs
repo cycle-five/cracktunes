@@ -1,27 +1,15 @@
-use self::serenity::{
-    builder::CreateEmbed,
-    http::Http,
-    model::{
-        application::interaction::{
-            application_command::ApplicationCommandInteraction, InteractionResponseType,
-            MessageInteraction,
-        },
-        channel::Message,
-    },
-    Context as SerenityContext, SerenityError,
-};
+use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
     commands::{build_nav_btns, summon},
-    errors::CrackedError,
     guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
     messaging::message::CrackedMessage,
     metrics::COMMAND_EXECUTIONS,
-    Context, Data, Error,
+    Context, CrackedError, Data, Error,
 };
-use ::serenity::futures::StreamExt;
+use ::serenity::{all::InteractionResponseFlags, futures::StreamExt};
 use poise::{
-    serenity_prelude as serenity, ApplicationCommandOrAutocompleteInteraction, FrameworkError,
-    ReplyHandle,
+    serenity_prelude::{self as serenity, Context as SerenityContext, MessageInteraction},
+    CommandOrAutocompleteInteraction, FrameworkError, ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
@@ -69,7 +57,7 @@ pub async fn create_response_poise_text(
 
 pub async fn create_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
@@ -79,7 +67,7 @@ pub async fn create_response(
 
 pub async fn create_response_text(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     content: &str,
 ) -> Result<(), Error> {
     let mut embed = CreateEmbed::default();
@@ -105,7 +93,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
 
 pub async fn edit_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
@@ -115,7 +103,7 @@ pub async fn edit_response(
 
 pub async fn edit_response_text(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, Error> {
     let mut embed = CreateEmbed::default();
@@ -168,14 +156,12 @@ pub async fn create_embed_response_prefix(
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     interaction
         .create_interaction_response(&http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| message.add_embed(embed.clone()))
+            response.interaction_response_data(|message| message.add_embed(embed.clone()))
         })
         .await
         .map_err(Into::into)
@@ -183,7 +169,7 @@ pub async fn create_embed_response(
 
 pub async fn edit_embed_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     interaction
@@ -193,7 +179,7 @@ pub async fn edit_embed_response(
 }
 
 pub enum ApplicationCommandOrMessageInteraction {
-    ApplicationCommand(ApplicationCommandInteraction),
+    ApplicationCommand(ApplicationCommandOrMessageInteraction),
     Message(MessageInteraction),
 }
 
@@ -203,8 +189,8 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
     }
 }
 
-impl From<ApplicationCommandInteraction> for ApplicationCommandOrMessageInteraction {
-    fn from(message: ApplicationCommandInteraction) -> Self {
+impl From<ApplicationCommandOrMessageInteraction> for ApplicationCommandOrMessageInteraction {
+    fn from(message: ApplicationCommandOrMessageInteraction) -> Self {
         Self::ApplicationCommand(message)
     }
 }
@@ -359,7 +345,7 @@ pub async fn create_paged_embed(
         };
 
         mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionResponseType::UpdateMessage);
+            r.kind(InteractionResponseFlags::UPDATE_MESSAGE);
             r.interaction_response_data(|d| {
                 d.embed(|e| {
                     e.title(title.clone());
@@ -473,6 +459,8 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     }
 }
 
+use serenity::prelude::SerenityError;
+
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
@@ -496,11 +484,11 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
-pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction> {
+pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => Some(x.clone()),
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone()),
+            ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
         },
         Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
     }
@@ -509,10 +497,8 @@ pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandInteraction
 pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => {
-                Some(x.clone().into())
-            }
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(_) => None,
+            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone().into()),
+            ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
         },
         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
     }
@@ -521,8 +507,8 @@ pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessa
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
         Context::Application(ctx) => match ctx.interaction {
-            ApplicationCommandOrAutocompleteInteraction::ApplicationCommand(x) => x.user.id,
-            ApplicationCommandOrAutocompleteInteraction::Autocomplete(x) => x.user.id,
+            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => x.user.id,
+            ApplicationCommandOrMessageInteraction::Autocomplete(x) => x.user.id,
         },
         Context::Prefix(ctx) => ctx.msg.author.id,
     }
@@ -550,7 +536,7 @@ pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, E
 
 pub async fn handle_error(
     ctx: &SerenityContext,
-    interaction: &ApplicationCommandInteraction,
+    interaction: &ApplicationCommandOrMessageInteraction,
     err: CrackedError,
 ) {
     create_response_text(&ctx.http, interaction, &format!("{err}"))
@@ -571,6 +557,7 @@ pub fn count_command(command: &str, is_prefix: bool) {
     };
 }
 
+use songbird::id::ChannelId;
 /// Gets the channel id that the bot is currently playing in for a given guild.
 pub async fn get_current_voice_channel_id(
     ctx: &SerenityContext,
@@ -585,7 +572,7 @@ pub async fn get_current_voice_channel_id(
     let call = call_lock.lock().await;
 
     let channel_id = call.current_channel()?;
-    let serenity_channel_id = serenity::ChannelId(channel_id.0);
+    let serenity_channel_id = ChannelId(channel_id.0);
 
     Some(serenity_channel_id)
 }

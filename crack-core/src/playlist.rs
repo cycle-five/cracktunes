@@ -4,7 +4,7 @@ use sqlx::{
     SqlitePool,
 };
 
-use crate::errors::CrackedError;
+use crate::CrackedError;
 
 #[derive(Debug, Default)]
 pub struct User {

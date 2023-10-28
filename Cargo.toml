@@ -34,8 +34,8 @@ features = [
 
 [workspace.dependencies.serenity]
 version = "0.11.6"
-#git = "https://github.com/serenity-rs/serenity"
-#branch = "current"
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
 default-features = false
 features = [
   "builder",
@@ -53,20 +53,26 @@ features = [
 
 [workspace.dependencies.songbird]
 git = "https://github.com/serenity-rs/songbird"
-branch = "current"
-version = "0.3.2"
+branch = "next"
+# version = "0.4"
 features = [
-  "driver-core",
   "driver",
   "rustls",
   "serenity",
   "builtin-queue",
-  "yt-dlp",
-  "audiopus",
 ]
 
+
+# To get additional codecs, you *must* add Symphonia yourself.
+# This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
+[workspace.dependencies.symphonia]
+version = "0.5.3"
+features = ["aac", "mp3", "isomp4", "alac"] # ...as well as any extras you need!
+
 [workspace.dependencies.poise]
-version = "0.5.6"
+# version = "0.5.6"
+git = "https://github.com/cycle-five/poise"
+branch = "serenity-next"
 default-features = true
 
 [workspace.dependencies.tokio]
