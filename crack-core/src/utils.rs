@@ -10,8 +10,9 @@ use crate::{
     Error,
 };
 use ::serenity::{
-    all::{Interaction, InteractionResponseFlags},
+    all::{ButtonStyle, Interaction, InteractionResponseFlags},
     builder::{
+        CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter,
         CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
     },
     futures::StreamExt,
@@ -23,7 +24,7 @@ use poise::{
     },
     CommandOrAutocompleteInteraction, CreateReply, FrameworkError, ReplyHandle,
 };
-use songbird::tracks::TrackHandle;
+use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use url::Url;
@@ -164,7 +165,9 @@ pub async fn create_embed_response(
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     match interaction {
-        CommandOrMessageInteraction::Command(int) => create_reponse_interaction(http, int, embed).await,
+        CommandOrMessageInteraction::Command(int) => {
+            create_reponse_interaction(http, int, embed).await
+        }
         _ => Ok(()),
         // Interaction::Message(interaction) => interaction
         //     .create_interaction_response(&http, |response| {
@@ -256,14 +259,21 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> Result<(), Error> {
     match get_interaction(ctx) {
         Some(interaction) => match interaction {
-            CommandOrMessageInteraction::Command(interaction) => interaction
-                .edit_response(
-                    &ctx.serenity_context().http,
-                    EditInteractionResponse::new().content(" ").embed(embed),
-                )
-                .await
-                .map(|_| ())
-                .map_err(Into::into),
+            CommandOrMessageInteraction::Command(interaction) => match interaction {
+                Interaction::Command(interaction) => interaction
+                    .edit_response(
+                        &ctx.serenity_context().http,
+                        EditInteractionResponse::new().content(" ").embed(embed),
+                    )
+                    .await
+                    .map(|_| ())
+                    .map_err(Into::into),
+                Interaction::Autocomplete(_) => Ok(()),
+                Interaction::Component(_) => Ok(()),
+                Interaction::Modal(_) => Ok(()),
+                Interaction::Ping(_) => Ok(()),
+                _ => Ok(()),
+            },
             CommandOrMessageInteraction::Message(_) => {
                 //     interaction.
                 //         (
@@ -279,60 +289,57 @@ pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> 
     }
 }
 
-pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    let metadata = track.metadata().clone();
+pub async fn create_now_playing_embed(
+    track: &TrackHandle,
+    aux_metadata: &AuxMetadata,
+) -> CreateEmbed {
+    // TrackHandle::metadata(track);
+    let metadata = aux_metadata; // track.metadata().clone();
 
     tracing::warn!("metadata: {:?}", metadata);
 
-    embed.author(|author| author.name(CrackedMessage::NowPlaying));
-    metadata
-        .title
-        .as_ref()
-        .map(|title| embed.title(title.clone()));
+    let title = metadata.title.clone().unwrap_or_default();
 
-    metadata
-        .source_url
-        .as_ref()
-        .map(|source_url| embed.url(source_url.clone()));
+    let source_url = metadata.source_url.clone().unwrap_or_default();
 
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
 
-    embed.field("Progress", format!(">>> {} / {}", position, duration), true);
+    let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
-    match metadata.channel {
-        Some(channel) => embed.field("Channel", format!(">>> {}", channel), true),
-        None => embed.field("Channel", ">>> N/A", true),
+    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
+        Some(channel) => ("Channel", format!(">>> {}", channel), true),
+        None => ("Channel", ">>> N/A".to_string(), true),
     };
 
-    metadata
-        .thumbnail
-        .as_ref()
-        .map(|thumbnail| embed.thumbnail(thumbnail));
-
-    let source_url = metadata.source_url.unwrap_or_else(|| {
-        tracing::warn!("No source url found for track: {:?}", track);
-        "".to_string()
-    });
+    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-    embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
 
-    embed
+    CreateEmbed::new()
+        .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
+        .title(title.clone())
+        .url(source_url)
+        .field(progress_field.0, progress_field.1, progress_field.2)
+        .field(channel_field.0, channel_field.1, channel_field.2)
+        .thumbnail(url::Url::parse(&thumbnail).unwrap())
+        .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
 pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
     // let metadata = track_handle.metadata().clone();
 
     tracing::trace!("lyric: {}", lyric);
     tracing::trace!("track: {}", track);
     tracing::trace!("artists: {}", artists);
 
-    embed.author(|author| author.name(artists));
-    embed.title(track);
-    embed.description(lyric);
+    // embed.author(|author| author.name(artists));
+    // embed.title(track);
+    // embed.description(lyric);
+    CreateEmbed::default()
+        .author(CreateEmbedAuthor::new(artists))
+        .title(track)
+        .description(lyric)
 
     // metadata
     //     .source_url
@@ -351,8 +358,6 @@ pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: Stri
 
     // let (footer_text, footer_icon_url) = get_footer_info(&source_url);
     // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
-
-    embed
 }
 
 pub async fn create_lyrics_embed(
@@ -371,6 +376,75 @@ pub async fn create_lyrics_embed(
     .await
 }
 
+fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
+    CreateButton::default()
+        .custom_id(label.to_string().to_ascii_lowercase())
+        .label(label)
+        .style(ButtonStyle::Primary)
+        .disabled(is_disabled)
+        .to_owned()
+}
+
+pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
+    let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
+    vec![CreateActionRow::Buttons(vec![
+        build_single_nav_btn("<<", cant_left),
+        build_single_nav_btn("<", cant_left),
+        build_single_nav_btn(">", cant_right),
+        build_single_nav_btn(">>", cant_right),
+    ])]
+}
+
+fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
+    let start_idx = EMBED_PAGE_SIZE * page;
+    let queue: Vec<&TrackHandle> = tracks
+        .iter()
+        .skip(start_idx + 1)
+        .take(EMBED_PAGE_SIZE)
+        .collect();
+
+    if queue.is_empty() {
+        return String::from(QUEUE_NO_SONGS);
+    }
+
+    let mut description = String::new();
+
+    for (i, t) in queue.iter().enumerate() {
+        let title = t.metadata().title.as_ref().unwrap();
+        let url = t.metadata().source_url.as_ref().unwrap();
+        let duration = get_human_readable_timestamp(t.metadata().duration);
+
+        let _ = writeln!(
+            description,
+            "`{}.` [{}]({}) • `{}`",
+            i + start_idx + 1,
+            title,
+            url,
+            duration
+        );
+    }
+
+    description
+}
+
+pub fn calculate_num_pages(tracks: &[TrackHandle]) -> usize {
+    let num_pages = ((tracks.len() as f64 - 1.0) / EMBED_PAGE_SIZE as f64).ceil() as usize;
+    max(1, num_pages)
+}
+
+pub async fn forget_queue_message(
+    data: &Data,
+    message: &Message,
+    guild_id: GuildId,
+) -> Result<(), ()> {
+    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
+
+    let cache = cache_map.get_mut(&guild_id).ok_or(())?;
+    cache.queue_messages.retain(|(m, _)| m.id != message.id);
+
+    Ok(())
+}
+
 pub async fn create_paged_embed(
     ctx: Context<'_>,
     author: String,
@@ -385,23 +459,24 @@ pub async fn create_paged_embed(
 
     let mut message = {
         let reply = ctx
-            .send(|m| {
-                m.embed(|e| {
-                    e.title(title.clone());
-                    e.author(|a| a.name(author.clone()));
-                    e.description(page_getter(0));
-                    e.footer(|f| f.text(format!("Page {}/{}", 1, num_pages)))
-                });
-                m.components(|components| build_nav_btns(components, 0, num_pages))
-            })
+            .send(
+                CreateReply::new()
+                    .embed(
+                        CreateEmbed::new()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(0))
+                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
+                    )
+                    .components(build_nav_btns(0, num_pages)),
+            )
             .await?;
         reply.into_message().await?
     };
 
     let mut cib = message
         .await_component_interactions(ctx)
-        .timeout(Duration::from_secs(60 * 10))
-        .build();
+        .timeout(Duration::from_secs(60 * 10));
 
     while let Some(mci) = cib.next().await {
         let btn_id = &mci.data.custom_id;
@@ -416,18 +491,22 @@ pub async fn create_paged_embed(
             _ => continue,
         };
 
-        mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionResponseFlags::UPDATE_MESSAGE);
-            r.interaction_response_data(|d| {
-                d.embed(|e| {
-                    e.title(title.clone());
-                    e.author(|a| a.name(author.clone()));
-                    e.description(page_getter(*page_wlock));
-                    e.footer(|f| f.text(format!("Page {}/{}", *page_wlock + 1, num_pages)))
-                });
-                d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
-            })
-        })
+        mci.create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::new()
+                    .embeds(vec![CreateEmbed::new()
+                        .title(title.clone())
+                        .author(CreateEmbedAuthor::new(author.clone()))
+                        .description(page_getter(*page_wlock))
+                        .footer(CreateEmbedFooter::new(format!(
+                            "Page {}/{}",
+                            *page_wlock + 1,
+                            num_pages
+                        )))])
+                    .components(build_nav_btns(*page_wlock, num_pages)),
+            ),
+        )
         .await?;
     }
 
@@ -558,25 +637,21 @@ pub fn check_interaction(result: Result<(), Error>) {
 
 pub enum CommandOrMessageInteraction {
     Command(Interaction),
-    Message(MessageInteraction),
+    Message(Option<Box<MessageInteraction>>),
 }
 
 pub fn get_interaction(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(Interaction::Command(x.clone())),
+            CommandOrAutocompleteInteraction::Command(x) => Some(
+                CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
+            ),
             CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
-        Context::Prefix(ctx) => 
-        {
-            MessageInteraction
-        ctx
-            .msg
-            .interaction
-            .clone()
-            .map(|x| ),
-        }
+        Context::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
+            ctx.msg.interaction.clone(),
+        )),
     }
 }
 
@@ -592,10 +667,7 @@ pub fn get_interaction(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> 
 
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {
-        Context::Application(ctx) => match ctx.interaction {
-            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => x.user.id,
-            ApplicationCommandOrMessageInteraction::Autocomplete(x) => x.user.id,
-        },
+        Context::Application(ctx) => ctx.interaction.user().id,
         Context::Prefix(ctx) => ctx.msg.author.id,
     }
 }
@@ -609,20 +681,24 @@ pub fn get_channel_id(ctx: &Context) -> serenity::ChannelId {
 
 pub async fn summon_short(ctx: Context<'_>) -> Result<(), FrameworkError<Data, Error>> {
     match ctx {
-        Context::Application(ctx) => {
+        Context::Application(_ctx) => {
             tracing::warn!("summoning via slash command");
-            summon().slash_action.unwrap()(ctx).await
+            // summon().slash_action.unwrap()(ctx).await
+            // FIXME
+            Ok(())
         }
-        Context::Prefix(ctx) => {
+        Context::Prefix(_ctx) => {
             tracing::warn!("summoning via prefix command");
-            summon().prefix_action.unwrap()(ctx).await
+            // summon().prefix_action.unwrap()(ctx).await
+            // FIXME
+            Ok(())
         }
     }
 }
 
 pub async fn handle_error(
     ctx: &SerenityContext,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     err: CrackedError,
 ) {
     create_response_text(&ctx.http, interaction, &format!("{err}"))
@@ -658,7 +734,7 @@ pub async fn get_current_voice_channel_id(
     let call = call_lock.lock().await;
 
     let channel_id = call.current_channel()?;
-    let serenity_channel_id = ChannelId(channel_id.0);
+    let serenity_channel_id = serenity::ChannelId::new(channel_id.0.into());
 
     Some(serenity_channel_id)
 }

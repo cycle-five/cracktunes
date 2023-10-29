@@ -759,7 +759,7 @@ pub async fn handle_event(
             event,
         } => {
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
-            let new = new.unwrap();
+            let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .map(|x| x.get_join_leave_log_channel())

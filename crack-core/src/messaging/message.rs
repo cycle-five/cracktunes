@@ -215,3 +215,9 @@ impl Display for CrackedMessage {
         }
     }
 }
+
+impl From<CrackedMessage> for String {
+    fn from(message: CrackedMessage) -> Self {
+        message.to_string()
+    }
+}
