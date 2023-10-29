@@ -11,10 +11,13 @@ use crate::{
     Error,
 };
 use colored::Colorize;
-use poise::serenity_prelude::{
-    ChannelId, ClientStatus, Event, FullEvent, GuildId, GuildMemberAddEvent,
-    GuildMemberRemoveEvent, Member, Presence, PresenceUpdateEvent, TypingStartEvent,
-    VoiceStateUpdateEvent,
+use poise::{
+    serenity_prelude::{
+        ChannelId, ClientStatus, Event, FullEvent, GuildId, GuildMemberAddEvent,
+        GuildMemberRemoveEvent, Member, Presence, PresenceUpdateEvent, TypingStartEvent,
+        VoiceStateUpdateEvent,
+    },
+    FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::{client::Context as SerenityContext, http::Http};
@@ -388,9 +391,10 @@ macro_rules! log_event {
 // }
 
 pub async fn handle_event(
-    ctx: &SerenityContext,
-    // event_in: &poise::serenity_prelude::Event,
     event_in: &FullEvent,
+    //ctx: &SerenityContext,
+    // event_in: &poise::serenity_prelude::Event,
+    framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);

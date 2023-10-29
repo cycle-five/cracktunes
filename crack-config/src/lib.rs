@@ -2,17 +2,19 @@ use colored::Colorize;
 use crack_core::{
     commands,
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::{handle_event, SerenityHandler},
+    handlers::handle_event,
     is_prefix,
     metrics::COMMAND_ERRORS,
     utils::{check_interaction, check_reply, count_command, create_response_text, get_interaction},
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
 use poise::{
-    serenity_prelude::{GatewayIntents, GuildId},
+    serenity_prelude::{FullEvent, GatewayIntents, GuildId},
+    CreateReply,
     // #[cfg(feature = "set_owners_from_config")]
     // UserId,
     Framework,
+    FrameworkOptions,
 };
 use songbird::serenity::SerenityInit;
 use std::sync::Mutex;
@@ -26,19 +28,19 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            poise::Event::PresenceUpdate { .. } => { /* Ignore PresenceUpdate is terminal logging, too spammy */
+            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate is terminal logging, too spammy */
             }
             _ => {
                 tracing::warn!(
                     "{} {} {} {}",
                     "Error in event handler for ".yellow(),
-                    event.name().yellow().italic(),
+                    event.snake_case_name().yellow().italic(),
                     " event: ".yellow(),
                     error.to_string().yellow().bold(),
                 );
             }
         },
-        poise::FrameworkError::Command { error, ctx } => {
+        poise::FrameworkError::Command { error, ctx, .. } => {
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
@@ -55,7 +57,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 }
                 None => {
                     check_reply(
-                        ctx.send(|builder| builder.content(&format!("{error}")))
+                        ctx.send(CreateReply::new().content(&format!("{error}")))
                             .await,
                     );
                 }
@@ -95,34 +97,34 @@ pub async fn poise_framework(
             .map(|id| UserId(*id))
             .collect(),
         commands: vec![
-            commands::admin(),
-            commands::autopause(),
-            commands::boop(),
-            commands::coinflip(),
-            //commands::create_playlist(),
-            //commands::delete_playlist(),
-            //commands::chatgpt(),
-            commands::clear(),
-            commands::help(),
-            commands::leave(),
-            commands::lyrics(),
-            commands::grab(),
-            commands::now_playing(),
-            commands::pause(),
-            commands::play(),
+            // commands::admin(),
+            // commands::autopause(),
+            // commands::boop(),
+            // commands::coinflip(),
+            // //commands::create_playlist(),
+            // //commands::delete_playlist(),
+            // //commands::chatgpt(),
+            // commands::clear(),
+            // commands::help(),
+            // commands::leave(),
+            // commands::lyrics(),
+            // commands::grab(),
+            // commands::now_playing(),
+            // commands::pause(),
+            // commands::play(),
             commands::ping(),
-            commands::remove(),
-            commands::repeat(),
-            commands::resume(),
-            commands::servers(),
-            commands::seek(),
-            commands::skip(),
-            commands::stop(),
-            commands::shuffle(),
-            commands::summon(),
-            commands::version(),
-            commands::volume(),
-            commands::queue(),
+            // commands::remove(),
+            // commands::repeat(),
+            // commands::resume(),
+            // commands::servers(),
+            // commands::seek(),
+            // commands::skip(),
+            // commands::stop(),
+            // commands::shuffle(),
+            // commands::summon(),
+            // commands::version(),
+            // commands::volume(),
+            // commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
         ],
@@ -190,7 +192,7 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
                 tracing::info!("Checking command {}...", command);
-                let user_id = *ctx.author().id.as_u64();
+                let user_id = ctx.author().id.get();
                 // ctx.author_member().await.map_or_else(
                 //     || {
                 //         tracing::info!("Author not found in guild");
@@ -258,8 +260,8 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: true,
-        event_handler: |ctx, event, _framework, data_global| {
-            Box::pin(async move { handle_event(ctx, event, data_global).await })
+        event_handler: |event, framework, data_global| {
+            Box::pin(async move { handle_event(event, framework, data_global).await })
         },
         ..Default::default()
     };
@@ -301,6 +303,17 @@ pub async fn poise_framework(
     //     exit(0);
     // })
     // .expect("Error setting Ctrl-C handler");
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGE_TYPING
+        | GatewayIntents::DIRECT_MESSAGE_REACTIONS
+        | GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::GUILD_PRESENCES
+        | GatewayIntents::MESSAGE_CONTENT;
 
     let handler_data = data.clone();
     let setup_data = data;
@@ -308,17 +321,19 @@ pub async fn poise_framework(
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    let framework = poise::Framework::builder()
-        .client_settings(|builder| {
-            builder
-                .event_handler(SerenityHandler {
-                    is_loop_running: false.into(),
-                    data: handler_data,
-                })
-                .register_songbird()
-        })
-        .token(token)
-        .setup(move |ctx, ready, framework| {
+    let framework = poise::Framework::new(
+        options,
+        // .client_settings(|builder| {
+        //     builder
+        //         .event_handler(SerenityHandler {
+        //             is_loop_running: false.into(),
+        //             data: handler_data,
+        //         })
+        //         .register_songbird()
+        // })
+        // .token(token)
+        //.setup(move |ctx, ready, framework| {
+        |ctx, ready, framework| {
             Box::pin(async move {
                 tracing::info!("Logged in as {}", ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
@@ -328,24 +343,36 @@ pub async fn poise_framework(
                     .insert::<GuildSettingsMap>(guild_settings_map.clone());
                 Ok(setup_data)
             })
-        })
-        .options(options)
-        .intents(
-            GatewayIntents::non_privileged()
-                | GatewayIntents::GUILD_MEMBERS
-                | GatewayIntents::GUILD_MESSAGES
-                | GatewayIntents::GUILD_MESSAGE_REACTIONS
-                | GatewayIntents::DIRECT_MESSAGES
-                | GatewayIntents::DIRECT_MESSAGE_TYPING
-                | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-                | GatewayIntents::GUILDS
-                | GatewayIntents::GUILD_VOICE_STATES
-                | GatewayIntents::GUILD_PRESENCES
-                | GatewayIntents::MESSAGE_CONTENT,
-        );
+        },
+    );
+    // .options(options)
+    // .intents(
+    //     GatewayIntents::non_privileged()
+    //         | GatewayIntents::GUILD_MEMBERS
+    //         | GatewayIntents::GUILD_MESSAGES
+    //         | GatewayIntents::GUILD_MESSAGE_REACTIONS
+    //         | GatewayIntents::DIRECT_MESSAGES
+    //         | GatewayIntents::DIRECT_MESSAGE_TYPING
+    //         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
+    //         | GatewayIntents::GUILDS
+    //         | GatewayIntents::GUILD_VOICE_STATES
+    //         | GatewayIntents::GUILD_PRESENCES
+    //         | GatewayIntents::MESSAGE_CONTENT,
+    // );
 
-    let res = framework.build().await?;
-    let shard_manager = res.client().shard_manager.clone();
+    // let res = framework.build().await?;
+    // let shard_manager = res.client().shard_manager.clone();
+    use poise::serenity_prelude::Client;
+    let mut client = Client::builder(token, intents)
+        .framework(framework)
+        .register_songbird()
+        .event_handler(SerenityHandler {
+            is_loop_running: false.into(),
+            data: handler_data,
+        })
+        .await
+        .unwrap();
+    let shard_manager = client.shard_manager.clone();
 
     tokio::spawn(async move {
         #[cfg(unix)]
@@ -387,11 +414,20 @@ pub async fn poise_framework(
                 tracing::warn!("Saving Guild: {}", k);
                 v.save().expect("Error saving guild settings");
             });
-        shard_manager.lock().await.shutdown_all().await;
+        //shard_manager.lock().await.shutdown_all().await;
+        shard_manager.shutdown_all().await;
 
         exit(0);
     });
 
-    res.client().start_autosharded().await?;
-    Ok(res)
+    // let client = framework.client_settings(f)
+    // let res = framework.run_autosharded().await?;
+    // let mut client = Client::builder(token, intents)
+    //     .framework(Framework::new(f))
+    //     .await
+    //     .unwrap();
+    // res.start_autosharded().await.unwrap();
+    //res.client().start_autosharded().await?;
+    client.start_autosharded().await?;
+    Ok(Arc::new(framework))
 }

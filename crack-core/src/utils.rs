@@ -10,10 +10,11 @@ use crate::{
     Error,
 };
 use ::serenity::{
-    all::{ButtonStyle, Interaction, InteractionResponseFlags},
+    all::{ButtonStyle, GuildId, Interaction, InteractionResponseFlags},
     builder::{
         CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter,
         CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
+        EditMessage,
     },
     futures::StreamExt,
 };
@@ -25,9 +26,15 @@ use poise::{
     CommandOrAutocompleteInteraction, CreateReply, FrameworkError, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
-use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
+use std::{
+    cmp::{max, min},
+    ops::Add,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::sync::RwLock;
 use url::Url;
+const EMBED_PAGE_SIZE: usize = 6;
 
 pub async fn create_log_embed(
     channel: &serenity::ChannelId,
@@ -101,7 +108,7 @@ pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> R
 
 pub async fn edit_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
@@ -110,7 +117,7 @@ pub async fn edit_response(
 
 pub async fn edit_response_text(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(content);
@@ -121,12 +128,16 @@ pub async fn create_embed_response_str(
     ctx: &Context<'_>,
     message_str: String,
 ) -> Result<Message, Error> {
-    ctx.send(|b| b.embed(|e| e.description(message_str)).reply(true))
-        .await
-        .unwrap()
-        .into_message()
-        .await
-        .map_err(Into::into)
+    ctx.send(
+        CreateReply::new()
+            .embed(CreateEmbed::new().description(message_str))
+            .reply(true),
+    )
+    .await
+    .unwrap()
+    .into_message()
+    .await
+    .map_err(Into::into)
     //.map_err(Into::into)
     // Ok(())
 }
@@ -175,6 +186,34 @@ pub async fn create_embed_response(
         //     })
         //     .await
         //     .map_err(Into::into),
+    }
+}
+
+pub async fn edit_reponse_interaction(
+    http: &Arc<Http>,
+    interaction: &Interaction,
+    embed: CreateEmbed,
+) -> Result<Message, Error> {
+    match interaction {
+        Interaction::Command(int) => int
+            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .await
+            .map_err(Into::into),
+        Interaction::Component(int) => int
+            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .await
+            .map_err(Into::into),
+        Interaction::Modal(int) => int
+            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .await
+            .map_err(Into::into),
+        Interaction::Autocomplete(int) => int
+            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .await
+            //.map(|_| Message::default())
+            .map_err(Into::into),
+        Interaction::Ping(_int) => Ok(Message::default()),
+        _ => todo!(),
     }
 }
 
@@ -227,16 +266,23 @@ pub async fn create_reponse_interaction(
 
 pub async fn edit_embed_response(
     http: &Arc<Http>,
-    interaction: &CommandInteraction,
+    interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
-    interaction
-        .edit_response(
-            &http,
-            EditInteractionResponse::new().content(" ").embed(embed),
-        )
-        .await
-        .map_err(Into::into)
+    match interaction {
+        CommandOrMessageInteraction::Command(int) => {
+            edit_reponse_interaction(http, int, embed).await
+        }
+        CommandOrMessageInteraction::Message(msg) => match msg {
+            Some(_msg) => {
+                // Ok(CreateMessage::new().content("edit_embed_response not implemented").)
+                Ok(Message::default())
+                //    http.edit_origin, new_attachments)
+                //     msg.user.id
+            }
+            _ => Ok(Message::default()),
+        },
+    }
 }
 
 pub enum ApplicationCommandOrMessageInteraction {
@@ -377,8 +423,7 @@ pub async fn create_lyrics_embed(
 }
 
 fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
-    CreateButton::default()
-        .custom_id(label.to_string().to_ascii_lowercase())
+    CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
         .disabled(is_disabled)
@@ -395,34 +440,35 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
-    let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&TrackHandle> = tracks
-        .iter()
-        .skip(start_idx + 1)
-        .take(EMBED_PAGE_SIZE)
-        .collect();
+fn build_queue_page(tracks: &[(TrackHandle, AuxMetadata)], page: usize) -> String {
+    let description = "".to_string();
+    // let start_idx = EMBED_PAGE_SIZE * page;
+    // let queue: Vec<&TrackHandle> = tracks
+    //     .iter()
+    //     .skip(start_idx + 1)
+    //     .take(EMBED_PAGE_SIZE)
+    //     .collect();
 
-    if queue.is_empty() {
-        return String::from(QUEUE_NO_SONGS);
-    }
+    // if queue.is_empty() {
+    //     return String::from(messaging::messages::QUEUE_NO_SONGS);
+    // }
 
-    let mut description = String::new();
+    // let mut description = String::new();
 
-    for (i, t) in queue.iter().enumerate() {
-        let title = t.metadata().title.as_ref().unwrap();
-        let url = t.metadata().source_url.as_ref().unwrap();
-        let duration = get_human_readable_timestamp(t.metadata().duration);
+    // for (i, t) in queue.iter().enumerate() {
+    //     let title = t.metadata().title.as_ref().unwrap();
+    //     let url = t.metadata().source_url.as_ref().unwrap();
+    //     let duration = get_human_readable_timestamp(t.metadata().duration);
 
-        let _ = writeln!(
-            description,
-            "`{}.` [{}]({}) • `{}`",
-            i + start_idx + 1,
-            title,
-            url,
-            duration
-        );
-    }
+    //     let _ = writeln!(
+    //         description,
+    //         "`{}.` [{}]({}) • `{}`",
+    //         i + start_idx + 1,
+    //         title,
+    //         url,
+    //         duration
+    //     );
+    // }
 
     description
 }
@@ -476,7 +522,8 @@ pub async fn create_paged_embed(
 
     let mut cib = message
         .await_component_interactions(ctx)
-        .timeout(Duration::from_secs(60 * 10));
+        .timeout(Duration::from_secs(60 * 10))
+        .stream();
 
     while let Some(mci) = cib.next().await {
         let btn_id = &mci.data.custom_id;
@@ -511,12 +558,13 @@ pub async fn create_paged_embed(
     }
 
     message
-        .edit(&ctx.serenity_context().http, |edit| {
-            let mut embed = CreateEmbed::default();
-            embed.description("Lryics timed out, run the command again to see them.");
-            edit.set_embed(embed);
-            edit.components(|f| f)
-        })
+        .edit(
+            &ctx.serenity_context().http,
+            EditMessage::default().embed(
+                CreateEmbed::default()
+                    .description("Lryics timed out, run the command again to see them."),
+            ),
+        )
         .await
         .unwrap();
 
@@ -741,5 +789,5 @@ pub async fn get_current_voice_channel_id(
 
 pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {
     let guild = ctx.cache.guild(guild_id)?;
-    Some(guild.name)
+    Some(guild.name.clone())
 }
