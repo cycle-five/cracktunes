@@ -11,7 +11,7 @@ use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
 //use songbird::input:{DcaError, Error as InputError};
-use audiopus::Error as InputError;
+// use audiopus::Error as InputError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
 
@@ -24,6 +24,7 @@ pub enum CrackedError {
     Anyhow(anyhow::Error),
     JoinChannelError(JoinError),
     LogChannelWarning(&'static str, GuildId),
+    // LogChannelWarning(Option<String>, GuildId),
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NoGuildId,
@@ -42,10 +43,12 @@ pub enum CrackedError {
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
-    Songbird(InputError),
+    // Songbird(InputError),
+    Songbird(Error),
     Serenity(SerenityError),
     Poise(Error),
-    TrackFail(InputError),
+    // TrackFail(InputError),
+    TrackFail(Error),
     UnauthorizedUser,
     UnimplementedEvent(ChannelId, &'static str),
     WrongVoiceChannel,
@@ -87,16 +90,16 @@ impl Display for CrackedError {
             Self::PlayListFail => f.write_str(PLAYLIST_FAILED),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),
             Self::TrackFail(err) => match err {
-                InputError::Json {
-                    error: _,
-                    parsed_text,
-                } => {
-                    if parsed_text.contains("Sign in to confirm your age") {
-                        f.write_str(TRACK_INAPPROPRIATE)
-                    } else {
-                        f.write_str(TRACK_NOT_FOUND)
-                    }
-                }
+                // InputError::Json {
+                //     error: _,
+                //     parsed_text,
+                // } => {
+                //     if parsed_text.contains("Sign in to confirm your age") {
+                //         f.write_str(TRACK_INAPPROPRIATE)
+                //     } else {
+                //         f.write_str(TRACK_NOT_FOUND)
+                //     }
+                // }
                 _ => f.write_str(&format!("{err}")),
             },
             Self::Serenity(err) => f.write_str(&format!("{err}")),
@@ -111,9 +114,12 @@ impl Display for CrackedError {
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Poise(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
-            Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
-                "No log channel set for {event_name} in {guild_id}",
-            )),
+            Self::LogChannelWarning(event_name, guild_id) => {
+                //let event_name = event_name.unwrap_or("Unknown".to_string());
+                f.write_str(&format!(
+                    "No log channel set for {event_name} in {guild_id}",
+                ))
+            }
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
@@ -163,49 +169,49 @@ impl From<AudiopusError> for CrackedError {
     }
 }
 
-impl From<CrackedError> for InputError {
-    fn from(val: CrackedError) -> InputError {
-        match val {
-            CrackedError::Poise(_) => InputError::Metadata,
-            CrackedError::Serde(err) => InputError::Json {
-                error: err,
-                parsed_text: "".to_string(),
-            },
-            CrackedError::IO(err) => InputError::Io(err),
-            CrackedError::Songbird(err) => err,
-            CrackedError::TrackFail(err) => err,
-            CrackedError::RSpotify(_) => InputError::Metadata,
-            CrackedError::Serenity(_) => InputError::Metadata,
-            CrackedError::AlreadyConnected(_) => InputError::Metadata,
-            CrackedError::NotConnected => InputError::Metadata,
-            CrackedError::Other(_) => InputError::Metadata,
-            CrackedError::QueueEmpty => InputError::Metadata,
-            CrackedError::NotInRange(_, _, _, _) => InputError::Metadata,
-            CrackedError::AuthorDisconnected(_) => InputError::Metadata,
-            CrackedError::WrongVoiceChannel => InputError::Metadata,
-            CrackedError::AuthorNotFound => InputError::Metadata,
-            _ => InputError::Metadata,
-        }
-    }
-}
+// impl From<CrackedError> for MetadataError {
+//     fn from(val: CrackedError) -> MetadataError {
+//         match val {
+//             CrackedError::Poise(_) => MetadataError,
+//             CrackedError::Serde(err) => InputError::Json {
+//                 error: err,
+//                 parsed_text: "".to_string(),
+//             },
+//             CrackedError::IO(err) => InputError::Io(err),
+//             CrackedError::Songbird(err) => err,
+//             CrackedError::TrackFail(err) => err,
+//             CrackedError::RSpotify(_) => InputError::Metadata,
+//             CrackedError::Serenity(_) => InputError::Metadata,
+//             CrackedError::AlreadyConnected(_) => InputError::Metadata,
+//             CrackedError::NotConnected => InputError::Metadata,
+//             CrackedError::Other(_) => InputError::Metadata,
+//             CrackedError::QueueEmpty => InputError::Metadata,
+//             CrackedError::NotInRange(_, _, _, _) => InputError::Metadata,
+//             CrackedError::AuthorDisconnected(_) => InputError::Metadata,
+//             CrackedError::WrongVoiceChannel => InputError::Metadata,
+//             CrackedError::AuthorNotFound => InputError::Metadata,
+//             _ => InputError::Metadata,
+//         }
+//     }
+// }
 
-impl From<InputError> for CrackedError {
-    fn from(err: InputError) -> Self {
-        match err {
-            InputError::Json {
-                error,
-                parsed_text: _,
-            } => Self::Poise(error.into()),
-            InputError::Io(err) => Self::IO(err),
-            InputError::Metadata => Self::Other("Metadata"),
-            InputError::Stdout => Self::Other("Stdout"),
-            InputError::Dca(err) => Self::Poise(Box::new(err)),
-            InputError::Streams => Self::Other("Streams"),
-            InputError::Streamcatcher(err) => Self::Poise(Box::new(err)),
-            _ => Self::Other("FAILED"),
-        }
-    }
-}
+// impl From<InputError> for CrackedError {
+//     fn from(err: InputError) -> Self {
+//         match err {
+//             InputError::Json {
+//                 error,
+//                 parsed_text: _,
+//             } => Self::Poise(error.into()),
+//             InputError::Io(err) => Self::IO(err),
+//             InputError::Metadata => Self::Other("Metadata"),
+//             InputError::Stdout => Self::Other("Stdout"),
+//             InputError::Dca(err) => Self::Poise(Box::new(err)),
+//             InputError::Streams => Self::Other("Streams"),
+//             InputError::Streamcatcher(err) => Self::Poise(Box::new(err)),
+//             _ => Self::Other("FAILED"),
+//         }
+//     }
+// }
 
 impl From<Error> for CrackedError {
     fn from(err: Error) -> Self {

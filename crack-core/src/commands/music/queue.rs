@@ -1,7 +1,7 @@
 use self::serenity::{
     builder::{CreateButton, CreateEmbed},
     futures::StreamExt,
-    model::{application::interaction::InteractionResponseType, channel::Message, id::GuildId},
+    model::{channel::Message, id::GuildId},
     prelude::RwLock,
 };
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
     utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
     Context, Data, Error,
 };
-use poise::serenity_prelude::{self as serenity};
+use poise::serenity_prelude::{self as serenity, InteractionResponseFlags, InteractionType};
 use serenity::ButtonStyle;
 use songbird::{tracks::TrackHandle, Event, TrackEvent};
 use std::{
@@ -54,7 +54,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             interaction
                 .create_interaction_response(&ctx.serenity_context().http, |response| {
                     response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .kind(InteractionType::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             let num_pages = calculate_num_pages(&tracks);
 
@@ -132,7 +132,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         };
 
         mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionResponseType::UpdateMessage);
+            r.kind(InteractionType::UpdateMessage);
             r.interaction_response_data(|d| {
                 d.add_embed(create_queue_embed(&tracks, *page_wlock));
                 d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
@@ -209,10 +209,10 @@ fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
 }
 
 pub fn build_nav_btns(
-    components: &mut CreateComponents,
+    components: &mut CreateButton,
     page: usize,
     num_pages: usize,
-) -> &mut CreateComponents {
+) -> &mut CreateButton {
     components.create_action_row(|action_row| {
         let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
 

@@ -1,6 +1,9 @@
 use std::io::Write;
 
-use poise::serenity_prelude::Channel;
+use poise::{
+    serenity_prelude::{Channel, CreateMessage, User, UserId},
+    CreateReply,
+};
 
 use crate::{
     errors::CrackedError,
@@ -49,7 +52,7 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Set the prefix for the bot.
-#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, hide_in_help)]
 pub async fn set_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to set for the bot"] prefix: String,
@@ -80,7 +83,8 @@ pub async fn set_prefix(
 }
 
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+// #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, hide_in_help)]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
@@ -102,7 +106,7 @@ pub async fn authorize(
 
     //ctx.send("User authorized").await;
     check_reply(
-        ctx.send(|m| m.content("User authorized.").reply(true))
+        ctx.send(CreateReply::new().content("User authorized.").reply(true))
             .await,
     );
 
@@ -110,7 +114,7 @@ pub async fn authorize(
 }
 
 /// Deauthorize a user from using the bot.
-#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
+#[poise::command(prefix_command, owners_only, hide_in_help)]
 pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user_id: String,
@@ -130,7 +134,7 @@ pub async fn deauthorize(
 
     if res {
         check_reply(
-            ctx.send(|m| m.content("User deauthorized.").reply(true))
+            ctx.send(CreateReply::new().content("User deauthorized.").reply(true))
                 .await,
         );
         Ok(())
@@ -159,7 +163,7 @@ pub async fn broadcast_voice(
 
         if let Some(channel_id) = channel_id_opt {
             channel_id
-                .send_message(&http, |m| m.content(message.clone()))
+                .send_message(&http, CreateMessage::new().content(message.clone()))
                 .await
                 .unwrap();
         }
@@ -193,10 +197,11 @@ pub async fn set_idle_timeout(
         .and_modify(|e| e.timeout = timeout);
 
     check_reply(
-        ctx.send(|m| {
-            m.content(format!("timeout set to {} seconds", timeout))
-                .reply(true)
-        })
+        ctx.send(
+            CreateReply::new()
+                .content(format!("timeout set to {} seconds", timeout))
+                .reply(true),
+        )
         .await,
     );
 
@@ -208,8 +213,8 @@ pub async fn set_idle_timeout(
 //
 
 /// Kick command to kick a user from the server based on their ID
-#[poise::command(prefix_command, hide_in_help, owners_only, ephemeral)]
-pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Result<(), Error> {
+#[poise::command(prefix_command, hide_in_help, owners_only)]
+pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
@@ -240,7 +245,7 @@ pub async fn kick(ctx: Context<'_>, user_id: serenity::model::id::UserId) -> Res
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn ban(
     ctx: Context<'_>,
-    user: serenity::model::user::User,
+    user: User,
     dmd: Option<u8>,
     reason: Option<String>,
 ) -> Result<(), Error> {

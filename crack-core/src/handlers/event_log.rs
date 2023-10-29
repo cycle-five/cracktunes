@@ -4,13 +4,17 @@ use std::{
 };
 
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, handlers::serenity::voice_state_diff_str,
-    utils::create_log_embed, Data, Error,
+    errors::CrackedError,
+    guild::settings::GuildSettings, // handlers::serenity::voice_state_diff_str,
+    utils::create_log_embed,
+    Data,
+    Error,
 };
 use colored::Colorize;
 use poise::serenity_prelude::{
-    ChannelId, ClientStatus, FullEvent, GuildId, GuildMemberAddEvent, GuildMemberRemoveEvent,
-    Member, Presence, PresenceUpdateEvent, TypingStartEvent, VoiceStateUpdateEvent,
+    ChannelId, ClientStatus, Event, FullEvent, GuildId, GuildMemberAddEvent,
+    GuildMemberRemoveEvent, Member, Presence, PresenceUpdateEvent, TypingStartEvent,
+    VoiceStateUpdateEvent,
 };
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::{client::Context as SerenityContext, http::Http};
@@ -50,7 +54,8 @@ pub fn get_log_channel(
 pub async fn get_channel_id(
     guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
-    event: &poise::serenity_prelude::Event,
+    // event: &serenity::all::Event,
+    event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
     // let initial_values: Vec<u64> = vec![1165246445654388746];
     // let hashset: HashSet<_> = initial_values.into_iter().collect();
@@ -63,20 +68,26 @@ pub async fn get_channel_id(
             .map(Ok)
             .unwrap_or_else(|| {
                 tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
-                Err(CrackedError::LogChannelWarning(event.name(), *guild_id))
+                Err(CrackedError::LogChannelWarning(
+                    event.snake_case_name(),
+                    *guild_id,
+                ))
             })?
             .clone();
-        match guild_settings.get_log_channel_type(event) {
+        match guild_settings.get_log_channel_type_fe(event) {
             Some(channel_id) => {
-                if guild_settings
-                    .ignored_channels
-                    .contains(&channel_id.as_u64())
-                {
-                    return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+                if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                    return Err(CrackedError::LogChannelWarning(
+                        event.snake_case_name(),
+                        *guild_id,
+                    ));
                 }
                 Ok(channel_id)
             }
-            None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
+            None => Err(CrackedError::LogChannelWarning(
+                event.snake_case_name(),
+                *guild_id,
+            )),
         }
     };
     x
@@ -268,7 +279,11 @@ pub async fn log_presence_update(
     let avatar_url = format!(
         "https://cdn.discordapp.com/{user_id}/{user_avatar}.png",
         user_id = new_data.user.id,
-        user_avatar = new_data.user.avatar.clone().unwrap_or_default(),
+        user_avatar = new_data
+            .user
+            .avatar
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
     );
     create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
@@ -283,7 +298,7 @@ pub async fn log_voice_state_update(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, new) = log_data;
     let title = format!("Voice State Update: {}", new.user_id);
-    let description = voice_state_diff_str(old, new);
+    let description = format!("FIXCME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
 
     let avatar_url = new
         .member
@@ -300,7 +315,7 @@ pub async fn log_typing_start(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let user = event.user_id.to_user(http.clone()).await?;
     let channel_name = http
-        .get_channel(channel_id.as_u64())
+        .get_channel(channel_id)
         .await
         .ok()
         .map(|x| x.to_string())
@@ -374,11 +389,12 @@ macro_rules! log_event {
 
 pub async fn handle_event(
     ctx: &SerenityContext,
-    event_in: &poise::serenity_prelude::Event,
+    // event_in: &poise::serenity_prelude::Event,
+    event_in: &FullEvent,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);
-    let event_name = event_in.name();
+    let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
     //     match event_in {
     //         handle_macro! (
@@ -389,10 +405,10 @@ pub async fn handle_event(
     //         _ => todo!()
     //     }
     // }
-    event_log.write_log_obj(event_name, event_in)?;
+    // event_log.write_log_obj(event_name, event_in)?;
 
     match event_in {
-        PresenceUpdateEvent { presence } => {
+        FullEvent::PresenceUpdate { ctx, new_data } => {
             #[cfg(feature = "log_all")]
             {
                 log_event!(
@@ -508,7 +524,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::AutoModerationRuleCreate { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleCreate { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -518,7 +534,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        FullEvent::AutoModerationRuleUpdate { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleUpdate { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -528,7 +544,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        FullEvent::AutoModerationRuleDelete { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleDelete { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -742,6 +758,7 @@ pub async fn handle_event(
             event,
         } => {
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let new = new.unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .map(|x| x.get_join_leave_log_channel())
@@ -859,11 +876,15 @@ pub async fn handle_event(
             event_log.write_log_obj(event_name, unsubscribed)
         }
         FullEvent::GuildStickersUpdate {
+            ctx,
             guild_id,
             current_state,
-            ctx,
         } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
-        FullEvent::GuildUnavailable { guild_id } => event_log.write_log_obj(event_name, &guild_id),
+        FullEvent::GuildAuditLogEntryCreate {
+            ctx,
+            entry,
+            guild_id,
+        } => event_log.write_log_obj(event_name, &(entry, guild_id)),
         #[cfg(feature = "cache")]
         FullEvent::GuildUpdate {
             old_data_global_if_available,
@@ -933,7 +954,7 @@ pub async fn handle_event(
             ctx,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
         FullEvent::PresenceReplace { ctx, presences } => {
-            event_log.write_log_obj(event_name, event_in)
+            event_log.write_log_obj(event_name, presences)
         }
         FullEvent::Ready {
             data_about_bot,
@@ -972,8 +993,10 @@ pub async fn handle_event(
             thread_members_update,
             ctx,
         } => event_log.write_log_obj(event_name, thread_members_update),
-        FullEvent::ThreadUpdate { ctx, old, new } => event_log.write_log_obj(event_name, event_in),
-        FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
+        FullEvent::ThreadUpdate { ctx, old, new } => {
+            event_log.write_log_obj(event_name, &(old, new))
+        }
+        // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
         #[cfg(feature = "cache")]
         UserUpdate {
             old_data_global,
@@ -992,11 +1015,15 @@ pub async fn handle_event(
             ctx,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
         FullEvent::CacheReady { guilds, ctx } => {
-            tracing::info!("{}: {}", event_in.name().bright_green(), guilds.len());
+            tracing::info!(
+                "{}: {}",
+                event_in.snake_case_name().bright_green(),
+                guilds.len()
+            );
             Ok(())
         }
         _ => {
-            tracing::info!("{}", event_in.name().bright_green());
+            tracing::info!("{}", event_in.snake_case_name().bright_green());
             // event_log.write_log_obj(event_name, event_in);
             Ok(())
         }

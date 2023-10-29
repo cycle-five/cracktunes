@@ -1,15 +1,23 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
-    commands::{build_nav_btns, summon},
+    //commands::{build_nav_btns, summon},
     guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
     messaging::message::CrackedMessage,
     metrics::COMMAND_EXECUTIONS,
-    Context, CrackedError, Data, Error,
+    Context,
+    CrackedError,
+    Data,
+    Error,
 };
-use ::serenity::{all::InteractionResponseFlags, futures::StreamExt};
+use ::serenity::{
+    all::InteractionResponseFlags, builder::EditInteractionResponse, futures::StreamExt,
+};
 use poise::{
-    serenity_prelude::{self as serenity, Context as SerenityContext, MessageInteraction},
-    CommandOrAutocompleteInteraction, FrameworkError, ReplyHandle,
+    serenity_prelude::{
+        self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
+        MessageInteraction,
+    },
+    CommandOrAutocompleteInteraction, CreateReply, FrameworkError, ReplyHandle,
 };
 use songbird::tracks::TrackHandle;
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
@@ -23,23 +31,21 @@ pub async fn create_log_embed(
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let mut embed = CreateEmbed::default();
-    embed
+    let embed = CreateEmbed::default()
         .title(title)
         .description(description)
         .thumbnail(avatar_url);
-    tracing::debug!("sending log embed: {:?}", embed);
+    // tracing::debug!("sending log embed: {:?}", embed);
     tracing::debug!("thumbnail url: {:?}", avatar_url);
 
     channel
-        .send_message(http, |m| m.set_embed(embed))
+        .send_message(http, CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }
 
 pub async fn create_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
 
     create_embed_response_poise(ctx, embed).await
 }
@@ -60,8 +66,7 @@ pub async fn create_response(
     interaction: &ApplicationCommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
     create_embed_response(http, interaction, embed).await
 }
 
@@ -70,14 +75,12 @@ pub async fn create_response_text(
     interaction: &ApplicationCommandOrMessageInteraction,
     content: &str,
 ) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(content);
+    let embed = CreateEmbed::default().description(content);
     create_embed_response(http, interaction, embed).await
 }
 
 pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction(ctx) {
         Some(interaction) => {
@@ -96,8 +99,7 @@ pub async fn edit_response(
     interaction: &ApplicationCommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(format!("{message}"));
+    let embed = CreateEmbed::default().description(format!("{message}"));
     edit_embed_response(http, interaction, embed).await
 }
 
@@ -106,8 +108,7 @@ pub async fn edit_response_text(
     interaction: &ApplicationCommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, Error> {
-    let mut embed = CreateEmbed::default();
-    embed.description(content);
+    let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
 }
 
@@ -143,20 +144,19 @@ pub async fn create_embed_response_prefix(
     ctx: &Context<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
-    ctx.send(|builder| {
-        builder.embeds.append(&mut vec![embed]);
-        builder
-    })
-    .await
-    .unwrap()
-    .into_message()
-    .await
-    .map_err(Into::into)
+    ctx.send(CreateReply::new().embed(embed))
+        // embeds.append(&mut vec![embed]);
+        //builder
+        .await
+        .unwrap()
+        .into_message()
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &MessageInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
     interaction
@@ -169,17 +169,20 @@ pub async fn create_embed_response(
 
 pub async fn edit_embed_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     interaction
-        .edit_original_interaction_response(&http, |message| message.content(" ").add_embed(embed))
+        .edit_response(
+            &http,
+            EditInteractionResponse::new().content(" ").embed(embed),
+        )
         .await
         .map_err(Into::into)
 }
 
 pub enum ApplicationCommandOrMessageInteraction {
-    CommandOrAutocompleteInteraction,
+    Command(CommandInteraction),
     Message(MessageInteraction),
 }
 
@@ -189,20 +192,34 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
     }
 }
 
-impl From<ApplicationCommandOrMessageInteraction> for ApplicationCommandOrMessageInteraction {
-    fn from(message: ApplicationCommandOrMessageInteraction) -> Self {
-        Self::ApplicationCommand(message)
-    }
-}
+// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
+//     fn from(message: MessageInteraction) -> Self {
+//         Self::ApplicationCommand(message)
+//     }
+// }
 
 pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> Result<(), Error> {
     match get_interaction(ctx) {
-        Some(interaction) => interaction
-            .edit_original_interaction_response(&ctx.serenity_context().http, |message| {
-                message.content(" ").add_embed(embed)
-            })
-            .await
-            .map(|_| Ok(()))?,
+        Some(interaction) => match interaction {
+            CommandOrMessageInteraction::Command(interaction) => interaction
+                .edit_response(
+                    &ctx.serenity_context().http,
+                    EditInteractionResponse::new().content(" ").embed(embed),
+                )
+                .await
+                .map(|_| ())
+                .map_err(Into::into),
+            CommandOrMessageInteraction::Message(_) => {
+                //     interaction.
+                //         (
+                //             &ctx.serenity_context().http,
+                //             EditInteractionResponse::new().content(" ").embed(embed),
+                //         )
+                //         .await
+                // }
+                Ok(())
+            }
+        },
         None => create_embed_response_poise(ctx, embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
     }
 }
@@ -484,25 +501,31 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
-pub fn get_interaction(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
-    match ctx {
-        Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone()),
-            ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
-        },
-        Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
-    }
+pub enum CommandOrMessageInteraction {
+    Command(CommandInteraction),
+    Message(MessageInteraction),
 }
 
-pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
+pub fn get_interaction(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone().into()),
-            ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
+            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
+        // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
     }
 }
+
+// pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
+//     match ctx {
+//         Context::Application(app_ctx) => match app_ctx.interaction {
+//             ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone().into()),
+//             ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
+//         },
+//         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
+//     }
+// }
 
 pub fn get_user_id(ctx: &Context) -> serenity::UserId {
     match ctx {

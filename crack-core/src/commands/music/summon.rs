@@ -32,7 +32,7 @@ pub async fn summon(
         Some(id) => {
             tracing::warn!("channel_id_str: {:?}", id);
             match id.parse::<u64>() {
-                Ok(id) => ChannelId(id),
+                Ok(id) => ChannelId::new(id),
                 Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
                     Some(channel_id) => channel_id,
                     None => {

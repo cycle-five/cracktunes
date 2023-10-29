@@ -10,11 +10,7 @@ use crate::{
         PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
         TRACK_TIME_TO_PLAY,
     },
-    sources::{
-        file::FileRestartable,
-        spotify::{Spotify, SPOTIFY},
-        // youtube::{YouTube, YouTubeRestartable},
-    },
+    sources::spotify::{Spotify, SPOTIFY},
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_poise_text, edit_embed_response_poise, edit_response_poise, get_guild_name,

@@ -437,7 +437,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_stream",
- "serenity 0.11.7",
+ "serenity",
  "songbird",
  "sqlx",
  "sys-info",
@@ -2204,7 +2204,7 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.5.5"
-source = "git+https://github.com/cycle-five/poise?branch=serenity-next#b1d6bf643e877b5d689207d275a3b75363b0784b"
+source = "git+https://github.com/cycle-five/poise?branch=serenity-next#7b545eca58ee0a5679110a83e3c72ff73246dcfb"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2215,14 +2215,14 @@ dependencies = [
  "parking_lot",
  "poise_macros",
  "regex",
- "serenity 0.11.6",
+ "serenity",
  "tokio",
 ]
 
 [[package]]
 name = "poise_macros"
 version = "0.5.5"
-source = "git+https://github.com/cycle-five/poise?branch=serenity-next#b1d6bf643e877b5d689207d275a3b75363b0784b"
+source = "git+https://github.com/cycle-five/poise?branch=serenity-next#7b545eca58ee0a5679110a83e3c72ff73246dcfb"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2967,36 +2967,6 @@ dependencies = [
 
 [[package]]
 name = "serenity"
-version = "0.11.6"
-source = "git+https://github.com/serenity-rs/serenity?rev=a0c102f9acfd8d7184650815e06e0301954cb9e7#a0c102f9acfd8d7184650815e06e0301954cb9e7"
-dependencies = [
- "arrayvec",
- "async-trait",
- "base64 0.21.5",
- "bitflags 2.4.1",
- "bytes",
- "chrono",
- "dashmap",
- "flate2",
- "futures",
- "fxhash",
- "mime_guess",
- "parking_lot",
- "percent-encoding",
- "reqwest",
- "secrecy",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tokio-tungstenite 0.20.1",
- "tracing",
- "typemap_rev",
- "url",
-]
-
-[[package]]
-name = "serenity"
 version = "0.11.7"
 source = "git+https://github.com/serenity-rs/serenity?branch=next#7e1a6ebb315304aba5a620e27525f30e8e039e6a"
 dependencies = [
@@ -3005,6 +2975,7 @@ dependencies = [
  "base64 0.21.5",
  "bitflags 2.4.1",
  "bytes",
+ "chrono",
  "dashmap",
  "flate2",
  "futures",
@@ -3169,7 +3140,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
- "serenity 0.11.7",
+ "serenity",
  "serenity-voice-model",
  "socket2 0.5.5",
  "streamcatcher",

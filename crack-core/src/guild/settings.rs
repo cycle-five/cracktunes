@@ -310,7 +310,7 @@ impl GuildSettings {
     }
 
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains(&user_id.as_u64())
+        self.authorized_users.contains(&user_id.into())
     }
 
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
@@ -400,7 +400,7 @@ impl GuildSettings {
         }
     }
 
-    pub fn get_log_channel_type(&self, event: &FullEvent) -> Option<ChannelId> {
+    pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
             FullEvent::GuildBanRemoval { .. }
@@ -422,7 +422,7 @@ impl GuildSettings {
             | FullEvent::GuildRoleCreate { .. }
             | FullEvent::GuildRoleDelete { .. }
             | FullEvent::GuildRoleUpdate { .. }
-            | FullEvent::GuildUnavailable { .. }
+            //| FullEvent::GuildUnavailable { .. }
             | FullEvent::GuildUpdate { .. } => log_settings
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
@@ -431,11 +431,11 @@ impl GuildSettings {
             | FullEvent::Resume { .. }
             | FullEvent::ShardStageUpdate { .. }
             | FullEvent::WebhookUpdate { .. }
-            | FullEvent::ApplicationCommandPermissionsUpdate { .. }
-            | FullEvent::AutoModerationActionExecution { .. }
-            | FullEvent::AutoModerationRuleCreate { .. }
-            | FullEvent::AutoModerationRuleUpdate { .. }
-            | FullEvent::AutoModerationRuleDelete { .. }
+            | FullEvent::CommandPermissionsUpdate { .. }
+            | FullEvent::AutoModActionExecution { .. }
+            | FullEvent::AutoModRuleCreate { .. }
+            | FullEvent::AutoModRuleUpdate { .. }
+            | FullEvent::AutoModRuleDelete { .. }
             | FullEvent::CacheReady { .. }
             | FullEvent::ChannelCreate { .. }
             | FullEvent::CategoryCreate { .. }
@@ -467,7 +467,7 @@ impl GuildSettings {
             | FullEvent::ThreadMembersUpdate { .. }
             | FullEvent::ThreadUpdate { .. }
             | FullEvent::TypingStart { .. }
-            | FullEvent::Unknown { .. }
+            // | FullEvent::Unknown { .. }
             | FullEvent::UserUpdate { .. }
             | FullEvent::VoiceServerUpdate { .. }
             | FullEvent::VoiceStateUpdate { .. } => {
