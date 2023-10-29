@@ -424,24 +424,31 @@ pub async fn handle_event(
             }
             #[cfg(not(feature = "log_all"))]
             {
-                let _ = presence;
+                let _ = new_data;
                 Ok(())
             }
         }
-        GuildMemberAddEvent { member } => {
+        FullEvent::GuildMemberAddition {
+            ctx, new_member, ..
+        } => {
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
                 event_in,
-                member,
-                &member.guild_id,
+                new_member,
+                &new_member.guild_id,
                 &ctx.http,
                 event_log,
                 event_name
             )
         }
-        GuildMemberRemoveEvent { guild_id, user } => {
-            let log_data = (guild_id, user);
+        FullEvent::GuildMemberRemoval {
+            ctx,
+            member_data_if_available,
+            guild_id,
+            user,
+        } => {
+            let log_data = (guild_id, user, member_data_if_available);
             log_event!(
                 log_guild_member_removal,
                 guild_settings,
@@ -453,21 +460,21 @@ pub async fn handle_event(
                 event_name
             )
         }
-        VoiceStateUpdateEvent { voice_state } => {
-            let log_data = &(voice_state);
+        FullEvent::VoiceStateUpdate { ctx, old, new } => {
+            let log_data = &(old, new);
             log_event!(
                 log_voice_state_update,
                 guild_settings,
                 event_in,
                 log_data,
-                &voice_state.guild_id.unwrap(),
+                &new.guild_id.unwrap(),
                 &ctx.http,
                 event_log,
                 event_name
             )
         }
         FullEvent::Message { ctx, new_message } => {
-            if new_message.author.id == ctx.cache.current_user_id() {
+            if new_message.author.id == ctx.cache.current_user().id {
                 return Ok(());
             }
             log_event!(
@@ -481,20 +488,14 @@ pub async fn handle_event(
                 event_name
             )
         }
-        TypingStartEvent {
-            channel_id,
-            guild_id,
-            user_id,
-            timestamp,
-            member,
-        } => {
+        FullEvent::TypingStart { ctx, event } => {
             // let cache_http = ctx.http.clone()
             log_event!(
                 log_typing_start,
                 guild_settings,
                 event_in,
-                event_in.guild_id,
-                &guild_id.unwrap_or_default(),
+                event,
+                &event.guild_id.unwrap_or_default(),
                 &ctx.http,
                 event_log,
                 event_name
@@ -512,7 +513,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::AutoModerationActionExecution { ctx, execution } => {
+        FullEvent::AutoModActionExecution { ctx, execution } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,

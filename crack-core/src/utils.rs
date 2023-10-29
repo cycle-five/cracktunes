@@ -10,7 +10,11 @@ use crate::{
     Error,
 };
 use ::serenity::{
-    all::InteractionResponseFlags, builder::EditInteractionResponse, futures::StreamExt,
+    all::{Interaction, InteractionResponseFlags},
+    builder::{
+        CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
+    },
+    futures::StreamExt,
 };
 use poise::{
     serenity_prelude::{
@@ -63,7 +67,7 @@ pub async fn create_response_poise_text(
 
 pub async fn create_response(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
@@ -72,7 +76,7 @@ pub async fn create_response(
 
 pub async fn create_response_text(
     http: &Arc<Http>,
-    interaction: &ApplicationCommandOrMessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(content);
@@ -156,15 +160,66 @@ pub async fn create_embed_response_prefix(
 
 pub async fn create_embed_response(
     http: &Arc<Http>,
-    interaction: &MessageInteraction,
+    interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
-    interaction
-        .create_interaction_response(&http, |response| {
-            response.interaction_response_data(|message| message.add_embed(embed.clone()))
-        })
-        .await
-        .map_err(Into::into)
+    match interaction {
+        CommandOrMessageInteraction::Command(int) => create_reponse_interaction(http, int, embed).await,
+        _ => Ok(()),
+        // Interaction::Message(interaction) => interaction
+        //     .create_interaction_response(&http, |response| {
+        //         response.interaction_response_data(|message| message.add_embed(embed.clone()))
+        //     })
+        //     .await
+        //     .map_err(Into::into),
+    }
+}
+
+pub async fn create_reponse_interaction(
+    http: &Arc<Http>,
+    interaction: &Interaction,
+    embed: CreateEmbed,
+) -> Result<(), Error> {
+    match interaction {
+        Interaction::Command(int) => int
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                ),
+            )
+            .await
+            .map_err(Into::into),
+        Interaction::Component(int) => int
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                ),
+            )
+            .await
+            .map_err(Into::into),
+        Interaction::Modal(int) => int
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                ),
+            )
+            .await
+            .map_err(Into::into),
+        Interaction::Autocomplete(int) => int
+            .create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                ),
+            )
+            .await
+            .map_err(Into::into),
+        Interaction::Ping(_int) => Ok(()),
+        _ => todo!(),
+    }
 }
 
 pub async fn edit_embed_response(
@@ -502,18 +557,26 @@ pub fn check_interaction(result: Result<(), Error>) {
 }
 
 pub enum CommandOrMessageInteraction {
-    Command(CommandInteraction),
+    Command(Interaction),
     Message(MessageInteraction),
 }
 
 pub fn get_interaction(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+            CommandOrAutocompleteInteraction::Command(x) => Some(Interaction::Command(x.clone())),
             CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
-        Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
+        Context::Prefix(ctx) => 
+        {
+            MessageInteraction
+        ctx
+            .msg
+            .interaction
+            .clone()
+            .map(|x| ),
+        }
     }
 }
 
