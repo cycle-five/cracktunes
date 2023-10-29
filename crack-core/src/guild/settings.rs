@@ -2,7 +2,7 @@ use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 //use ::serenity::prelude::Context;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, ChannelId};
+use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
@@ -51,32 +51,32 @@ const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         self.all_log_channel
-            .map(|x| ChannelId(x))
-            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
+            .map(|x| ChannelId::new(x))
+            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_server_log_channel(&self) -> Option<ChannelId> {
         self.server_log_channel
-            .map(ChannelId)
-            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
+            .map(ChannelId::new)
+            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
         self.join_leave_log_channel
-            .map(ChannelId)
-            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
+            .map(ChannelId::new)
+            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_member_log_channel(&self) -> Option<ChannelId> {
         self.member_log_channel
-            .map(ChannelId)
-            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
+            .map(ChannelId::new)
+            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
         self.voice_log_channel
-            .map(ChannelId)
-            .or(Some(ChannelId(DEFAULT_LOG_CHANNEL)))
+            .map(ChannelId::new)
+            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
     pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
@@ -310,7 +310,7 @@ impl GuildSettings {
     }
 
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains(&user_id.0)
+        self.authorized_users.contains(&user_id.as_u64())
     }
 
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
@@ -400,77 +400,77 @@ impl GuildSettings {
         }
     }
 
-    pub fn get_log_channel_type(&self, event: &poise::Event<'_>) -> Option<ChannelId> {
+    pub fn get_log_channel_type(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            poise::Event::GuildBanRemoval { .. }
-            | poise::Event::GuildMemberAddition { .. }
-            | poise::Event::GuildMemberRemoval { .. }
-            | poise::Event::GuildScheduledEventCreate { .. }
-            | poise::Event::GuildScheduledEventUpdate { .. }
-            | poise::Event::GuildScheduledEventDelete { .. }
-            | poise::Event::GuildScheduledEventUserAdd { .. }
-            | poise::Event::GuildScheduledEventUserRemove { .. }
-            | poise::Event::GuildStickersUpdate { .. }
-            | poise::Event::GuildBanAddition { .. }
-            | poise::Event::GuildCreate { .. }
-            | poise::Event::GuildDelete { .. }
-            | poise::Event::GuildEmojisUpdate { .. }
-            | poise::Event::GuildIntegrationsUpdate { .. }
-            | poise::Event::GuildMemberUpdate { .. }
-            | poise::Event::GuildMembersChunk { .. }
-            | poise::Event::GuildRoleCreate { .. }
-            | poise::Event::GuildRoleDelete { .. }
-            | poise::Event::GuildRoleUpdate { .. }
-            | poise::Event::GuildUnavailable { .. }
-            | poise::Event::GuildUpdate { .. } => log_settings
+            FullEvent::GuildBanRemoval { .. }
+            | FullEvent::GuildMemberAddition { .. }
+            | FullEvent::GuildMemberRemoval { .. }
+            | FullEvent::GuildScheduledEventCreate { .. }
+            | FullEvent::GuildScheduledEventUpdate { .. }
+            | FullEvent::GuildScheduledEventDelete { .. }
+            | FullEvent::GuildScheduledEventUserAdd { .. }
+            | FullEvent::GuildScheduledEventUserRemove { .. }
+            | FullEvent::GuildStickersUpdate { .. }
+            | FullEvent::GuildBanAddition { .. }
+            | FullEvent::GuildCreate { .. }
+            | FullEvent::GuildDelete { .. }
+            | FullEvent::GuildEmojisUpdate { .. }
+            | FullEvent::GuildIntegrationsUpdate { .. }
+            | FullEvent::GuildMemberUpdate { .. }
+            | FullEvent::GuildMembersChunk { .. }
+            | FullEvent::GuildRoleCreate { .. }
+            | FullEvent::GuildRoleDelete { .. }
+            | FullEvent::GuildRoleUpdate { .. }
+            | FullEvent::GuildUnavailable { .. }
+            | FullEvent::GuildUpdate { .. } => log_settings
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
-            poise::Event::Message { .. }
-            | poise::Event::PresenceReplace { .. }
-            | poise::Event::Resume { .. }
-            | poise::Event::ShardStageUpdate { .. }
-            | poise::Event::WebhookUpdate { .. }
-            | poise::Event::ApplicationCommandPermissionsUpdate { .. }
-            | poise::Event::AutoModerationActionExecution { .. }
-            | poise::Event::AutoModerationRuleCreate { .. }
-            | poise::Event::AutoModerationRuleUpdate { .. }
-            | poise::Event::AutoModerationRuleDelete { .. }
-            | poise::Event::CacheReady { .. }
-            | poise::Event::ChannelCreate { .. }
-            | poise::Event::CategoryCreate { .. }
-            | poise::Event::CategoryDelete { .. }
-            | poise::Event::ChannelDelete { .. }
-            | poise::Event::ChannelPinsUpdate { .. }
-            | poise::Event::ChannelUpdate { .. }
-            | poise::Event::IntegrationCreate { .. }
-            | poise::Event::IntegrationUpdate { .. }
-            | poise::Event::IntegrationDelete { .. }
-            | poise::Event::InteractionCreate { .. }
-            | poise::Event::InviteCreate { .. }
-            | poise::Event::InviteDelete { .. }
-            | poise::Event::MessageDelete { .. }
-            | poise::Event::MessageDeleteBulk { .. }
-            | poise::Event::MessageUpdate { .. }
-            | poise::Event::ReactionAdd { .. }
-            | poise::Event::ReactionRemove { .. }
-            | poise::Event::ReactionRemoveAll { .. }
-            | poise::Event::PresenceUpdate { .. }
-            | poise::Event::Ready { .. }
-            | poise::Event::StageInstanceCreate { .. }
-            | poise::Event::StageInstanceDelete { .. }
-            | poise::Event::StageInstanceUpdate { .. }
-            | poise::Event::ThreadCreate { .. }
-            | poise::Event::ThreadDelete { .. }
-            | poise::Event::ThreadListSync { .. }
-            | poise::Event::ThreadMemberUpdate { .. }
-            | poise::Event::ThreadMembersUpdate { .. }
-            | poise::Event::ThreadUpdate { .. }
-            | poise::Event::TypingStart { .. }
-            | poise::Event::Unknown { .. }
-            | poise::Event::UserUpdate { .. }
-            | poise::Event::VoiceServerUpdate { .. }
-            | poise::Event::VoiceStateUpdate { .. } => {
+            FullEvent::Message { .. }
+            | FullEvent::PresenceReplace { .. }
+            | FullEvent::Resume { .. }
+            | FullEvent::ShardStageUpdate { .. }
+            | FullEvent::WebhookUpdate { .. }
+            | FullEvent::ApplicationCommandPermissionsUpdate { .. }
+            | FullEvent::AutoModerationActionExecution { .. }
+            | FullEvent::AutoModerationRuleCreate { .. }
+            | FullEvent::AutoModerationRuleUpdate { .. }
+            | FullEvent::AutoModerationRuleDelete { .. }
+            | FullEvent::CacheReady { .. }
+            | FullEvent::ChannelCreate { .. }
+            | FullEvent::CategoryCreate { .. }
+            | FullEvent::CategoryDelete { .. }
+            | FullEvent::ChannelDelete { .. }
+            | FullEvent::ChannelPinsUpdate { .. }
+            | FullEvent::ChannelUpdate { .. }
+            | FullEvent::IntegrationCreate { .. }
+            | FullEvent::IntegrationUpdate { .. }
+            | FullEvent::IntegrationDelete { .. }
+            | FullEvent::InteractionCreate { .. }
+            | FullEvent::InviteCreate { .. }
+            | FullEvent::InviteDelete { .. }
+            | FullEvent::MessageDelete { .. }
+            | FullEvent::MessageDeleteBulk { .. }
+            | FullEvent::MessageUpdate { .. }
+            | FullEvent::ReactionAdd { .. }
+            | FullEvent::ReactionRemove { .. }
+            | FullEvent::ReactionRemoveAll { .. }
+            | FullEvent::PresenceUpdate { .. }
+            | FullEvent::Ready { .. }
+            | FullEvent::StageInstanceCreate { .. }
+            | FullEvent::StageInstanceDelete { .. }
+            | FullEvent::StageInstanceUpdate { .. }
+            | FullEvent::ThreadCreate { .. }
+            | FullEvent::ThreadDelete { .. }
+            | FullEvent::ThreadListSync { .. }
+            | FullEvent::ThreadMemberUpdate { .. }
+            | FullEvent::ThreadMembersUpdate { .. }
+            | FullEvent::ThreadUpdate { .. }
+            | FullEvent::TypingStart { .. }
+            | FullEvent::Unknown { .. }
+            | FullEvent::UserUpdate { .. }
+            | FullEvent::VoiceServerUpdate { .. }
+            | FullEvent::VoiceStateUpdate { .. } => {
                 // tracing::warn!(
                 //     "{}",
                 //     format!("Event: {:?}", event).as_str().to_string().white()
@@ -495,7 +495,7 @@ impl GuildSettings {
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
         if let Some(log_settings) = &self.log_settings {
             if let Some(channel_id) = log_settings.join_leave_log_channel {
-                return Some(ChannelId(channel_id));
+                return Some(ChannelId::new(channel_id));
             }
         }
         None

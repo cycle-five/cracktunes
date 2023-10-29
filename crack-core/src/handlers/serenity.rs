@@ -1,12 +1,3 @@
-use self::serenity::{
-    async_trait,
-    model::{
-        gateway::Ready,
-        id::GuildId,
-        prelude::{Activity, ChannelId, VoiceState},
-    },
-    {Context as SerenityContext, EventHandler},
-};
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::track_end::update_queue_messages,
@@ -14,7 +5,18 @@ use crate::{
     BotConfig, CamKickConfig, Data,
 };
 use colored::Colorize;
-use poise::serenity_prelude::{self as serenity, Channel, Guild, Member, Mentionable, UserId};
+use poise::serenity_prelude::{
+    self as serenity, Channel, Error as SerenityError, Guild, Member, Mentionable, UserId,
+};
+use serenity::{
+    async_trait,
+    model::{
+        gateway::Ready,
+        id::GuildId,
+        prelude::{Activity, VoiceState},
+    },
+    ChannelId, {Context as SerenityContext, EventHandler},
+};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -134,7 +136,7 @@ impl EventHandler for SerenityHandler {
             (None, _) => {}
             (_, None) => {}
             (Some(message), Some(channel)) => {
-                let channel = ChannelId(channel);
+                let channel = serenity::ChannelId::new(channel);
                 let x = channel
                     .send_message(&ctx.http, |m| {
                         if message.contains("{user}") {
@@ -157,7 +159,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let mut new_member = new_member;
-            let role_id = serenity::RoleId(role_id);
+            let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
@@ -203,7 +205,7 @@ impl EventHandler for SerenityHandler {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
-                GuildId(0)
+                GuildId::new(0)
             }
         };
 
@@ -453,7 +455,7 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     // We can use ChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
     if let Some(chan_id) = config.sys_log_channel_id {
-        let message = ChannelId(chan_id)
+        let message = ChannelId::new(chan_id)
             .send_message(&ctx, |m| {
                 m.embed(|e| {
                     e.title("System Resource Load")
@@ -574,7 +576,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.key()) {
-                    if let Some(kick_conf) = channels.get(&status.channel_id.0) {
+                    if let Some(kick_conf) = channels.get(&status.channel_id.as_u64()) {
                         tracing::warn!("kick_conf: {}", format!("{:?}", kick_conf).blue());
                         if status.camera_status != cam.camera_status {
                             tracing::info!(
@@ -632,7 +634,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                 || state == "mute" && kick_conf.send_msg_mute
                                                 || state == "disconnect" && kick_conf.send_msg_dc
                                             {
-                                                let channel = ChannelId(kick_conf.channel_id);
+                                                let channel = ChannelId::new(kick_conf.channel_id);
                                                 let _ = channel
                                                     .send_message(&ctx.http, |m| {
                                                         m.content(format!(
@@ -730,8 +732,8 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             return format!(
                 "{} / {} / {}",
                 new.member.as_ref().unwrap().user.name.blue(),
-                new.guild_id.unwrap().0.to_string().blue(),
-                new.channel_id.unwrap().0.to_string().blue()
+                new.guild_id.unwrap().as_u64().to_string().blue(),
+                new.channel_id.unwrap().as_u64().to_string().blue()
             );
             // return format!(
             //     "channel_id: (none) -> {:?}
