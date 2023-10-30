@@ -360,7 +360,7 @@ pub async fn poise_framework(
 
     // let res = framework.build().await?;
     // let shard_manager = res.client().shard_manager.clone();
-    let mut client = Client::builder(token, intents)
+    let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
         .event_handler(SerenityHandler {

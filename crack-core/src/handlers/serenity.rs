@@ -56,7 +56,7 @@ impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
-        let res = ctx.set_activity(Some(ActivityData::listening(format!(
+        ctx.set_activity(Some(ActivityData::listening(format!(
             "{}play",
             __self.data.bot_settings.get_prefix()
         ))));
