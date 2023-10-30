@@ -2,7 +2,13 @@ use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
     //commands::{build_nav_btns, summon},
     guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
-    messaging::{message::CrackedMessage, messages::QUEUE_NO_SONGS},
+    messaging::{
+        message::CrackedMessage,
+        messages::{
+            QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
+            QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+        },
+    },
     metrics::COMMAND_EXECUTIONS,
     Context,
     CrackedError,
@@ -479,9 +485,9 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
 }
 
 #[allow(dead_code)]
-fn build_queue_page(tracks: &[(TrackHandle, AuxMetadata)], page: usize) -> String {
+async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&(TrackHandle, AuxMetadata)> = tracks
+    let queue: Vec<&TrackHandle> = tracks
         .iter()
         .skip(start_idx + 1)
         .take(EMBED_PAGE_SIZE)
@@ -494,7 +500,7 @@ fn build_queue_page(tracks: &[(TrackHandle, AuxMetadata)], page: usize) -> Strin
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let (_track, metadata) = t;
+        let metadata = get_track_metadata(t).await;
         let title = metadata.title.as_ref().unwrap();
         let url = metadata.source_url.as_ref().unwrap();
         let duration = get_human_readable_timestamp(metadata.duration);
@@ -528,6 +534,41 @@ pub async fn forget_queue_message(
     cache.queue_messages.retain(|(m, _)| m.id != message.id);
 
     Ok(())
+}
+
+pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
+    let (description, thumbnail) = if !tracks.is_empty() {
+        let metadata = get_track_metadata(&tracks[0]).await;
+        let thumbnail = metadata.thumbnail.unwrap_or_default();
+
+        let description = format!(
+            "[{}]({}) • `{}`",
+            metadata
+                .title
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
+            metadata
+                .source_url
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_SRC)),
+            get_human_readable_timestamp(metadata.duration)
+        );
+        (description, thumbnail)
+    } else {
+        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
+    };
+
+    CreateEmbed::default()
+        .thumbnail(thumbnail)
+        .field(QUEUE_NOW_PLAYING, &description, false)
+        .field(QUEUE_UP_NEXT, &build_queue_page(tracks, page).await, false)
+        .footer(CreateEmbedFooter::new(format!(
+            "{} {} {} {}",
+            QUEUE_PAGE,
+            page + 1,
+            QUEUE_PAGE_OF,
+            calculate_num_pages(tracks),
+        )))
 }
 
 pub async fn create_paged_embed(

@@ -169,20 +169,20 @@ pub async fn play(
     //             + &msg.unwrap_or("".to_string()),
     //     );
     // }
-    let mut msg = get_msg(mode, query_or_url, is_prefix);
+    let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 
     if msg.is_none() && file.is_none() {
-        let mut embed = CreateEmbed::default();
-        embed.description(format!("{}", CrackedError::Other("No query provided!")));
+        let embed = CreateEmbed::default()
+            .description(format!("{}", CrackedError::Other("No query provided!")));
         create_embed_response_poise(ctx, embed).await?;
         return Ok(());
     }
 
-    let mode = get_mode(is_prefix, msg, mode);
+    let mode = get_mode(is_prefix, msg.clone(), mode);
 
     let url = match file.clone() {
         Some(file) => file.url.as_str().to_owned().to_string(),
-        None => msg.unwrap(),
+        None => msg.clone().unwrap(),
     };
     let url = url.as_str();
 
@@ -191,8 +191,7 @@ pub async fn play(
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NoGuildId));
+            let embed = CreateEmbed::default().description(format!("{}", CrackedError::NoGuildId));
             create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
@@ -781,7 +780,7 @@ async fn enqueue_track(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let source = get_track_source(http, query_type.clone()).into();
+    let source: SongbirdInput = get_track_source(http, query_type.clone()).await.into();
 
     let mut handler = call.lock().await;
     // handler.enqueue_source(source.into());
