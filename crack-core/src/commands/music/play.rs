@@ -19,11 +19,14 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::{all::Interaction, builder::CreateInteractionResponse};
+use ::serenity::{
+    all::Interaction,
+    builder::{CreateInteractionResponse, EditInteractionResponse},
+};
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
 use songbird::{
-    input::{File as FileInput, YoutubeDl},
+    input::{AuxMetadata, File as FileInput, YoutubeDl},
     tracks::TrackHandle,
     Call,
 };
@@ -62,38 +65,8 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Play a song.
-#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
-pub async fn play(
-    ctx: Context<'_>,
-    #[description = "Play mode"] mode: Option<String>,
-    #[description = "File to play."] file: Option<serenity::Attachment>,
-    #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
-) -> Result<(), Error> {
-    let prefix = ctx.prefix();
-    let is_prefix = ctx.prefix() != "/";
-    let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
-
+fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode {
     if is_prefix {
-        msg = Some(
-            mode.clone()
-                .map(|s| s.replace("query_or_url:", ""))
-                .unwrap_or("".to_string())
-                + " "
-                + &msg.unwrap_or("".to_string()),
-        );
-    }
-
-    if msg.is_none() && file.is_none() {
-        let mut embed = CreateEmbed::default();
-        embed.description(format!("{}", CrackedError::Other("No query provided!")));
-        create_embed_response_poise(ctx, embed).await?;
-        return Ok(());
-    }
-
-    let mode = if is_prefix {
         match msg
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
@@ -123,7 +96,43 @@ pub async fn play(
             "jump" => Mode::Jump,
             _ => Mode::End,
         }
-    };
+    }
+}
+
+/// Play a song.
+#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
+pub async fn play(
+    ctx: Context<'_>,
+    #[description = "Play mode"] mode: Option<String>,
+    #[description = "File to play."] file: Option<serenity::Attachment>,
+    #[rest]
+    #[description = "song link or search query."]
+    query_or_url: Option<String>,
+) -> Result<(), Error> {
+    let prefix = ctx.prefix();
+    let is_prefix = ctx.prefix() != "/";
+    let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+
+    // &str, bool, Option<String>
+
+    if is_prefix {
+        msg = Some(
+            mode.clone()
+                .map(|s| s.replace("query_or_url:", ""))
+                .unwrap_or("".to_string())
+                + " "
+                + &msg.unwrap_or("".to_string()),
+        );
+    }
+
+    if msg.is_none() && file.is_none() {
+        let mut embed = CreateEmbed::default();
+        embed.description(format!("{}", CrackedError::Other("No query provided!")));
+        create_embed_response_poise(ctx, embed).await?;
+        return Ok(());
+    }
+
+    let mode = get_mode(is_prefix, msg, mode);
 
     let url = match file.clone() {
         Some(file) => file.url.as_str().to_owned().to_string(),
@@ -232,9 +241,11 @@ pub async fn play(
                         Some(interaction) => {
                             interaction
                                 // .edit_original_interaction_response(
-                                .edit_response(&ctx.serenity_context().http, |message| {
-                                    message.content(CrackedMessage::PlaylistQueued)
-                                })
+                                .edit_response(
+                                    &ctx.serenity_context().http,
+                                    EditInteractionResponse::new()
+                                        .content(CrackedMessage::PlaylistQueued),
+                                )
                                 .await?;
                         }
                         None => {
