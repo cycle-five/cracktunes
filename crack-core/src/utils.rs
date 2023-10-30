@@ -95,7 +95,7 @@ pub async fn create_response_text(
 pub async fn edit_response_poise(ctx: Context<'_>, message: CrackedMessage) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
-    match get_interaction(ctx) {
+    match get_interaction_new(ctx) {
         Some(interaction) => {
             let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
             res.map(|_| ())
@@ -147,7 +147,7 @@ pub async fn create_embed_response_poise(
     ctx: Context<'_>,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
-    match get_interaction(ctx) {
+    match get_interaction_new(ctx) {
         Some(interaction) => {
             create_embed_response(&ctx.serenity_context().http, &interaction, embed).await
         }
@@ -332,7 +332,7 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 // }
 
 pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> Result<(), Error> {
-    match get_interaction(ctx) {
+    match get_interaction_new(ctx) {
         Some(interaction) => match interaction {
             CommandOrMessageInteraction::Command(interaction) => match interaction {
                 Interaction::Command(interaction) => interaction
@@ -718,7 +718,18 @@ pub enum CommandOrMessageInteraction {
     Message(Option<Box<MessageInteraction>>),
 }
 
-pub fn get_interaction(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> {
+pub fn get_interaction(ctx: Context<'_>) -> Option<CommandInteraction> {
+    match ctx {
+        Context::Application(app_ctx) => match app_ctx.interaction {
+            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        },
+        // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
+        Context::Prefix(ctx) => None,
+    }
+}
+
+pub fn get_interaction_new(ctx: Context<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         Context::Application(app_ctx) => match app_ctx.interaction {
             CommandOrAutocompleteInteraction::Command(x) => Some(

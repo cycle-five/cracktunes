@@ -15,7 +15,7 @@ use crate::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
         create_response_interaction, create_response_poise_text, edit_embed_response_poise,
         edit_response_poise, get_guild_name, get_human_readable_timestamp, get_interaction,
-        CommandOrMessageInteraction,
+        get_interaction_new, CommandOrMessageInteraction,
     },
     Context, Error,
 };
@@ -173,7 +173,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    match get_interaction(ctx) {
+    match get_interaction_new(ctx) {
         Some(interaction) => match interaction {
             CommandOrMessageInteraction::Command(interaction) => {
                 create_response_interaction(
@@ -231,10 +231,10 @@ pub async fn play(
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
-                                .edit_original_interaction_response(
-                                    &ctx.serenity_context().http,
-                                    |message| message.content(CrackedMessage::PlaylistQueued),
-                                )
+                                // .edit_original_interaction_response(
+                                .edit_response(&ctx.serenity_context().http, |message| {
+                                    message.content(CrackedMessage::PlaylistQueued)
+                                })
                                 .await?;
                         }
                         None => {
