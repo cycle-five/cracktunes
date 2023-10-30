@@ -4,6 +4,7 @@ use poise::{
     serenity_prelude::{Channel, CreateMessage, User, UserId},
     CreateReply,
 };
+use serenity::builder::{CreateChannel, EditMember, EditRole};
 
 use crate::{
     errors::CrackedError,
@@ -213,7 +214,7 @@ pub async fn set_idle_timeout(
 //
 
 /// Kick command to kick a user from the server based on their ID
-#[poise::command(prefix_command, hide_in_help, owners_only)]
+#[poise::command(prefix_command, hide_in_help, ephemeral, owners_only)]
 pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
@@ -288,7 +289,7 @@ pub async fn mute(ctx: Context<'_>, user: serenity::model::user::User) -> Result
     match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
-                .edit_member(&ctx, user.clone().id, |m| m.mute(true))
+                .edit_member(&ctx, user.clone().id, EditMember::new().mute(true))
                 .await
             {
                 // Handle error, send error message
@@ -324,7 +325,7 @@ pub async fn deafen(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
     match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
-                .edit_member(&ctx, user.clone().id, |m| m.deafen(true))
+                .edit_member(&ctx, user.clone().id, EditMember::new().deafen(true))
                 .await
             {
                 // Handle error, send error message
@@ -360,7 +361,7 @@ pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Re
     match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
-                .edit_member(&ctx, user.clone().id, |m| m.deafen(false))
+                .edit_member(&ctx, user.clone().id, EditMember::new().deafen(false))
                 .await
             {
                 // Handle error, send error message
@@ -453,7 +454,7 @@ pub async fn unmute(ctx: Context<'_>, user: serenity::model::user::User) -> Resu
     match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
-                .edit_member(&ctx, user.clone().id, |m| m.mute(false))
+                .edit_member(&ctx, user.clone().id, EditMember::new().mute(false))
                 .await
             {
                 // Handle error, send error message
@@ -490,10 +491,11 @@ pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Res
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
             if let Err(e) = guild
-                .create_channel(&ctx, |c| {
-                    c.name(channel_name.clone())
-                        .kind(serenity::model::channel::ChannelType::Voice)
-                })
+                .create_channel(
+                    &ctx,
+                    CreateChannel::new(channel_name.clone())
+                        .kind(serenity::model::channel::ChannelType::Voice),
+                )
                 .await
             {
                 // Handle error, send error message
@@ -529,10 +531,11 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
             match guild
-                .create_channel(&ctx, |c| {
-                    c.name(channel_name)
-                        .kind(serenity::model::channel::ChannelType::Text)
-                })
+                .create_channel(
+                    &ctx,
+                    CreateChannel::new(channel_name.clone())
+                        .kind(serenity::model::channel::ChannelType::Voice),
+                )
                 .await
             {
                 Err(e) => {
@@ -577,7 +580,7 @@ pub async fn set_join_leave_log_channel(
         .get_mut::<GuildSettingsMap>()
         .unwrap()
         .entry(guild_id)
-        .and_modify(|e| e.set_join_leave_log_channel(channel_id.0));
+        .and_modify(|e| e.set_join_leave_log_channel(channel_id.get()));
 
     let settings = data
         .get_mut::<GuildSettingsMap>()
@@ -607,7 +610,7 @@ pub async fn set_all_log_channel(
         .get_mut::<GuildSettingsMap>()
         .unwrap()
         .entry(guild_id)
-        .and_modify(|e| e.set_all_log_channel(channel_id.0));
+        .and_modify(|e| e.set_all_log_channel(channel_id.get()));
 
     let settings = data
         .get_mut::<GuildSettingsMap>()
@@ -726,10 +729,7 @@ pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Erro
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
             match guild
-                .create_role(&ctx, |r| {
-                    r.name(role_name)
-                    //.colour(serenity::model::guild::RoleColor::from_rgb(0, 0, 0))
-                })
+                .create_role(&ctx, EditRole::new().name(role_name))
                 .await
             {
                 Err(e) => {
@@ -944,7 +944,7 @@ pub async fn set_welcome_settings(
     #[description = "Welcome message template use {user} for username"] message: String,
 ) -> Result<(), Error> {
     let welcome_settings = WelcomeSettings {
-        channel_id: Some(channel.id().0),
+        channel_id: Some(channel.id().get()),
         message: Some(message.clone()),
         auto_role: None,
     };

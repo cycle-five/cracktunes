@@ -12,13 +12,11 @@ use crate::{
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{
-        ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence,
-    },
+    serenity_prelude::{ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence},
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::{http::Http};
+use serenity::http::Http;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -827,7 +825,9 @@ pub async fn handle_event(
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
-        FullEvent::GuildMembersChunk { chunk, ctx: _ } => event_log.write_log_obj(event_name, chunk),
+        FullEvent::GuildMembersChunk { chunk, ctx: _ } => {
+            event_log.write_log_obj(event_name, chunk)
+        }
         FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
         #[cfg(feature = "cache")]
         GuildRoleDelete {
@@ -907,18 +907,20 @@ pub async fn handle_event(
             integration,
             ctx: _,
         } => event_log.write_log_obj(event_name, integration),
-        FullEvent::IntegrationUpdate { integration, ctx: _ } => {
-            event_log.write_log_obj(event_name, integration)
-        }
+        FullEvent::IntegrationUpdate {
+            integration,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, integration),
         FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
             ctx: _,
         } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        FullEvent::InteractionCreate { interaction, ctx: _ } => {
-            event_log.write_log_obj(event_name, interaction)
-        }
+        FullEvent::InteractionCreate {
+            interaction,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, interaction),
         FullEvent::InviteCreate { data, ctx: _ } => event_log.write_log_obj(event_name, data),
         FullEvent::InviteDelete { data, ctx: _ } => event_log.write_log_obj(event_name, data),
         FullEvent::MessageDelete {
@@ -1010,10 +1012,14 @@ pub async fn handle_event(
             new,
         } => event_log.write_log_obj(&(old_data_global, new)),
         #[cfg(not(feature = "cache"))]
-        FullEvent::UserUpdate { old_data, new, ctx: _ } => {
-            event_log.write_log_obj(event_name, &(old_data, new))
+        FullEvent::UserUpdate {
+            old_data,
+            new,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, &(old_data, new)),
+        FullEvent::VoiceServerUpdate { ctx: _, event } => {
+            event_log.write_log_obj(event_name, event)
         }
-        FullEvent::VoiceServerUpdate { ctx: _, event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]
         VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         FullEvent::WebhookUpdate {
@@ -1036,71 +1042,3 @@ pub async fn handle_event(
         }
     }
 }
-
-// #[allow(dead_code)]
-// enum EventTypes {
-//     PresenceUpdate,
-//     GuildMemberAddition,
-//     VoiceStateUpdate,
-//     Message,
-//     TypingStart,
-//     ApplicationCommandPermissionsUpdate,
-//     AutoModerationActionExecution,
-//     AutoModerationRuleCreate,
-//     AutoModerationRuleUpdate,
-//     AutoModerationRuleDelete,
-//     CategoryCreate,
-//     CategoryDelete,
-//     ChannelDelete,
-//     ChannelPinsUpdate,
-//     ChannelUpdate,
-//     GuildBanAddition,
-//     GuildBanRemoval,
-//     GuildCreate,
-//     GuildDelete,
-//     GuildEmojisUpdate,
-//     GuildIntegrationsUpdate,
-//     GuildMemberRemoval,
-//     GuildMemberUpdate,
-//     GuildMembersChunk,
-//     GuildRoleCreate,
-//     GuildRoleDelete,
-//     GuildRoleUpdate,
-//     GuildScheduledEventCreate,
-//     GuildScheduledEventUpdate,
-//     GuildScheduledEventDelete,
-//     GuildScheduledEventUserAdd,
-//     GuildScheduledEventUserRemove,
-//     GuildStickersUpdate,
-//     GuildUnavailable,
-//     GuildUpdate,
-//     IntegrationCreate,
-//     IntegrationUpdate,
-//     IntegrationDelete,
-//     InteractionCreate,
-//     InviteCreate,
-//     InviteDelete,
-//     MessageDelete,
-//     MessageDeleteBulk,
-//     MessageUpdate,
-//     ReactionAdd,
-//     ReactionRemove,
-//     ReactionRemoveAll,
-//     PresenceReplace,
-//     Ready,
-//     Resume,
-//     ShardStageUpdate,
-//     StageInstanceCreate,
-//     StageInstanceDelete,
-//     StageInstanceUpdate,
-//     ThreadCreate,
-//     ThreadDelete,
-//     ThreadListSync,
-//     ThreadMemberUpdate,
-//     ThreadMembersUpdate,
-//     ThreadUpdate,
-//     Unknown,
-//     UserUpdate,
-//     VoiceServerUpdate,
-//     WebhooksUpdate,
-// }
