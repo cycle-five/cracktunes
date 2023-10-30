@@ -3,18 +3,16 @@ use crack_core::{
     commands,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::handle_event,
+    handlers::SerenityHandler,
     is_prefix,
     metrics::COMMAND_ERRORS,
     utils::{check_interaction, check_reply, count_command, create_response_text, get_interaction},
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
+use poise::serenity_prelude::Client;
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
-    // #[cfg(feature = "set_owners_from_config")]
-    // UserId,
-    Framework,
-    FrameworkOptions,
 };
 use songbird::serenity::SerenityInit;
 use std::sync::Mutex;
@@ -77,7 +75,7 @@ pub async fn poise_framework(
     config: BotConfig,
     //TODO: can this be create in this function instead of passed in?
     event_log: EventLog,
-) -> Result<Arc<Framework<Data, Error>>, Error> {
+) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     tracing::warn!("Using prefix: {}", config.get_prefix());
@@ -362,7 +360,6 @@ pub async fn poise_framework(
 
     // let res = framework.build().await?;
     // let shard_manager = res.client().shard_manager.clone();
-    use poise::serenity_prelude::Client;
     let mut client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
@@ -428,6 +425,6 @@ pub async fn poise_framework(
     //     .unwrap();
     // res.start_autosharded().await.unwrap();
     //res.client().start_autosharded().await?;
-    client.start_autosharded().await?;
-    Ok(Arc::new(framework))
+    // client.start_autosharded().await?;
+    Ok(client)
 }

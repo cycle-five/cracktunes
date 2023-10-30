@@ -412,7 +412,7 @@ pub async fn handle_event(
     // event_log.write_log_obj(event_name, event_in)?;
 
     match event_in {
-        FullEvent::PresenceUpdate { ctx, new_data } => {
+        FullEvent::PresenceUpdate { ctx: _, new_data } => {
             #[cfg(feature = "log_all")]
             {
                 log_event!(
@@ -587,7 +587,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            channel,
+            &(channel, messages),
             &channel.guild_id,
             &ctx.http,
             event_log,
@@ -863,30 +863,31 @@ pub async fn handle_event(
         FullEvent::GuildRoleUpdate {
             new,
             old_data_if_available,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
-        FullEvent::GuildScheduledEventCreate { event, ctx } => {
+        FullEvent::GuildScheduledEventCreate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventUpdate { event, ctx } => {
+        FullEvent::GuildScheduledEventUpdate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventDelete { event, ctx } => {
+        FullEvent::GuildScheduledEventDelete { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventUserAdd { subscribed, ctx } => {
+        FullEvent::GuildScheduledEventUserAdd { subscribed, ctx: _ } => {
             event_log.write_log_obj(event_name, subscribed)
         }
-        FullEvent::GuildScheduledEventUserRemove { unsubscribed, ctx } => {
-            event_log.write_log_obj(event_name, unsubscribed)
-        }
+        FullEvent::GuildScheduledEventUserRemove {
+            unsubscribed,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, unsubscribed),
         FullEvent::GuildStickersUpdate {
-            ctx,
+            ctx: _,
             guild_id,
             current_state,
         } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
         FullEvent::GuildAuditLogEntryCreate {
-            ctx,
+            ctx: _,
             entry,
             guild_id,
         } => event_log.write_log_obj(event_name, &(entry, guild_id)),
@@ -901,12 +902,13 @@ pub async fn handle_event(
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
-            ctx,
+            ctx: _,
             new_data,
         } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
-        FullEvent::IntegrationCreate { integration, ctx } => {
-            event_log.write_log_obj(event_name, integration)
-        }
+        FullEvent::IntegrationCreate {
+            integration,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, integration),
         FullEvent::IntegrationUpdate { integration, ctx } => {
             event_log.write_log_obj(event_name, integration)
         }
@@ -946,24 +948,25 @@ pub async fn handle_event(
             event,
             ctx,
         } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
-        FullEvent::ReactionAdd { add_reaction, ctx } => {
-            event_log.write_log_obj(event_name, add_reaction)
-        }
+        FullEvent::ReactionAdd {
+            add_reaction,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, add_reaction),
         FullEvent::ReactionRemove {
             removed_reaction,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, removed_reaction),
         FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
         FullEvent::PresenceReplace { ctx, presences } => {
             event_log.write_log_obj(event_name, presences)
         }
         FullEvent::Ready {
             data_about_bot,
-            ctx,
+            ctx: _,
         } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
             event_log.write_log_obj(event_name, data_about_bot)
@@ -971,29 +974,30 @@ pub async fn handle_event(
         FullEvent::Resume { ctx, event } => event_log.write_log_obj(event_name, event),
         FullEvent::StageInstanceCreate {
             stage_instance,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, stage_instance),
         FullEvent::StageInstanceDelete {
             stage_instance,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, stage_instance),
         FullEvent::StageInstanceUpdate {
             stage_instance,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, stage_instance),
         FullEvent::ThreadCreate { thread, ctx } => event_log.write_log_obj(event_name, thread),
         FullEvent::ThreadDelete {
             thread,
-            ctx,
+            ctx: _,
             full_thread_data,
         } => event_log.write_log_obj(event_name, thread),
         FullEvent::ThreadListSync {
             thread_list_sync,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, thread_list_sync),
-        FullEvent::ThreadMemberUpdate { thread_member, ctx } => {
-            event_log.write_log_obj(event_name, thread_member)
-        }
+        FullEvent::ThreadMemberUpdate {
+            thread_member,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, thread_member),
         FullEvent::ThreadMembersUpdate {
             thread_members_update,
             ctx,
@@ -1017,7 +1021,7 @@ pub async fn handle_event(
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
-            ctx,
+            ctx: _,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
         FullEvent::CacheReady { guilds, ctx } => {
             tracing::info!(

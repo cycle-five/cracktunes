@@ -34,14 +34,15 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let framework = poise_framework(config, event_log).await?;
+    let mut client = poise_framework(config, event_log).await?;
 
-    let client = framework.client();
-    let mut data_global = client.data.write().await;
+    // let client = framework.client();
+    let data_ro = client.data.clone();
+    let mut data_global = data_ro.write().await;
     data_global.insert::<GuildCacheMap>(HashMap::default());
     data_global.insert::<GuildSettingsMap>(HashMap::default());
     drop(data_global);
-    drop(client);
+    // drop(client);
 
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
@@ -50,7 +51,8 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
         Ok::<(), serenity::Error>(())
     };
 
-    let bot = framework.start(); //.await?;
+    // let bot = framework.start(); //.await?;
+    let bot = client.start();
 
     tokio::try_join!(bot, server)?;
 

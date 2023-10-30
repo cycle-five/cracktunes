@@ -1,8 +1,10 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::track_end::update_queue_messages,
+    //handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig, CamKickConfig, Data,
+    BotConfig,
+    CamKickConfig,
+    Data,
 };
 use ::serenity::{
     builder::{CreateEmbed, CreateMessage, EditMember},
@@ -216,7 +218,7 @@ impl EventHandler for SerenityHandler {
         if guild_id.get() != 0 {
             let guild_name = {
                 let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
-                guild.name
+                guild.name.clone()
             };
             let name = msg.author.name.clone();
             // let guild_name = guild.name;
@@ -286,7 +288,7 @@ impl EventHandler for SerenityHandler {
             manager.remove(guild_id).await.ok();
         }
 
-        update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
+        // update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
@@ -535,7 +537,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
             };
 
             let info = MyVoiceUserInfo {
-                user_id: *user_id,
+                user_id,
                 guild_id,
                 channel_id,
                 camera_status: voice_state.self_video,
@@ -839,9 +841,9 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             old.suppress, new.suppress
         ));
     }
-    if old.token != new.token {
-        result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
-    }
+    // if old.token != new.token {
+    //     result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
+    // }
     if old.user_id != new.user_id {
         result.push_str(&format!(
             "user_id : {:?} -> {:?}\n",
