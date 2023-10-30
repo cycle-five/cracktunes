@@ -1,6 +1,6 @@
-use songbird::tracks::{Action, TrackHandle, View};
+use songbird::tracks::{TrackHandle};
 use sqlx::{
-    types::chrono::{self, NaiveDate},
+    types::chrono::{self},
     SqlitePool,
 };
 

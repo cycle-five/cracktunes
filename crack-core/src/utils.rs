@@ -10,7 +10,7 @@ use crate::{
     Error,
 };
 use ::serenity::{
-    all::{ButtonStyle, GuildId, Interaction, InteractionResponseFlags},
+    all::{ButtonStyle, GuildId, Interaction},
     builder::{
         CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter,
         CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
@@ -29,7 +29,7 @@ use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::{
     cmp::{max, min},
     ops::Add,
-    sync::{Arc, Mutex},
+    sync::{Arc},
     time::Duration,
 };
 use tokio::sync::RwLock;
@@ -440,7 +440,7 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn build_queue_page(tracks: &[(TrackHandle, AuxMetadata)], page: usize) -> String {
+fn build_queue_page(_tracks: &[(TrackHandle, AuxMetadata)], _page: usize) -> String {
     let description = "".to_string();
     // let start_idx = EMBED_PAGE_SIZE * page;
     // let queue: Vec<&TrackHandle> = tracks
@@ -767,7 +767,7 @@ pub fn count_command(command: &str, is_prefix: bool) {
     };
 }
 
-use songbird::id::ChannelId;
+
 /// Gets the channel id that the bot is currently playing in for a given guild.
 pub async fn get_current_voice_channel_id(
     ctx: &SerenityContext,

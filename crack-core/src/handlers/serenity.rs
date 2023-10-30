@@ -12,14 +12,14 @@ use ::serenity::{
 };
 use colored::Colorize;
 use poise::serenity_prelude::{
-    self as serenity, Channel, Error as SerenityError, Guild, Member, Mentionable, UserId,
+    self as serenity, Channel, Error as SerenityError, Member, Mentionable, UserId,
 };
 use serenity::{
     async_trait,
     model::{
         gateway::Ready,
         id::GuildId,
-        prelude::{Activity, VoiceState},
+        prelude::{VoiceState},
     },
     ChannelId, {Context as SerenityContext, EventHandler},
 };

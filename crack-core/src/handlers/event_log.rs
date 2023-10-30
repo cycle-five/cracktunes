@@ -13,14 +13,12 @@ use crate::{
 use colored::Colorize;
 use poise::{
     serenity_prelude::{
-        ChannelId, ClientStatus, Event, FullEvent, GuildId, GuildMemberAddEvent,
-        GuildMemberRemoveEvent, Member, Presence, PresenceUpdateEvent, TypingStartEvent,
-        VoiceStateUpdateEvent,
+        ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence,
     },
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::{client::Context as SerenityContext, http::Http};
+use serenity::{http::Http};
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -394,7 +392,7 @@ pub async fn handle_event(
     event_in: &FullEvent,
     //ctx: &SerenityContext,
     // event_in: &poise::serenity_prelude::Event,
-    framework: FrameworkContext<'_, Data, Error>,
+    _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);
@@ -760,7 +758,7 @@ pub async fn handle_event(
             ctx,
             old_if_available,
             new,
-            event,
+            event: _,
         } => {
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
             let new = new.clone().unwrap();
@@ -829,8 +827,8 @@ pub async fn handle_event(
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
-        FullEvent::GuildMembersChunk { chunk, ctx } => event_log.write_log_obj(event_name, chunk),
-        FullEvent::GuildRoleCreate { new, ctx } => event_log.write_log_obj(event_name, new),
+        FullEvent::GuildMembersChunk { chunk, ctx: _ } => event_log.write_log_obj(event_name, chunk),
+        FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
         #[cfg(feature = "cache")]
         GuildRoleDelete {
             guild_id,
@@ -849,7 +847,7 @@ pub async fn handle_event(
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(
             event_name,
             &(guild_id, removed_role_id, removed_role_data_if_available),
@@ -909,31 +907,31 @@ pub async fn handle_event(
             integration,
             ctx: _,
         } => event_log.write_log_obj(event_name, integration),
-        FullEvent::IntegrationUpdate { integration, ctx } => {
+        FullEvent::IntegrationUpdate { integration, ctx: _ } => {
             event_log.write_log_obj(event_name, integration)
         }
         FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        FullEvent::InteractionCreate { interaction, ctx } => {
+        FullEvent::InteractionCreate { interaction, ctx: _ } => {
             event_log.write_log_obj(event_name, interaction)
         }
-        FullEvent::InviteCreate { data, ctx } => event_log.write_log_obj(event_name, data),
-        FullEvent::InviteDelete { data, ctx } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteCreate { data, ctx: _ } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteDelete { data, ctx: _ } => event_log.write_log_obj(event_name, data),
         FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,
             guild_id,
-            ctx,
+            ctx: _,
         } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
         FullEvent::MessageDeleteBulk {
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
-            ctx,
+            ctx: _,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
@@ -946,7 +944,7 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
         FullEvent::ReactionAdd {
             add_reaction,
@@ -961,7 +959,7 @@ pub async fn handle_event(
             removed_from_message_id,
             ctx: _,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
-        FullEvent::PresenceReplace { ctx, presences } => {
+        FullEvent::PresenceReplace { ctx: _, presences } => {
             event_log.write_log_obj(event_name, presences)
         }
         FullEvent::Ready {
@@ -971,7 +969,7 @@ pub async fn handle_event(
             tracing::info!("{} is connected!", data_about_bot.user.name);
             event_log.write_log_obj(event_name, data_about_bot)
         }
-        FullEvent::Resume { ctx, event } => event_log.write_log_obj(event_name, event),
+        FullEvent::Resume { ctx: _, event } => event_log.write_log_obj(event_name, event),
         FullEvent::StageInstanceCreate {
             stage_instance,
             ctx: _,
@@ -984,11 +982,11 @@ pub async fn handle_event(
             stage_instance,
             ctx: _,
         } => event_log.write_log_obj(event_name, stage_instance),
-        FullEvent::ThreadCreate { thread, ctx } => event_log.write_log_obj(event_name, thread),
+        FullEvent::ThreadCreate { thread, ctx: _ } => event_log.write_log_obj(event_name, thread),
         FullEvent::ThreadDelete {
             thread,
             ctx: _,
-            full_thread_data,
+            full_thread_data: _,
         } => event_log.write_log_obj(event_name, thread),
         FullEvent::ThreadListSync {
             thread_list_sync,
@@ -1000,9 +998,9 @@ pub async fn handle_event(
         } => event_log.write_log_obj(event_name, thread_member),
         FullEvent::ThreadMembersUpdate {
             thread_members_update,
-            ctx,
+            ctx: _,
         } => event_log.write_log_obj(event_name, thread_members_update),
-        FullEvent::ThreadUpdate { ctx, old, new } => {
+        FullEvent::ThreadUpdate { ctx: _, old, new } => {
             event_log.write_log_obj(event_name, &(old, new))
         }
         // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
@@ -1012,10 +1010,10 @@ pub async fn handle_event(
             new,
         } => event_log.write_log_obj(&(old_data_global, new)),
         #[cfg(not(feature = "cache"))]
-        FullEvent::UserUpdate { old_data, new, ctx } => {
+        FullEvent::UserUpdate { old_data, new, ctx: _ } => {
             event_log.write_log_obj(event_name, &(old_data, new))
         }
-        FullEvent::VoiceServerUpdate { ctx, event } => event_log.write_log_obj(event_name, event),
+        FullEvent::VoiceServerUpdate { ctx: _, event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]
         VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         FullEvent::WebhookUpdate {
@@ -1023,7 +1021,7 @@ pub async fn handle_event(
             belongs_to_channel_id,
             ctx: _,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
-        FullEvent::CacheReady { guilds, ctx } => {
+        FullEvent::CacheReady { guilds, ctx: _ } => {
             tracing::info!(
                 "{}: {}",
                 event_in.snake_case_name().bright_green(),
