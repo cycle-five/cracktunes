@@ -16,11 +16,7 @@ use poise::serenity_prelude::{
 };
 use serenity::{
     async_trait,
-    model::{
-        gateway::Ready,
-        id::GuildId,
-        prelude::{VoiceState},
-    },
+    model::{gateway::Ready, id::GuildId, prelude::VoiceState},
     ChannelId, {Context as SerenityContext, EventHandler},
 };
 use std::{

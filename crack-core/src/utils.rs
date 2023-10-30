@@ -2,7 +2,7 @@ use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
     //commands::{build_nav_btns, summon},
     guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
-    messaging::message::CrackedMessage,
+    messaging::{message::CrackedMessage, messages::QUEUE_NO_SONGS},
     metrics::COMMAND_EXECUTIONS,
     Context,
     CrackedError,
@@ -26,10 +26,11 @@ use poise::{
     CommandOrAutocompleteInteraction, CreateReply, FrameworkError, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
+use std::fmt::Write;
 use std::{
     cmp::{max, min},
     ops::Add,
-    sync::{Arc},
+    sync::Arc,
     time::Duration,
 };
 use tokio::sync::RwLock;
@@ -440,35 +441,36 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn build_queue_page(_tracks: &[(TrackHandle, AuxMetadata)], _page: usize) -> String {
-    let description = "".to_string();
-    // let start_idx = EMBED_PAGE_SIZE * page;
-    // let queue: Vec<&TrackHandle> = tracks
-    //     .iter()
-    //     .skip(start_idx + 1)
-    //     .take(EMBED_PAGE_SIZE)
-    //     .collect();
+#[allow(dead_code)]
+fn build_queue_page(tracks: &[(TrackHandle, AuxMetadata)], page: usize) -> String {
+    let start_idx = EMBED_PAGE_SIZE * page;
+    let queue: Vec<&(TrackHandle, AuxMetadata)> = tracks
+        .iter()
+        .skip(start_idx + 1)
+        .take(EMBED_PAGE_SIZE)
+        .collect();
 
-    // if queue.is_empty() {
-    //     return String::from(messaging::messages::QUEUE_NO_SONGS);
-    // }
+    if queue.is_empty() {
+        return String::from(QUEUE_NO_SONGS);
+    }
 
-    // let mut description = String::new();
+    let mut description = String::new();
 
-    // for (i, t) in queue.iter().enumerate() {
-    //     let title = t.metadata().title.as_ref().unwrap();
-    //     let url = t.metadata().source_url.as_ref().unwrap();
-    //     let duration = get_human_readable_timestamp(t.metadata().duration);
+    for (i, &t) in queue.iter().enumerate() {
+        let (_track, metadata) = t;
+        let title = metadata.title.as_ref().unwrap();
+        let url = metadata.source_url.as_ref().unwrap();
+        let duration = get_human_readable_timestamp(metadata.duration);
 
-    //     let _ = writeln!(
-    //         description,
-    //         "`{}.` [{}]({}) • `{}`",
-    //         i + start_idx + 1,
-    //         title,
-    //         url,
-    //         duration
-    //     );
-    // }
+        let _ = writeln!(
+            description,
+            "`{}.` [{}]({}) • `{}`",
+            i + start_idx + 1,
+            title,
+            url,
+            duration
+        );
+    }
 
     description
 }
@@ -766,7 +768,6 @@ pub fn count_command(command: &str, is_prefix: bool) {
         }
     };
 }
-
 
 /// Gets the channel id that the bot is currently playing in for a given guild.
 pub async fn get_current_voice_channel_id(
