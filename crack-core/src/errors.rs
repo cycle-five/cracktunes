@@ -97,7 +97,7 @@ impl Display for CrackedError {
             Self::NothingPlaying => f.write_str(NOTHING_IS_PLAYING),
             Self::PlayListFail => f.write_str(PLAYLIST_FAILED),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),
-            Self::TrackFail(err) => match err {
+            Self::TrackFail(err) => //match err {
                 // InputError::Json {
                 //     error: _,
                 //     parsed_text,
@@ -108,8 +108,9 @@ impl Display for CrackedError {
                 //         f.write_str(TRACK_NOT_FOUND)
                 //     }
                 // }
-                _ => f.write_str(&format!("{err}")),
-            },
+                //_ => f.write_str(&format!("{err}")),
+                f.write_str(&format!("{err}")),
+            //},
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),

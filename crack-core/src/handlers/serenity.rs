@@ -228,8 +228,7 @@ impl EventHandler for SerenityHandler {
                 channel_name.purple(),
                 content.purple(),
             );
-            let mm = MyMessage(msg);
-            tracing::info!("{}", mm);
+            let _mm = MyMessage(msg);
         }
     }
 

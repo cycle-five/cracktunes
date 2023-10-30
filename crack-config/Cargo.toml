@@ -5,8 +5,9 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-default = ["osint"]
+default = ["set_owners_from_config"]
 osint = ["crack-osint"]
+set_owners_from_config = []
 
 [dependencies]
 crack-osint = { workspace = true, optional = true}

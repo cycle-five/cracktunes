@@ -51,7 +51,7 @@ const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         self.all_log_channel
-            .map(|x| ChannelId::new(x))
+            .map(ChannelId::new)
             .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
     }
 
@@ -380,7 +380,7 @@ impl GuildSettings {
         &self.prefix
     }
 
-    pub fn set_all_log_channel(&mut self, channel_id: u64) {
+    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
         } else {
@@ -388,6 +388,7 @@ impl GuildSettings {
             log_settings.set_all_log_channel(channel_id);
             self.log_settings = Some(log_settings);
         }
+        self
     }
 
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) {
@@ -570,6 +571,7 @@ impl GuildSettings {
 //     // .clone()
 // }
 
+#[derive(Default)]
 pub struct GuildSettingsMap;
 
 impl TypeMapKey for GuildSettingsMap {

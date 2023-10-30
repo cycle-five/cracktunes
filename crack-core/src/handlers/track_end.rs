@@ -113,7 +113,7 @@ pub async fn update_queue_messages(
     for (message, page_lock) in messages.iter_mut() {
         // has the page size shrunk?
         let num_pages = calculate_num_pages(tracks);
-        let page = page_lock.read().unwrap().clone();
+        let page = *page_lock.read().unwrap();
         let page_val = usize::min(page, num_pages - 1);
         *page_lock.write().unwrap() = page_val;
 

@@ -39,8 +39,19 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     // let client = framework.client();
     let data_ro = client.data.clone();
     let mut data_global = data_ro.write().await;
+    match data_global.get::<GuildSettingsMap>() {
+        Some(guild_settings_map) => {
+            for (guild_id, guild_settings) in guild_settings_map.iter() {
+                tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
+            }
+        }
+        None => {
+            tracing::info!("No guild settings found");
+            data_global.insert::<GuildSettingsMap>(HashMap::default());
+        }
+    }
     data_global.insert::<GuildCacheMap>(HashMap::default());
-    data_global.insert::<GuildSettingsMap>(HashMap::default());
+
     drop(data_global);
     // drop(client);
 

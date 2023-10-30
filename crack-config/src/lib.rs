@@ -11,7 +11,7 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::Client;
+use poise::serenity_prelude::{Client, UserId};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
@@ -47,12 +47,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             match get_interaction_new(ctx) {
                 Some(interaction) => {
                     check_interaction(
-                        create_response_text(
-                            &ctx.serenity_context().http,
-                            &interaction,
-                            &format!("{error}"),
-                        )
-                        .await,
+                        create_response_text(ctx, &interaction, &format!("{error}")).await,
                     );
                 }
                 None => {
@@ -94,10 +89,10 @@ pub async fn poise_framework(
             .as_ref()
             .unwrap_or(&vec![])
             .iter()
-            .map(|id| UserId(*id))
+            .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            // commands::admin(),
+            commands::admin(),
             // commands::autopause(),
             // commands::boop(),
             // commands::coinflip(),
@@ -111,7 +106,7 @@ pub async fn poise_framework(
             // commands::grab(),
             // commands::now_playing(),
             // commands::pause(),
-            // commands::play(),
+            commands::play(),
             commands::ping(),
             // commands::remove(),
             // commands::repeat(),
@@ -121,7 +116,7 @@ pub async fn poise_framework(
             // commands::skip(),
             // commands::stop(),
             // commands::shuffle(),
-            // commands::summon(),
+            commands::summon(),
             // commands::version(),
             // commands::volume(),
             // commands::queue(),
@@ -177,14 +172,14 @@ pub async fn poise_framework(
         // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("Executing command {}...", ctx.command().qualified_name);
+                tracing::info!(">>> {}...", ctx.command().qualified_name);
                 count_command(ctx.command().qualified_name.as_ref(), is_prefix(ctx));
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("Executed command {}!", ctx.command().qualified_name);
+                tracing::info!("<<< {}!", ctx.command().qualified_name);
             })
         },
         // Every command invocation must pass this check to continue execution

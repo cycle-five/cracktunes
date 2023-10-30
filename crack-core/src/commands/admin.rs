@@ -1,17 +1,21 @@
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 
 use poise::{
     serenity_prelude::{Channel, CreateMessage, User, UserId},
-    CreateReply,
+    CreateReply, ReplyHandle,
 };
-use serenity::builder::{CreateChannel, EditMember, EditRole};
+use serenity::{
+    all::{ChannelId, GuildId},
+    builder::{CreateChannel, EditMember, EditRole},
+};
+use typemap_rev::TypeMap;
 
 use crate::{
     errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap, WelcomeSettings},
+    guild::settings::{GuildSettings, GuildSettingsMap, WelcomeSettings, DEFAULT_PREFIX},
     messaging::message::CrackedMessage,
     utils::{check_reply, create_response_poise, get_current_voice_channel_id, get_guild_name},
-    Context, Error,
+    Context, Data, Error,
 };
 // use chrono::NaiveTime;
 // use date_time_parser::TimeParser;
@@ -572,8 +576,9 @@ pub async fn create_text_channel(ctx: Context<'_>, channel_name: String) -> Resu
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn set_join_leave_log_channel(
     ctx: Context<'_>,
-    channel_id: serenity::model::id::ChannelId,
+    #[description = "Channel to send join/leave logs"] channel: Channel,
 ) -> Result<(), Error> {
+    let channel_id = channel.id();
     let guild_id = ctx.guild_id().unwrap();
     let mut data = ctx.serenity_context().data.write().await;
     let _entry = &data
@@ -598,26 +603,104 @@ pub async fn set_join_leave_log_channel(
     Ok(())
 }
 
+pub async fn set_all_log_channel_data(
+    data: Data,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<GuildSettings, Error> {
+    //let mut data = map.write().await;
+    //let entry = data
+    Ok(data
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.set_all_log_channel(channel_id.into());
+        })
+        .or_insert({
+            GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None)
+                .set_all_log_channel(channel_id.into())
+                .to_owned()
+        })
+        .to_owned())
+
+    //Ok(entry.clone())
+    // let settings = data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .get_mut(&guild_id);
+
+    // create_response_poise(
+    //     ctx,
+    //     CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
+    // )
+    // .await?;
+
+    //    Ok(())
+}
+
+pub async fn set_all_log_channel_old_data(
+    map: Arc<tokio::sync::RwLock<TypeMap>>,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<GuildSettings, Error> {
+    let mut data = map.write().await;
+    //let entry = data
+    Ok(data
+        .get_mut::<GuildSettingsMap>()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.set_all_log_channel(channel_id.into());
+        })
+        .or_insert({
+            GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None)
+                .set_all_log_channel(channel_id.into())
+                .to_owned()
+        })
+        .to_owned())
+
+    //Ok(entry.clone())
+    // let settings = data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .get_mut(&guild_id);
+
+    // create_response_poise(
+    //     ctx,
+    //     CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
+    // )
+    // .await?;
+
+    //    Ok(())
+}
+
 /// Set the join-leave log channel.
 #[poise::command(prefix_command, owners_only, hide_in_help)]
 pub async fn set_all_log_channel(
     ctx: Context<'_>,
-    channel_id: serenity::model::id::ChannelId,
+    #[description = "Channel to send all logs"] channel: Channel,
 ) -> Result<(), Error> {
+    let channel_id = channel.id();
     let guild_id = ctx.guild_id().unwrap();
-    let mut data = ctx.serenity_context().data.write().await;
-    let _entry = &data
-        .get_mut::<GuildSettingsMap>()
-        .unwrap()
-        .entry(guild_id)
-        .and_modify(|e| e.set_all_log_channel(channel_id.get()));
+    // let mut data = ctx.serenity_context().data.write().await;
+    // let data = &ctx.serenity_context().data;
 
-    let settings = data
-        .get_mut::<GuildSettingsMap>()
-        .unwrap()
-        .get_mut(&guild_id);
+    // set_all_log_channel_old_data(ctx.serenity_context().data.clone(), guild_id, channel_id).await?;
+    set_all_log_channel_data(ctx.data().clone(), guild_id, channel_id).await?;
+    // let _entry = &data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .entry(guild_id)
+    //     .and_modify(|e| e.set_all_log_channel(channel_id.get()));
 
-    let _res = settings.map(|s| s.save()).unwrap();
+    // let settings = data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .get_mut(&guild_id);
+
+    // let _res = settings.map(|s| s.save()).unwrap();
 
     create_response_poise(
         ctx,
@@ -627,6 +710,10 @@ pub async fn set_all_log_channel(
 
     Ok(())
 }
+
+// pub fn get_reply_handle(ctx: Context) -> ReplyHandle {
+//     ctx.reply_handle()
+// }
 
 /// Get the current bot settings for this guild.
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]

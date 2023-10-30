@@ -402,6 +402,10 @@ pub async fn handle_event(
     //     }
     // }
     // event_log.write_log_obj(event_name, event_in)?;
+    // let channel_id = framework
+    //     .get_channel_id(event_in)
+    //     .await
+    //     .map_err(|x| x.into())?;
 
     match event_in {
         FullEvent::PresenceUpdate { ctx: _, new_data } => {

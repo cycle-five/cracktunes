@@ -2,14 +2,16 @@ use self::serenity::{model::id::ChannelId, Mentionable};
 use crate::{
     connection::get_voice_channel_for_user,
     errors::CrackedError,
-    handlers::{IdleHandler, TrackEndHandler},
-    messaging::message::CrackedMessage,
+    // handlers::{IdleHandler, TrackEndHandler},
+    // handlers::TrackEndHandler,
+    // messaging::message::CrackedMessage,
     utils::get_user_id,
-    Context, Error,
+    Context,
+    Error,
 };
 use poise::serenity_prelude as serenity;
-use songbird::{Event, TrackEvent};
-use std::{sync::Arc, time::Duration};
+// use songbird::{Event, TrackEvent};
+// use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
 #[poise::command(
@@ -24,7 +26,12 @@ pub async fn summon(
     #[description = "Send a reply to the user"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
+    let guild = ctx
+        .serenity_context()
+        .cache
+        .guild(guild_id)
+        .unwrap()
+        .clone();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let user_id = get_user_id(&ctx);
 
@@ -67,11 +74,12 @@ pub async fn summon(
     }
 
     // join the channel
-    let (call, result) = manager.join(guild.id, channel_id).await;
-    result.map_err(|e| {
+    let result = manager.join(guild.id, channel_id).await;
+    let _call = result.map_err(|e| {
         tracing::error!("Error joining channel: {:?}", e);
         CrackedError::JoinChannelError(e)
     })?;
+    /*
     let buffer = {
         // // Open the data lock in write mode, so keys can be inserted to it.
         // let mut data = ctx.data().write().await;
@@ -82,7 +90,8 @@ pub async fn summon(
         data.clone()
     };
 
-    use crate::handlers::voice::register_voice_handlers;
+    // FIXME
+    // use crate::handlers::voice::register_voice_handlers;
 
     let _ = register_voice_handlers(buffer, call.clone()).await;
     {
@@ -131,6 +140,7 @@ pub async fn summon(
             .await?;
         }
     }
+    */
 
     Ok(())
 }

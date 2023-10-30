@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Light" src="./docs/logo.png" width="50%">
+  <img alt="CrackTunes" src="./docs/logo.png" width="50%">
 </p>
 
 <p align="center">
@@ -108,7 +108,11 @@ docker run -d --env-file .env cracktunes
 - [] Reminders
 - [] Notes
 
-## 0.2.6
+~~## 0.2.6~~
+...
+~~## 0.2.12~~
+## 0.2.13
+- [] Port to next branch of serenity
 - [] Flesh out admin commands
 
 ## 0.3.0

@@ -65,7 +65,7 @@ pub async fn create_skip_response(
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
             create_response_poise_text(
-                &ctx,
+                ctx,
                 CrackedMessage::SkipTo {
                     title: metadata.title.as_ref().unwrap().to_owned(),
                     url: metadata.source_url.as_ref().unwrap().to_owned(),
@@ -75,9 +75,9 @@ pub async fn create_skip_response(
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise_text(&ctx, CrackedMessage::SkipAll).await
+                create_response_poise_text(ctx, CrackedMessage::SkipAll).await
             } else {
-                create_response_poise_text(&ctx, CrackedMessage::Skip).await
+                create_response_poise_text(ctx, CrackedMessage::Skip).await
             }
         }
     }
