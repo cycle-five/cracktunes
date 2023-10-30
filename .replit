@@ -1,0 +1,26 @@
+run = "cargo build"
+hidden = ["target"]
+
+[packager]
+language = "rust"
+
+[packager.features]
+packageSearch = true
+
+[nix]
+channel = "stable-22_11"
+#channel = "stable"
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix"]
+
+[languages]
+
+[languages.rust]
+pattern = "**/*.rs"
+
+[languages.rust.languageServer]
+start = "rust-analyzer"
+
+[deployment]
+run = ["sh", "-c", "cargo run"]
