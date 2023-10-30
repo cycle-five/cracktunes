@@ -1,4 +1,5 @@
 use crate::{
+    commands::QueryType,
     errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
 };
@@ -18,15 +19,6 @@ lazy_static! {
     pub static ref SPOTIFY_QUERY_REGEX: Regex =
         Regex::new(r"spotify.link/.*|spotify.com/(?P<media_type>.+)/(?P<media_id>.*?)(?:\?|$)")
             .unwrap();
-}
-
-#[derive(Clone, Debug)]
-pub enum QueryType {
-    Keywords(String),
-    KeywordList(Vec<String>),
-    VideoLink(String),
-    PlaylistLink(String),
-    File(serenity::all::Attachment),
 }
 
 #[derive(Clone, Copy)]

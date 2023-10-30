@@ -99,6 +99,50 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
     }
 }
 
+/// Parses the msg variable from the parameters to the play command which due
+/// to the way that the way the poise library works with auto filling them
+/// based on types, it could be kind of mangled if the prefix version of the
+/// command is used.
+fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
+    let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+    let res = if is_prefix {
+        Some(
+            mode.clone()
+                .map(|s| s.replace("query_or_url:", ""))
+                .unwrap_or("".to_string())
+                + " "
+                + &step1.unwrap_or("".to_string()),
+        )
+    } else {
+        step1
+    };
+    res
+}
+
+#[inline]
+async fn get_call_with_fail_msg(
+    ctx: Context<'_>,
+    guild_id: serenity::GuildId,
+) -> Result<Arc<Mutex<Call>>, Error> {
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    match manager.get(guild_id) {
+        Some(call) => Ok(call),
+        None => {
+            // try to join a voice channel if not in one just yet
+            //match summon_short(ctx).await {
+            match manager.join(guild_id, ctx.channel_id()).await {
+                Ok(_) => Ok(manager.get(guild_id).unwrap()),
+                Err(_) => {
+                    let embed = CreateEmbed::default()
+                        .description(format!("{}", CrackedError::NotConnected));
+                    create_embed_response_poise(ctx, embed).await?;
+                    return Err(CrackedError::NotConnected.into());
+                }
+            }
+        }
+    }
+}
+
 /// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
@@ -111,19 +155,20 @@ pub async fn play(
 ) -> Result<(), Error> {
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
-    let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+    // let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
 
-    // &str, bool, Option<String>
+    // // &str, bool, Option<String>
 
-    if is_prefix {
-        msg = Some(
-            mode.clone()
-                .map(|s| s.replace("query_or_url:", ""))
-                .unwrap_or("".to_string())
-                + " "
-                + &msg.unwrap_or("".to_string()),
-        );
-    }
+    // if is_prefix {
+    //     msg = Some(
+    //         mode.clone()
+    //             .map(|s| s.replace("query_or_url:", ""))
+    //             .unwrap_or("".to_string())
+    //             + " "
+    //             + &msg.unwrap_or("".to_string()),
+    //     );
+    // }
+    let mut msg = get_msg(mode, query_or_url, is_prefix);
 
     if msg.is_none() && file.is_none() {
         let mut embed = CreateEmbed::default();
@@ -152,23 +197,24 @@ pub async fn play(
         }
     };
 
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            // try to join a voice channel if not in one just yet
-            //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await {
-                Ok(_) => manager.get(guild_id).unwrap(),
-                Err(_) => {
-                    let mut embed = CreateEmbed::default();
-                    embed.description(format!("{}", CrackedError::NotConnected));
-                    create_embed_response_poise(ctx, embed).await?;
-                    return Ok(());
-                }
-            }
-        }
-    };
+    let call = get_call_with_fail_msg(ctx, guild_id).await?;
+    // let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    // let call = match manager.get(guild_id) {
+    //     Some(call) => call,
+    //     None => {
+    //         // try to join a voice channel if not in one just yet
+    //         //match summon_short(ctx).await {
+    //         match manager.join(guild_id, ctx.channel_id()).await {
+    //             Ok(_) => manager.get(guild_id).unwrap(),
+    //             Err(_) => {
+    //                 let mut embed = CreateEmbed::default();
+    //                 embed.description(format!("{}", CrackedError::NotConnected));
+    //                 create_embed_response_poise(ctx, embed).await?;
+    //                 return Ok(());
+    //             }
+    //         }
+    //     }
+    // };
 
     // determine whether this is a link or a query string
     let query_type = match_url(&ctx, url, file).await?;
@@ -570,7 +616,7 @@ async fn match_url(
                 }
 
                 //YouTube::extract(url)
-                YoutubeDl::new(ctx.serenity_context().http, url.to_string())
+                YoutubeDl::new(reqwest::Client::new(), url.to_string())
             }
             None => None,
         },
