@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::create_response_poise_text,
+    utils::{create_response_poise_text, get_track_metadata},
     Context, Error,
 };
 use songbird::{tracks::TrackHandle, Call};
@@ -63,11 +63,12 @@ pub async fn create_skip_response(
 ) -> Result<(), Error> {
     match handler.queue().current() {
         Some(track) => {
+            let metadata = get_track_metadata(&track).await;
             create_response_poise_text(
                 &ctx,
                 CrackedMessage::SkipTo {
-                    title: track.metadata().title.as_ref().unwrap().to_owned(),
-                    url: track.metadata().source_url.as_ref().unwrap().to_owned(),
+                    title: metadata.title.as_ref().unwrap().to_owned(),
+                    url: metadata.source_url.as_ref().unwrap().to_owned(),
                 },
             )
             .await

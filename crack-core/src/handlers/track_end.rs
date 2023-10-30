@@ -87,7 +87,7 @@ impl EventHandler for ModifyQueueHandler {
 }
 
 pub async fn update_queue_messages(
-    http: &Arc<Http>,
+    http: &Http,
     data: &Data,
     tracks: &[TrackHandle],
     guild_id: GuildId,

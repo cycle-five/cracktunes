@@ -364,12 +364,21 @@ pub async fn edit_embed_response_poise(ctx: Context<'_>, embed: CreateEmbed) -> 
     }
 }
 
-pub async fn create_now_playing_embed(
-    track: &TrackHandle,
-    aux_metadata: &AuxMetadata,
-) -> CreateEmbed {
+pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
+    let metadata = {
+        let map = track.typemap().read().await;
+        let my_metadata = map.get::<crate::commands::MyAuxMetadata>().unwrap();
+
+        match my_metadata {
+            crate::commands::MyAuxMetadata::Data(metadata) => metadata.clone(),
+        }
+    };
+    metadata
+}
+
+pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     // TrackHandle::metadata(track);
-    let metadata = aux_metadata; // track.metadata().clone();
+    let metadata = get_track_metadata(track).await;
 
     tracing::warn!("metadata: {:?}", metadata);
 
