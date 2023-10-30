@@ -91,7 +91,7 @@ pub async fn force_skip_top_track(
     // also, manually removing tracks doesn't trigger the next track to play
     // so first, stop the top song, manually remove it and then resume playback
     handler.queue().current().unwrap().stop().ok();
-    handler.queue().dequeue(0);
+    let _ = handler.queue().dequeue(0);
     handler.queue().resume().ok();
 
     Ok(handler.queue().current_queue())

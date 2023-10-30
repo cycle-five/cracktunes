@@ -53,12 +53,8 @@ pub fn get_log_channel(
 pub async fn get_channel_id(
     guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
-    // event: &serenity::all::Event,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
-    // let initial_values: Vec<u64> = vec![1165246445654388746];
-    // let hashset: HashSet<_> = initial_values.into_iter().collect();
-
     let x = {
         let guild_settings_map = guild_settings_map.lock().unwrap().clone();
 

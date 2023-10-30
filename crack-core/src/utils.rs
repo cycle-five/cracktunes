@@ -775,7 +775,7 @@ pub fn get_interaction(ctx: Context<'_>) -> Option<CommandInteraction> {
             CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
-        Context::Prefix(ctx) => None,
+        Context::Prefix(_ctx) => None,
     }
 }
 

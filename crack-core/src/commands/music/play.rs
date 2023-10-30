@@ -19,14 +19,11 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::{
-    all::Interaction,
-    builder::{CreateEmbedFooter, CreateInteractionResponse, EditInteractionResponse},
-};
+use ::serenity::builder::{CreateEmbedFooter, EditInteractionResponse};
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
 use songbird::{
-    input::{AuxMetadata, File as FileInput, HttpRequest, Input as SongbirdInput, YoutubeDl},
+    input::{AuxMetadata, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::TrackHandle,
     Call,
 };
@@ -686,7 +683,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         _ => {
             let center = &queue[1..queue.len() - 1];
             let livestreams =
-                center.len() - center.iter().filter_map(|t| metadata.duration).count();
+                center.len() - center.iter().filter_map(|_t| metadata.duration).count();
 
             // if any of the tracks before are livestreams, the new track will never play
             if livestreams > 0 {
@@ -695,7 +692,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
 
             let durations = center
                 .iter()
-                .fold(Duration::ZERO, |acc, x| acc + metadata.duration.unwrap());
+                .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
 
             Some(durations + top_track_duration - top_track_elapsed)
         }
@@ -784,7 +781,7 @@ async fn enqueue_track(
 
     let mut handler = call.lock().await;
     // handler.enqueue_source(source.into());
-    handler.enqueue(source.into());
+    handler.enqueue(source.into()).await;
 
     Ok(handler.queue().current_queue())
 }

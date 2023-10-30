@@ -6,7 +6,9 @@ use crack_core::{
     handlers::SerenityHandler,
     is_prefix,
     metrics::COMMAND_ERRORS,
-    utils::{check_interaction, check_reply, count_command, create_response_text, get_interaction},
+    utils::{
+        check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
+    },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
 use poise::serenity_prelude::Client;
@@ -42,7 +44,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
-            match get_interaction(ctx) {
+            match get_interaction_new(ctx) {
                 Some(interaction) => {
                     check_interaction(
                         create_response_text(
