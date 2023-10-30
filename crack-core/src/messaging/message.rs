@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use self::serenity::model::mention::Mention;
+use ::serenity::builder::CreateEmbed;
 use poise::serenity_prelude::{self as serenity, UserId};
 
 use crate::messaging::messages::*;
@@ -219,5 +220,11 @@ impl Display for CrackedMessage {
 impl From<CrackedMessage> for String {
     fn from(message: CrackedMessage) -> Self {
         message.to_string()
+    }
+}
+
+impl From<CrackedMessage> for CreateEmbed {
+    fn from(message: CrackedMessage) -> Self {
+        CreateEmbed::default().description(message.to_string())
     }
 }

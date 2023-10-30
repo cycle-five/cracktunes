@@ -178,7 +178,7 @@ pub async fn create_embed_response(
 ) -> Result<(), Error> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
-            create_reponse_interaction(http, int, embed).await
+            create_response_interaction(http, int, embed, false).await
         }
         _ => Ok(()),
         // Interaction::Message(interaction) => interaction
@@ -218,7 +218,35 @@ pub async fn edit_reponse_interaction(
     }
 }
 
-pub async fn create_reponse_interaction(
+pub async fn create_response_interaction(
+    http: &Arc<Http>,
+    interaction: &Interaction,
+    embed: CreateEmbed,
+    defer: bool,
+) -> Result<(), Error> {
+    match interaction {
+        Interaction::Command(int) => {
+            if defer {
+                int.defer(http).await.unwrap();
+            }
+            int.create_response(
+                http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                ),
+            )
+            .await
+            .map_err(Into::into)
+        }
+        Interaction::Ping(..)
+        | Interaction::Component(..)
+        | Interaction::Modal(..)
+        | Interaction::Autocomplete(..) => Ok(()),
+        _ => todo!(),
+    }
+}
+
+pub async fn defer_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,

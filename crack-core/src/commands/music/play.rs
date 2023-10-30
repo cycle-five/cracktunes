@@ -13,12 +13,15 @@ use crate::{
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
-        create_response_poise_text, edit_embed_response_poise, edit_response_poise, get_guild_name,
-        get_human_readable_timestamp, get_interaction,
+        create_response_interaction, create_response_poise_text, edit_embed_response_poise,
+        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_interaction,
+        CommandOrMessageInteraction,
     },
     Context, Error,
 };
+use ::serenity::{all::Interaction, builder::CreateInteractionResponse};
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use reqwest::Client;
 use songbird::{
     input::{File as FileInput, YoutubeDl},
     tracks::TrackHandle,
@@ -146,7 +149,7 @@ pub async fn play(
         None => {
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await.1 {
+            match manager.join(guild_id, ctx.channel_id()).await {
                 Ok(_) => manager.get(guild_id).unwrap(),
                 Err(_) => {
                     let mut embed = CreateEmbed::default();
@@ -171,16 +174,20 @@ pub async fn play(
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
     match get_interaction(ctx) {
-        Some(interaction) => {
-            interaction.defer(ctx.http()).await.unwrap();
-            interaction
-                .create_interaction_response(&ctx.serenity_context().http, |response| {
-                    response.kind(serenity::MessageInteraction::InteractionType::Message)
-                })
-                .await?;
-        }
+        Some(interaction) => match interaction {
+            CommandOrMessageInteraction::Command(interaction) => {
+                create_response_interaction(
+                    &ctx.serenity_context().http,
+                    &interaction,
+                    CrackedMessage::Search.into(),
+                    true,
+                )
+                .await?
+            }
+            _ => create_response_poise_text(&ctx, CrackedMessage::Search).await?,
+        },
         None => create_response_poise_text(&ctx, CrackedMessage::Search).await?,
-    };
+    }
 
     match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
 
@@ -384,7 +391,7 @@ async fn match_mode(
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
                 //     .ok_or(CrackedError::PlayListFail)?;
-                let _src = YoutubeDl::new(ctx.serenity_context().http, url);
+                let src = YoutubeDl::new(Client::new(), url);
                 // .ok_or(CrackedError::Other("failed to fetch playlist"))?
                 // .into_iter()
                 // .for_each(|track| async {
