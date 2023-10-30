@@ -50,18 +50,19 @@ impl EventHandler for TrackEndHandler {
             queue.pause().ok();
         }
 
-        forget_skip_votes(&self.data, self.guild_id).await.ok();
+        // FIXME
+        // forget_skip_votes(&self.data, self.guild_id).await.ok();
 
-        if let Some(channel) = handler.current_channel() {
-            tracing::warn!("Sending now playing message");
-            let chan_id = songbird::id::ChannelId(channel.0);
+        // if let Some(channel) = handler.current_channel() {
+        //     tracing::warn!("Sending now playing message");
+        //     let chan_id = songbird::id::ChannelId(channel.0);
 
-            send_now_playing(chan_id, self.http.clone(), self.call.clone())
-                .await
-                .ok();
-        } else {
-            tracing::warn!("No channel to send now playing message");
-        }
+        //     send_now_playing(chan_id, self.http.clone(), self.call.clone())
+        //         .await
+        //         .ok();
+        // } else {
+        //     tracing::warn!("No channel to send now playing message");
+        // }
         // drop(handler);
         None
     }
@@ -77,18 +78,19 @@ impl EventHandler for ModifyQueueHandler {
         //     .get(&self.guild_id)
         //     .map(|guild_settings| guild_settings.volume);
         // drop(handler);
-        let (queue, vol) = {
-            let handler = self.call.lock().await;
-            let queue = handler.queue().current_queue();
-            let settings = self.data.guild_settings_map.lock().unwrap().clone();
-            let vol = settings
-                .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.volume);
-            (queue, vol)
-        };
+        // FIXME
+        // let (queue, vol) = {
+        //     let handler = self.call.lock().await;
+        //     let queue = handler.queue().current_queue().clone();
+        //     let settings = self.data.guild_settings_map.lock().unwrap().clone();
+        //     let vol = settings
+        //         .get(&self.guild_id)
+        //         .map(|guild_settings| guild_settings.volume);
+        //     (queue, vol)
+        // };
 
-        vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
-        update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
+        // vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
+        // update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
 
         None
     }
@@ -112,7 +114,8 @@ pub async fn update_queue_messages(
         // has the page size shrunk?
         let num_pages = calculate_num_pages(tracks);
         let mut page = page_lock.write().unwrap();
-        *page = usize::min(*page, num_pages - 1);
+        let page_val = usize::min(*page, num_pages - 1);
+        *page = page_val;
 
         let embed = create_queue_embed(tracks, *page).await;
 
@@ -121,7 +124,7 @@ pub async fn update_queue_messages(
                 &http,
                 EditMessage::new()
                     .embed(embed)
-                    .components(build_nav_btns(*page, num_pages)),
+                    .components(build_nav_btns(page_val, num_pages)),
             )
             .await;
 
