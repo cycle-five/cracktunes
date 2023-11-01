@@ -1,12 +1,12 @@
 use self::serenity::{async_trait, http::Http, model::id::GuildId};
-use ::serenity::builder::EditMessage;
+use ::serenity::{all::ChannelId, builder::EditMessage};
 use poise::serenity_prelude::{self as serenity};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::{
-    // commands::music::{send_now_playing, voteskip::forget_skip_votes},
+    commands::{forget_skip_votes, send_now_playing},
     utils::{build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message},
     Data,
 };
@@ -51,19 +51,19 @@ impl EventHandler for TrackEndHandler {
         }
 
         // FIXME
-        // forget_skip_votes(&self.data, self.guild_id).await.ok();
+        forget_skip_votes(&self.data, self.guild_id).await.ok();
 
-        // if let Some(channel) = handler.current_channel() {
-        //     tracing::warn!("Sending now playing message");
-        //     let chan_id = songbird::id::ChannelId(channel.0);
+        if let Some(channel) = handler.current_channel() {
+            tracing::warn!("Sending now playing message");
+            let chan_id = ChannelId::new(channel.0.into());
 
-        //     send_now_playing(chan_id, self.http.clone(), self.call.clone())
-        //         .await
-        //         .ok();
-        // } else {
-        //     tracing::warn!("No channel to send now playing message");
-        // }
-        // drop(handler);
+            send_now_playing(chan_id, self.http.clone(), self.call.clone())
+                .await
+                .ok();
+        } else {
+            tracing::warn!("No channel to send now playing message");
+        }
+        drop(handler);
         None
     }
 }

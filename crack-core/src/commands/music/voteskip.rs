@@ -17,7 +17,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let bot_channel_id = get_voice_channel_for_user(
         &ctx.serenity_context().cache.guild(guild_id).unwrap(),
-        &ctx.serenity_context().cache.current_user_id(),
+        &ctx.serenity_context().cache.current_user().id,
     )
     .unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
@@ -40,7 +40,8 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         .cache
         .guild(guild_id)
         .unwrap()
-        .voice_states;
+        .voice_states
+        .clone();
     let channel_guild_users = guild_users
         .into_values()
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
@@ -51,7 +52,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         create_skip_response(ctx, &handler, 1).await
     } else {
         create_response_poise_text(
-            &ctx,
+            ctx,
             CrackedMessage::VoteSkip {
                 mention: get_user_id(&ctx).mention(),
                 missing: skip_threshold - cache.current_skip_votes.len(),
@@ -61,6 +62,10 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     }
 }
 
+/// Forget all skip votes for a guild
+/// This is used when a track ends, or when a user leaves the voice channel.
+/// This is to prevent users from voting to skip a track, then leaving the voice channel.
+/// TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
 pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), ()> {
     let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 

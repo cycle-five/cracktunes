@@ -790,7 +790,7 @@ async fn enqueue_track(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    tracing::warn!("query_type: {:?}", query_type);
+    tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let source: SongbirdInput = get_track_source(http, query_type.clone()).await;

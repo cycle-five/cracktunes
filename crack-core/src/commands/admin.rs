@@ -2,7 +2,7 @@ use std::{io::Write, sync::Arc};
 
 use poise::{
     serenity_prelude::{Channel, CreateMessage, User, UserId},
-    CreateReply, ReplyHandle,
+    CreateReply,
 };
 use serenity::{
     all::{ChannelId, GuildId},

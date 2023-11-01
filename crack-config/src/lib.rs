@@ -414,14 +414,5 @@ pub async fn poise_framework(
         exit(0);
     });
 
-    // let client = framework.client_settings(f)
-    // let res = framework.run_autosharded().await?;
-    // let mut client = Client::builder(token, intents)
-    //     .framework(Framework::new(f))
-    //     .await
-    //     .unwrap();
-    // res.start_autosharded().await.unwrap();
-    //res.client().start_autosharded().await?;
-    // client.start_autosharded().await?;
     Ok(client)
 }
