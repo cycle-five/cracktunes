@@ -16,9 +16,10 @@ tasks:
       sudo apt-get clean -y
       sudo rm -rf /var/lib/apt/lists/* 
   - install-rust: |
-      curl –proto '=https' –tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      source "$HOME/.cargo/env"
       rustup default stable
-      rustup install cargo
   - check: |
+      source "$HOME/.cargo/env"
       cd cracktunes
       cargo check
