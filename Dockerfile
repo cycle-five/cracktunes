@@ -23,7 +23,7 @@ WORKDIR "/app"
 COPY . .
 RUN ls -al . && ls -al data
 ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
-RUN . "$HOME/.cargo/env && cargo build --release --locked
+RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes
