@@ -526,8 +526,8 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                     _ => String::from("unknown"),
                 },
                 Err(err) => {
-                    tracing::error!("Error getting channel: {}", err);
-                    continue;
+                    tracing::error!("Error getting channel name for {}: {}", channel_id, err);
+                    "MISSING_ACCESS".to_string()
                 }
             };
 

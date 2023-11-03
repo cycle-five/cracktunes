@@ -35,6 +35,7 @@ reqwest = { workspace = true }
 sqlx = {workspace = true, optional = true}
 serenity = { workspace = true }
 songbird = { workspace = true }
+symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
 tungstenite = { workspace = true }
@@ -49,7 +50,6 @@ branch = "no-oldtime"
 # [dependencies.symphonia]
 # version = "0.5.3"
 # features = ["all"]
-
 
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"

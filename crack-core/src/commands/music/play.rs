@@ -290,6 +290,7 @@ pub async fn play(
             tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
             let embed = create_now_playing_embed(track).await;
+            print_queue(queue).await;
 
             edit_embed_response_poise(ctx, embed).await?;
         }
@@ -297,6 +298,20 @@ pub async fn play(
     }
 
     Ok(())
+}
+
+async fn print_queue(queue: Vec<TrackHandle>) {
+    for (_i, track) in queue.iter().enumerate() {
+        let metadata = get_track_metadata(track).await;
+        tracing::warn!(
+            "Track {}: {} - {}, State: {:?}, Ready: {:?}",
+            metadata.title.unwrap_or("".to_string()).red(),
+            metadata.artist.unwrap_or("".to_string()).white(),
+            metadata.album.unwrap_or("".to_string()).blue(),
+            track.get_info().await.unwrap().playing,
+            track.get_info().await.unwrap().ready,
+        );
+    }
 }
 
 async fn match_mode(
@@ -660,8 +675,13 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         return None;
     }
 
+    let zero_duration = Duration::ZERO;
     let top_track = queue.first()?;
-    let top_track_elapsed = top_track.get_info().await.unwrap().position;
+    let top_track_elapsed = top_track
+        .get_info()
+        .await
+        .map(|i| i.position)
+        .unwrap_or(zero_duration);
     let metadata = get_track_metadata(top_track).await;
 
     let top_track_duration = match metadata.duration {

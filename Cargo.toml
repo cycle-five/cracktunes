@@ -34,7 +34,7 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-version = "0.11.6"
+version = "0.11.7"
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
 default-features = false
@@ -43,6 +43,9 @@ features = [
   "cache",
   "collector",
   "client",
+  "framework",
+  "http",
+  "standard_framework",
   "gateway",
   "temp_cache",
   "model",
@@ -55,12 +58,12 @@ features = [
 [workspace.dependencies.songbird]
 git = "https://github.com/serenity-rs/songbird"
 branch = "next"
-version = "*"
-# version = "0.4"
+version = "0.3.2"
 features = [
   "driver",
   "serenity",
   "rustls",
+  "receive",
   "builtin-queue",
 ]
 
@@ -69,7 +72,8 @@ features = [
 # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
 [workspace.dependencies.symphonia]
 version = "0.5.3"
-features = ["all-formats", "all-codecs"]
+default-features = false
+features = ["all"]
 
 [workspace.dependencies.poise]
 # version = "0.5.6"

@@ -1,7 +1,13 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use self::serenity::{model::id::ChannelId, Mentionable};
+use crate::handlers::IdleHandler;
 use crate::{
     connection::get_voice_channel_for_user,
     errors::CrackedError,
+    handlers::TrackEndHandler,
+    messaging::message::CrackedMessage,
     // handlers::{IdleHandler, TrackEndHandler},
     // handlers::TrackEndHandler,
     // messaging::message::CrackedMessage,
@@ -9,8 +15,10 @@ use crate::{
     Context,
     Error,
 };
-use poise::serenity_prelude as serenity;
-// use songbird::{Event, TrackEvent};
+use poise::{serenity_prelude as serenity, CreateReply};
+use songbird::Call;
+use songbird::{Event, TrackEvent};
+use tokio::sync::Mutex;
 // use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
@@ -62,24 +70,32 @@ pub async fn summon(
         },
     };
 
-    if let Some(call) = manager.get(guild.id) {
-        let handler = call.lock().await;
-        let has_current_connection = handler.current_connection().is_some();
+    let call: Arc<Mutex<Call>> = match manager.get(guild.id) {
+        Some(call) => {
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
 
-        if has_current_connection && send_reply.unwrap_or(true) {
-            // bot is in another channel
-            let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
-            return Err(CrackedError::AlreadyConnected(bot_channel_id.mention()).into());
+            if has_current_connection && send_reply.unwrap_or(true) {
+                // bot is in another channel
+                let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
+                Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
+            } else {
+                Ok(call.clone())
+            }
         }
-    }
+        None => {
+            tracing::error!("No call found for guild: {:?}", guild.id);
+            Err(CrackedError::Other("No call found for guild"))
+        }
+    }?;
 
-    // join the channel
-    let result = manager.join(guild.id, channel_id).await;
-    let _call = result.map_err(|e| {
-        tracing::error!("Error joining channel: {:?}", e);
-        CrackedError::JoinChannelError(e)
-    })?;
-    /*
+    // // join the channel
+    // let result = manager.join(guild.id, channel_id).await;
+    // let _call = result.map_err(|e| {
+    //     tracing::error!("Error joining channel: {:?}", e);
+    //     CrackedError::JoinChannelError(e)
+    // })?;
+    call.lock().await.join(channel_id).await?;
     let buffer = {
         // // Open the data lock in write mode, so keys can be inserted to it.
         // let mut data = ctx.data().write().await;
@@ -89,6 +105,8 @@ pub async fn summon(
         let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
         data.clone()
     };
+
+    use crate::handlers::voice::register_voice_handlers;
 
     // FIXME
     // use crate::handlers::voice::register_voice_handlers;
@@ -133,14 +151,10 @@ pub async fn summon(
                 mention: channel_id.mention(),
             }
             .to_string();
-            ctx.send(|m| {
-                m.ephemeral = true;
-                m.content(text)
-            })
-            .await?;
+            ctx.send(CreateReply::new().content(text).ephemeral(true))
+                .await?;
         }
     }
-    */
 
     Ok(())
 }

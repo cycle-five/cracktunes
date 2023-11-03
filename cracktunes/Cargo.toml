@@ -18,6 +18,7 @@ sqlx = {workspace = true, optional = true}
 poise = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
+symphonia = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tungstenite = { workspace = true }
