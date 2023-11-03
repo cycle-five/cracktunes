@@ -114,7 +114,7 @@ pub async fn poise_framework(
             // commands::servers(),
             // commands::seek(),
             // commands::skip(),
-            // commands::stop(),
+            commands::stop(),
             // commands::shuffle(),
             commands::summon(),
             // commands::version(),
