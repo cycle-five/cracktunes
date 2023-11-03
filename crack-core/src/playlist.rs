@@ -1,4 +1,4 @@
-use songbird::tracks::{TrackHandle};
+use songbird::tracks::TrackHandle;
 use sqlx::{
     types::chrono::{self},
     SqlitePool,
