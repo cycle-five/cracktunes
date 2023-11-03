@@ -1,6 +1,5 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
-    //commands::{build_nav_btns, summon},
     guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
     messaging::{
         message::CrackedMessage,
@@ -10,10 +9,7 @@ use crate::{
         },
     },
     metrics::COMMAND_EXECUTIONS,
-    Context as CrackContext,
-    CrackedError,
-    Data,
-    Error,
+    Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
     all::{ButtonStyle, GuildId, Interaction},
@@ -927,4 +923,39 @@ pub async fn get_current_voice_channel_id(
 pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {
     let guild = ctx.cache.guild(guild_id)?;
     Some(guild.name.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_human_readable_timestamp() {
+        assert_eq!(
+            get_human_readable_timestamp(Some(Duration::new(3661, 0))),
+            "01:01:01"
+        );
+        assert_eq!(
+            get_human_readable_timestamp(Some(Duration::new(59, 0))),
+            "00:59"
+        );
+        assert_eq!(get_human_readable_timestamp(None), "∞");
+    }
+
+    #[test]
+    fn test_compare_domains() {
+        assert!(compare_domains("example.com", "example.com"));
+        assert!(compare_domains("example.com", "sub.example.com"));
+        assert!(!compare_domains("example.com", "example.org"));
+        assert!(!compare_domains("example.com", "anotherexample.com"));
+    }
+
+    #[test]
+    fn test_get_footer_info() {
+        let (text, icon_url) = get_footer_info("https://www.rust-lang.org/");
+        assert_eq!(text, "Streaming via rust-lang.org");
+        assert!(icon_url.contains("rust-lang.org"));
+    }
+
+    // ... additional tests here
 }

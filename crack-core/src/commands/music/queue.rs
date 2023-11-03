@@ -73,9 +73,6 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         }
     };
 
-    // let mut message = interaction
-    //     .get_interaction_response(&ctx.serenity_context().http)
-    //     .await?;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
@@ -100,6 +97,9 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     );
     drop(handler);
 
+    ///
+    ///
+    ///
     let mut cib = message
         .await_component_interactions(ctx)
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
@@ -124,8 +124,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 ">>" => num_pages - 1,
                 _ => continue,
             };
-            let page = *page_wlock;
-            page
+            *page_wlock
         };
 
         mci.create_response(
