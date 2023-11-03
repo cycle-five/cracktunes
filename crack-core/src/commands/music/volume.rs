@@ -158,8 +158,7 @@ pub async fn volume(
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
-    let embed = CreateEmbed::default().description(create_volume_desc(old, new));
-    embed
+    CreateEmbed::default().description(create_volume_desc(old, new))
 }
 
 pub fn create_volume_desc(old: f32, new: f32) -> String {

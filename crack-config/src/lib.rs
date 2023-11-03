@@ -117,9 +117,9 @@ pub async fn poise_framework(
             commands::stop(),
             // commands::shuffle(),
             commands::summon(),
-            // commands::version(),
-            // commands::volume(),
-            // commands::queue(),
+            commands::version(),
+            commands::volume(),
+            commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
         ],

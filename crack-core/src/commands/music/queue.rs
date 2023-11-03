@@ -1,31 +1,25 @@
-use self::serenity::{
-    builder::{CreateButton, CreateEmbed},
-    futures::StreamExt,
-    model::{channel::Message, id::GuildId},
-    prelude::RwLock,
-};
+use self::serenity::{builder::CreateEmbed, futures::StreamExt};
 use crate::{
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::messages::{
-        QUEUE_EXPIRED, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
-        QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+    messaging::messages::QUEUE_EXPIRED,
+    utils::{
+        build_nav_btns, calculate_num_pages, create_embed_response_poise, create_queue_embed,
+        forget_queue_message, get_interaction,
     },
-    utils::{create_embed_response_poise, get_human_readable_timestamp, get_interaction},
-    Context, Data, Error,
+    Context, Error,
 };
-use poise::serenity_prelude::{self as serenity, InteractionResponseFlags, InteractionType};
-use serenity::ButtonStyle;
-use songbird::{tracks::TrackHandle, Event, TrackEvent};
-use std::{
-    cmp::{max, min},
-    fmt::Write,
-    ops::Add,
-    sync::Arc,
-    time::Duration,
+use ::serenity::builder::{
+    CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
 };
+use poise::{
+    serenity_prelude::{self as serenity},
+    CreateReply,
+};
+use songbird::{Event, TrackEvent};
+use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
 
-const EMBED_PAGE_SIZE: usize = 6;
+// const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
@@ -36,8 +30,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
+            let embed =
+                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
             create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
@@ -51,30 +45,29 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut message = match get_interaction(ctx) {
         Some(interaction) => {
+            let num_pages = calculate_num_pages(&tracks);
             interaction
-                .create_interaction_response(&ctx.serenity_context().http, |response| {
-                    response
-                        .kind(InteractionType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| {
-                            let num_pages = calculate_num_pages(&tracks);
-
-                            message
-                                .add_embed(create_queue_embed(&tracks, 0))
-                                .components(|components| build_nav_btns(components, 0, num_pages))
-                        })
-                })
+                .create_response(
+                    &ctx.serenity_context().http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .embed(create_queue_embed(&tracks, 0).await)
+                            .components(build_nav_btns(0, num_pages)),
+                    ),
+                )
                 .await?;
             interaction
-                .get_interaction_response(&ctx.serenity_context().http)
+                .get_response(&ctx.serenity_context().http)
                 .await?
         }
         _ => {
+            let num_pages = calculate_num_pages(&tracks);
             let reply = ctx
-                .send(|m| {
-                    let num_pages = calculate_num_pages(&tracks);
-                    m.embeds.push(create_queue_embed(&tracks, 0));
-                    m.components(|components| build_nav_btns(components, 0, num_pages))
-                })
+                .send(
+                    CreateReply::new()
+                        .embed(create_queue_embed(&tracks, 0).await)
+                        .components(build_nav_btns(0, num_pages)),
+                )
                 .await?;
             reply.into_message().await?
         }
@@ -110,7 +103,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let mut cib = message
         .await_component_interactions(ctx)
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
-        .build();
+        .stream();
 
     while let Some(mci) = cib.next().await {
         let btn_id = &mci.data.custom_id;
@@ -121,33 +114,36 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         drop(handler);
 
         let num_pages = calculate_num_pages(&tracks);
-        let mut page_wlock = page.write().await;
+        let page = {
+            let mut page_wlock = page.write().unwrap();
 
-        *page_wlock = match btn_id.as_str() {
-            "<<" => 0,
-            "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
-            ">" => min(page_wlock.add(1), num_pages - 1),
-            ">>" => num_pages - 1,
-            _ => continue,
+            *page_wlock = match btn_id.as_str() {
+                "<<" => 0,
+                "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
+                ">" => min(page_wlock.add(1), num_pages - 1),
+                ">>" => num_pages - 1,
+                _ => continue,
+            };
+            let page = *page_wlock;
+            page
         };
 
-        mci.create_interaction_response(&ctx, |r| {
-            r.kind(InteractionType::UpdateMessage);
-            r.interaction_response_data(|d| {
-                d.add_embed(create_queue_embed(&tracks, *page_wlock));
-                d.components(|components| build_nav_btns(components, *page_wlock, num_pages))
-            })
-        })
+        mci.create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::new()
+                    .add_embed(create_queue_embed(&tracks, page).await)
+                    .components(build_nav_btns(page, num_pages)),
+            ),
+        )
         .await?;
     }
 
     message
-        .edit(&ctx.serenity_context().http, |edit| {
-            let mut embed = CreateEmbed::default();
-            embed.description(QUEUE_EXPIRED);
-            edit.set_embed(embed);
-            edit.components(|f| f)
-        })
+        .edit(
+            &ctx.serenity_context().http,
+            EditMessage::new().embed(CreateEmbed::default().description(QUEUE_EXPIRED)),
+        )
         .await
         .unwrap();
 
