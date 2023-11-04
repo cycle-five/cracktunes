@@ -71,26 +71,18 @@ impl EventHandler for TrackEndHandler {
 #[async_trait]
 impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        // let handler = self.call.lock().await;
-        // let queue = handler.queue().current_queue();
-        // let settings = self.data.guild_settings_map.lock().unwrap().clone();
-        // let vol = settings
-        //     .get(&self.guild_id)
-        //     .map(|guild_settings| guild_settings.volume);
-        // drop(handler);
-        // FIXME
-        // let (queue, vol) = {
-        //     let handler = self.call.lock().await;
-        //     let queue = handler.queue().current_queue().clone();
-        //     let settings = self.data.guild_settings_map.lock().unwrap().clone();
-        //     let vol = settings
-        //         .get(&self.guild_id)
-        //         .map(|guild_settings| guild_settings.volume);
-        //     (queue, vol)
-        // };
+        let (queue, vol) = {
+            let handler = self.call.lock().await;
+            let queue = handler.queue().current_queue().clone();
+            let settings = self.data.guild_settings_map.lock().unwrap().clone();
+            let vol = settings
+                .get(&self.guild_id)
+                .map(|guild_settings| guild_settings.volume);
+            (queue, vol)
+        };
 
-        // vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
-        // update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
+        vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
+        update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
 
         None
     }
