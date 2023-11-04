@@ -19,7 +19,7 @@ tasks:
       curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       source "$HOME/.cargo/env"
       rustup default stable
-  - check: |
+  - test: |
       source "$HOME/.cargo/env"
       cd cracktunes
-      cargo check
+      cargo test
