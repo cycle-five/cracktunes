@@ -6,12 +6,11 @@
   A hassle-free, highly performant, host-it-yourself, cracking smoking Discord music bot
 </p>
 
-<p align="center">
-  <a href="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml"><img src="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg"></a>
-  <a href="https://deps.rs/repo/github/cycle-five/cracktunes"><img src="https://deps.rs/repo/github/cycle-five/cracktunes/status.svg"></a>
-  <a href="https://github.com/cycle-five/cracktunes/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://github.com/cycle-five/cracktunes/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
-</p>
+[![builds.sr.ht status](https://builds.sr.ht/~cycle-five.svg)](https://builds.sr.ht/~cycle-five?)
+[![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
+[![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
+[![Rust Version](https://img.shields.io/badge/rustc-1.65-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Deployment
 
