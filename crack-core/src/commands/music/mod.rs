@@ -1,4 +1,4 @@
-// pub mod autopause;
+pub mod autopause;
 // pub mod clear;
 // pub mod collector;
 // pub mod gambling;
@@ -22,7 +22,7 @@ pub mod summon;
 pub mod volume;
 pub mod voteskip;
 
-// pub use autopause::*;
+pub use autopause::*;
 // pub use clear::*;
 // pub use collector::*;
 // pub use gambling::*;

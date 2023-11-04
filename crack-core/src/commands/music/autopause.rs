@@ -10,14 +10,7 @@ use crate::{
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = ctx.guild_id().unwrap();
-    // ctx.data().guild_settings_map.lock().unwrap().entry(guild_id).or_insert_with(|| {
-    //     GuildSettings::new(
-    //         guild_id,
-    //         Some(&prefix),
-    //         get_guild_name(ctx.serenity_context(), guild_id),
-    //     )
-    // });
-    // let mut data = ctx.serenity_context().data.write().await;
+
     {
         let mut settings = ctx.data().guild_settings_map.lock().unwrap();
 
