@@ -1,4 +1,4 @@
-use serenity::async_trait;
+use serenity::{all::GuildId, async_trait};
 
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, utils::create_lyrics_embed, Context, Error,
@@ -39,7 +39,8 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
     let query = match query {
         Some(query) => query,
         None => {
-            let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+            // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+            let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
             let manager = songbird::get(ctx.serenity_context()).await.unwrap();
             let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
@@ -90,6 +91,21 @@ pub async fn do_lyric_query(
     Ok((track, artists, lyric))
 }
 
+#[async_trait]
+pub trait ContextWithGuildId {
+    fn guild_id(&self) -> Option<GuildId>;
+}
+
+#[async_trait]
+impl<U, E> ContextWithGuildId for poise::Context<'_, U, E> {
+    fn guild_id(&self) -> Option<GuildId> {
+        Some(GuildId::new(1))
+    }
+}
+
+pub fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<GuildId> {
+    ctx.guild_id()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,7 +150,8 @@ mod tests {
     // #[tokio::test]
     // async fn test_query_or_title_without_query() {
     //     // Setup the test context and other necessary mock objects
-    //     let ctx = ...; // Mocked context without a current track
+    //     // let ctx = ...; // Mocked context without a current track
+    //     let ctx = poise::ApplicationContext::
 
     //     // Perform the test
     //     let result = query_or_title(ctx, None).await;
@@ -172,44 +189,4 @@ mod tests {
             )
         );
     }
-
-    // #[tokio::test]
-    // async fn test_do_lyric_query_not_found() {
-    //     // Setup the mocked `lyric_finder::Client`
-    //     let mut mock_client = MockClient::new();
-    //     mock_client.expect_get_lyric()
-    //         .with(eq("Invalid query"))
-    //         .times(1)
-    //         .return_once(|_| Err(lyric_finder::Error::...)); // Replace with appropriate error
-
-    //     // Perform the test
-    //     let result = do_lyric_query(mock_client, "Invalid query".to_string()).await;
-
-    //     // Assert that an error is returned
-    //     assert!(result.is_err());
-    // }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use mockall::predicate::*;
-//     use mockall::*;
-//     use serenity::all::GuildId;
-
-//     #[automock]
-//     impl Context {
-//         pub fn guild_id(&self) -> Result<GuildId, Error> {
-//             Ok(GuildId::new(1))
-//         }
-//     }
-
-//     #[tokio::test]
-//     async fn test_lyrics() {
-//         let query = "the weeknd blinding lights".to_string();
-//         let (track, artists, lyric) = do_lyric_query(query).await.unwrap();
-//         assert_eq!(track, "Blinding Lights");
-//         assert_eq!(artists, "The Weeknd");
-//         assert!(lyric.contains("I've been tryna call"));
-//     }
-// }
