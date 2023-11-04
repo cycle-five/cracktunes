@@ -437,6 +437,7 @@ dependencies = [
  "ffprobe",
  "lazy_static",
  "lyric_finder",
+ "mockall",
  "poise",
  "proc-macro2",
  "prometheus",

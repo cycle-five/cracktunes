@@ -1,4 +1,20 @@
-use crate::{errors::CrackedError, utils::create_lyrics_embed, Context, Error};
+use serenity::async_trait;
+
+use crate::{
+    commands::MyAuxMetadata, errors::CrackedError, utils::create_lyrics_embed, Context, Error,
+};
+
+#[async_trait]
+pub trait LyricFinderClient {
+    async fn get_lyric(&self, query: &str) -> anyhow::Result<lyric_finder::LyricResult>;
+}
+
+#[async_trait]
+impl LyricFinderClient for lyric_finder::Client {
+    async fn get_lyric(&self, query: &str) -> anyhow::Result<lyric_finder::LyricResult> {
+        self.get_lyric(query).await
+    }
+}
 
 /// Search for song lyrics.
 #[poise::command(prefix_command, slash_command, guild_only)]
@@ -11,6 +27,15 @@ pub async fn lyrics(
     // The artist field seems to really just get in the way as it's the literal youtube channel name
     // in many cases.
     // let search_artist = track_handle.metadata().artist.clone().unwrap_or_default();
+    let query = query_or_title(ctx, query).await?;
+    tracing::warn!("searching for lyrics for {}", query);
+
+    let lyric_finder_client = lyric_finder::Client::new();
+    let (track, artists, lyric) = do_lyric_query(lyric_finder_client, query).await?;
+    create_lyrics_embed(ctx, artists, track, lyric).await
+}
+
+pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
     let query = match query {
         Some(query) => query,
         None => {
@@ -24,14 +49,18 @@ pub async fn lyrics(
                 .current()
                 .ok_or(CrackedError::NothingPlaying)?;
 
-            let search_title = track_handle.metadata().title.clone().unwrap_or_default();
-
-            search_title.clone()
+            let lock = track_handle.typemap().read().await;
+            let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
+            data.title.clone().unwrap_or_default()
         }
     };
-    tracing::warn!("searching for lyrics for {}", query);
+    Ok(query)
+}
 
-    let client = lyric_finder::Client::new();
+pub async fn do_lyric_query(
+    client: impl LyricFinderClient,
+    query: String,
+) -> Result<(String, String, String), Error> {
     let result = match client.get_lyric(&query).await {
         Ok(result) => result,
         Err(e) => {
@@ -58,7 +87,129 @@ pub async fn lyrics(
         }
     };
 
-    // let embed = create_lyrics_embed(track, artists, lyric).await;
-    // create_embed_response_poise(ctx, embed).await
-    create_lyrics_embed(ctx, artists, track, lyric).await
+    Ok((track, artists, lyric))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate::*;
+    use mockall::*;
+
+    // Mock your dependencies here
+    // For example, a mock `lyric_finder::Client` might look like this
+    mock! {
+        LyricFinderClient{}
+
+        #[async_trait]
+        impl LyricFinderClient for LyricFinderClient {
+            async fn get_lyric(&self, query: &str) -> anyhow::Result<lyric_finder::LyricResult>;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_do_lyric_query_not_found() {
+        let mut mock_client = MockLyricFinderClient::new();
+        mock_client
+            .expect_get_lyric()
+            .returning(|_| Err(anyhow::Error::msg("Not found")));
+
+        let result = do_lyric_query(mock_client, "Invalid query".to_string()).await;
+        assert!(result.is_err());
+    }
+
+    // #[tokio::test]
+    // async fn test_query_or_title_with_query() {
+    //     // Setup the test context and other necessary mock objects
+    //     let ctx = ...; // Mocked context
+    //     let query = Some("Some query".to_string());
+
+    //     // Perform the test
+    //     let result = query_or_title(ctx, query).await;
+
+    //     // Assert the outcome
+    //     assert_eq!(result.unwrap(), "Some query");
+    // }
+
+    // #[tokio::test]
+    // async fn test_query_or_title_without_query() {
+    //     // Setup the test context and other necessary mock objects
+    //     let ctx = ...; // Mocked context without a current track
+
+    //     // Perform the test
+    //     let result = query_or_title(ctx, None).await;
+
+    //     // Assert that an error is returned because there's no current track
+    //     assert!(result.is_err());
+    // }
+
+    #[tokio::test]
+    async fn test_do_lyric_query_found() {
+        // Setup the mocked `lyric_finder::Client`
+        let mut mock_client = MockLyricFinderClient::new();
+        mock_client
+            .expect_get_lyric()
+            .with(eq("Some query"))
+            .times(1)
+            .return_once(|_| {
+                Ok(lyric_finder::LyricResult::Some {
+                    track: "Some track".to_string(),
+                    artists: "Some artist".to_string(),
+                    lyric: "Some lyrics".to_string(),
+                })
+            });
+
+        // Perform the test
+        let result = do_lyric_query(mock_client, "Some query".to_string()).await;
+
+        // Assert the outcome
+        assert_eq!(
+            result.unwrap(),
+            (
+                "Some track".to_string(),
+                "Some artist".to_string(),
+                "Some lyrics".to_string()
+            )
+        );
+    }
+
+    // #[tokio::test]
+    // async fn test_do_lyric_query_not_found() {
+    //     // Setup the mocked `lyric_finder::Client`
+    //     let mut mock_client = MockClient::new();
+    //     mock_client.expect_get_lyric()
+    //         .with(eq("Invalid query"))
+    //         .times(1)
+    //         .return_once(|_| Err(lyric_finder::Error::...)); // Replace with appropriate error
+
+    //     // Perform the test
+    //     let result = do_lyric_query(mock_client, "Invalid query".to_string()).await;
+
+    //     // Assert that an error is returned
+    //     assert!(result.is_err());
+    // }
+}
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use mockall::predicate::*;
+//     use mockall::*;
+//     use serenity::all::GuildId;
+
+//     #[automock]
+//     impl Context {
+//         pub fn guild_id(&self) -> Result<GuildId, Error> {
+//             Ok(GuildId::new(1))
+//         }
+//     }
+
+//     #[tokio::test]
+//     async fn test_lyrics() {
+//         let query = "the weeknd blinding lights".to_string();
+//         let (track, artists, lyric) = do_lyric_query(query).await.unwrap();
+//         assert_eq!(track, "Blinding Lights");
+//         assert_eq!(artists, "The Weeknd");
+//         assert!(lyric.contains("I've been tryna call"));
+//     }
+// }

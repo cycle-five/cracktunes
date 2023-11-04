@@ -57,3 +57,4 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 [dev-dependencies]
 tungstenite = "^0.20.1"
 async-tungstenite = "^0.23.0"
+mockall = "0.11.4"
