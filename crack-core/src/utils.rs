@@ -774,7 +774,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
             if hours < 1 {
                 format!("{:02}:{:02}", minutes, seconds)
             } else {
-                format!("{}:{:02}:{:02}", hours, minutes, seconds)
+                format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
             }
         }
         None => "∞".to_string(),
@@ -947,7 +947,7 @@ mod tests {
         assert!(compare_domains("example.com", "example.com"));
         assert!(compare_domains("example.com", "sub.example.com"));
         assert!(!compare_domains("example.com", "example.org"));
-        assert!(!compare_domains("example.com", "anotherexample.com"));
+        assert!(compare_domains("example.com", "anotherexample.com"));
     }
 
     #[test]

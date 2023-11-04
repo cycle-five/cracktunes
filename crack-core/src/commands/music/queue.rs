@@ -42,10 +42,10 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     drop(handler);
 
     tracing::trace!("tracks: {:?}", tracks);
+    let num_pages = calculate_num_pages(&tracks);
 
     let mut message = match get_interaction(ctx) {
         Some(interaction) => {
-            let num_pages = calculate_num_pages(&tracks);
             interaction
                 .create_response(
                     &ctx.serenity_context().http,
@@ -61,7 +61,6 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 .await?
         }
         _ => {
-            let num_pages = calculate_num_pages(&tracks);
             let reply = ctx
                 .send(
                     CreateReply::new()
@@ -97,9 +96,6 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     );
     drop(handler);
 
-    ///
-    ///
-    ///
     let mut cib = message
         .await_component_interactions(ctx)
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
@@ -113,8 +109,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         let tracks = handler.queue().current_queue();
         drop(handler);
 
-        let num_pages = calculate_num_pages(&tracks);
-        let page = {
+        let page_num = {
             let mut page_wlock = page.write().unwrap();
 
             *page_wlock = match btn_id.as_str() {
@@ -131,8 +126,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             &ctx,
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
-                    .add_embed(create_queue_embed(&tracks, page).await)
-                    .components(build_nav_btns(page, num_pages)),
+                    .add_embed(create_queue_embed(&tracks, page_num).await)
+                    .components(build_nav_btns(page_num, num_pages)),
             ),
         )
         .await?;
