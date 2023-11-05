@@ -141,6 +141,26 @@ async fn get_call_with_fail_msg(
     }
 }
 
+async fn send_searching_message(ctx: Context<'_>) -> Result<(), Error> {
+    match get_interaction_new(ctx) {
+        Some(interaction) => match interaction {
+            CommandOrMessageInteraction::Command(interaction) => {
+                create_response_interaction(
+                    &ctx.serenity_context().http,
+                    &interaction,
+                    CrackedMessage::Search.into(),
+                    true,
+                )
+                .await?
+            }
+            _ => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+        },
+        None => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+    }
+
+    Ok(())
+}
+
 /// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
@@ -213,21 +233,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    match get_interaction_new(ctx) {
-        Some(interaction) => match interaction {
-            CommandOrMessageInteraction::Command(interaction) => {
-                create_response_interaction(
-                    &ctx.serenity_context().http,
-                    &interaction,
-                    CrackedMessage::Search.into(),
-                    true,
-                )
-                .await?
-            }
-            _ => create_response_poise_text(ctx, CrackedMessage::Search).await?,
-        },
-        None => create_response_poise_text(ctx, CrackedMessage::Search).await?,
-    }
+    send_searching_message(ctx.clone()).await?;
 
     match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
 
@@ -768,23 +774,11 @@ async fn get_track_source(_http: &Http, query_type: QueryType) -> SongbirdInput 
         }
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            YoutubeDl::new(client, query).into()
-            // YouTubeRestartable::ytdl_search(query, true)
-            //     .await
-            //     .map_err(|e| {
-            //         tracing::error!("error: {}", e);
-            //         e.into()
-            //     })
+            YoutubeDl::new(client, format!("ytsearch:{}", query)).into()
         }
         QueryType::File(file) => {
             tracing::warn!("In File");
             HttpRequest::new(client, file.url.to_owned()).into()
-            // FileRestartable::download(file.url.to_owned(), true)
-            // .await
-            // .map_err(|e| {
-            //     tracing::error!("error: {}", e);
-            //     e.into()
-            // }),
         }
         QueryType::NewYoutubeDl(ytdl) => {
             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
@@ -798,7 +792,7 @@ async fn get_track_source(_http: &Http, query_type: QueryType) -> SongbirdInput 
         }
         QueryType::KeywordList(keywords_list) => {
             tracing::warn!("In KeywordList");
-            let ytdl = YoutubeDl::new(client, keywords_list.join(" "));
+            let ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
             tracing::warn!("ytdl: {:?}", ytdl);
             ytdl.into()
         }

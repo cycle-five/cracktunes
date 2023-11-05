@@ -28,12 +28,12 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate is terminal logging, too spammy */
+            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
             }
             _ => {
                 tracing::warn!(
                     "{} {} {} {}",
-                    "Error in event handler for ".yellow(),
+                    "In event handler for ".yellow(),
                     event.snake_case_name().yellow().italic(),
                     " event: ".yellow(),
                     error.to_string().yellow().bold(),
