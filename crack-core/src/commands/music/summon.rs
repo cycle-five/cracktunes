@@ -95,7 +95,7 @@ pub async fn summon(
     //     tracing::error!("Error joining channel: {:?}", e);
     //     CrackedError::JoinChannelError(e)
     // })?;
-    call.lock().await.join(channel_id).await?;
+    // call.lock().await.join(channel_id).await?;
     let buffer = {
         // // Open the data lock in write mode, so keys can be inserted to it.
         // let mut data = ctx.data().write().await;

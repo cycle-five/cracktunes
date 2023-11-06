@@ -31,6 +31,7 @@ pub enum CrackedError {
     AuthorNotFound,
     Anyhow(anyhow::Error),
     JoinChannelError(JoinError),
+    Json(serde_json::Error),
     LogChannelWarning(&'static str, GuildId),
     // LogChannelWarning(Option<String>, GuildId),
     NotInRange(&'static str, isize, isize, isize),
@@ -81,6 +82,7 @@ impl Display for CrackedError {
             }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
+            Self::Json(err) => f.write_str(&format!("{err}")),
             Self::Other(msg) => f.write_str(msg),
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"

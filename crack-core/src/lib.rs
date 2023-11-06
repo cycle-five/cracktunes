@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -207,8 +208,7 @@ impl PhoneCodeData {
 
     fn load_data(file_name: &str, url: &str) -> Result<HashMap<String, String>, CrackedError> {
         match fs::read_to_string(file_name) {
-            Ok(contents) => serde_json::from_str(&contents)
-                .map_err(|_| CrackedError::Other("Failed to parse file")),
+            Ok(contents) => serde_json::from_str(&contents).map_err(CrackedError::Json),
             Err(_) => Self::download_and_parse(url, file_name),
         }
     }
@@ -217,18 +217,17 @@ impl PhoneCodeData {
         url: &str,
         file_name: &str,
     ) -> Result<HashMap<String, String>, CrackedError> {
-        let response = get(url).map_err(|_| CrackedError::Other("Failed to download"))?;
-        let content = response
-            .text()
-            .map_err(|_| CrackedError::Other("Failed to read response"))?;
+        let response = get(url).map_err(CrackedError::Reqwest)?;
+        let content = response.text().map_err(CrackedError::Reqwest)?;
 
         // Save to local file
-        let mut file = fs::File::create(file_name)
-            .map_err(|_| CrackedError::Other("Failed to create file"))?;
+        fs::create_dir_all(Path::new(file_name).parent().unwrap()).map_err(CrackedError::IO)?;
+        let mut file = fs::File::create(file_name).map_err(CrackedError::IO)?;
+        //.map_err(|_| CrackedError::Other("Failed to create file"))?;
         file.write_all(content.as_bytes())
-            .map_err(|_| CrackedError::Other("Failed to write file"))?;
+            .map_err(CrackedError::IO)?;
 
-        serde_json::from_str(&content).map_err(|_| CrackedError::Other("Failed to parse file"))
+        serde_json::from_str(&content).map_err(CrackedError::Json)
     }
 
     pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
