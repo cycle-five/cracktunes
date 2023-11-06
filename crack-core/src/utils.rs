@@ -505,6 +505,36 @@ pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: Stri
     // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
 }
 
+pub async fn create_search_results_reply(
+    // ctx: CrackContext<'_>,
+    // results: Vec<String>,
+    results: Vec<CreateEmbed>,
+) -> CreateReply {
+    let mut reply = CreateReply::default()
+        .reply(true)
+        .content("Search results:");
+    for result in results {
+        reply.embeds.push(result);
+    }
+
+    reply.clone()
+
+    // let mut embed = CreateEmbed::default();
+    // for (i, result) in results.iter().enumerate() {
+    //     let _ = embed.field(
+    //         format!("{}. {}", i + 1, result),
+    //         format!("[{}]({})", result, result),
+    //         false,
+    //     );
+    // }
+
+    // CreateReply::default()
+    //     .
+    //     .embeds(embed.clone())
+    //     .content("Search results:")
+    //     .reply(true)
+}
+
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
     track: String,

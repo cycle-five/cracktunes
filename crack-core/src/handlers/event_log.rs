@@ -600,7 +600,7 @@ pub async fn handle_event(
             event_name
         ),
         FullEvent::ChannelUpdate { ctx, old, new } => {
-            let guild_id = new.clone().guild().map_or(GuildId::new(0), |x| x.guild_id);
+            let guild_id = new.clone().guild().map(|x| x.guild_id).unwrap_or_default();
             log_event!(
                 log_unimplemented_event,
                 guild_settings,

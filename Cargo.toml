@@ -56,8 +56,9 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-git = "https://github.com/serenity-rs/songbird"
-branch = "next"
+# git = "https://github.com/serenity-rs/songbird"
+path = "../songbird"
+# branch = "next"
 version = "0.3.2"
 features = [
   "driver",

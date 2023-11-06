@@ -60,27 +60,6 @@ impl EventHandler for SerenityHandler {
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
 
-        // loads serialized guild settings
-        tracing::warn!("Loading guilds' settings");
-        let _ = self.load_guilds_settings(&ctx, &ready).await;
-
-        let num_inserted = {
-            let lock = ctx.data.read().await;
-            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.lock().unwrap();
-
-            let mut x = 0;
-            for (key, value) in guild_settings_map.clone().iter() {
-                tracing::info!("Guild {} settings: {:?}", key, value);
-
-                data_write.insert(*key, value.clone());
-                x += 1;
-            }
-            x
-        };
-
-        tracing::warn!("num_inserted: {}", num_inserted);
-
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
         // tracing::warn!("Merging guilds' settings");
@@ -301,6 +280,27 @@ impl EventHandler for SerenityHandler {
         let ctx = Arc::new(ctx);
         let config = Arc::new(config);
 
+        // loads serialized guild settings
+        tracing::warn!("Loading guilds' settings");
+        let _ = self.load_guilds_settings_cache_ready(&ctx, &guilds).await;
+
+        let num_inserted = {
+            let lock = ctx.data.read().await;
+            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+
+            let mut x = 0;
+            for (key, value) in guild_settings_map.clone().iter() {
+                tracing::info!("Guild {} settings: {:?}", key, value);
+
+                data_write.insert(*key, value.clone());
+                x += 1;
+            }
+            x
+        };
+
+        tracing::warn!("num_inserted: {}", num_inserted);
+
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
         // ready shard event triggers.
@@ -371,7 +371,7 @@ impl SerenityHandler {
         );
     }
 
-    async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
+    async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
         let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
         tracing::info!("Loading guilds' settings");
@@ -401,6 +401,71 @@ impl SerenityHandler {
 
             let mut default =
                 GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
+
+            let _ = default.load_if_exists().map_err(|err| {
+                tracing::error!(
+                    "Failed to load guild {} settings due to {}",
+                    default.guild_id,
+                    err
+                );
+            });
+
+            tracing::warn!("GuildSettings: {:?}", default);
+
+            let _ = guild_settings_map.insert(default.guild_id, default.clone());
+
+            let guild_settings = guild_settings_map.get_mut(&default.guild_id);
+
+            guild_settings
+                .map(|x| {
+                    x.save().expect("Error saving guild settings");
+                    tracing::info!("saving guild {}...", x);
+                    x
+                })
+                .or_else(|| {
+                    tracing::error!("Guild not found in settings map");
+                    None
+                });
+        }
+        tracing::error!("guild_settings_map");
+        tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
+        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
+        // ret_map
+    }
+
+    async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
+        let prefix = self.data.bot_settings.get_prefix();
+        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        tracing::info!("Loading guilds' settings");
+        // let mut data = ctx.data.write().await;
+        // let settings = match data.get_mut::<GuildSettingsMap>() {
+        //     Some(settings) => settings,
+        //     None => {
+        //         tracing::error!("Guild settings not found");
+        //         data.insert::<GuildSettingsMap>(HashMap::default());
+        //         data.get_mut::<GuildSettingsMap>().unwrap()
+        //     }
+        // };
+        for guild_id in guilds {
+            // let guild_id = guild.id;
+            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match,
+                None => {
+                    tracing::error!("Guild not found in cache");
+                    continue;
+                }
+            };
+            tracing::info!(
+                "Loading guild settings for {}, {}",
+                guild_full.id,
+                guild_full.name.clone()
+            );
+
+            let mut default = GuildSettings::new(
+                guild_full.id,
+                Some(&prefix),
+                Some(guild_full.name.to_ascii_lowercase().clone()),
+            );
 
             let _ = default.load_if_exists().map_err(|err| {
                 tracing::error!(

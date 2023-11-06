@@ -112,7 +112,7 @@ pub struct WelcomeSettings {
     pub auto_role: Option<u64>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
@@ -205,7 +205,7 @@ impl GuildSettings {
         let path = format!(
             "{}/{}-{}.json",
             SETTINGS_PATH.as_str(),
-            self.guild_name,
+            self.guild_name.to_ascii_lowercase(),
             self.guild_id,
         );
         if !Path::new(&path).exists() {
@@ -365,15 +365,12 @@ impl GuildSettings {
         self
     }
 
-    pub fn get_guild_name(&self) -> &str {
-        let guild_name = {
-            if self.guild_name.is_empty() {
-                "UNSET"
-            } else {
-                self.guild_name.as_str()
-            }
-        };
-        guild_name
+    pub fn get_guild_name(&self) -> String {
+        if self.guild_name.is_empty() {
+            self.guild_id.to_string().to_ascii_lowercase()
+        } else {
+            self.guild_name.to_ascii_lowercase()
+        }
     }
 
     pub fn get_prefix(&self) -> &str {
@@ -503,6 +500,12 @@ impl GuildSettings {
     }
 }
 
+pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
+    for guild_settings in guild_settings_map.values() {
+        let _ = guild_settings.save();
+    }
+}
+
 // use self::serenity::{Context as SerenityContext, EventHandler};
 // pub async fn load_guilds_settings(
 //     ctx: &SerenityContext,
@@ -578,8 +581,11 @@ impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
 }
 
-pub struct Float;
-
-impl TypeMapKey for Float {
-    type Value = f32;
-}
+// impl GuildSettingsMap {
+//     pub fn save(self) {
+//         let data = self.0;
+//         for (_, guild_settings) in data {
+//             let _ = guild_settings.save();
+//         }
+//     }
+// }

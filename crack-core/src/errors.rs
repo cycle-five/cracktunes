@@ -18,6 +18,7 @@ use rspotify::ClientError as RSpotifyClientError;
 use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
+use songbird::input::AudioStreamError;
 //use songbird::input:{DcaError, Error as InputError};
 // use audiopus::Error as InputError;
 use std::fmt::{self};
@@ -27,6 +28,7 @@ use std::fmt::{Debug, Display};
 #[derive(Debug)]
 pub enum CrackedError {
     AlreadyConnected(Mention),
+    AudioStream(AudioStreamError),
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
@@ -77,6 +79,7 @@ unsafe impl Sync for CrackedError {}
 impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AudioStream(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }
@@ -158,6 +161,12 @@ impl PartialEq for CrackedError {
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+impl From<AudioStreamError> for CrackedError {
+    fn from(err: AudioStreamError) -> Self {
+        Self::AudioStream(err)
     }
 }
 

@@ -3140,7 +3140,6 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.3.2"
-source = "git+https://github.com/serenity-rs/songbird?branch=next#87bd3abaf336d623ce596c8007ae006ad51a810e"
 dependencies = [
  "async-trait",
  "audiopus",

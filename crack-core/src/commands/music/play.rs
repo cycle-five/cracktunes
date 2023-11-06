@@ -50,6 +50,7 @@ pub enum QueryType {
     PlaylistLink(String),
     File(serenity::Attachment),
     NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    // YoutubeSearch(String),
 }
 
 /// Get the guild name (guild-only)
@@ -231,7 +232,7 @@ pub async fn play(
     // needed because interactions must be replied within 3s and queueing takes longer
     send_search_message(ctx).await?;
 
-    match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
+    match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
 
     let handler = call.lock().await;
 
@@ -296,7 +297,9 @@ pub async fn play(
 
             edit_embed_response_poise(ctx, embed).await?;
         }
-        _ => unreachable!(),
+        Ordering::Less => {
+            tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
+        }
     }
 
     Ok(())
@@ -317,7 +320,7 @@ async fn print_queue(queue: Vec<TrackHandle>) {
 }
 
 async fn match_mode(
-    ctx: &Context<'_>,
+    ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
@@ -331,6 +334,18 @@ async fn match_mode(
 
     match mode {
         Mode::End => match query_type.clone() {
+            // QueryType::YoutubeSearch(query) => {
+            //     tracing::warn!("Mode::End, QueryType::YoutubeSearch");
+            //     do_yt_search(ctx, query).await?;
+            //     // let queue = enqueue_track(
+            //     //     ctx.http(),
+            //     //     &call,
+            //     //     &QueryType::YoutubeSearch(search_str.to_string()),
+            //     // )
+            //     // .await?;
+            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+            //     //     .await;
+            // }
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let queue = enqueue_track(ctx.http(), &call, &query_type).await?;
@@ -379,6 +394,36 @@ async fn match_mode(
             }
         },
         Mode::Next => match query_type.clone() {
+            // QueryType::YoutubeSearch(query) => {
+            //     // default to using ytsearch5: where passing this to a
+            //     // function that displays the options and when it either
+            //     // times out or the user makes a selection it will return here
+            //     // and be made into a YoutubeDl and be played.
+            //     do_yt_search(ctx, query).await?;
+            //     // let mut ytdl = YoutubeDl::new(Client::new(), format!("ytsearch5:{}", search));
+            //     // let results = ytdl.search_query().await?;
+            //     // let embeds = results
+            //     //     .into_iter()
+            //     //     .enumerate()
+            //     //     .map(|(i, result)| {
+            //     //         CreateEmbed::default()
+            //     //             .title(format!("({})[{}]", i, result))
+            //     //             .description(&result)
+            //     //             .url(&result)
+
+            //     //         // CreateEmbed::default()
+            //     //         //     .title(&result.title)
+            //     //         //     .description(&result.description)
+            //     //         //     .url(&result.url)
+            //     //         //     .thumbnail(&result.thumbnail)
+            //     //         //     .footer(CreateEmbedFooter::new(&result.uploader))
+            //     //     })
+            //     //     .collect::<Vec<CreateEmbed>>();
+            //     // for embed in embeds.iter() {
+            //     //     tracing::warn!("embed: {:?}", embed);
+            //     // }
+            //     // ctx.send(create_search_results_reply(embeds).await).await?;
+            // }
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)
@@ -437,6 +482,18 @@ async fn match_mode(
             }
         },
         Mode::Jump => match query_type.clone() {
+            // QueryType::YoutubeSearch(query) => {
+            //     tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+            //     do_yt_search(ctx, query).await?;
+            //     // let queue = enqueue_track(
+            //     //     ctx.http(),
+            //     //     &call,
+            //     //     &QueryType::YoutubeSearch(query.to_string()),
+            //     // )
+            //     // .await?;
+            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+            //     //     .await;
+            // }
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)
@@ -575,7 +632,7 @@ async fn match_mode(
             }
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(*ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
@@ -608,6 +665,7 @@ async fn match_url(
                 tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
             }
+
             Some(other) => {
                 let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings.entry(guild_id).or_insert_with(|| {
@@ -642,9 +700,20 @@ async fn match_url(
                 let metadata = yt.aux_metadata().await?;
                 Some(QueryType::NewYoutubeDl((yt, metadata)))
             }
-            None => None,
+            None => None, // This is where the ytsearch: query string is handled???
+                          // None => {
+                          //     let search_query = QueryType::YoutubeSearch(url.to_string());
+                          //     tracing::error!("None case under url_data, search_query: {:?}", search_query);
+                          //     Some(search_query)
+                          // }
         },
-        Err(_) => {
+        Err(e) => {
+            tracing::error!("Url::parse error: {}", e);
+            // if url.contains("ytsearch") {
+            //     let search_query = QueryType::YoutubeSearch(url.to_string());
+            //     tracing::error!("search_query: {:?}", search_query);
+            //     Some(search_query)
+            // } else {
             let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings.entry(guild_id).or_insert_with(|| {
                 GuildSettings::new(
@@ -666,6 +735,7 @@ async fn match_url(
             }
 
             Some(QueryType::Keywords(url.to_string()))
+            // }
         }
     };
 
@@ -773,6 +843,14 @@ async fn get_track_source_and_metadata(
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
+        // QueryType::YoutubeSearch(query) => {
+        //     tracing::error!("In YoutubeSearch");
+        //     let mut ytdl = YoutubeDl::new(client, query);
+        //     let asdf = ytdl.search_query().await.unwrap();
+        //     tracing::error!("asdf: {:?}", asdf);
+        //     let my_metadata = MyAuxMetadata::default();
+        //     (ytdl.into(), my_metadata)
+        // }
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
             let mut ytdl = YoutubeDl::new(client, query);

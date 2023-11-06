@@ -1,5 +1,8 @@
 use crate::{Context, Error};
-use ::serenity::builder::{CreateActionRow, CreateButton};
+use ::serenity::builder::{
+    CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage,
+    EditMessage,
+};
 use poise::{serenity_prelude as serenity, CreateReply};
 
 /// Boop the bot!
@@ -18,10 +21,11 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
             )
             .style(serenity::ButtonStyle::Primary)
             .label("Boop me!")])]),
-    );
+    )
+    .await?;
 
     let mut boop_count = 0;
-    while let Some(mci) = serenity::ComponentInteraction::new(ctx)
+    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx)
         .author_id(ctx.author().id)
         .channel_id(ctx.channel_id())
         .timeout(std::time::Duration::from_secs(120))
@@ -31,12 +35,16 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
         boop_count += 1;
 
         let mut msg = mci.message.clone();
-        msg.edit(ctx, |m| m.content(format!("Boop count: {}", boop_count)))
-            .await?;
+        msg.edit(
+            ctx,
+            EditMessage::default().content(format!("Boop count: {}", boop_count)),
+        )
+        .await?;
 
-        mci.create_interaction_response(ctx, |ir| {
-            ir.kind(serenity::InteractionType::DeferredUpdateMessage)
-        })
+        mci.create_response(
+            ctx,
+            CreateInteractionResponse::UpdateMessage(CreateInteractionResponseMessage::default()),
+        )
         .await?;
     }
 
