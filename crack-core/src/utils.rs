@@ -244,17 +244,20 @@ pub async fn create_response_interaction(
 ) -> Result<(), Error> {
     match interaction {
         Interaction::Command(int) => {
-            if defer {
-                int.defer(http).await.unwrap();
-            }
-            int.create_response(
-                http,
+            // Is this "acknowledging" the interaction?
+            // if defer {
+            //     int.defer(http).await.unwrap();
+            // }
+            let res = if defer {
+                CreateInteractionResponse::Defer(
+                    CreateInteractionResponseMessage::new().embed(embed.clone()),
+                )
+            } else {
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
-                ),
-            )
-            .await
-            .map_err(Into::into)
+                )
+            };
+            int.create_response(http, res).await.map_err(Into::into)
         }
         Interaction::Ping(..)
         | Interaction::Component(..)

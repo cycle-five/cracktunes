@@ -117,6 +117,8 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
     }
 }
 
+/// Get the call handle for songbird
+/// FIXME: Does this need to take the GuildId?
 #[inline]
 async fn get_call_with_fail_msg(
     ctx: Context<'_>,
@@ -141,7 +143,9 @@ async fn get_call_with_fail_msg(
     }
 }
 
-async fn send_searching_message(ctx: Context<'_>) -> Result<(), Error> {
+/// Sends the searching message after a play command is sent.
+/// Also defers the interaction so we won't timeout.
+async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
     match get_interaction_new(ctx) {
         Some(interaction) => match interaction {
             CommandOrMessageInteraction::Command(interaction) => {
@@ -159,6 +163,11 @@ async fn send_searching_message(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    Ok(guild_id)
 }
 
 /// Play a song.
@@ -185,6 +194,7 @@ pub async fn play(
 
     let mode = get_mode(is_prefix, msg.clone(), mode);
 
+    // TODO: Maybe put into it's own function?
     let url = match file.clone() {
         Some(file) => file.url.as_str().to_owned().to_string(),
         None => msg.clone().unwrap(),
@@ -193,37 +203,23 @@ pub async fn play(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            let embed = CreateEmbed::default().description(format!("{}", CrackedError::NoGuildId));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
-
-    let call = get_call_with_fail_msg(ctx, guild_id).await?;
-    // let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    // let call = match manager.get(guild_id) {
-    //     Some(call) => call,
+    // let guild_id = match ctx.guild_id() {
+    //     Some(id) => id,
     //     None => {
-    //         // try to join a voice channel if not in one just yet
-    //         //match summon_short(ctx).await {
-    //         match manager.join(guild_id, ctx.channel_id()).await {
-    //             Ok(_) => manager.get(guild_id).unwrap(),
-    //             Err(_) => {
-    //                 let mut embed = CreateEmbed::default();
-    //                 embed.description(format!("{}", CrackedError::NotConnected));
-    //                 create_embed_response_poise(ctx, embed).await?;
-    //                 return Ok(());
-    //             }
-    //         }
+    //         let embed = CreateEmbed::default().description(format!("{}", CrackedError::NoGuildId));
+    //         create_embed_response_poise(ctx, embed).await?
     //     }
     // };
+
+    let guild_id = get_guild_id_with_fail_msg(ctx).await?;
+
+    let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
     // determine whether this is a link or a query string
     let query_type = match_url(ctx, url, file).await?;
 
+    // FIXME: Decide whether we're using this everywhere, or not.
+    // Don't like the inconsistency.
     let query_type = verify(
         query_type,
         CrackedError::Other("Something went wrong while parsing your query!"),
@@ -233,7 +229,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    send_searching_message(ctx.clone()).await?;
+    send_search_message(ctx).await?;
 
     match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
 
@@ -724,6 +720,12 @@ impl TypeMapKey for MyAuxMetadata {
     type Value = MyAuxMetadata;
 }
 
+impl Default for MyAuxMetadata {
+    fn default() -> Self {
+        MyAuxMetadata::Data(AuxMetadata::default())
+    }
+}
+
 async fn create_queued_embed(
     title: &str,
     track: &TrackHandle,
@@ -762,39 +764,56 @@ async fn create_queued_embed(
         .footer(CreateEmbedFooter::new(footer_text))
 }
 
-async fn get_track_source(_http: &Http, query_type: QueryType) -> SongbirdInput {
+// FIXME: Do you want to have a reqwest client we keep around and pass into
+// this instead of creating a new one every time?
+async fn get_track_source_and_metadata(
+    _http: &Http,
+    query_type: QueryType,
+) -> (SongbirdInput, MyAuxMetadata) {
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
-            let ytdl = YoutubeDl::new(client, query);
+            let mut ytdl = YoutubeDl::new(client, query);
             tracing::warn!("ytdl: {:?}", ytdl);
-            ytdl.into()
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
         }
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            YoutubeDl::new(client, format!("ytsearch:{}", query)).into()
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
         }
         QueryType::File(file) => {
             tracing::warn!("In File");
-            HttpRequest::new(client, file.url.to_owned()).into()
+            (
+                HttpRequest::new(client, file.url.to_owned()).into(),
+                MyAuxMetadata::default(),
+            )
         }
         QueryType::NewYoutubeDl(ytdl) => {
             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
-            ytdl.0.into()
+            (ytdl.0.into(), MyAuxMetadata::Data(ytdl.1))
         }
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
-            let ytdl = YoutubeDl::new(client, url);
+            let mut ytdl = YoutubeDl::new(client, url);
             tracing::warn!("ytdl: {:?}", ytdl);
-            ytdl.into()
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
         }
         QueryType::KeywordList(keywords_list) => {
             tracing::warn!("In KeywordList");
-            let ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
             tracing::warn!("ytdl: {:?}", ytdl);
-            ytdl.into()
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
         }
     }
 }
@@ -807,15 +826,14 @@ async fn enqueue_track(
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let source: SongbirdInput = get_track_source(http, query_type.clone()).await;
+    let (source, metadata): (SongbirdInput, MyAuxMetadata) =
+        get_track_source_and_metadata(http, query_type.clone()).await;
     let track: Track = source.into();
 
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(track).await;
-    if let QueryType::NewYoutubeDl(ytdl) = query_type {
-        let mut map = track_handle.typemap().write().await;
-        map.insert::<MyAuxMetadata>(MyAuxMetadata::Data(ytdl.1.clone()));
-    };
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(metadata);
 
     Ok(handler.queue().current_queue())
 }
