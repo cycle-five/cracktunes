@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "cracktunes",
-    "crack-core",
-    "crack-osint",
-    "crack-config",
-    "crack-gpt"
+  "cracktunes",
+  "crack-core",
+  "crack-osint",
+  "crack-config",
+  "crack-gpt",
 ]
 resolver = "2"
 
@@ -15,7 +15,7 @@ crack-config = { path = "crack-config", default-features = true, version = "0.1.
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1.0" }
 tungstenite = "^0.20.1"
 async-tungstenite = "^0.23.0"
-reqwest = {version = "0.11.22", features = ["blocking", "json"]}
+reqwest = { version = "0.11.22", features = ["blocking", "json"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
 audiopus = "0.2.0"
@@ -56,17 +56,11 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-# git = "https://github.com/serenity-rs/songbird"
-path = "../songbird"
-# branch = "next"
+git = "https://github.com/CycleFive/songbird"
+# path = "../songbird"
+branch = "next"
 version = "0.3.2"
-features = [
-  "driver",
-  "serenity",
-  "rustls",
-  "receive",
-  "builtin-queue",
-]
+features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
 
 # To get additional codecs, you *must* add Symphonia yourself.
