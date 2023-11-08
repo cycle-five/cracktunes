@@ -25,7 +25,7 @@ use poise::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
         MessageInteraction,
     },
-    CommandOrAutocompleteInteraction, CreateReply, FrameworkError, ReplyHandle,
+    CommandOrAutocompleteInteraction, CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::fmt::Write;
@@ -903,22 +903,22 @@ pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
     }
 }
 
-pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
-    match ctx {
-        CrackContext::Application(_ctx) => {
-            tracing::warn!("summoning via slash command");
-            // summon().slash_action.unwrap()(ctx).await
-            // FIXME
-            Ok(())
-        }
-        CrackContext::Prefix(_ctx) => {
-            tracing::warn!("summoning via prefix command");
-            // summon().prefix_action.unwrap()(ctx).await
-            // FIXME
-            Ok(())
-        }
-    }
-}
+// pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
+//     match ctx {
+//         CrackContext::Application(_ctx) => {
+//             tracing::warn!("summoning via slash command");
+//             // summon().slash_action.unwrap()(ctx).await
+//             // FIXME
+//             Ok(())
+//         }
+//         CrackContext::Prefix(_ctx) => {
+//             tracing::warn!("summoning via prefix command");
+//             // summon().prefix_action.unwrap()(ctx).await
+//             // FIXME
+//             Ok(())
+//         }
+//     }
+// }
 
 pub async fn handle_error(
     ctx: CrackContext<'_>,
@@ -969,6 +969,9 @@ pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Opt
 
 #[cfg(test)]
 mod tests {
+
+    use ::serenity::all::Button;
+
     use super::*;
 
     #[test]
@@ -999,5 +1002,15 @@ mod tests {
         assert!(icon_url.contains("rust-lang.org"));
     }
 
-    // ... additional tests here
+    #[test]
+    fn test_build_single_nav_btn() {
+        let creat_btn = build_single_nav_btn("<<", true);
+        let s = serde_json::to_string_pretty(&creat_btn).unwrap();
+        println!("s: {}", s);
+        let btn = serde_json::from_str::<Button>(&s).unwrap();
+
+        assert_eq!(btn.label, Some("<<".to_string()));
+        // assert_eq!(btn.style, ButtonStyle::Primary);
+        assert_eq!(btn.disabled, true);
+    }
 }

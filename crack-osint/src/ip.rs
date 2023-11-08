@@ -8,7 +8,7 @@ use std::net::IpAddr;
 /// address and sends a response with this information. If the IP address is not
 /// valid, this command sends an error message.
 ///
-#[poise::command(prefix_command, hide_in_help)]
+#[poise::command(prefix_command)]
 pub async fn ip(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     // Validate the IP address
     if ip_address.parse::<IpAddr>().is_err() {

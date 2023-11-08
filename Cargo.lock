@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crack-core",
  "ipinfo",
@@ -2223,6 +2223,7 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.5.5"
+source = "git+https://github.com/serenity-rs/poise?branch=serenity-next#557c4cf39eaf22c7e929e5a0a208651395783aa5"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2240,6 +2241,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.5.5"
+source = "git+https://github.com/serenity-rs/poise?branch=serenity-next#557c4cf39eaf22c7e929e5a0a208651395783aa5"
 dependencies = [
  "darling",
  "proc-macro2",

@@ -20,19 +20,19 @@ colored = "2.0.4"
 lazy_static = "1.4.0"
 lyric_finder = "0.1.4"
 rand = "0.8.5"
-regex = "1.10.0"
-serde_json = "1.0.107"
+regex = "1.10.2"
+serde_json = "1.0.108"
 url = "2.4.1"
-serde = { version = "1.0.188", features = ["derive", "rc"] }
-serde_stream = { version = "1.0.1", features = ["tokio"]}
+serde = { version = "1.0.192", features = ["derive", "rc"] }
+serde_stream = { version = "1.0.1", features = ["tokio"] }
 sys-info = "0.9.1"
-prometheus = {version = "0.13.3", features = ["process"]}
+prometheus = { version = "0.13.3", features = ["process"] }
 anyhow = "1.0.75"
 proc-macro2 = "1.0.69"
 typemap_rev = "0.3.0"
 tracing = { workspace = true }
 reqwest = { workspace = true }
-sqlx = {workspace = true, optional = true}
+sqlx = { workspace = true, optional = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }

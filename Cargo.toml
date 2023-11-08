@@ -9,8 +9,8 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.2.11" }
-crack-osint = { path = "crack-osint", default-features = true, version = "0.1.0" }
+crack-core = { path = "crack-core", default-features = true, version = "0.2.12" }
+crack-osint = { path = "crack-osint", default-features = true, version = "0.1.1" }
 crack-config = { path = "crack-config", default-features = true, version = "0.1.0" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1.0" }
 tungstenite = "^0.20.1"
@@ -72,10 +72,10 @@ features = ["all"]
 
 [workspace.dependencies.poise]
 # version = "0.5.6"
-version = "0.5.5"
-path = "../poise"
-# git = "https://github.com/cycle-five/poise"
-# branch = "serenity-next"
+# version = "0.5.5"
+# path = "../poise"
+git = "https://github.com/serenity-rs/poise"
+branch = "serenity-next"
 default-features = true
 
 [workspace.dependencies.tokio]
