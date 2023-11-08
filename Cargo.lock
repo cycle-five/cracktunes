@@ -1574,9 +1574,9 @@ checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.10"
+version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2479e8c062e40bf0066ffa0bc823de0a9368974af99c9f6df941d2c231e03f"
+checksum = "969488b55f8ac402214f3f5fd243ebb7206cf82de60d3172994707a4bcc2b829"
 
 [[package]]
 name = "lock_api"
@@ -2223,7 +2223,6 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.5.5"
-source = "git+https://github.com/cycle-five/poise?branch=serenity-next#7b545eca58ee0a5679110a83e3c72ff73246dcfb"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2241,7 +2240,6 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.5.5"
-source = "git+https://github.com/cycle-five/poise?branch=serenity-next#7b545eca58ee0a5679110a83e3c72ff73246dcfb"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2614,7 +2612,7 @@ dependencies = [
 [[package]]
 name = "rspotify"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#3d883cab9e4a81b86e24e1914a6b135ec601b4ec"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#5fbf26a39310b725edf195cc17a70ac342e07c2c"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2637,7 +2635,7 @@ dependencies = [
 [[package]]
 name = "rspotify-http"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#3d883cab9e4a81b86e24e1914a6b135ec601b4ec"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#5fbf26a39310b725edf195cc17a70ac342e07c2c"
 dependencies = [
  "async-trait",
  "log",
@@ -2650,12 +2648,12 @@ dependencies = [
 [[package]]
 name = "rspotify-macros"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#3d883cab9e4a81b86e24e1914a6b135ec601b4ec"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#5fbf26a39310b725edf195cc17a70ac342e07c2c"
 
 [[package]]
 name = "rspotify-model"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#3d883cab9e4a81b86e24e1914a6b135ec601b4ec"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#5fbf26a39310b725edf195cc17a70ac342e07c2c"
 dependencies = [
  "chrono",
  "enum_dispatch",
@@ -2721,7 +2719,7 @@ dependencies = [
  "bitflags 2.4.1",
  "errno",
  "libc",
- "linux-raw-sys 0.4.10",
+ "linux-raw-sys 0.4.11",
  "windows-sys 0.48.0",
 ]
 

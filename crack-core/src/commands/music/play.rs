@@ -204,14 +204,6 @@ pub async fn play(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    // let guild_id = match ctx.guild_id() {
-    //     Some(id) => id,
-    //     None => {
-    //         let embed = CreateEmbed::default().description(format!("{}", CrackedError::NoGuildId));
-    //         create_embed_response_poise(ctx, embed).await?
-    //     }
-    // };
-
     let guild_id = get_guild_id_with_fail_msg(ctx).await?;
 
     let call = get_call_with_fail_msg(ctx, guild_id).await?;
@@ -394,36 +386,6 @@ async fn match_mode(
             }
         },
         Mode::Next => match query_type.clone() {
-            // QueryType::YoutubeSearch(query) => {
-            //     // default to using ytsearch5: where passing this to a
-            //     // function that displays the options and when it either
-            //     // times out or the user makes a selection it will return here
-            //     // and be made into a YoutubeDl and be played.
-            //     do_yt_search(ctx, query).await?;
-            //     // let mut ytdl = YoutubeDl::new(Client::new(), format!("ytsearch5:{}", search));
-            //     // let results = ytdl.search_query().await?;
-            //     // let embeds = results
-            //     //     .into_iter()
-            //     //     .enumerate()
-            //     //     .map(|(i, result)| {
-            //     //         CreateEmbed::default()
-            //     //             .title(format!("({})[{}]", i, result))
-            //     //             .description(&result)
-            //     //             .url(&result)
-
-            //     //         // CreateEmbed::default()
-            //     //         //     .title(&result.title)
-            //     //         //     .description(&result.description)
-            //     //         //     .url(&result.url)
-            //     //         //     .thumbnail(&result.thumbnail)
-            //     //         //     .footer(CreateEmbedFooter::new(&result.uploader))
-            //     //     })
-            //     //     .collect::<Vec<CreateEmbed>>();
-            //     // for embed in embeds.iter() {
-            //     //     tracing::warn!("embed: {:?}", embed);
-            //     // }
-            //     // ctx.send(create_search_results_reply(embeds).await).await?;
-            // }
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)

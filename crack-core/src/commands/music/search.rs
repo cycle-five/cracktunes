@@ -23,6 +23,11 @@ pub async fn search(
 async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHandle, CrackedError> {
     let mut ytdl = YoutubeDl::new(Client::new(), search_query);
     let results = ytdl.search_query().await?;
+    // CreateSelectMenuOption::new("url", "link").description("ASDF");
+    // CreateActionRow::SelectMenu(CreateSelectMenu::new(
+    //     "Search Results: {}",
+    //     CreateSelectMenuKind,
+    // ));
     let embeds = results
         .into_iter()
         .enumerate()
