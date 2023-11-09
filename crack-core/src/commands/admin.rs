@@ -63,20 +63,39 @@ pub async fn set_prefix(
     #[description = "The prefix to set for the bot"] prefix: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let mut data = ctx.serenity_context().data.write().await;
-    let _entry = &data
+    ctx.data()
+        .guild_settings_map
+        .lock()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.prefix = prefix.clone();
+            e.prefix_up = prefix.to_uppercase();
+        });
+    ctx.serenity_context()
+        .data
+        .write()
+        .await
         .get_mut::<GuildSettingsMap>()
         .unwrap()
         .entry(guild_id)
-        .and_modify(|e| e.prefix = prefix.clone())
-        .and_modify(|e| e.prefix_up = prefix.to_uppercase());
+        .and_modify(|e| {
+            e.prefix = prefix.clone();
+            e.prefix_up = prefix.to_uppercase();
+        });
+    // let _entry = &data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .entry(guild_id)
+    //     .and_modify(|e| e.prefix = prefix.clone())
+    //     .and_modify(|e| e.prefix_up = prefix.to_uppercase());
 
-    let settings = data
-        .get_mut::<GuildSettingsMap>()
-        .unwrap()
-        .get_mut(&guild_id);
+    // let settings = data
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .get_mut(&guild_id);
 
-    let _res = settings.map(|s| s.save()).unwrap();
+    // let _res = settings.map(|s| s.save()).unwrap();
 
     create_response_poise(
         ctx,

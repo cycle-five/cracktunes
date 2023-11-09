@@ -408,25 +408,23 @@ pub async fn handle_event(
     //     .map_err(|x| x.into())?;
 
     match event_in {
+        #[cfg(feature = "log_all")]
+        FullEvent::PresenceUpdate { ctx, new_data } => {
+            log_event!(
+                log_presence_update,
+                guild_settings,
+                event_in,
+                new_data,
+                &new_data.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
+        #[cfg(not(feature = "log_all"))]
         FullEvent::PresenceUpdate { ctx: _, new_data } => {
-            #[cfg(feature = "log_all")]
-            {
-                log_event!(
-                    log_presence_update,
-                    guild_settings,
-                    event_in,
-                    presence,
-                    &new_data.guild_id.unwrap(),
-                    &ctx.http,
-                    event_log,
-                    event_name
-                )
-            }
-            #[cfg(not(feature = "log_all"))]
-            {
-                let _ = new_data;
-                Ok(())
-            }
+            let _ = new_data;
+            Ok(())
         }
         FullEvent::GuildMemberAddition {
             ctx, new_member, ..
