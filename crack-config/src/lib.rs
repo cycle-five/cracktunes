@@ -78,10 +78,7 @@ pub async fn poise_framework(
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
-    // let mut owners = HashSet::new();
-    // for owner in config.owners.unwrap_or_default().into_iter() {
-    //     owners.insert(UserId(owner));
-    // }
+
     let options = poise::FrameworkOptions::<_, Error> {
         #[cfg(feature = "set_owners_from_config")]
         owners: config
@@ -111,7 +108,7 @@ pub async fn poise_framework(
             commands::remove(),
             commands::repeat(),
             commands::resume(),
-            commands::search(),
+            // commands::search(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -139,10 +136,6 @@ pub async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
-                    // tracing::warn!("guild_id: {}", guild_id);
-                    // for (k, v) in guild_settings_map.iter() {
-                    //     tracing::warn!("Guild: {} - {:?}", k, v);
-                    // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         if guild_settings.prefix.is_empty() {
@@ -196,10 +189,12 @@ pub async fn poise_framework(
                 //     },
                 //     |member| {
                 //         tracing::info!("Author found in guild");
-                //         Ok(member.permissions().contains(serenity::model::permissions::ADMINISTRATOR))
+                //         Ok(member
+                //             .permissions()
+                //             .contains(serenity::model::permissions::ADMINISTRATOR))
                 //     },
                 // )?;
-                //let asdf = vec![user_id];
+                // let asdf = vec![user_id];
                 let music_commands = vec![
                     "play",
                     "pause",
