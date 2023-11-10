@@ -14,6 +14,8 @@ use poise::{
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::http::Http;
 
+use super::serenity::voice_state_diff_str;
+
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
     pub name: String,
@@ -293,7 +295,8 @@ pub async fn log_voice_state_update(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, new) = log_data;
     let title = format!("Voice State Update: {}", new.user_id);
-    let description = format!("FIXCME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
+    let description = voice_state_diff_str(old, new);
+    // let description = format!("FIXME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
 
     let avatar_url = new
         .member

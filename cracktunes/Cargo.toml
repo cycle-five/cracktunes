@@ -12,9 +12,9 @@ playlist = ["crack-core/sqlx", "sqlx"]
 [dependencies]
 crack-core = { workspace = true }
 crack-config = { workspace = true, optional = true }
-crack-osint = { workspace = true, optional = true}
-crack-gpt = { workspace = true, optional = true}
-sqlx = {workspace = true, optional = true}
+crack-osint = { workspace = true, optional = true }
+crack-gpt = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
 poise = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
@@ -23,12 +23,12 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tungstenite = { workspace = true }
 async-tungstenite = { workspace = true }
-async-trait = { version = "0.1.74" }
-mockall = { version = "0.11.4" }
-prometheus = {version = "0.13.3", features = ["process"]}
-warp = "0.3.6"
-config-file = {version="0.2.3", features = ["json"]}
-dotenv = "0.15.0"
+async-trait = { version = "0.1" }
+mockall = { version = "0.11" }
+prometheus = { version = "0.13", features = ["process"] }
+warp = "0.3"
+config-file = { version = "0.2", features = ["json"] }
+dotenv = "0.15"
 
 [dev-dependencies]
 tungstenite = "^0.20.1"

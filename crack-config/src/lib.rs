@@ -295,15 +295,26 @@ pub async fn poise_framework(
     // })
     // .expect("Error setting Ctrl-C handler");
     let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::privileged()
+        | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_MODERATION
+        | GatewayIntents::GUILD_BANS
+        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
+        | GatewayIntents::GUILD_INTEGRATIONS
+        | GatewayIntents::GUILD_WEBHOOKS
+        | GatewayIntents::GUILD_INVITES
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::GUILD_PRESENCES
         | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_MESSAGE_TYPING
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::DIRECT_MESSAGE_TYPING
         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-        | GatewayIntents::GUILDS
-        | GatewayIntents::GUILD_VOICE_STATES
-        | GatewayIntents::GUILD_PRESENCES
+        | GatewayIntents::GUILD_SCHEDULED_EVENTS
+        | GatewayIntents::AUTO_MODERATION_CONFIGURATION
+        | GatewayIntents::AUTO_MODERATION_EXECUTION
         | GatewayIntents::MESSAGE_CONTENT;
 
     let handler_data = data.clone();
@@ -336,21 +347,6 @@ pub async fn poise_framework(
             })
         },
     );
-    // .options(options)
-    // .intents(
-    //     GatewayIntents::non_privileged()
-    //         | GatewayIntents::GUILD_MEMBERS
-    //         | GatewayIntents::GUILD_MESSAGES
-    //         | GatewayIntents::GUILD_MESSAGE_REACTIONS
-    //         | GatewayIntents::DIRECT_MESSAGES
-    //         | GatewayIntents::DIRECT_MESSAGE_TYPING
-    //         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-    //         | GatewayIntents::GUILDS
-    //         | GatewayIntents::GUILD_VOICE_STATES
-    //         | GatewayIntents::GUILD_PRESENCES
-    //         | GatewayIntents::MESSAGE_CONTENT,
-    // );
-
     // let res = framework.build().await?;
     // let shard_manager = res.client().shard_manager.clone();
     let client = Client::builder(token, intents)
