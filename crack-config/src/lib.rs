@@ -89,7 +89,8 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            commands::admin(),
+            // admin commands
+            commands::admin::set_prefix(),
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),
@@ -139,6 +140,10 @@ pub async fn poise_framework(
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         if guild_settings.prefix.is_empty() {
+                            tracing::warn!(
+                                "Prefix is empty for guild {}",
+                                guild_settings.guild_name
+                            );
                             return Ok(None);
                         }
 
@@ -155,6 +160,7 @@ pub async fn poise_framework(
                             Ok(None)
                         }
                     } else {
+                        tracing::warn!("Guild not found in guild settings map");
                         Ok(None)
                     }
                 })

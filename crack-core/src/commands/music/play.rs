@@ -250,13 +250,19 @@ pub async fn play(
             let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
 
             match (query_type, mode) {
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::Next,
+                ) => {
                     let track = queue.get(1).unwrap();
                     let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::End,
+                ) => {
                     let track = queue.last().unwrap();
                     let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
 
@@ -278,7 +284,13 @@ pub async fn play(
                         }
                     }
                 }
-                (_, _) => todo!(),
+                (x, y) => {
+                    tracing::error!("Unexpected query_type: {:?}, mode: {:?}", x, y);
+                    // let track = queue.first().unwrap();
+                    // let embed = create_now_playing_embed(track).await;
+
+                    // edit_embed_response_poise(ctx, embed).await?;
+                }
             }
         }
         Ordering::Equal => {
