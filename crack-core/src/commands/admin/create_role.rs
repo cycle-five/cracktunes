@@ -7,7 +7,10 @@ use crate::Context;
 use crate::Error;
 /// Create role.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn create_role(ctx: Context<'_>, role_name: String) -> Result<(), Error> {
+pub async fn create_role(
+    ctx: Context<'_>,
+    #[description = "Name of the role to create"] role_name: String,
+) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;

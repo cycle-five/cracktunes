@@ -8,7 +8,12 @@ use crate::Error;
 
 /// Create voice channel.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn create_voice_channel(ctx: Context<'_>, channel_name: String) -> Result<(), Error> {
+pub async fn create_voice_channel(
+    ctx: Context<'_>,
+    #[rest]
+    #[description = "Name of channel to create"]
+    channel_name: String,
+) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;

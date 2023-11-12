@@ -8,7 +8,9 @@ use poise::CreateReply;
 #[poise::command(prefix_command, owners_only)]
 pub async fn deauthorize(
     ctx: Context<'_>,
-    #[description = "The user id to remove from the authorized list"] user_id: String,
+    #[rest]
+    #[description = "The user id to remove from the authorized list"]
+    user_id: String,
 ) -> Result<(), Error> {
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
