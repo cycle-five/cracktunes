@@ -34,7 +34,7 @@ pub use set_all_log_channel::*;
 pub use set_all_log_channel_data::*;
 pub use set_all_log_channel_old_data::*;
 pub use set_prefix::*;
-pub use set_welcome_settings::*;
+
 pub use unban::*;
 pub use unmute::*;
 
