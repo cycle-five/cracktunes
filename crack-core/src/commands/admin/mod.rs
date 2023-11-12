@@ -5,8 +5,10 @@ pub mod broadcast_voice;
 pub mod create_role;
 pub mod create_text_channel;
 pub mod create_voice_channel;
+pub mod deafen;
 pub mod deauthorize;
 pub mod delete_channel;
+pub mod get_settings;
 pub mod kick;
 pub mod mute;
 pub mod print_settings;
@@ -19,14 +21,17 @@ pub mod unban;
 pub mod unmute;
 
 // pub use admin::*;
+use crate::{Context, Error};
 pub use authorize::*;
 pub use ban::*;
 pub use broadcast_voice::*;
 pub use create_role::*;
 pub use create_text_channel::*;
 pub use create_voice_channel::*;
+pub use deafen::*;
 pub use deauthorize::*;
 pub use delete_channel::*;
+pub use get_settings::*;
 pub use kick::*;
 pub use mute::*;
 pub use print_settings::*;
@@ -34,13 +39,9 @@ pub use set_all_log_channel::*;
 pub use set_all_log_channel_data::*;
 pub use set_all_log_channel_old_data::*;
 pub use set_prefix::*;
-
+pub use set_welcome_settings::*;
 pub use unban::*;
 pub use unmute::*;
-
-use poise::serenity_prelude::Channel;
-
-use crate::{guild::settings::WelcomeSettings, Context, Error};
 // use chrono::NaiveTime;
 // use date_time_parser::TimeParser;
 
@@ -49,6 +50,24 @@ use crate::{guild::settings::WelcomeSettings, Context, Error};
     prefix_command,
     //slash_command,
     subcommands(
+        "authorize",
+        "ban",
+        "broadcast_voice",
+        "create_role",
+        "create_text_channel",
+        "create_voice_channel",
+        "deafen",
+        "deauthorize",
+        "delete_channel",
+        "get_settings",
+        "kick",
+        "mute",
+        "print_settings",
+        "set_all_log_channel",
+        "set_prefix",
+        "set_welcome_settings",
+        "unban",
+        "unmute",
     ),
     ephemeral,
     owners_only
@@ -236,26 +255,3 @@ pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
 //     }
 //     Ok(())
 // }
-
-#[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn set_welcome_settings(
-    ctx: Context<'_>,
-    #[description = "The channel to send welcome messages"] channel: Channel,
-    #[description = "Welcome message template use {user} for username"] message: String,
-) -> Result<(), Error> {
-    let welcome_settings = WelcomeSettings {
-        channel_id: Some(channel.id().get()),
-        message: Some(message.clone()),
-        auto_role: None,
-    };
-    let _res = ctx
-        .data()
-        .guild_settings_map
-        .lock()
-        .unwrap()
-        .entry(ctx.guild_id().unwrap())
-        .and_modify(|e| {
-            e.welcome_settings = Some(welcome_settings.clone());
-        });
-    Ok(())
-}

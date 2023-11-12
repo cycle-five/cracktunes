@@ -4,8 +4,7 @@ use crate::Error;
 use poise::CreateReply;
 
 /// Authorize a user to use the bot.
-// #[poise::command(prefix_command, owners_only, ephemeral)]
-#[poise::command(prefix_command, owners_only)]
+#[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,

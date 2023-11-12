@@ -1,12 +1,8 @@
-use std::sync::Arc;
-
-use serenity::all::ChannelId;
-use serenity::all::GuildId;
-use typemap_rev::TypeMap;
-
 use crate::guild::settings::GuildSettings;
-use crate::guild::settings::GuildSettingsMap;
-use crate::guild::settings::DEFAULT_PREFIX;
+use crate::messaging::message::CrackedMessage;
+use crate::utils::create_response_poise;
+use crate::utils::get_guild_name;
+use crate::Context;
 use crate::Error;
 
 /// Get the current bot settings for this guild.
