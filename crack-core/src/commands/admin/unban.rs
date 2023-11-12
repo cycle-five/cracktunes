@@ -17,9 +17,7 @@ pub async fn unban(
     match ctx.guild_id() {
         Some(guild_id) => unban_helper(ctx, guild_id, user).await,
         None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
+            Result::Err(CrackedError::Other("This command can only be used in a guild.").into())
         }
     }
 }
@@ -33,16 +31,14 @@ pub async fn unban_by_user_id(
     match ctx.guild_id() {
         Some(guild_id) => unban_helper(ctx, guild_id, user_id.to_user(ctx).await?).await,
         None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
+            Result::Err(CrackedError::Other("This command can only be used in a guild.").into())
         }
     }
 }
 
 pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Result<(), Error> {
     let guild = guild_id.to_partial_guild(&ctx).await?;
-    if let Err(e) = guild.unban(&ctx, user.id.clone()).await {
+    if let Err(e) = guild.unban(&ctx, user.id).await {
         // Handle error, send error message
         create_response_poise(
             ctx,
@@ -55,7 +51,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
             ctx,
             CrackedMessage::UserUnbanned {
                 user: user.name.clone(),
-                user_id: user.id.clone(),
+                user_id: user.id,
             },
         )
         .await

@@ -23,5 +23,6 @@ pub async fn chatgpt(
         ctx.send(CreateReply::default().content(response).reply(true))
             .await,
     );
-    return Ok(());
+
+    Ok(())
 }

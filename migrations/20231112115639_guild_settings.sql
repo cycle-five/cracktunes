@@ -1,6 +1,6 @@
 -- Add migration script here
 CREATE TABLE guild_settings (
-    guild_id BIGINT PRIMARY KEY,
+    guild_id BIGINT,
     guild_name VARCHAR(255),
     prefix VARCHAR(255),
     prefix_up VARCHAR(255),

@@ -310,7 +310,7 @@ pub async fn play(
 }
 
 async fn print_queue(queue: Vec<TrackHandle>) {
-    for (_i, track) in queue.iter().enumerate() {
+    for track in queue.iter() {
         let metadata = get_track_metadata(track).await;
         tracing::warn!(
             "Track {}: {} - {}, State: {:?}, Ready: {:?}",
