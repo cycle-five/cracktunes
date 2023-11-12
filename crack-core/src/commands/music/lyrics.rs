@@ -103,7 +103,7 @@ impl<U, E> ContextWithGuildId for poise::Context<'_, U, E> {
     }
 }
 
-pub fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<GuildId> {
+fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<GuildId> {
     ctx.guild_id()
 }
 #[cfg(test)]

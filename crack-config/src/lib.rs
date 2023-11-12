@@ -78,10 +78,7 @@ pub async fn poise_framework(
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
-    // let mut owners = HashSet::new();
-    // for owner in config.owners.unwrap_or_default().into_iter() {
-    //     owners.insert(UserId(owner));
-    // }
+
     let options = poise::FrameworkOptions::<_, Error> {
         #[cfg(feature = "set_owners_from_config")]
         owners: config
@@ -92,7 +89,8 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            commands::admin(),
+            // admin commands
+            commands::admin::set_prefix(),
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),
@@ -139,13 +137,13 @@ pub async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
-                    // tracing::warn!("guild_id: {}", guild_id);
-                    // for (k, v) in guild_settings_map.iter() {
-                    //     tracing::warn!("Guild: {} - {:?}", k, v);
-                    // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         if guild_settings.prefix.is_empty() {
+                            tracing::warn!(
+                                "Prefix is empty for guild {}",
+                                guild_settings.guild_name
+                            );
                             return Ok(None);
                         }
 
@@ -162,6 +160,7 @@ pub async fn poise_framework(
                             Ok(None)
                         }
                     } else {
+                        tracing::warn!("Guild not found in guild settings map");
                         Ok(None)
                     }
                 })
@@ -196,10 +195,12 @@ pub async fn poise_framework(
                 //     },
                 //     |member| {
                 //         tracing::info!("Author found in guild");
-                //         Ok(member.permissions().contains(serenity::model::permissions::ADMINISTRATOR))
+                //         Ok(member
+                //             .permissions()
+                //             .contains(serenity::model::permissions::ADMINISTRATOR))
                 //     },
                 // )?;
-                //let asdf = vec![user_id];
+                // let asdf = vec![user_id];
                 let music_commands = vec![
                     "play",
                     "pause",
@@ -300,15 +301,26 @@ pub async fn poise_framework(
     // })
     // .expect("Error setting Ctrl-C handler");
     let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::privileged()
+        | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_MODERATION
+        | GatewayIntents::GUILD_BANS
+        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
+        | GatewayIntents::GUILD_INTEGRATIONS
+        | GatewayIntents::GUILD_WEBHOOKS
+        | GatewayIntents::GUILD_INVITES
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::GUILD_PRESENCES
         | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_MESSAGE_TYPING
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::DIRECT_MESSAGE_TYPING
         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-        | GatewayIntents::GUILDS
-        | GatewayIntents::GUILD_VOICE_STATES
-        | GatewayIntents::GUILD_PRESENCES
+        | GatewayIntents::GUILD_SCHEDULED_EVENTS
+        | GatewayIntents::AUTO_MODERATION_CONFIGURATION
+        | GatewayIntents::AUTO_MODERATION_EXECUTION
         | GatewayIntents::MESSAGE_CONTENT;
 
     let handler_data = data.clone();
@@ -341,21 +353,6 @@ pub async fn poise_framework(
             })
         },
     );
-    // .options(options)
-    // .intents(
-    //     GatewayIntents::non_privileged()
-    //         | GatewayIntents::GUILD_MEMBERS
-    //         | GatewayIntents::GUILD_MESSAGES
-    //         | GatewayIntents::GUILD_MESSAGE_REACTIONS
-    //         | GatewayIntents::DIRECT_MESSAGES
-    //         | GatewayIntents::DIRECT_MESSAGE_TYPING
-    //         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-    //         | GatewayIntents::GUILDS
-    //         | GatewayIntents::GUILD_VOICE_STATES
-    //         | GatewayIntents::GUILD_PRESENCES
-    //         | GatewayIntents::MESSAGE_CONTENT,
-    // );
-
     // let res = framework.build().await?;
     // let shard_manager = res.client().shard_manager.clone();
     let client = Client::builder(token, intents)

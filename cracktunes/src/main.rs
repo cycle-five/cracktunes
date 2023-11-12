@@ -20,7 +20,6 @@ fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        //.worker_threads(16)
         .build()
         .unwrap();
 
@@ -53,7 +52,6 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     data_global.insert::<GuildCacheMap>(HashMap::default());
 
     drop(data_global);
-    // drop(client);
 
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
@@ -62,7 +60,6 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
         Ok::<(), serenity::Error>(())
     };
 
-    // let bot = framework.start(); //.await?;
     let bot = client.start();
 
     tokio::try_join!(bot, server)?;

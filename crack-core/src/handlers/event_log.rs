@@ -4,11 +4,7 @@ use std::{
 };
 
 use crate::{
-    errors::CrackedError,
-    guild::settings::GuildSettings, // handlers::serenity::voice_state_diff_str,
-    utils::create_log_embed,
-    Data,
-    Error,
+    errors::CrackedError, guild::settings::GuildSettings, utils::create_log_embed, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -17,6 +13,8 @@ use poise::{
 };
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::http::Http;
+
+use super::serenity::voice_state_diff_str;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -88,12 +86,16 @@ pub async fn get_channel_id(
     x
 }
 
-pub async fn log_unimplemented_event<T: Serialize>(
+pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
     _http: &Arc<Http>,
-    _log_data: T,
-) -> Result<serenity::model::prelude::Message, Error> {
-    Err(CrackedError::UnimplementedEvent(channel_id, std::any::type_name::<T>()).into())
+    log_data: T,
+) -> Result<(), Error> {
+    tracing::info!(
+        "{}",
+        format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
+    );
+    Ok(())
 }
 
 pub async fn log_guild_member_removal(
@@ -293,7 +295,8 @@ pub async fn log_voice_state_update(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, new) = log_data;
     let title = format!("Voice State Update: {}", new.user_id);
-    let description = format!("FIXCME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
+    let description = voice_state_diff_str(old, new);
+    // let description = format!("FIXME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
 
     let avatar_url = new
         .member
@@ -361,72 +364,33 @@ macro_rules! log_event {
     }};
 }
 
-/// Macro to concisely generate the handle_event match statement
-// macro_rules! handle_macro {
-//     ($guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr, $(
-//         $fn_name:ident => $variant_name:ident { $( $arg_name:ident: $arg_type:ty ),* },
-//     )*) => {
-//         $($variant_name { $( $arg_name, )* }  => {
-//             let log_data = ($( $arg_name, )*);
-//             log_event!(
-//                 $fn_name,
-//                 $guild_settings,
-//                 $event,
-//                 $log_data,
-//                 $guild_id,
-//                 $http,
-//                 $event_log,
-//                 $event_name
-//             )
-//         })*
-//     };
-// }
-
 pub async fn handle_event(
     event_in: &FullEvent,
-    //ctx: &SerenityContext,
-    // event_in: &poise::serenity_prelude::Event,
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
-    //     match event_in {
-    //         handle_macro! (
-    //             guild_settings, event_in, &log_data, guild_id, &ctx.http, event_log, event_name,
-    //             guild_member_addition => GuildMemberAddition { new_member: serenity::Member },
-    //             guild_member_removal => GuildMemberRemoval { guild_id: serenity::GuildId, user: serenity::User, member_data_if_available: Option<serenity::Member> },
-    //         );
-    //         _ => todo!()
-    //     }
-    // }
-    // event_log.write_log_obj(event_name, event_in)?;
-    // let channel_id = framework
-    //     .get_channel_id(event_in)
-    //     .await
-    //     .map_err(|x| x.into())?;
 
     match event_in {
+        #[cfg(feature = "log_all")]
+        FullEvent::PresenceUpdate { ctx, new_data } => {
+            log_event!(
+                log_presence_update,
+                guild_settings,
+                event_in,
+                new_data,
+                &new_data.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
+        #[cfg(not(feature = "log_all"))]
         FullEvent::PresenceUpdate { ctx: _, new_data } => {
-            #[cfg(feature = "log_all")]
-            {
-                log_event!(
-                    log_presence_update,
-                    guild_settings,
-                    event_in,
-                    presence,
-                    &new_data.guild_id.unwrap(),
-                    &ctx.http,
-                    event_log,
-                    event_name
-                )
-            }
-            #[cfg(not(feature = "log_all"))]
-            {
-                let _ = new_data;
-                Ok(())
-            }
+            let _ = new_data;
+            Ok(())
         }
         FullEvent::GuildMemberAddition {
             ctx, new_member, ..
