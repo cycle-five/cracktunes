@@ -10,8 +10,10 @@ use crate::Error;
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn ban(
     ctx: Context<'_>,
-    user: User,
-    dmd: Option<u8>,
+    #[description = "User to ban."] user: User,
+    #[description = "Number of day to delete messages of the user."] dmd: Option<u8>,
+    #[rest]
+    #[description = "Reason to the ban."]
     reason: Option<String>,
 ) -> Result<(), Error> {
     let dmd = dmd.unwrap_or(0);

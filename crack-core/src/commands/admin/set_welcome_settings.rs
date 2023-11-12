@@ -8,7 +8,9 @@ use crate::Error;
 pub async fn set_welcome_settings(
     ctx: Context<'_>,
     #[description = "The channel to send welcome messages"] channel: Channel,
-    #[description = "Welcome message template use {user} for username"] message: String,
+    #[rest]
+    #[description = "Welcome message template use {user} for username"]
+    message: String,
 ) -> Result<(), Error> {
     let welcome_settings = WelcomeSettings {
         channel_id: Some(channel.id().get()),

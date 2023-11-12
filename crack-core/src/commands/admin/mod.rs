@@ -1,4 +1,4 @@
-// pub mod admin;
+pub mod audit_logs;
 pub mod authorize;
 pub mod ban;
 pub mod broadcast_voice;
@@ -21,11 +21,11 @@ pub mod set_welcome_settings;
 pub mod unban;
 pub mod unmute;
 
-// pub use admin::*;
 use crate::{
     errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
     Context, Error,
 };
+pub use audit_logs::*;
 pub use authorize::*;
 pub use ban::*;
 pub use broadcast_voice::*;
@@ -53,6 +53,7 @@ pub use unmute::*;
     prefix_command,
     //slash_command,
     subcommands(
+        "audit_logs",
         "authorize",
         "ban",
         "broadcast_voice",

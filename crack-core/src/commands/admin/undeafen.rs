@@ -7,7 +7,10 @@ use serenity::builder::EditMember;
 
 /// Undeafen a user.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn undeafen(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
+pub async fn undeafen(
+    ctx: Context<'_>,
+    #[description = "User to undeafen"] user: serenity::model::user::User,
+) -> Result<(), Error> {
     match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
