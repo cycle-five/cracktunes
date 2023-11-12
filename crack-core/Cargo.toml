@@ -9,10 +9,11 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-default = ["playlist"]
+default = ["playlist", "crack-gpt"]
 playlist = ["sqlx"]
 shuttle = []
 log_all = []
+crack-gpt = []
 
 [dependencies]
 audiopus = "0.3.0-rc.0"
@@ -30,6 +31,8 @@ prometheus = { version = "0.13", features = ["process"] }
 anyhow = "1.0"
 proc-macro2 = "1.0"
 typemap_rev = "0.3"
+chatgpt_rs = "1.2"
+crack-gpt = { path = "../crack-gpt" }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 sqlx = { workspace = true, optional = true }

@@ -5,8 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-default = ["playlist", "crack-config"]
+default = ["playlist", "crack-config", "crack-gpt"]
 playlist = ["crack-core/sqlx", "sqlx"]
+crack-gpt = ["dep:crack-gpt"]
 
 
 [dependencies]

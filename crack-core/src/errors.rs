@@ -31,6 +31,8 @@ pub enum CrackedError {
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
+    #[cfg(feature = "crack-gpt")]
+    CrackGPT(Error),
     JoinChannelError(JoinError),
     Json(serde_json::Error),
     LogChannelWarning(&'static str, GuildId),
@@ -82,6 +84,7 @@ impl Display for CrackedError {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
+            Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),
             Self::Other(msg) => f.write_str(msg),

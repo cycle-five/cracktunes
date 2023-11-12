@@ -26,4 +26,16 @@ mod test {
         let err = CrackedError::PlayListFail;
         assert_eq!(err.to_string(), messages::FAIL_PLAYLIST_FETCH.to_string());
     }
+
+    #[test]
+    fn test_crack_error_parse_time_failed() {
+        let err = CrackedError::ParseTimeFail;
+        assert_eq!(err.to_string(), messages::FAIL_PARSE_TIME.to_string());
+    }
+
+    #[test]
+    fn test_crack_error_anyhow() {
+        let err = CrackedError::Anyhow(anyhow::anyhow!("Test"));
+        assert_eq!(err.to_string(), "Test".to_string());
+    }
 }

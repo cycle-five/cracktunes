@@ -433,7 +433,9 @@ dependencies = [
  "anyhow",
  "async-tungstenite",
  "audiopus",
+ "chatgpt_rs",
  "colored",
+ "crack-gpt",
  "ffprobe",
  "lazy_static",
  "lyric_finder",
@@ -462,10 +464,12 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chatgpt_rs",
- "crack-core",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
