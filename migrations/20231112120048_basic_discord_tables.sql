@@ -1,7 +1,7 @@
 -- Add migration script here
 -- Table for storing guilds (servers)
 CREATE TABLE guild (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL PRIMARY KEY,
     name VARCHAR(255),
     created_at TIMESTAMP,
     updated_at TIMESTAMP
@@ -9,18 +9,19 @@ CREATE TABLE guild (
 
 -- Table for storing users
 CREATE TABLE user (
-    id BIGINT PRIMARY KEY,
-    username VARCHAR(255),
+    id BIGINT NOT NULL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
     discriminator SMALLINT,
-    avatar_url TEXT,
-    bot BOOLEAN,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
+    avatar_url TEXT NOT NULL,
+    bot BOOLEAN NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    last_seen TIMESTAMP NOT NULL
 );
 
 -- Table for storing channels
 CREATE TABLE channel (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL PRIMARY KEY,
     guild_id BIGINT,
     name VARCHAR(255),
     type VARCHAR(50),
@@ -32,7 +33,7 @@ CREATE TABLE channel (
 
 -- Table for storing messages
 CREATE TABLE message (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL PRIMARY KEY,
     channel_id BIGINT,
     author_id BIGINT,
     content TEXT,
@@ -44,7 +45,7 @@ CREATE TABLE message (
 
 -- Table for storing roles
 CREATE TABLE role (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL PRIMARY KEY,
     guild_id BIGINT,
     name VARCHAR(255),
     color INT,

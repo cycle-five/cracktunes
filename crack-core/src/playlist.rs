@@ -9,11 +9,13 @@ use crate::CrackedError;
 #[derive(Debug, Default)]
 pub struct User {
     pub id: i64,
-    pub discord_id: String,
     pub username: String,
-    pub descriminator: Option<String>,
+    pub discriminator: Option<i64>,
+    pub avatar_url: String,
+    pub bot: bool,
+    pub created_at: chrono::NaiveDate,
+    pub updated_at: chrono::NaiveDate,
     pub last_seen: chrono::NaiveDate,
-    pub creation_date: chrono::NaiveDate,
 }
 
 #[derive(Debug, Default)]
@@ -110,7 +112,7 @@ impl Playlist {
         username: String,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "INSERT INTO user (discord_id, username) VALUES (?, ?)",
+            "INSERT INTO user (id, username) VALUES (?, ?)",
             user_id,
             username
         )
