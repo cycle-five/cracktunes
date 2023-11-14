@@ -1,5 +1,5 @@
 use crate::{
-    commands::play::QueryType,
+    commands::QueryType,
     errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
 };

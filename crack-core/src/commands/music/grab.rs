@@ -1,5 +1,5 @@
 use poise::serenity_prelude::{ChannelId, Message};
-use serenity::http::Http;
+use serenity::{builder::CreateMessage, http::Http};
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -40,12 +40,7 @@ pub async fn send_now_playing(
             let embed = create_now_playing_embed(&track_handle).await;
             // create_embed_response_poise(ctx, embed).await?;
             channel
-                .send_message(http, |m| {
-                    m.embed(|e| {
-                        e.clone_from(&embed);
-                        e
-                    })
-                })
+                .send_message(http, CreateMessage::new().embed(embed))
                 .await
                 .map_err(|e| e.into())
         }

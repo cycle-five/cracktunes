@@ -4,16 +4,17 @@ use std::{
 };
 
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, handlers::serenity::voice_state_diff_str,
-    utils::create_log_embed, Data, Error,
+    errors::CrackedError, guild::settings::GuildSettings, utils::create_log_embed, Data, Error,
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{ChannelId, ClientStatus, GuildId, Member, Presence},
-    Event::*,
+    serenity_prelude::{ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence},
+    FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::{client::Context as SerenityContext, http::Http};
+use serenity::http::Http;
+
+use super::serenity::voice_state_diff_str;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -50,11 +51,8 @@ pub fn get_log_channel(
 pub async fn get_channel_id(
     guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
-    event: &poise::Event<'_>,
+    event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
-    // let initial_values: Vec<u64> = vec![1165246445654388746];
-    // let hashset: HashSet<_> = initial_values.into_iter().collect();
-
     let x = {
         let guild_settings_map = guild_settings_map.lock().unwrap().clone();
 
@@ -63,28 +61,41 @@ pub async fn get_channel_id(
             .map(Ok)
             .unwrap_or_else(|| {
                 tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
-                Err(CrackedError::LogChannelWarning(event.name(), *guild_id))
+                Err(CrackedError::LogChannelWarning(
+                    event.snake_case_name(),
+                    *guild_id,
+                ))
             })?
             .clone();
-        match guild_settings.get_log_channel_type(event) {
+        match guild_settings.get_log_channel_type_fe(event) {
             Some(channel_id) => {
-                if guild_settings.ignored_channels.contains(&channel_id.0) {
-                    return Err(CrackedError::LogChannelWarning(event.name(), *guild_id));
+                if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                    return Err(CrackedError::LogChannelWarning(
+                        event.snake_case_name(),
+                        *guild_id,
+                    ));
                 }
                 Ok(channel_id)
             }
-            None => Err(CrackedError::LogChannelWarning(event.name(), *guild_id)),
+            None => Err(CrackedError::LogChannelWarning(
+                event.snake_case_name(),
+                *guild_id,
+            )),
         }
     };
     x
 }
 
-pub async fn log_unimplemented_event<T: Serialize>(
+pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
     _http: &Arc<Http>,
-    _log_data: T,
-) -> Result<serenity::model::prelude::Message, Error> {
-    Err(CrackedError::UnimplementedEvent(channel_id, std::any::type_name::<T>()).into())
+    log_data: T,
+) -> Result<(), Error> {
+    tracing::info!(
+        "{}",
+        format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
+    );
+    Ok(())
 }
 
 pub async fn log_guild_member_removal(
@@ -265,7 +276,11 @@ pub async fn log_presence_update(
     let avatar_url = format!(
         "https://cdn.discordapp.com/{user_id}/{user_avatar}.png",
         user_id = new_data.user.id,
-        user_avatar = new_data.user.avatar.clone().unwrap_or_default(),
+        user_avatar = new_data
+            .user
+            .avatar
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
     );
     create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
@@ -281,6 +296,7 @@ pub async fn log_voice_state_update(
     let &(old, new) = log_data;
     let title = format!("Voice State Update: {}", new.user_id);
     let description = voice_state_diff_str(old, new);
+    // let description = format!("FIXME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
 
     let avatar_url = new
         .member
@@ -297,7 +313,7 @@ pub async fn log_typing_start(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let user = event.user_id.to_user(http.clone()).await?;
     let channel_name = http
-        .get_channel(channel_id.0)
+        .get_channel(channel_id)
         .await
         .ok()
         .map(|x| x.to_string())
@@ -348,67 +364,37 @@ macro_rules! log_event {
     }};
 }
 
-/// Macro to concisely generate the handle_event match statement
-// macro_rules! handle_macro {
-//     ($guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr, $(
-//         $fn_name:ident => $variant_name:ident { $( $arg_name:ident: $arg_type:ty ),* },
-//     )*) => {
-//         $($variant_name { $( $arg_name, )* }  => {
-//             let log_data = ($( $arg_name, )*);
-//             log_event!(
-//                 $fn_name,
-//                 $guild_settings,
-//                 $event,
-//                 $log_data,
-//                 $guild_id,
-//                 $http,
-//                 $event_log,
-//                 $event_name
-//             )
-//         })*
-//     };
-// }
-
 pub async fn handle_event(
-    ctx: &SerenityContext,
-    event_in: &poise::Event<'_>,
+    event_in: &FullEvent,
+    _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
     let event_log = Arc::new(&data_global.event_log);
-    let event_name = event_in.name();
+    let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
-    //     match event_in {
-    //         handle_macro! (
-    //             guild_settings, event_in, &log_data, guild_id, &ctx.http, event_log, event_name,
-    //             guild_member_addition => GuildMemberAddition { new_member: serenity::Member },
-    //             guild_member_removal => GuildMemberRemoval { guild_id: serenity::GuildId, user: serenity::User, member_data_if_available: Option<serenity::Member> },
-    //         );
-    //         _ => todo!()
-    //     }
-    // }
 
     match event_in {
-        PresenceUpdate { new_data } => {
-            #[cfg(feature = "log_all")]
-            {
-                log_event!(
-                    log_presence_update,
-                    guild_settings,
-                    event_in,
-                    new_data,
-                    &new_data.guild_id.unwrap(),
-                    &ctx.http,
-                    event_log,
-                    event_name
-                )
-            }
-            #[cfg(not(feature = "log_all"))]
-            {
-                let _ = new_data;
-                Ok(())
-            }
+        #[cfg(feature = "log_all")]
+        FullEvent::PresenceUpdate { ctx, new_data } => {
+            log_event!(
+                log_presence_update,
+                guild_settings,
+                event_in,
+                new_data,
+                &new_data.guild_id.unwrap(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
-        GuildMemberAddition { new_member } => {
+        #[cfg(not(feature = "log_all"))]
+        FullEvent::PresenceUpdate { ctx: _, new_data } => {
+            let _ = new_data;
+            Ok(())
+        }
+        FullEvent::GuildMemberAddition {
+            ctx, new_member, ..
+        } => {
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
@@ -420,10 +406,11 @@ pub async fn handle_event(
                 event_name
             )
         }
-        poise::Event::GuildMemberRemoval {
+        FullEvent::GuildMemberRemoval {
+            ctx,
+            member_data_if_available,
             guild_id,
             user,
-            member_data_if_available,
         } => {
             let log_data = (guild_id, user, member_data_if_available);
             log_event!(
@@ -437,7 +424,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        VoiceStateUpdate { old, new } => {
+        FullEvent::VoiceStateUpdate { ctx, old, new } => {
             let log_data = &(old, new);
             log_event!(
                 log_voice_state_update,
@@ -450,8 +437,8 @@ pub async fn handle_event(
                 event_name
             )
         }
-        Message { new_message } => {
-            if new_message.author.id == ctx.cache.current_user_id() {
+        FullEvent::Message { ctx, new_message } => {
+            if new_message.author.id == ctx.cache.current_user().id {
                 return Ok(());
             }
             log_event!(
@@ -465,7 +452,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        TypingStart { event } => {
+        FullEvent::TypingStart { ctx, event } => {
             // let cache_http = ctx.http.clone()
             log_event!(
                 log_typing_start,
@@ -478,7 +465,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        ApplicationCommandPermissionsUpdate { permission } => {
+        FullEvent::CommandPermissionsUpdate { ctx, permission } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -490,7 +477,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        AutoModerationActionExecution { execution } => {
+        FullEvent::AutoModActionExecution { ctx, execution } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -502,7 +489,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        AutoModerationRuleCreate { rule } => log_event!(
+        FullEvent::AutoModRuleCreate { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -512,7 +499,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        AutoModerationRuleUpdate { rule } => log_event!(
+        FullEvent::AutoModRuleUpdate { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -522,7 +509,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        AutoModerationRuleDelete { rule } => log_event!(
+        FullEvent::AutoModRuleDelete { ctx, rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -532,7 +519,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        CategoryCreate { category } => log_event!(
+        FullEvent::CategoryCreate { ctx, category } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -542,7 +529,7 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        CategoryDelete { category } => log_event!(
+        FullEvent::CategoryDelete { ctx, category } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -552,17 +539,21 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        ChannelDelete { channel } => log_event!(
-            log_unimplemented_event,
-            guild_settings,
-            event_in,
+        FullEvent::ChannelDelete {
+            ctx,
             channel,
+            messages,
+        } => log_event!(
+            log_unimplemented_event,
+            guild_settings,
+            event_in,
+            &(channel, messages),
             &channel.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        ChannelPinsUpdate { pin } => log_event!(
+        FullEvent::ChannelPinsUpdate { ctx, pin } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
@@ -572,8 +563,8 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        ChannelUpdate { old, new } => {
-            let guild_id = new.clone().guild().map_or(GuildId(0), |x| x.guild_id);
+        FullEvent::ChannelUpdate { ctx, old, new } => {
+            let guild_id = new.clone().guild().map(|x| x.guild_id).unwrap_or_default();
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -585,9 +576,10 @@ pub async fn handle_event(
                 event_name
             )
         }
-        poise::Event::GuildBanAddition {
+        FullEvent::GuildBanAddition {
             guild_id,
             banned_user,
+            ctx,
         } => {
             let log_data = (guild_id, banned_user);
             log_event!(
@@ -601,9 +593,10 @@ pub async fn handle_event(
                 event_name
             )
         }
-        poise::Event::GuildBanRemoval {
+        FullEvent::GuildBanRemoval {
             guild_id,
             unbanned_user,
+            ctx,
         } => {
             let log_data = (guild_id, unbanned_user);
             log_event!(
@@ -618,7 +611,7 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        GuildCreate { guild } => {
+        FullEvent::GuildCreate { ctx, guild } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -631,7 +624,7 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "cache"))]
-        GuildCreate { guild, is_new } => {
+        FullEvent::GuildCreate { ctx, guild, is_new } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -644,7 +637,7 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        GuildDelete { incomplete } => {
+        FullEvent::GuildDelete { ctx, incomplete } => {
             let log_data = (incomplete);
             log_event!(
                 log_unimplemented_event,
@@ -658,7 +651,11 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "cache"))]
-        GuildDelete { incomplete, full } => {
+        FullEvent::GuildDelete {
+            ctx,
+            incomplete,
+            full,
+        } => {
             let log_data = (incomplete, full);
             log_event!(
                 log_unimplemented_event,
@@ -671,9 +668,10 @@ pub async fn handle_event(
                 event_name
             )
         }
-        GuildEmojisUpdate {
+        FullEvent::GuildEmojisUpdate {
             guild_id,
             current_state,
+            ctx,
         } => {
             let log_data = (guild_id, current_state);
             log_event!(
@@ -687,7 +685,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        GuildIntegrationsUpdate { guild_id } => {
+        FullEvent::GuildIntegrationsUpdate { ctx, guild_id } => {
             let log_data = guild_id;
             log_event!(
                 log_unimplemented_event,
@@ -701,7 +699,7 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        poise::Event::GuildMemberUpdate {
+        FullEvent::GuildMemberUpdate {
             old_if_available,
             new,
         } => {
@@ -718,11 +716,14 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildMemberUpdate {
+        FullEvent::GuildMemberUpdate {
+            ctx,
             old_if_available,
             new,
+            event: _,
         } => {
             let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .map(|x| x.get_join_leave_log_channel())
@@ -788,10 +789,12 @@ pub async fn handle_event(
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
-        GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
-        poise::Event::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
+        FullEvent::GuildMembersChunk { chunk, ctx: _ } => {
+            event_log.write_log_obj(event_name, chunk)
+        }
+        FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
         #[cfg(feature = "cache")]
-        poise::Event::GuildRoleDelete {
+        GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_global_if_available,
@@ -804,44 +807,54 @@ pub async fn handle_event(
             ),
         ),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildRoleDelete {
+        FullEvent::GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
+            ctx: _,
         } => event_log.write_log_obj(
             event_name,
             &(guild_id, removed_role_id, removed_role_data_if_available),
         ),
         #[cfg(feature = "cache")]
-        poise::Event::GuildRoleUpdate {
+        FullEvent::GuildRoleUpdate {
             old_data_global_if_available,
             new,
         } => event_log.write_log_obj(event_name, &(old_data_global_if_available, new)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildRoleUpdate {
+        FullEvent::GuildRoleUpdate {
             new,
             old_data_if_available,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
-        poise::Event::GuildScheduledEventCreate { event } => {
+        FullEvent::GuildScheduledEventCreate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
-        poise::Event::GuildScheduledEventUpdate { event } => {
+        FullEvent::GuildScheduledEventUpdate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
-        GuildScheduledEventDelete { event } => event_log.write_log_obj(event_name, event),
-        poise::Event::GuildScheduledEventUserAdd { subscribed } => {
+        FullEvent::GuildScheduledEventDelete { event, ctx: _ } => {
+            event_log.write_log_obj(event_name, event)
+        }
+        FullEvent::GuildScheduledEventUserAdd { subscribed, ctx: _ } => {
             event_log.write_log_obj(event_name, subscribed)
         }
-        GuildScheduledEventUserRemove { unsubscribed } => {
-            event_log.write_log_obj(event_name, unsubscribed)
-        }
-        poise::Event::GuildStickersUpdate {
+        FullEvent::GuildScheduledEventUserRemove {
+            unsubscribed,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, unsubscribed),
+        FullEvent::GuildStickersUpdate {
+            ctx: _,
             guild_id,
             current_state,
         } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
-        GuildUnavailable { guild_id } => event_log.write_log_obj(event_name, &guild_id),
+        FullEvent::GuildAuditLogEntryCreate {
+            ctx: _,
+            entry,
+            guild_id,
+        } => event_log.write_log_obj(event_name, &(entry, guild_id)),
         #[cfg(feature = "cache")]
-        poise::Event::GuildUpdate {
+        FullEvent::GuildUpdate {
             old_data_global_if_available,
             new_but_incomplete,
         } => event_log.write_log_obj(
@@ -849,166 +862,147 @@ pub async fn handle_event(
             &(old_data_global_if_available, new_but_incomplete),
         ),
         #[cfg(not(feature = "cache"))]
-        poise::Event::GuildUpdate {
-            new_but_incomplete,
+        FullEvent::GuildUpdate {
             old_data_if_available,
-        } => event_log.write_log_obj(event_name, &(new_but_incomplete, old_data_if_available)),
-        IntegrationCreate { integration } => event_log.write_log_obj(event_name, integration),
-        IntegrationUpdate { integration } => event_log.write_log_obj(event_name, integration),
-        poise::Event::IntegrationDelete {
+            ctx: _,
+            new_data,
+        } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        FullEvent::IntegrationCreate {
+            integration,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, integration),
+        FullEvent::IntegrationUpdate {
+            integration,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, integration),
+        FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        InteractionCreate { interaction } => event_log.write_log_obj(event_name, interaction),
-        InviteCreate { data } => event_log.write_log_obj(event_name, data),
-        InviteDelete { data } => event_log.write_log_obj(event_name, data),
-        MessageDelete {
+        FullEvent::InteractionCreate {
+            interaction,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, interaction),
+        FullEvent::InviteCreate { data, ctx: _ } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteDelete { data, ctx: _ } => event_log.write_log_obj(event_name, data),
+        FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,
             guild_id,
+            ctx: _,
         } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
-        MessageDeleteBulk {
+        FullEvent::MessageDeleteBulk {
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
+            ctx: _,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
         #[cfg(feature = "cache")]
-        poise::Event::MessageUpdate {
+        FullEvent::MessageUpdate {
             old_if_available,
             new,
             event,
         } => event_log.write_obj(event_name, &(old_if_available, new, event)),
         #[cfg(not(feature = "cache"))]
-        poise::Event::MessageUpdate {
+        FullEvent::MessageUpdate {
             old_if_available,
             new,
             event,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
-        ReactionAdd { add_reaction } => event_log.write_log_obj(event_name, add_reaction),
-        ReactionRemove { removed_reaction } => {
-            event_log.write_log_obj(event_name, removed_reaction)
-        }
-        poise::Event::ReactionRemoveAll {
+        FullEvent::ReactionAdd {
+            add_reaction,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, add_reaction),
+        FullEvent::ReactionRemove {
+            removed_reaction,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, removed_reaction),
+        FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
+            ctx: _,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
-        PresenceReplace { new_presences } => event_log.write_log_obj(event_name, new_presences),
-        Ready { data_about_bot } => {
+        FullEvent::PresenceReplace { ctx: _, presences } => {
+            event_log.write_log_obj(event_name, presences)
+        }
+        FullEvent::Ready {
+            data_about_bot,
+            ctx: _,
+        } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
             event_log.write_log_obj(event_name, data_about_bot)
         }
-        Resume { event } => event_log.write_log_obj(event_name, event),
-        StageInstanceCreate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
-        }
-        StageInstanceDelete { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
-        }
-        StageInstanceUpdate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
-        }
-        ThreadCreate { thread } => event_log.write_log_obj(event_name, thread),
-        ThreadDelete { thread } => event_log.write_log_obj(event_name, thread),
-        ThreadListSync { thread_list_sync } => {
-            event_log.write_log_obj(event_name, thread_list_sync)
-        }
-        ThreadMemberUpdate { thread_member } => event_log.write_log_obj(event_name, thread_member),
-        poise::Event::ThreadMembersUpdate {
+        FullEvent::Resume { ctx: _, event } => event_log.write_log_obj(event_name, event),
+        FullEvent::StageInstanceCreate {
+            stage_instance,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        FullEvent::StageInstanceDelete {
+            stage_instance,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        FullEvent::StageInstanceUpdate {
+            stage_instance,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, stage_instance),
+        FullEvent::ThreadCreate { thread, ctx: _ } => event_log.write_log_obj(event_name, thread),
+        FullEvent::ThreadDelete {
+            thread,
+            ctx: _,
+            full_thread_data: _,
+        } => event_log.write_log_obj(event_name, thread),
+        FullEvent::ThreadListSync {
+            thread_list_sync,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, thread_list_sync),
+        FullEvent::ThreadMemberUpdate {
+            thread_member,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, thread_member),
+        FullEvent::ThreadMembersUpdate {
             thread_members_update,
+            ctx: _,
         } => event_log.write_log_obj(event_name, thread_members_update),
-        ThreadUpdate { thread } => event_log.write_log_obj(event_name, thread),
-        Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
+        FullEvent::ThreadUpdate { ctx: _, old, new } => {
+            event_log.write_log_obj(event_name, &(old, new))
+        }
+        // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
         #[cfg(feature = "cache")]
-        poise::Event::UserUpdate {
+        UserUpdate {
             old_data_global,
             new,
         } => event_log.write_log_obj(&(old_data_global, new)),
         #[cfg(not(feature = "cache"))]
-        UserUpdate { old_data, new } => event_log.write_log_obj(event_name, &(old_data, new)),
-        VoiceServerUpdate { update } => event_log.write_log_obj(event_name, update),
+        FullEvent::UserUpdate {
+            old_data,
+            new,
+            ctx: _,
+        } => event_log.write_log_obj(event_name, &(old_data, new)),
+        FullEvent::VoiceServerUpdate { ctx: _, event } => {
+            event_log.write_log_obj(event_name, event)
+        }
         #[cfg(feature = "cache")]
         VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
-        WebhookUpdate {
+        FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
+            ctx: _,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
-        CacheReady { guilds } => {
-            tracing::info!("{}: {}", event_in.name().bright_green(), guilds.len());
+        FullEvent::CacheReady { guilds, ctx: _ } => {
+            tracing::info!(
+                "{}: {}",
+                event_in.snake_case_name().bright_green(),
+                guilds.len()
+            );
             Ok(())
         }
         _ => {
-            tracing::info!("{}", event_in.name().bright_green());
+            tracing::info!("{}", event_in.snake_case_name().bright_green());
             // event_log.write_log_obj(event_name, event_in);
             Ok(())
         }
     }
 }
-
-// #[allow(dead_code)]
-// enum EventTypes {
-//     PresenceUpdate,
-//     GuildMemberAddition,
-//     VoiceStateUpdate,
-//     Message,
-//     TypingStart,
-//     ApplicationCommandPermissionsUpdate,
-//     AutoModerationActionExecution,
-//     AutoModerationRuleCreate,
-//     AutoModerationRuleUpdate,
-//     AutoModerationRuleDelete,
-//     CategoryCreate,
-//     CategoryDelete,
-//     ChannelDelete,
-//     ChannelPinsUpdate,
-//     ChannelUpdate,
-//     GuildBanAddition,
-//     GuildBanRemoval,
-//     GuildCreate,
-//     GuildDelete,
-//     GuildEmojisUpdate,
-//     GuildIntegrationsUpdate,
-//     GuildMemberRemoval,
-//     GuildMemberUpdate,
-//     GuildMembersChunk,
-//     GuildRoleCreate,
-//     GuildRoleDelete,
-//     GuildRoleUpdate,
-//     GuildScheduledEventCreate,
-//     GuildScheduledEventUpdate,
-//     GuildScheduledEventDelete,
-//     GuildScheduledEventUserAdd,
-//     GuildScheduledEventUserRemove,
-//     GuildStickersUpdate,
-//     GuildUnavailable,
-//     GuildUpdate,
-//     IntegrationCreate,
-//     IntegrationUpdate,
-//     IntegrationDelete,
-//     InteractionCreate,
-//     InviteCreate,
-//     InviteDelete,
-//     MessageDelete,
-//     MessageDeleteBulk,
-//     MessageUpdate,
-//     ReactionAdd,
-//     ReactionRemove,
-//     ReactionRemoveAll,
-//     PresenceReplace,
-//     Ready,
-//     Resume,
-//     ShardStageUpdate,
-//     StageInstanceCreate,
-//     StageInstanceDelete,
-//     StageInstanceUpdate,
-//     ThreadCreate,
-//     ThreadDelete,
-//     ThreadListSync,
-//     ThreadMemberUpdate,
-//     ThreadMembersUpdate,
-//     ThreadUpdate,
-//     Unknown,
-//     UserUpdate,
-//     VoiceServerUpdate,
-//     WebhooksUpdate,
-// }

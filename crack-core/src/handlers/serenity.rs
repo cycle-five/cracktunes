@@ -1,21 +1,23 @@
-use self::serenity::{
-    async_trait,
-    model::{
-        gateway::Ready,
-        id::GuildId,
-        prelude::{Activity, ChannelId, VoiceState},
-    },
-    {Context as SerenityContext, EventHandler},
-};
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::track_end::update_queue_messages,
+    //handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig, CamKickConfig, Data,
+    BotConfig,
+    CamKickConfig,
+    Data,
+};
+use ::serenity::{
+    builder::{CreateEmbed, CreateMessage, EditMember},
+    gateway::ActivityData,
 };
 use colored::Colorize;
 use poise::serenity_prelude::{
-    self as serenity, Channel, Guild, Member, Mentionable, SerenityError, UserId,
+    self as serenity, Channel, Error as SerenityError, Member, Mentionable, UserId,
+};
+use serenity::{
+    async_trait,
+    model::{gateway::Ready, id::GuildId, prelude::VoiceState},
+    ChannelId, {Context as SerenityContext, EventHandler},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -50,35 +52,13 @@ impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} is connected!", ready.user.name);
 
-        ctx.set_activity(Activity::listening(format!(
+        ctx.set_activity(Some(ActivityData::listening(format!(
             "{}play",
-            self.data.bot_settings.get_prefix()
-        )))
-        .await;
+            __self.data.bot_settings.get_prefix()
+        ))));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
-
-        // loads serialized guild settings
-        tracing::warn!("Loading guilds' settings");
-        let _ = self.load_guilds_settings(&ctx, &ready).await;
-
-        let num_inserted = {
-            let lock = ctx.data.read().await;
-            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.lock().unwrap();
-
-            let mut x = 0;
-            for (key, value) in guild_settings_map.clone().iter() {
-                tracing::info!("Guild {} settings: {:?}", key, value);
-
-                data_write.insert(*key, value.clone());
-                x += 1;
-            }
-            x
-        };
-
-        tracing::warn!("num_inserted: {}", num_inserted);
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
@@ -136,21 +116,22 @@ impl EventHandler for SerenityHandler {
             (None, _) => {}
             (_, None) => {}
             (Some(message), Some(channel)) => {
-                let channel = ChannelId(channel);
+                let channel = serenity::ChannelId::new(channel);
                 let x = channel
-                    .send_message(&ctx.http, |m| {
-                        if message.contains("{user}") {
-                            let new_msg = message
-                                .replace("{user}", new_member.user.mention().to_string().as_str());
-                            m.content(new_msg)
-                        } else {
-                            m.content(format_args!(
-                                "{} {user}",
-                                message,
-                                user = new_member.user.mention()
-                            ))
-                        }
-                    })
+                    .send_message(
+                        &ctx.http,
+                        CreateMessage::default().content({
+                            if message.contains("{user}") {
+                                message.replace(
+                                    "{user}",
+                                    new_member.user.mention().to_string().as_str(),
+                                )
+                            } else {
+                                format_args!("{} {user}", message, user = new_member.user.mention())
+                                    .to_string()
+                            }
+                        }),
+                    )
                     .await;
                 tracing::info!("x: {:?}", x.unwrap());
             }
@@ -159,7 +140,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let mut new_member = new_member;
-            let role_id = serenity::RoleId(role_id);
+            let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
@@ -205,16 +186,19 @@ impl EventHandler for SerenityHandler {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
-                GuildId(0)
+                GuildId::new(0)
             }
         };
 
-        if *guild_id.as_u64() != 0 {
-            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+        if guild_id.get() != 0 {
+            let guild_name = {
+                let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+                guild.name.clone()
+            };
             let name = msg.author.name.clone();
-            let guild_name = guild.name;
+            // let guild_name = guild.name;
             let content = msg.content.clone();
-            let channel_name = msg.channel_id.name(&ctx).await.unwrap_or_default();
+            let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
 
             tracing::info!(
                 "Message: {} {} {} {}",
@@ -223,8 +207,7 @@ impl EventHandler for SerenityHandler {
                 channel_name.purple(),
                 content.purple(),
             );
-            let mm = MyMessage(msg);
-            tracing::info!("{}", mm);
+            let _mm = MyMessage(msg);
         }
     }
 
@@ -235,7 +218,7 @@ impl EventHandler for SerenityHandler {
         new: VoiceState,
     ) {
         // do nothing if this is a voice update event for a user, not a bot
-        if new.user_id != ctx.cache.current_user_id() {
+        if new.user_id != ctx.cache.current_user().id {
             return;
         }
 
@@ -279,7 +262,7 @@ impl EventHandler for SerenityHandler {
             manager.remove(guild_id).await.ok();
         }
 
-        update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
+        // update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
@@ -296,6 +279,27 @@ impl EventHandler for SerenityHandler {
         // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
         let config = Arc::new(config);
+
+        // loads serialized guild settings
+        tracing::warn!("Loading guilds' settings");
+        let _ = self.load_guilds_settings_cache_ready(&ctx, &guilds).await;
+
+        let num_inserted = {
+            let lock = ctx.data.read().await;
+            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+
+            let mut x = 0;
+            for (key, value) in guild_settings_map.clone().iter() {
+                tracing::info!("Guild {} settings: {:?}", key, value);
+
+                data_write.insert(*key, value.clone());
+                x += 1;
+            }
+            x
+        };
+
+        tracing::warn!("num_inserted: {}", num_inserted);
 
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
@@ -367,7 +371,7 @@ impl SerenityHandler {
         );
     }
 
-    async fn load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
+    async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
         let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
         tracing::info!("Loading guilds' settings");
@@ -429,6 +433,71 @@ impl SerenityHandler {
         // ret_map
     }
 
+    async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
+        let prefix = self.data.bot_settings.get_prefix();
+        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        tracing::info!("Loading guilds' settings");
+        // let mut data = ctx.data.write().await;
+        // let settings = match data.get_mut::<GuildSettingsMap>() {
+        //     Some(settings) => settings,
+        //     None => {
+        //         tracing::error!("Guild settings not found");
+        //         data.insert::<GuildSettingsMap>(HashMap::default());
+        //         data.get_mut::<GuildSettingsMap>().unwrap()
+        //     }
+        // };
+        for guild_id in guilds {
+            // let guild_id = guild.id;
+            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match,
+                None => {
+                    tracing::error!("Guild not found in cache");
+                    continue;
+                }
+            };
+            tracing::info!(
+                "Loading guild settings for {}, {}",
+                guild_full.id,
+                guild_full.name.clone()
+            );
+
+            let mut default = GuildSettings::new(
+                guild_full.id,
+                Some(&prefix),
+                Some(guild_full.name.to_ascii_lowercase().clone()),
+            );
+
+            let _ = default.load_if_exists().map_err(|err| {
+                tracing::error!(
+                    "Failed to load guild {} settings due to {}",
+                    default.guild_id,
+                    err
+                );
+            });
+
+            tracing::warn!("GuildSettings: {:?}", default);
+
+            let _ = guild_settings_map.insert(default.guild_id, default.clone());
+
+            let guild_settings = guild_settings_map.get_mut(&default.guild_id);
+
+            guild_settings
+                .map(|x| {
+                    x.save().expect("Error saving guild settings");
+                    tracing::info!("saving guild {}...", x);
+                    x
+                })
+                .or_else(|| {
+                    tracing::error!("Guild not found in settings map");
+                    None
+                });
+        }
+        tracing::error!("guild_settings_map");
+        tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
+        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
+        // ret_map
+    }
+
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
         if self.data.bot_settings.self_deafen.is_some() {
             return;
@@ -441,7 +510,7 @@ impl SerenityHandler {
         if user.id == new.user_id && !new.deaf {
             guild
                 .unwrap()
-                .edit_member(&ctx.http, new.user_id, |n| n.deafen(true))
+                .edit_member(&ctx.http, new.user_id, EditMember::default().deafen(true))
                 .await
                 .unwrap();
         }
@@ -455,10 +524,12 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     // We can use ChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
     if let Some(chan_id) = config.sys_log_channel_id {
-        let message = ChannelId(chan_id)
-            .send_message(&ctx, |m| {
-                m.embed(|e| {
-                    e.title("System Resource Load")
+        let message = ChannelId::new(chan_id)
+            .send_message(
+                &ctx,
+                CreateMessage::new().embed({
+                    CreateEmbed::new()
+                        .title("System Resource Load")
                         .field(
                             "CPU Load Average",
                             format!("{:.2}%", cpu_load.one * 10.0),
@@ -473,8 +544,8 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
                             ),
                             false,
                         )
-                })
-            })
+                }),
+            )
             .await;
         if let Err(why) = message {
             tracing::error!("Error sending message: {:?}", why);
@@ -485,17 +556,24 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
 }
 
 async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Vec<MyVoiceUserInfo> {
-    let guild = match guild_id.to_guild_cached(&ctx.cache) {
-        Some(guild) => guild,
+    // let guild = match guild_id.to_guild_cached(&ctx.cache) {
+    //     Some(guild) => guild,
+    //     None => {
+    //         tracing::error!("Guild not found in cache");
+    //         return vec![];
+    //     }
+    // };
+    let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx.cache) {
+        Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
         None => {
             tracing::error!("Guild not found in cache");
             return vec![];
         }
     };
 
-    let voice_states = guild.voice_states;
+    // let voice_states = &guild.voice_states;
     let mut cams = vec![];
-    let mut output: String = format!("{}\n", guild.name.bright_green());
+    let mut output: String = format!("{}\n", guild_name.bright_green());
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
@@ -510,12 +588,11 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 Ok(channel) => match channel {
                     Channel::Guild(channel) => channel.name,
                     Channel::Private(channel) => channel.name(),
-                    Channel::Category(channel) => channel.name,
                     _ => String::from("unknown"),
                 },
                 Err(err) => {
-                    tracing::error!("Error getting channel: {}", err);
-                    continue;
+                    tracing::error!("Error getting channel name for {}: {}", channel_id, err);
+                    "MISSING_ACCESS".to_string()
                 }
             };
 
@@ -576,7 +653,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.key()) {
-                    if let Some(kick_conf) = channels.get(&status.channel_id.0) {
+                    if let Some(kick_conf) = channels.get(&status.channel_id.get()) {
                         tracing::warn!("kick_conf: {}", format!("{:?}", kick_conf).blue());
                         if status.camera_status != cam.camera_status {
                             tracing::info!(
@@ -609,18 +686,21 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                     status.time_last_cam_change.elapsed().as_secs()
                                 );
 
-                                let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
+                                // let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
+                                let guild_id = cam.guild_id;
                                 tracing::error!("about to disconnect {:?}", cam.user_id);
 
                                 // WARN: Disconnect the user
                                 // FIXME: Should this not be it's own function?
                                 // let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
                                 let dc_res1 = (
-                                    server_defeafen_member(ctx.clone(), *cam, guild.clone()).await,
+                                    server_defeafen_member(ctx.clone(), *cam, guild_id).await,
                                     "deafen",
                                 );
-                                let dc_res2 =
-                                    (server_mute_member(ctx.clone(), *cam, guild).await, "mute");
+                                let dc_res2 = (
+                                    server_mute_member(ctx.clone(), *cam, guild_id).await,
+                                    "mute",
+                                );
 
                                 for (dc_res, state) in vec![dc_res1, dc_res2] {
                                     match dc_res {
@@ -634,16 +714,19 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                 || state == "mute" && kick_conf.send_msg_mute
                                                 || state == "disconnect" && kick_conf.send_msg_dc
                                             {
-                                                let channel = ChannelId(kick_conf.channel_id);
+                                                let channel = ChannelId::new(kick_conf.channel_id);
                                                 let _ = channel
-                                                    .send_message(&ctx.http, |m| {
-                                                        m.content(format!(
-                                                            "{} {}: {}",
-                                                            user.mention(),
-                                                            kick_conf.dc_message,
-                                                            state
-                                                        ))
-                                                    })
+                                                    .send_message(
+                                                        &ctx.http,
+                                                        CreateMessage::default().content({
+                                                            format!(
+                                                                "{} {}: {}",
+                                                                user.mention(),
+                                                                kick_conf.dc_message,
+                                                                state
+                                                            )
+                                                        }),
+                                                    )
                                                     .await;
                                                 // cam_status.remove(&cam.key());
                                             }
@@ -689,40 +772,47 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 async fn disconnect_member(
     ctx: Arc<SerenityContext>,
     cam: MyVoiceUserInfo,
-    guild: Guild,
+    guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .member(&ctx.http, cam.user_id)
-        .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.disconnect_member())
+        .edit_member(
+            &ctx.http,
+            cam.user_id,
+            EditMember::default().disconnect_member(),
+        )
         .await
 }
 
 async fn server_defeafen_member(
     ctx: Arc<SerenityContext>,
     cam: MyVoiceUserInfo,
-    guild: Guild,
+    guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .member(&ctx.http, cam.user_id)
+        .edit_member(&ctx.http, cam.user_id, EditMember::default().deafen(true))
         .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.deafen(true))
-        .await
+    // guild
+    //     .member(&ctx.http, cam.user_id)
+    //     .await
+    //     .expect("Member not found")
+    //     .edit(&ctx.http, |m| m.deafen(true))
+    //     .await
 }
 
 async fn server_mute_member(
     ctx: Arc<SerenityContext>,
     cam: MyVoiceUserInfo,
-    guild: Guild,
+    guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .member(&ctx.http, cam.user_id)
+        .edit_member(&ctx.http, cam.user_id, EditMember::default().mute(true))
         .await
-        .expect("Member not found")
-        .edit(&ctx.http, |m| m.mute(true))
-        .await
+    // guild
+    //     .member(&ctx.http, cam.user_id)
+    //     .await
+    //     .expect("Member not found")
+    //     .edit(&ctx.http, EditMember::default().mute(true))
+    //     .await
 }
 
 pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> String {
@@ -732,8 +822,8 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             return format!(
                 "{} / {} / {}",
                 new.member.as_ref().unwrap().user.name.blue(),
-                new.guild_id.unwrap().0.to_string().blue(),
-                new.channel_id.unwrap().0.to_string().blue()
+                new.guild_id.unwrap().get().to_string().blue(),
+                new.channel_id.unwrap().get().to_string().blue()
             );
             // return format!(
             //     "channel_id: (none) -> {:?}
@@ -811,9 +901,9 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             old.suppress, new.suppress
         ));
     }
-    if old.token != new.token {
-        result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
-    }
+    // if old.token != new.token {
+    //     result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
+    // }
     if old.user_id != new.user_id {
         result.push_str(&format!(
             "user_id : {:?} -> {:?}\n",

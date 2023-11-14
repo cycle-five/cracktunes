@@ -1,7 +1,7 @@
 [package]
 name = "crack-core"
 version = "0.2.12"
-authors = ["CycleFive <cycle.five@proton.me>", "aquelemiguel"]
+authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "A Discord music bot built on Rust and Crack."
 repository = "https://github.com/cycle-five/cracktunes"
@@ -9,32 +9,36 @@ license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
 
 [features]
-default = ["playlist"]
+default = ["playlist", "crack-gpt"]
 playlist = ["sqlx"]
 shuttle = []
 log_all = []
+crack-gpt = []
 
 [dependencies]
 audiopus = "0.3.0-rc.0"
-colored = "2.0.4"
-lazy_static = "1.4.0"
-lyric_finder = "0.1.4"
-rand = "0.8.5"
-regex = "1.10.0"
-serde_json = "1.0.107"
-url = "2.4.1"
-serde = { version = "1.0.188", features = ["derive", "rc"] }
-serde_stream = { version = "1.0.1", features = ["tokio"]}
-sys-info = "0.9.1"
-prometheus = {version = "0.13.3", features = ["process"]}
-anyhow = "1.0.75"
-proc-macro2 = "1.0.69"
-typemap_rev = "0.3.0"
+colored = "2.0"
+lazy_static = "1.4"
+lyric_finder = "0.1"
+rand = "0.8"
+regex = "1.10"
+serde_json = "1.0"
+url = "2.4"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_stream = { version = "1.0", features = ["tokio"] }
+sys-info = "0.9"
+prometheus = { version = "0.13", features = ["process"] }
+anyhow = "1.0"
+proc-macro2 = "1.0"
+typemap_rev = "0.3"
+chatgpt_rs = "1.2"
+crack-gpt = { path = "../crack-gpt" }
 tracing = { workspace = true }
 reqwest = { workspace = true }
-sqlx = {workspace = true, optional = true}
+sqlx = { workspace = true, optional = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
+symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
 tungstenite = { workspace = true }
@@ -50,10 +54,10 @@ branch = "no-oldtime"
 # version = "0.5.3"
 # features = ["all"]
 
-
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"
 
 [dev-dependencies]
 tungstenite = "^0.20.1"
 async-tungstenite = "^0.23.0"
+mockall = "0.11.4"

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use self::serenity::model::mention::Mention;
+use ::serenity::builder::CreateEmbed;
 use poise::serenity_prelude::{self as serenity, UserId};
 
 use crate::messaging::messages::*;
@@ -119,7 +120,7 @@ pub enum CrackedMessage {
 impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, INVALID_IP)),
+            Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),
@@ -213,5 +214,17 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
             }
         }
+    }
+}
+
+impl From<CrackedMessage> for String {
+    fn from(message: CrackedMessage) -> Self {
+        message.to_string()
+    }
+}
+
+impl From<CrackedMessage> for CreateEmbed {
+    fn from(message: CrackedMessage) -> Self {
+        CreateEmbed::default().description(message.to_string())
     }
 }

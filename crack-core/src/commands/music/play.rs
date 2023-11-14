@@ -10,22 +10,26 @@ use crate::{
         PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
         TRACK_TIME_TO_PLAY,
     },
-    sources::{
-        file::FileRestartable,
-        spotify::{Spotify, SPOTIFY},
-        youtube::{YouTube, YouTubeRestartable},
-    },
+    sources::spotify::{Spotify, SPOTIFY},
     utils::{
         compare_domains, create_embed_response_poise, create_now_playing_embed,
-        create_response_poise_text, edit_embed_response_poise, edit_response_poise, get_guild_name,
-        get_human_readable_timestamp, get_interaction,
+        create_response_interaction, create_response_poise_text, edit_embed_response_poise,
+        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_interaction,
+        get_interaction_new, get_track_metadata, CommandOrMessageInteraction,
     },
     Context, Error,
 };
-use poise::serenity_prelude::{self as serenity, Attachment};
-use songbird::{input::Restartable, tracks::TrackHandle, Call};
+use ::serenity::builder::{CreateEmbedFooter, EditInteractionResponse};
+use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use reqwest::Client;
+use songbird::{
+    input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
+    tracks::{Track, TrackHandle},
+    Call,
+};
 use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
+use typemap_rev::TypeMapKey;
 use url::Url;
 
 #[derive(Clone, Copy, Debug)]
@@ -45,6 +49,8 @@ pub enum QueryType {
     VideoLink(String),
     PlaylistLink(String),
     File(serenity::Attachment),
+    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    // YoutubeSearch(String),
 }
 
 /// Get the guild name (guild-only)
@@ -59,38 +65,8 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Play a song.
-#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
-pub async fn play(
-    ctx: Context<'_>,
-    #[description = "Play mode"] mode: Option<String>,
-    #[description = "File to play."] file: Option<serenity::Attachment>,
-    #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
-) -> Result<(), Error> {
-    let prefix = ctx.prefix();
-    let is_prefix = ctx.prefix() != "/";
-    let mut msg = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
-
+fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode {
     if is_prefix {
-        msg = Some(
-            mode.clone()
-                .map(|s| s.replace("query_or_url:", ""))
-                .unwrap_or("".to_string())
-                + " "
-                + &msg.unwrap_or("".to_string()),
-        );
-    }
-
-    if msg.is_none() && file.is_none() {
-        let mut embed = CreateEmbed::default();
-        embed.description(format!("{}", CrackedError::Other("No query provided!")));
-        create_embed_response_poise(ctx, embed).await?;
-        return Ok(());
-    }
-
-    let mode = if is_prefix {
         match msg
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
@@ -120,47 +96,123 @@ pub async fn play(
             "jump" => Mode::Jump,
             _ => Mode::End,
         }
-    };
+    }
+}
 
+/// Parses the msg variable from the parameters to the play command which due
+/// to the way that the way the poise library works with auto filling them
+/// based on types, it could be kind of mangled if the prefix version of the
+/// command is used.
+fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
+    let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+    if is_prefix {
+        Some(
+            mode.clone()
+                .map(|s| s.replace("query_or_url:", ""))
+                .unwrap_or("".to_string())
+                + " "
+                + &step1.unwrap_or("".to_string()),
+        )
+    } else {
+        step1
+    }
+}
+
+/// Get the call handle for songbird
+/// FIXME: Does this need to take the GuildId?
+#[inline]
+pub async fn get_call_with_fail_msg(
+    ctx: Context<'_>,
+    guild_id: serenity::GuildId,
+) -> Result<Arc<Mutex<Call>>, Error> {
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    match manager.get(guild_id) {
+        Some(call) => Ok(call),
+        None => {
+            // try to join a voice channel if not in one just yet
+            //match summon_short(ctx).await {
+            match manager.join(guild_id, ctx.channel_id()).await {
+                Ok(_) => Ok(manager.get(guild_id).unwrap()),
+                Err(_) => {
+                    let embed = CreateEmbed::default()
+                        .description(format!("{}", CrackedError::NotConnected));
+                    create_embed_response_poise(ctx, embed).await?;
+                    Err(CrackedError::NotConnected.into())
+                }
+            }
+        }
+    }
+}
+
+/// Sends the searching message after a play command is sent.
+/// Also defers the interaction so we won't timeout.
+async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
+    match get_interaction_new(ctx) {
+        Some(interaction) => match interaction {
+            CommandOrMessageInteraction::Command(interaction) => {
+                create_response_interaction(
+                    &ctx.serenity_context().http,
+                    &interaction,
+                    CrackedMessage::Search.into(),
+                    true,
+                )
+                .await?
+            }
+            _ => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+        },
+        None => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+    }
+
+    Ok(())
+}
+
+async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    Ok(guild_id)
+}
+
+/// Play a song.
+#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
+pub async fn play(
+    ctx: Context<'_>,
+    #[description = "Play mode"] mode: Option<String>,
+    #[description = "File to play."] file: Option<serenity::Attachment>,
+    #[rest]
+    #[description = "song link or search query."]
+    query_or_url: Option<String>,
+) -> Result<(), Error> {
+    let prefix = ctx.prefix();
+    let is_prefix = ctx.prefix() != "/";
+
+    let msg = get_msg(mode.clone(), query_or_url, is_prefix);
+
+    if msg.is_none() && file.is_none() {
+        let embed = CreateEmbed::default()
+            .description(format!("{}", CrackedError::Other("No query provided!")));
+        create_embed_response_poise(ctx, embed).await?;
+        return Ok(());
+    }
+
+    let mode = get_mode(is_prefix, msg.clone(), mode);
+
+    // TODO: Maybe put into it's own function?
     let url = match file.clone() {
         Some(file) => file.url.as_str().to_owned().to_string(),
-        None => msg.unwrap(),
+        None => msg.clone().unwrap(),
     };
     let url = url.as_str();
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NoGuildId));
-            create_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
+    let guild_id = get_guild_id_with_fail_msg(ctx).await?;
 
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            // try to join a voice channel if not in one just yet
-            //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await.1 {
-                Ok(_) => manager.get(guild_id).unwrap(),
-                Err(_) => {
-                    let mut embed = CreateEmbed::default();
-                    embed.description(format!("{}", CrackedError::NotConnected));
-                    create_embed_response_poise(ctx, embed).await?;
-                    return Ok(());
-                }
-            }
-        }
-    };
+    let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
     // determine whether this is a link or a query string
-    let query_type = match_url(&ctx, url, file).await?;
+    let query_type = match_url(ctx, url, file).await?;
 
+    // FIXME: Decide whether we're using this everywhere, or not.
+    // Don't like the inconsistency.
     let query_type = verify(
         query_type,
         CrackedError::Other("Something went wrong while parsing your query!"),
@@ -170,20 +222,9 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    match get_interaction(ctx) {
-        Some(interaction) => {
-            interaction.defer(ctx.http()).await.unwrap();
-            interaction
-                .create_interaction_response(&ctx.serenity_context().http, |response| {
-                    response
-                        .kind(serenity::InteractionResponseType::DeferredChannelMessageWithSource)
-                })
-                .await?;
-        }
-        None => create_response_poise_text(&ctx, CrackedMessage::Search).await?,
-    };
+    send_search_message(ctx).await?;
 
-    match_mode(&ctx, call.clone(), mode, query_type.clone()).await?;
+    match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
 
     let handler = call.lock().await;
 
@@ -209,13 +250,19 @@ pub async fn play(
             let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
 
             match (query_type, mode) {
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::Next) => {
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::Next,
+                ) => {
                     let track = queue.get(1).unwrap();
                     let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
-                (QueryType::VideoLink(_) | QueryType::Keywords(_), Mode::End) => {
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::End,
+                ) => {
                     let track = queue.last().unwrap();
                     let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
 
@@ -225,9 +272,10 @@ pub async fn play(
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
-                                .edit_original_interaction_response(
+                                .edit_response(
                                     &ctx.serenity_context().http,
-                                    |message| message.content(CrackedMessage::PlaylistQueued),
+                                    EditInteractionResponse::new()
+                                        .content(CrackedMessage::PlaylistQueued),
                                 )
                                 .await?;
                         }
@@ -236,23 +284,47 @@ pub async fn play(
                         }
                     }
                 }
-                (_, _) => {}
+                (x, y) => {
+                    tracing::error!("Unexpected query_type: {:?}, mode: {:?}", x, y);
+                    // let track = queue.first().unwrap();
+                    // let embed = create_now_playing_embed(track).await;
+
+                    // edit_embed_response_poise(ctx, embed).await?;
+                }
             }
         }
         Ordering::Equal => {
+            tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
             let embed = create_now_playing_embed(track).await;
+            print_queue(queue).await;
 
             edit_embed_response_poise(ctx, embed).await?;
         }
-        _ => unreachable!(),
+        Ordering::Less => {
+            tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
+        }
     }
 
     Ok(())
 }
 
+async fn print_queue(queue: Vec<TrackHandle>) {
+    for track in queue.iter() {
+        let metadata = get_track_metadata(track).await;
+        tracing::warn!(
+            "Track {}: {} - {}, State: {:?}, Ready: {:?}",
+            metadata.title.unwrap_or("".to_string()).red(),
+            metadata.artist.unwrap_or("".to_string()).white(),
+            metadata.album.unwrap_or("".to_string()).blue(),
+            track.get_info().await.unwrap().playing,
+            track.get_info().await.unwrap().ready,
+        );
+    }
+}
+
 async fn match_mode(
-    ctx: &Context<'_>,
+    ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
@@ -266,21 +338,36 @@ async fn match_mode(
 
     match mode {
         Mode::End => match query_type.clone() {
-            QueryType::Keywords(_) | QueryType::VideoLink(_) => {
-                tracing::trace!("Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                let queue = enqueue_track(&call, &query_type).await?;
+            // QueryType::YoutubeSearch(query) => {
+            //     tracing::warn!("Mode::End, QueryType::YoutubeSearch");
+            //     do_yt_search(ctx, query).await?;
+            //     // let queue = enqueue_track(
+            //     //     ctx.http(),
+            //     //     &call,
+            //     //     &QueryType::YoutubeSearch(search_str.to_string()),
+            //     // )
+            //     // .await?;
+            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+            //     //     .await;
+            // }
+            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
+                tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
+                let queue = enqueue_track(ctx.http(), &call, &query_type).await?;
                 update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
                     .await;
             }
-            QueryType::PlaylistLink(url) => {
+            // FIXME
+            QueryType::PlaylistLink(_url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::PlayListFail)?;
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
+                let urls = vec!["".to_string()];
 
                 for url in urls.iter() {
                     let queue =
-                        enqueue_track(&call, &QueryType::VideoLink(url.to_string())).await?;
+                        enqueue_track(ctx.http(), &call, &QueryType::VideoLink(url.to_string()))
+                            .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -293,42 +380,47 @@ async fn match_mode(
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
                 for keywords in keywords_list.iter() {
-                    let queue =
-                        enqueue_track(&call, &QueryType::Keywords(keywords.to_string())).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
+                    let queue = enqueue_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords.to_string()),
                     )
-                    .await;
+                    .await?;
+                    update_queue_messages(&Arc::new(ctx.http()), ctx.data(), &queue, guild_id)
+                        .await;
                 }
             }
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
-                        enqueue_track(&call, &QueryType::File(file)).await?;
-                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
-                    .await;
+                        enqueue_track(ctx.http(), &call, &QueryType::File(file)).await?;
+                update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
             }
         },
         Mode::Next => match query_type.clone() {
-            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+            QueryType::Keywords(_)
+            | QueryType::VideoLink(_)
+            | QueryType::File(_)
+            | QueryType::NewYoutubeDl(_) => {
                 tracing::trace!(
                     "Mode::Next, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
-                let queue = insert_track(&call, &query_type, 1).await?;
+                let queue = insert_track(ctx.http(), &call, &query_type, 1).await?;
                 update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
                     .await;
             }
-            QueryType::PlaylistLink(url) => {
+            // FIXME
+            QueryType::PlaylistLink(_url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+                let urls = vec!["".to_string()];
 
                 for (idx, url) in urls.into_iter().enumerate() {
-                    let queue = insert_track(&call, &QueryType::VideoLink(url), idx + 1).await?;
+                    let queue =
+                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), idx + 1)
+                            .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -346,9 +438,13 @@ async fn match_mode(
                     1
                 };
                 for (idx, keywords) in keywords_list.into_iter().enumerate() {
-                    let queue =
-                        insert_track(&call, &QueryType::Keywords(keywords), idx + q_not_empty)
-                            .await?;
+                    let queue = insert_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords),
+                        idx + q_not_empty,
+                    )
+                    .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -360,11 +456,26 @@ async fn match_mode(
             }
         },
         Mode::Jump => match query_type.clone() {
-            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::File(_) => {
+            // QueryType::YoutubeSearch(query) => {
+            //     tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+            //     do_yt_search(ctx, query).await?;
+            //     // let queue = enqueue_track(
+            //     //     ctx.http(),
+            //     //     &call,
+            //     //     &QueryType::YoutubeSearch(query.to_string()),
+            //     // )
+            //     // .await?;
+            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
+            //     //     .await;
+            // }
+            QueryType::Keywords(_)
+            | QueryType::VideoLink(_)
+            | QueryType::File(_)
+            | QueryType::NewYoutubeDl(_) => {
                 tracing::trace!(
                     "Mode::Jump, QueryType::Keywords | QueryType::VideoLink | QueryType::File"
                 );
-                let mut queue = enqueue_track(&call, &query_type).await?;
+                let mut queue = enqueue_track(ctx.http(), &call, &query_type).await?;
 
                 if !queue_was_empty {
                     rotate_tracks(&call, 1).await.ok();
@@ -376,15 +487,23 @@ async fn match_mode(
             }
             QueryType::PlaylistLink(url) => {
                 tracing::error!("Mode::Jump, QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::PlayListFail)?;
-
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
+                // FIXME
+                let _src = YoutubeDl::new(Client::new(), url);
+                // .ok_or(CrackedError::Other("failed to fetch playlist"))?
+                // .into_iter()
+                // .for_each(|track| async {
+                //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
+                // });
+                let urls = vec!["".to_string()];
                 let mut insert_idx = 1;
 
                 for (i, url) in urls.into_iter().enumerate() {
                     let mut queue =
-                        insert_track(&call, &QueryType::VideoLink(url), insert_idx).await?;
+                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), insert_idx)
+                            .await?;
 
                     if i == 0 && !queue_was_empty {
                         queue = force_skip_top_track(&call.lock().await).await?;
@@ -406,8 +525,13 @@ async fn match_mode(
                 let mut insert_idx = 1;
 
                 for (i, keywords) in keywords_list.into_iter().enumerate() {
-                    let mut queue =
-                        insert_track(&call, &QueryType::Keywords(keywords), insert_idx).await?;
+                    let mut queue = insert_track(
+                        ctx.http(),
+                        &call,
+                        &QueryType::Keywords(keywords),
+                        insert_idx,
+                    )
+                    .await?;
 
                     if i == 0 && !queue_was_empty {
                         queue = force_skip_top_track(&call.lock().await).await?;
@@ -428,27 +552,49 @@ async fn match_mode(
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
-                let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                    .await
-                    .ok_or(CrackedError::PlayListFail)?;
+                // FIXME
+                let mut src = YoutubeDl::new(reqwest::Client::new(), url);
+                let metadata = src.aux_metadata().await?;
+                enqueue_track(ctx.http(), &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
+                update_queue_messages(
+                    &ctx.serenity_context().http,
+                    ctx.data(),
+                    &call.lock().await.queue().current_queue(),
+                    guild_id,
+                )
+                .await;
+                // .await
+                // .ok_or(CrackedError::Other("failed to fetch playlist"))?
+                // .into_iter()
+                // .for_each(|track| async {
+                //     let _ = enqueue_track(ctx.http(), &call, &QueryType::File(track)).await;
+                // });
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::PlayListFail)?;
 
-                for url in urls.into_iter() {
-                    let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                // for url in urls.into_iter() {
+                //     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
+                //     update_queue_messages(
+                //         &ctx.serenity_context().http,
+                //         ctx.data(),
+                //         &queue,
+                //         guild_id,
+                //     )
+                //     .await;
+                // }
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
                 for keywords in keywords_list.into_iter() {
-                    let queue = enqueue_track(&call, &QueryType::Keywords(keywords)).await?;
+                    let queue = enqueue_track(
+                        &ctx.serenity_context().http,
+                        &call,
+                        &QueryType::Keywords(keywords),
+                    )
+                    .await?;
                     update_queue_messages(
                         &ctx.serenity_context().http,
                         ctx.data(),
@@ -460,7 +606,7 @@ async fn match_mode(
             }
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(*ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
                 return Ok(());
             }
         },
@@ -472,7 +618,7 @@ async fn match_mode(
 use colored::Colorize;
 /// Matches a url (or query string) to a QueryType
 async fn match_url(
-    ctx: &Context<'_>,
+    ctx: Context<'_>,
     url: &str,
     file: Option<Attachment>,
 ) -> Result<Option<QueryType>, Error> {
@@ -484,7 +630,7 @@ async fn match_url(
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") | Some("spotify.link") => {
                 let final_url = http_utils::resolve_final_url(url).await?;
-                tracing::error!("spotify: {} -> {}", url, final_url);
+                tracing::warn!("spotify: {} -> {}", url, final_url);
                 let spotify = SPOTIFY.lock().await;
                 let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                 Some(Spotify::extract(spotify, &final_url).await?)
@@ -493,6 +639,7 @@ async fn match_url(
                 tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
             }
+
             Some(other) => {
                 let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
                 let guild_settings = settings.entry(guild_id).or_insert_with(|| {
@@ -522,11 +669,25 @@ async fn match_url(
                     }
                 }
 
-                YouTube::extract(url)
+                //YouTube::extract(url)
+                let mut yt = YoutubeDl::new(reqwest::Client::new(), url.to_string());
+                let metadata = yt.aux_metadata().await?;
+                Some(QueryType::NewYoutubeDl((yt, metadata)))
             }
-            None => None,
+            None => None, // This is where the ytsearch: query string is handled???
+                          // None => {
+                          //     let search_query = QueryType::YoutubeSearch(url.to_string());
+                          //     tracing::error!("None case under url_data, search_query: {:?}", search_query);
+                          //     Some(search_query)
+                          // }
         },
-        Err(_) => {
+        Err(e) => {
+            tracing::error!("Url::parse error: {}", e);
+            // if url.contains("ytsearch") {
+            //     let search_query = QueryType::YoutubeSearch(url.to_string());
+            //     tracing::error!("search_query: {:?}", search_query);
+            //     Some(search_query)
+            // } else {
             let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
             let guild_settings = settings.entry(guild_id).or_insert_with(|| {
                 GuildSettings::new(
@@ -548,6 +709,7 @@ async fn match_url(
             }
 
             Some(QueryType::Keywords(url.to_string()))
+            // }
         }
     };
 
@@ -559,10 +721,16 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         return None;
     }
 
+    let zero_duration = Duration::ZERO;
     let top_track = queue.first()?;
-    let top_track_elapsed = top_track.get_info().await.unwrap().position;
+    let top_track_elapsed = top_track
+        .get_info()
+        .await
+        .map(|i| i.position)
+        .unwrap_or(zero_duration);
+    let metadata = get_track_metadata(top_track).await;
 
-    let top_track_duration = match top_track.metadata().duration {
+    let top_track_duration = match metadata.duration {
         Some(duration) => duration,
         None => return Some(Duration::MAX),
     };
@@ -572,19 +740,33 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         _ => {
             let center = &queue[1..queue.len() - 1];
             let livestreams =
-                center.len() - center.iter().filter_map(|t| t.metadata().duration).count();
+                center.len() - center.iter().filter_map(|_t| metadata.duration).count();
 
             // if any of the tracks before are livestreams, the new track will never play
             if livestreams > 0 {
                 return Some(Duration::MAX);
             }
 
-            let durations = center.iter().fold(Duration::ZERO, |acc, x| {
-                acc + x.metadata().duration.unwrap()
-            });
+            let durations = center
+                .iter()
+                .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
 
             Some(durations + top_track_duration - top_track_elapsed)
         }
+    }
+}
+
+pub enum MyAuxMetadata {
+    Data(AuxMetadata),
+}
+
+impl TypeMapKey for MyAuxMetadata {
+    type Value = MyAuxMetadata;
+}
+
+impl Default for MyAuxMetadata {
+    fn default() -> Self {
+        MyAuxMetadata::Data(AuxMetadata::default())
     }
 }
 
@@ -593,20 +775,23 @@ async fn create_queued_embed(
     track: &TrackHandle,
     estimated_time: Duration,
 ) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    let metadata = track.metadata().clone();
+    // FIXME
+    let metadata = {
+        let map = track.typemap().read().await;
+        let my_metadata = map.get::<MyAuxMetadata>().unwrap();
 
-    embed.thumbnail(&metadata.thumbnail.unwrap_or_default());
+        match my_metadata {
+            MyAuxMetadata::Data(metadata) => metadata.clone(),
+        }
+    };
+    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
+    let meta_title = metadata.title.clone().unwrap_or(QUEUE_NO_TITLE.to_string());
+    let source_url = metadata
+        .source_url
+        .clone()
+        .unwrap_or(QUEUE_NO_SRC.to_string());
 
-    embed.field(
-        title,
-        &format!(
-            "[**{}**]({})",
-            metadata.title.unwrap_or(QUEUE_NO_TITLE.to_string()),
-            metadata.source_url.unwrap_or(QUEUE_NO_SRC.to_string())
-        ),
-        false,
-    );
+    let title_text = &format!("[**{}**]({})", meta_title, source_url);
 
     let footer_text = format!(
         "{}{}\n{}{}",
@@ -616,48 +801,97 @@ async fn create_queued_embed(
         get_human_readable_timestamp(Some(estimated_time))
     );
 
-    embed.footer(|footer| footer.text(footer_text));
-    embed
+    CreateEmbed::new()
+        .title(title)
+        .thumbnail(thumbnail)
+        .field(title_text, "", false)
+        .footer(CreateEmbedFooter::new(footer_text))
 }
 
-async fn get_track_source(query_type: QueryType) -> Result<Restartable, CrackedError> {
+// FIXME: Do you want to have a reqwest client we keep around and pass into
+// this instead of creating a new one every time?
+async fn get_track_source_and_metadata(
+    _http: &Http,
+    query_type: QueryType,
+) -> (SongbirdInput, MyAuxMetadata) {
+    let client = reqwest::Client::new();
+    tracing::warn!("query_type: {:?}", query_type);
     match query_type {
-        QueryType::VideoLink(query) => YouTubeRestartable::ytdl(query, true).await.map_err(|e| {
-            tracing::error!("error: {}", e);
-            e.into()
-        }),
-        QueryType::Keywords(query) => {
-            YouTubeRestartable::ytdl_search(query, true)
-                .await
-                .map_err(|e| {
-                    tracing::error!("error: {}", e);
-                    e.into()
-                })
+        // QueryType::YoutubeSearch(query) => {
+        //     tracing::error!("In YoutubeSearch");
+        //     let mut ytdl = YoutubeDl::new(client, query);
+        //     let asdf = ytdl.search_query().await.unwrap();
+        //     tracing::error!("asdf: {:?}", asdf);
+        //     let my_metadata = MyAuxMetadata::default();
+        //     (ytdl.into(), my_metadata)
+        // }
+        QueryType::VideoLink(query) => {
+            tracing::warn!("In VideoLink");
+            let mut ytdl = YoutubeDl::new(client, query);
+            tracing::warn!("ytdl: {:?}", ytdl);
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
         }
-        QueryType::File(file) => FileRestartable::download(file.url.to_owned(), true)
-            .await
-            .map_err(|e| {
-                tracing::error!("error: {}", e);
-                e.into()
-            }),
-        _ => unreachable!(),
+        QueryType::Keywords(query) => {
+            tracing::warn!("In Keywords");
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
+        }
+        QueryType::File(file) => {
+            tracing::warn!("In File");
+            (
+                HttpRequest::new(client, file.url.to_owned()).into(),
+                MyAuxMetadata::default(),
+            )
+        }
+        QueryType::NewYoutubeDl(ytdl) => {
+            tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
+            (ytdl.0.into(), MyAuxMetadata::Data(ytdl.1))
+        }
+        QueryType::PlaylistLink(url) => {
+            tracing::warn!("In PlaylistLink");
+            let mut ytdl = YoutubeDl::new(client, url);
+            tracing::warn!("ytdl: {:?}", ytdl);
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
+        }
+        QueryType::KeywordList(keywords_list) => {
+            tracing::warn!("In KeywordList");
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
+            tracing::warn!("ytdl: {:?}", ytdl);
+            let metdata = ytdl.aux_metadata().await.unwrap();
+            let my_metadata = MyAuxMetadata::Data(metdata);
+            (ytdl.into(), my_metadata)
+        }
     }
 }
 
 async fn enqueue_track(
+    http: &Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    tracing::info!("query_type: {:?}", query_type);
+    // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let source = get_track_source(query_type.clone()).await?;
+    let (source, metadata): (SongbirdInput, MyAuxMetadata) =
+        get_track_source_and_metadata(http, query_type.clone()).await;
+    let track: Track = source.into();
 
     let mut handler = call.lock().await;
-    handler.enqueue_source(source.into());
+    let track_handle = handler.enqueue(track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(metadata);
 
     Ok(handler.queue().current_queue())
 }
 
 async fn insert_track(
+    http: &Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
     idx: usize,
@@ -668,7 +902,7 @@ async fn insert_track(
     tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
 
     if queue_size <= 1 {
-        let queue = enqueue_track(call, query_type).await?;
+        let queue = enqueue_track(http, call, query_type).await?;
         return Ok(queue);
     }
 
@@ -677,7 +911,7 @@ async fn insert_track(
         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
-    enqueue_track(call, query_type).await?;
+    enqueue_track(http, call, query_type).await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {

@@ -4,8 +4,8 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
-    utils::create_embed_response_poise,
     utils::create_response_poise_text,
+    utils::{create_embed_response_poise, get_track_metadata},
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -65,7 +65,7 @@ pub async fn remove(
         //create_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
         create_embed_response_poise(ctx, embed).await?;
     } else {
-        create_response_poise_text(&ctx, CrackedMessage::RemoveMultiple).await?;
+        create_response_poise_text(ctx, CrackedMessage::RemoveMultiple).await?;
     }
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
@@ -73,19 +73,16 @@ pub async fn remove(
 }
 
 async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    let metadata = track.metadata().clone();
-
-    embed.field(
-        REMOVED_QUEUE,
-        &format!(
-            "[**{}**]({})",
-            metadata.title.unwrap(),
-            metadata.source_url.unwrap()
-        ),
-        false,
-    );
-    embed.thumbnail(&metadata.thumbnail.unwrap());
-
-    embed
+    let metadata = get_track_metadata(track).await;
+    CreateEmbed::default()
+        .field(
+            REMOVED_QUEUE,
+            format!(
+                "[**{}**]({})",
+                metadata.title.unwrap(),
+                metadata.source_url.unwrap()
+            ),
+            false,
+        )
+        .thumbnail(metadata.thumbnail.unwrap())
 }

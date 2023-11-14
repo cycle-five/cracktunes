@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::{mem, slice};
+// use std::{mem, slice};
 
 use songbird::{Call, CoreEvent};
 use tokio::fs::File;
@@ -38,8 +38,8 @@ impl EventHandler for Handler {
 //     type Value = Vec<u8>;
 // }
 
-struct Receiver {
-    data: Arc<RwLock<Vec<u8>>>,
+pub struct Receiver {
+    pub data: Arc<RwLock<Vec<u8>>>,
 }
 
 impl Receiver {
@@ -48,6 +48,8 @@ impl Receiver {
         Self { data: arc }
     }
 
+    // FIXME
+    #[allow(dead_code)]
     async fn insert(&self, buf: &[u8]) {
         let insert_lock = {
             // While data is a RwLock, it's recommended that you always open the lock as read.
@@ -99,10 +101,10 @@ impl VoiceEventHandler for Receiver {
         use EventContext as Ctx;
         match ctx {
             Ctx::SpeakingStateUpdate(Speaking {
+                delay,
                 speaking,
                 ssrc,
                 user_id,
-                ..
             }) => {
                 // Discord voice calls use RTP, where every sender uses a randomly allocated
                 // *Synchronisation Source* (SSRC) to allow receivers to tell which audio
@@ -119,43 +121,47 @@ impl VoiceEventHandler for Receiver {
                     "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
                     user_id, ssrc, speaking,
                 );
-            }
-            Ctx::SpeakingUpdate(data) => {
                 // You can implement logic here which reacts to a user starting
                 // or stopping speaking, and to map their SSRC to User ID.
                 println!(
                     "Source {} has {} speaking.",
-                    data.ssrc,
-                    if data.speaking { "started" } else { "stopped" },
+                    ssrc,
+                    if speaking.microphone() || speaking.soundshare() || speaking.priority() {
+                        "started"
+                    } else {
+                        "stopped"
+                    },
                 );
             }
-            Ctx::VoicePacket(data) => {
+            Ctx::RtpPacket(data) => {
+                // FIXME: update this to the new library
                 // An event which fires for every received audio packet,
                 // containing the decoded data.
-                if let Some(audio) = data.audio {
-                    let slice_u8: &[u8] = unsafe {
-                        slice::from_raw_parts(
-                            audio.as_ptr() as *const u8,
-                            audio.len() * mem::size_of::<u16>(),
-                        )
-                    };
-                    // self.insert(slice_u8);
-                    self.insert(slice_u8).await;
+                // if let Some(audio) = data.audio {
+                //     // FIXME: Can we not do an unsafe?
+                //     let slice_u8: &[u8] = unsafe {
+                //         slice::from_raw_parts(
+                //             audio.as_ptr() as *const u8,
+                //             audio.len() * mem::size_of::<u16>(),
+                //         )
+                //     };
+                //     // self.insert(slice_u8);
+                //     self.insert(slice_u8).await;
 
-                    println!(
-                        "Audio packet's first 5 samples: {:?}",
-                        audio.get(..5.min(audio.len()))
-                    );
-                    println!(
-                        "Audio packet sequence {:05} has {:04} bytes (decompressed from {}), SSRC {}",
-                        data.packet.sequence.0,
-                        audio.len() * std::mem::size_of::<i16>(),
-                        data.packet.payload.len(),
-                        data.packet.ssrc,
-                    );
-                } else {
-                    println!("RTP packet, but no audio. Driver may not be configured to decode.");
-                }
+                //     println!(
+                //         "Audio packet's first 5 samples: {:?}",
+                //         audio.get(..5.min(audio.len()))
+                //     );
+                //     println!(
+                //         "Audio packet sequence {:05} has {:04} bytes (decompressed from {}), SSRC {}",
+                //         data.packet.sequence.0,
+                //         audio.len() * std::mem::size_of::<i16>(),
+                //         data.packet.payload.len(),
+                //         data.packet.ssrc,
+                //     );
+                // } else {
+                //     println!("RTP packet, but no audio. Driver may not be configured to decode.");
+                // }
             }
             Ctx::RtcpPacket(data) => {
                 // An event which fires for every received rtcp packet,
@@ -196,12 +202,12 @@ pub async fn register_voice_handlers(
         Receiver::new(buffer.clone()),
     );
 
-    handler.add_global_event(
-        CoreEvent::SpeakingUpdate.into(),
-        Receiver::new(buffer.clone()),
-    );
+    // handler.add_global_event(
+    //     CoreEvent::SpeakingStateUpdate.into(),
+    //     Receiver::new(buffer.clone()),
+    // );
 
-    handler.add_global_event(CoreEvent::VoicePacket.into(), Receiver::new(buffer.clone()));
+    handler.add_global_event(CoreEvent::RtpPacket.into(), Receiver::new(buffer.clone()));
 
     handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(buffer.clone()));
 

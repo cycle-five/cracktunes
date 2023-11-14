@@ -1,3 +1,4 @@
+/*
 use self::serenity::async_trait;
 use crate::{
     commands::play::{Mode, QueryType},
@@ -7,10 +8,14 @@ use crate::{
 };
 use poise::serenity_prelude as serenity;
 use serde_json::Value;
-use songbird::input::{
-    error::Error as SongbirdError, error::Result as SongbirdResult, restartable::Restart, Codec,
-    Container, Input, Metadata, Restartable,
-};
+// use songbird::input::{
+//     error::Error as SongbirdError, error::Result as SongbirdResult, restartable::Restart, Codec,
+//     Container, Input, Metadata, Restartable,
+// };
+use audiopus::Error as SongbirdError;
+use audiopus::Result as SongbirdResult;
+
+use songbird::input::{Input, Metadata};
 use std::{
     io::{BufRead, BufReader, Read},
     process::Command,
@@ -220,3 +225,4 @@ async fn _ytdl_metadata(uri: &str) -> Result<Metadata, Error> {
     let metadata = Metadata::from_ytdl_output(value);
     Ok(metadata)
 }
+*/

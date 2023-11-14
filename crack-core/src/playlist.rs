@@ -1,19 +1,21 @@
 use songbird::tracks::TrackHandle;
 use sqlx::{
-    types::chrono::{self, NaiveDate},
+    types::chrono::{self},
     SqlitePool,
 };
 
-use crate::errors::CrackedError;
+use crate::CrackedError;
 
 #[derive(Debug, Default)]
 pub struct User {
     pub id: i64,
-    pub discord_id: String,
     pub username: String,
-    pub descriminator: Option<String>,
+    pub discriminator: Option<i64>,
+    pub avatar_url: String,
+    pub bot: bool,
+    pub created_at: chrono::NaiveDate,
+    pub updated_at: chrono::NaiveDate,
     pub last_seen: chrono::NaiveDate,
-    pub creation_date: chrono::NaiveDate,
 }
 
 #[derive(Debug, Default)]
@@ -110,7 +112,7 @@ impl Playlist {
         username: String,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "INSERT INTO user (discord_id, username) VALUES (?, ?)",
+            "INSERT INTO user (id, username) VALUES (?, ?)",
             user_id,
             username
         )
@@ -194,75 +196,78 @@ impl Playlist {
 }
 
 pub async fn track_handle_to_db_structures(
-    pool: &SqlitePool,
-    track_handle: TrackHandle,
-    playlist_id: i64,
-    guild_id: i64,
-    channel_id: i64,
+    _pool: &SqlitePool,
+    _track_handle: TrackHandle,
+    _playlist_id: i64,
+    _guild_id: i64,
+    _channel_id: i64,
 ) -> Result<(Metadata, PlaylistTrack), CrackedError> {
     // 1. Extract metadata from TrackHandle
-    let track = track_handle.metadata().title.clone();
-    let title = track_handle.metadata().title.clone();
-    let artist = track_handle.metadata().artist.clone();
-    let album = Some("".to_string());
-    let date = track_handle
-        .metadata()
-        .date
-        .clone()
-        .map(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").unwrap_or_default());
-    let channels = track_handle.metadata().channels;
-    let channel = Some(channel_id);
-    let start_time = track_handle
-        .metadata()
-        .start_time
-        .map(|d| d.as_secs() as i64);
-    let duration = track_handle.metadata().duration.map(|d| d.as_secs() as i64);
-    let sample_rate = track_handle.metadata().sample_rate.map(i64::from);
-    let source_url = track_handle.metadata().source_url.clone();
-    let thumbnail = track_handle.metadata().thumbnail.clone();
+    Err(CrackedError::Other("not implemented"))
+    // track_handle.action(View).await?;
+    // track_handle.get
+    // let track = track_handle.metadata().track.clone();
+    // let title = track_handle.metadata().title.clone();
+    // let artist = track_handle.metadata().artist.clone();
+    // let album = Some("".to_string());
+    // let date = track_handle
+    //     .metadata()
+    //     .date
+    //     .clone()
+    //     .map(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").unwrap_or_default());
+    // let channels = track_handle.metadata().channels;
+    // let channel = Some(channel_id);
+    // let start_time = track_handle
+    //     .metadata()
+    //     .start_time
+    //     .map(|d| d.as_secs() as i64);
+    // let duration = track_handle.metadata().duration.map(|d| d.as_secs() as i64);
+    // let sample_rate = track_handle.metadata().sample_rate.map(i64::from);
+    // let source_url = track_handle.metadata().source_url.clone();
+    // let thumbnail = track_handle.metadata().thumbnail.clone();
 
-    let metadata = sqlx::query_as!(
-        Metadata,
-        r#"INSERT INTO
-            metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
-            "#,
-        track,
-        artist,
-        album,
-        date,
-        channels,
-        channel,
-        start_time,
-        duration,
-        sample_rate,
-        source_url,
-        title,
-        thumbnail
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(CrackedError::SQLX)?;
+    // let metadata = sqlx::query_as!(
+    //     Metadata,
+    //     r#"INSERT INTO
+    //         metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
+    //         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    //         RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+    //         "#,
+    //     track,
+    //     artist,
+    //     album,
+    //     date,
+    //     channels,
+    //     channel,
+    //     start_time,
+    //     duration,
+    //     sample_rate,
+    //     source_url,
+    //     title,
+    //     thumbnail
+    // )
+    // .fetch_one(pool)
+    // .await
+    // .map_err(CrackedError::SQLX)?;
 
-    let guild_id_opt = Some(guild_id);
-    let channel_id_opt = Some(channel_id);
-    // 3. Populate the PlaylistTrack structure
-    let playlist_track = sqlx::query_as!(
-        PlaylistTrack,
-        r#"INSERT INTO playlist_track
-            (playlist_id, metadata_id, guild_id, channel_id)
-            VALUES (?, ?, ?, ?)
-            RETURNING id, playlist_id, metadata_id, guild_id, channel_id
-            "#,
-        playlist_id,
-        metadata.id,
-        guild_id_opt,
-        channel_id_opt
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(CrackedError::SQLX)?;
+    // let guild_id_opt = Some(guild_id);
+    // let channel_id_opt = Some(channel_id);
+    // // 3. Populate the PlaylistTrack structure
+    // let playlist_track = sqlx::query_as!(
+    //     PlaylistTrack,
+    //     r#"INSERT INTO playlist_track
+    //         (playlist_id, metadata_id, guild_id, channel_id)
+    //         VALUES (?, ?, ?, ?)
+    //         RETURNING id, playlist_id, metadata_id, guild_id, channel_id
+    //         "#,
+    //     playlist_id,
+    //     metadata.id,
+    //     guild_id_opt,
+    //     channel_id_opt
+    // )
+    // .fetch_one(pool)
+    // .await
+    // .map_err(CrackedError::SQLX)?;
 
-    Ok((metadata, playlist_track))
+    // Ok((metadata, playlist_track))
 }

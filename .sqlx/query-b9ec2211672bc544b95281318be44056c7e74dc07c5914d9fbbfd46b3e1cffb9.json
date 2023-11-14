@@ -9,29 +9,39 @@
         "type_info": "Int64"
       },
       {
-        "name": "discord_id",
+        "name": "username",
         "ordinal": 1,
         "type_info": "Text"
       },
       {
-        "name": "username",
+        "name": "discriminator",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Int64"
       },
       {
-        "name": "descriminator",
+        "name": "avatar_url",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "last_seen",
+        "name": "bot",
         "ordinal": 4,
-        "type_info": "Date"
+        "type_info": "Bool"
       },
       {
-        "name": "creation_date",
+        "name": "created_at",
         "ordinal": 5,
-        "type_info": "Date"
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_seen",
+        "ordinal": 7,
+        "type_info": "Datetime"
       }
     ],
     "parameters": {
@@ -40,8 +50,10 @@
     "nullable": [
       false,
       false,
-      false,
       true,
+      false,
+      false,
+      false,
       false,
       false
     ]

@@ -2,17 +2,19 @@ use colored::Colorize;
 use crack_core::{
     commands,
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::{handle_event, SerenityHandler},
+    handlers::handle_event,
+    handlers::SerenityHandler,
     is_prefix,
     metrics::COMMAND_ERRORS,
-    utils::{check_interaction, check_reply, count_command, create_response_text, get_interaction},
+    utils::{
+        check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
+    },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
+use poise::serenity_prelude::{Client, UserId};
 use poise::{
-    serenity_prelude::{GatewayIntents, GuildId},
-    // #[cfg(feature = "set_owners_from_config")]
-    // UserId,
-    Framework,
+    serenity_prelude::{FullEvent, GatewayIntents, GuildId},
+    CreateReply,
 };
 use songbird::serenity::SerenityInit;
 use std::sync::Mutex;
@@ -26,36 +28,31 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            poise::Event::PresenceUpdate { .. } => { /* Ignore PresenceUpdate is terminal logging, too spammy */
+            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
             }
             _ => {
                 tracing::warn!(
                     "{} {} {} {}",
-                    "Error in event handler for ".yellow(),
-                    event.name().yellow().italic(),
+                    "In event handler for ".yellow(),
+                    event.snake_case_name().yellow().italic(),
                     " event: ".yellow(),
                     error.to_string().yellow().bold(),
                 );
             }
         },
-        poise::FrameworkError::Command { error, ctx } => {
+        poise::FrameworkError::Command { error, ctx, .. } => {
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
-            match get_interaction(ctx) {
+            match get_interaction_new(ctx) {
                 Some(interaction) => {
                     check_interaction(
-                        create_response_text(
-                            &ctx.serenity_context().http,
-                            &interaction,
-                            &format!("{error}"),
-                        )
-                        .await,
+                        create_response_text(ctx, &interaction, &format!("{error}")).await,
                     );
                 }
                 None => {
                     check_reply(
-                        ctx.send(|builder| builder.content(&format!("{error}")))
+                        ctx.send(CreateReply::new().content(&format!("{error}")))
                             .await,
                     );
                 }
@@ -75,16 +72,13 @@ pub async fn poise_framework(
     config: BotConfig,
     //TODO: can this be create in this function instead of passed in?
     event_log: EventLog,
-) -> Result<Arc<Framework<Data, Error>>, Error> {
+) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
-    // let mut owners = HashSet::new();
-    // for owner in config.owners.unwrap_or_default().into_iter() {
-    //     owners.insert(UserId(owner));
-    // }
+
     let options = poise::FrameworkOptions::<_, Error> {
         #[cfg(feature = "set_owners_from_config")]
         owners: config
@@ -92,16 +86,17 @@ pub async fn poise_framework(
             .as_ref()
             .unwrap_or(&vec![])
             .iter()
-            .map(|id| UserId(*id))
+            .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            commands::admin(),
+            // admin commands
+            commands::admin::set_prefix(),
             commands::autopause(),
-            commands::boop(),
+            // commands::boop(),
             commands::coinflip(),
-            //commands::create_playlist(),
-            //commands::delete_playlist(),
-            //commands::chatgpt(),
+            // //commands::create_playlist(),
+            // //commands::delete_playlist(),
+            // //commands::chatgpt(),
             commands::clear(),
             commands::help(),
             commands::leave(),
@@ -114,6 +109,7 @@ pub async fn poise_framework(
             commands::remove(),
             commands::repeat(),
             commands::resume(),
+            // commands::search(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -141,13 +137,13 @@ pub async fn poise_framework(
                     let guild_id = msg.guild_id.unwrap();
                     let data_read = ctx.data.read().await;
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
-                    // tracing::warn!("guild_id: {}", guild_id);
-                    // for (k, v) in guild_settings_map.iter() {
-                    //     tracing::warn!("Guild: {} - {:?}", k, v);
-                    // }
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         if guild_settings.prefix.is_empty() {
+                            tracing::warn!(
+                                "Prefix is empty for guild {}",
+                                guild_settings.guild_name
+                            );
                             return Ok(None);
                         }
 
@@ -164,6 +160,7 @@ pub async fn poise_framework(
                             Ok(None)
                         }
                     } else {
+                        tracing::warn!("Guild not found in guild settings map");
                         Ok(None)
                     }
                 })
@@ -175,14 +172,14 @@ pub async fn poise_framework(
         // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("Executing command {}...", ctx.command().qualified_name);
+                tracing::info!(">>> {}...", ctx.command().qualified_name);
                 count_command(ctx.command().qualified_name.as_ref(), is_prefix(ctx));
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("Executed command {}!", ctx.command().qualified_name);
+                tracing::info!("<<< {}!", ctx.command().qualified_name);
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -190,7 +187,7 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
                 tracing::info!("Checking command {}...", command);
-                let user_id = *ctx.author().id.as_u64();
+                let user_id = ctx.author().id.get();
                 // ctx.author_member().await.map_or_else(
                 //     || {
                 //         tracing::info!("Author not found in guild");
@@ -198,10 +195,12 @@ pub async fn poise_framework(
                 //     },
                 //     |member| {
                 //         tracing::info!("Author found in guild");
-                //         Ok(member.permissions().contains(serenity::model::permissions::ADMINISTRATOR))
+                //         Ok(member
+                //             .permissions()
+                //             .contains(serenity::model::permissions::ADMINISTRATOR))
                 //     },
                 // )?;
-                //let asdf = vec![user_id];
+                // let asdf = vec![user_id];
                 let music_commands = vec![
                     "play",
                     "pause",
@@ -258,8 +257,8 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: true,
-        event_handler: |ctx, event, _framework, data_global| {
-            Box::pin(async move { handle_event(ctx, event, data_global).await })
+        event_handler: |event, framework, data_global| {
+            Box::pin(async move { handle_event(event, framework, data_global).await })
         },
         ..Default::default()
     };
@@ -301,6 +300,28 @@ pub async fn poise_framework(
     //     exit(0);
     // })
     // .expect("Error setting Ctrl-C handler");
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::privileged()
+        | GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_MODERATION
+        | GatewayIntents::GUILD_BANS
+        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
+        | GatewayIntents::GUILD_INTEGRATIONS
+        | GatewayIntents::GUILD_WEBHOOKS
+        | GatewayIntents::GUILD_INVITES
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::GUILD_PRESENCES
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_MESSAGE_TYPING
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGE_TYPING
+        | GatewayIntents::DIRECT_MESSAGE_REACTIONS
+        | GatewayIntents::GUILD_SCHEDULED_EVENTS
+        | GatewayIntents::AUTO_MODERATION_CONFIGURATION
+        | GatewayIntents::AUTO_MODERATION_EXECUTION
+        | GatewayIntents::MESSAGE_CONTENT;
 
     let handler_data = data.clone();
     let setup_data = data;
@@ -308,17 +329,19 @@ pub async fn poise_framework(
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    let framework = poise::Framework::builder()
-        .client_settings(|builder| {
-            builder
-                .event_handler(SerenityHandler {
-                    is_loop_running: false.into(),
-                    data: handler_data,
-                })
-                .register_songbird()
-        })
-        .token(token)
-        .setup(move |ctx, ready, framework| {
+    let framework = poise::Framework::new(
+        options,
+        // .client_settings(|builder| {
+        //     builder
+        //         .event_handler(SerenityHandler {
+        //             is_loop_running: false.into(),
+        //             data: handler_data,
+        //         })
+        //         .register_songbird()
+        // })
+        // .token(token)
+        //.setup(move |ctx, ready, framework| {
+        |ctx, ready, framework| {
             Box::pin(async move {
                 tracing::info!("Logged in as {}", ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
@@ -328,24 +351,20 @@ pub async fn poise_framework(
                     .insert::<GuildSettingsMap>(guild_settings_map.clone());
                 Ok(setup_data)
             })
+        },
+    );
+    // let res = framework.build().await?;
+    // let shard_manager = res.client().shard_manager.clone();
+    let client = Client::builder(token, intents)
+        .framework(framework)
+        .register_songbird()
+        .event_handler(SerenityHandler {
+            is_loop_running: false.into(),
+            data: handler_data,
         })
-        .options(options)
-        .intents(
-            GatewayIntents::non_privileged()
-                | GatewayIntents::GUILD_MEMBERS
-                | GatewayIntents::GUILD_MESSAGES
-                | GatewayIntents::GUILD_MESSAGE_REACTIONS
-                | GatewayIntents::DIRECT_MESSAGES
-                | GatewayIntents::DIRECT_MESSAGE_TYPING
-                | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-                | GatewayIntents::GUILDS
-                | GatewayIntents::GUILD_VOICE_STATES
-                | GatewayIntents::GUILD_PRESENCES
-                | GatewayIntents::MESSAGE_CONTENT,
-        );
-
-    let res = framework.build().await?;
-    let shard_manager = res.client().shard_manager.clone();
+        .await
+        .unwrap();
+    let shard_manager = client.shard_manager.clone();
 
     tokio::spawn(async move {
         #[cfg(unix)]
@@ -387,11 +406,11 @@ pub async fn poise_framework(
                 tracing::warn!("Saving Guild: {}", k);
                 v.save().expect("Error saving guild settings");
             });
-        shard_manager.lock().await.shutdown_all().await;
+        //shard_manager.lock().await.shutdown_all().await;
+        shard_manager.shutdown_all().await;
 
         exit(0);
     });
 
-    res.client().start_autosharded().await?;
-    Ok(res)
+    Ok(client)
 }

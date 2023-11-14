@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::create_response_poise_text,
+    utils::{create_response_poise_text, get_track_metadata},
     Context, Error,
 };
 use songbird::{tracks::TrackHandle, Call};
@@ -63,20 +63,21 @@ pub async fn create_skip_response(
 ) -> Result<(), Error> {
     match handler.queue().current() {
         Some(track) => {
+            let metadata = get_track_metadata(&track).await;
             create_response_poise_text(
-                &ctx,
+                ctx,
                 CrackedMessage::SkipTo {
-                    title: track.metadata().title.as_ref().unwrap().to_owned(),
-                    url: track.metadata().source_url.as_ref().unwrap().to_owned(),
+                    title: metadata.title.as_ref().unwrap().to_owned(),
+                    url: metadata.source_url.as_ref().unwrap().to_owned(),
                 },
             )
             .await
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise_text(&ctx, CrackedMessage::SkipAll).await
+                create_response_poise_text(ctx, CrackedMessage::SkipAll).await
             } else {
-                create_response_poise_text(&ctx, CrackedMessage::Skip).await
+                create_response_poise_text(ctx, CrackedMessage::Skip).await
             }
         }
     }
@@ -90,7 +91,7 @@ pub async fn force_skip_top_track(
     // also, manually removing tracks doesn't trigger the next track to play
     // so first, stop the top song, manually remove it and then resume playback
     handler.queue().current().unwrap().stop().ok();
-    handler.queue().dequeue(0);
+    let _ = handler.queue().dequeue(0);
     handler.queue().resume().ok();
 
     Ok(handler.queue().current_queue())

@@ -22,7 +22,7 @@ pub async fn resume(
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
     if send_reply.unwrap_or(true) {
-        create_response_poise_text(&ctx, CrackedMessage::Resume).await?
+        create_response_poise_text(ctx, CrackedMessage::Resume).await?
     }
     Ok(())
 }

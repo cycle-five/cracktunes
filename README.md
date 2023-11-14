@@ -1,17 +1,12 @@
-<p align="center">
-  <img alt="Light" src="./docs/logo.png" width="50%">
-</p>
+![CrackTunes](./docs/logo.png)
 
-<p align="center">
   A hassle-free, highly performant, host-it-yourself, cracking smoking Discord music bot
-</p>
 
-<p align="center">
-  <a href="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml"><img src="https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg"></a>
-  <a href="https://deps.rs/repo/github/cycle-five/cracktunes"><img src="https://deps.rs/repo/github/cycle-five/cracktunes/status.svg"></a>
-  <a href="https://github.com/cycle-five/cracktunes/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <a href="https://github.com/cycle-five/cracktunes/"><img src="https://img.shields.io/badge/rustc-1.65-blue.svg"></a>
-</p>
+[![builds.sr.ht status](https://builds.sr.ht/~cycle-five.svg)](https://builds.sr.ht/~cycle-five?)
+[![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
+[![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
+[![Rust Version](https://img.shields.io/badge/rustc-1.72-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Deployment
 
@@ -105,10 +100,14 @@ docker run -d --env-file .env cracktunes
 
 ## 0.2.5
 - ~~[] Shuttle~~
-- [] Reminders
-- [] Notes
+- ~~[] Reminders~~
+- ~~[] Notes~~
 
-## 0.2.6
+## ~~0.2.6~~
+Didn't really track stuff here...
+## ~~0.2.12~~
+## 0.2.13
+- [] Port to next branch of serenity
 - [] Flesh out admin commands
 
 ## 0.3.0
@@ -116,7 +115,7 @@ docker run -d --env-file .env cracktunes
 
 ...and more!
 ## 1.0.0
-- [] RTChris' Demuxer
+- [] RTChris' Demuxer in C++ (for fun)?
 
 
 <p align="center">

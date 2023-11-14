@@ -20,7 +20,6 @@ fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        //.worker_threads(16)
         .build()
         .unwrap();
 
@@ -34,14 +33,25 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let framework = poise_framework(config, event_log).await?;
+    let mut client = poise_framework(config, event_log).await?;
 
-    let client = framework.client();
-    let mut data_global = client.data.write().await;
+    // let client = framework.client();
+    let data_ro = client.data.clone();
+    let mut data_global = data_ro.write().await;
+    match data_global.get::<GuildSettingsMap>() {
+        Some(guild_settings_map) => {
+            for (guild_id, guild_settings) in guild_settings_map.iter() {
+                tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
+            }
+        }
+        None => {
+            tracing::info!("No guild settings found");
+            data_global.insert::<GuildSettingsMap>(HashMap::default());
+        }
+    }
     data_global.insert::<GuildCacheMap>(HashMap::default());
-    data_global.insert::<GuildSettingsMap>(HashMap::default());
+
     drop(data_global);
-    drop(client);
 
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
@@ -50,7 +60,7 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
         Ok::<(), serenity::Error>(())
     };
 
-    let bot = framework.start(); //.await?;
+    let bot = client.start();
 
     tokio::try_join!(bot, server)?;
 

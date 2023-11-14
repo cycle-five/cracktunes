@@ -1,6 +1,6 @@
 # Build image
 # Necessary dependencies to build CrackTunes
-FROM rust:slim-bookworm as build
+FROM debian:bookworm-slim as build
 
 #build-essential \
 RUN apt-get update -y && apt-get install -y \
@@ -9,14 +9,21 @@ RUN apt-get update -y && apt-get install -y \
        cmake \
        libtool \
        libssl-dev \
-       pkg-config
+       pkg-config \
+       libopus-dev \
+       curl
+
+# Get Rust
+RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+       && . "$HOME/.cargo/env" \
+       && rustup default stable
 
 WORKDIR "/app"
 
 COPY . .
 RUN ls -al . && ls -al data
 ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
-RUN cargo build --release --locked
+RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes

@@ -22,7 +22,7 @@ pub async fn pause(
     verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
     if send_reply.unwrap_or(true) {
-        return create_response_poise_text(&ctx, CrackedMessage::Pause).await;
+        return create_response_poise_text(ctx, CrackedMessage::Pause).await;
     }
     Ok(())
 }

@@ -19,8 +19,8 @@ pub async fn volume(
         Some(id) => id,
         None => {
             tracing::error!("guild_id is None");
-            let mut embed = CreateEmbed::default();
-            embed.description(format!("{}", CrackedError::NotConnected));
+            let embed =
+                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
             create_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
@@ -32,8 +32,8 @@ pub async fn volume(
             Some(manager) => manager,
             None => {
                 tracing::error!("Can't get manager.");
-                let mut embed = CreateEmbed::default();
-                embed.description(format!("{}", CrackedError::NotConnected));
+                let embed =
+                    CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 create_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
@@ -43,8 +43,8 @@ pub async fn volume(
             Some(call) => call,
             None => {
                 tracing::error!("Can't get call from manager.");
-                let mut embed = CreateEmbed::default();
-                embed.description(format!("{}", CrackedError::NotConnected));
+                let embed =
+                    CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 create_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
@@ -93,8 +93,7 @@ pub async fn volume(
                     format!("{:?}", guild_settings).white(),
                     asdf,
                 );
-                let mut embed = CreateEmbed::default();
-                embed.description(format!(
+                let embed = CreateEmbed::default().description(format!(
                     "Current volume is {:.0}% in settings, {:.0}% in track.",
                     guild_settings.volume * 100.0,
                     volume_track * 100.0
@@ -159,9 +158,7 @@ pub async fn volume(
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
-    let mut embed = CreateEmbed::default();
-    embed.description(create_volume_desc(old, new));
-    embed
+    CreateEmbed::default().description(create_volume_desc(old, new))
 }
 
 pub fn create_volume_desc(old: f32, new: f32) -> String {

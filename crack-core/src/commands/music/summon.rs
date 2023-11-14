@@ -1,15 +1,26 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use self::serenity::{model::id::ChannelId, Mentionable};
+use crate::handlers::IdleHandler;
 use crate::{
     connection::get_voice_channel_for_user,
     errors::CrackedError,
-    handlers::{IdleHandler, TrackEndHandler},
+    handlers::TrackEndHandler,
     messaging::message::CrackedMessage,
+    // handlers::{IdleHandler, TrackEndHandler},
+    // handlers::TrackEndHandler,
+    // messaging::message::CrackedMessage,
     utils::get_user_id,
-    Context, Error,
+    Context,
+    Error,
 };
-use poise::serenity_prelude as serenity;
+use ::serenity::all::{Channel, Guild, UserId};
+use poise::{serenity_prelude as serenity, CreateReply};
+use songbird::Call;
 use songbird::{Event, TrackEvent};
-use std::{sync::Arc, time::Duration};
+use tokio::sync::Mutex;
+// use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
 #[poise::command(
@@ -20,58 +31,44 @@ use std::{sync::Arc, time::Duration};
 )]
 pub async fn summon(
     ctx: Context<'_>,
+    #[description = "Channel to join"] channel: Option<Channel>,
     #[description = "Channel id to join"] channel_id_str: Option<String>,
-    #[description = "Send a reply to the user"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let guild = ctx.serenity_context().cache.guild(guild_id).unwrap();
+    let guild = ctx
+        .serenity_context()
+        .cache
+        .guild(guild_id)
+        .unwrap()
+        .clone();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+
     let user_id = get_user_id(&ctx);
 
-    let channel_id = match channel_id_str {
-        Some(id) => {
-            tracing::warn!("channel_id_str: {:?}", id);
-            match id.parse::<u64>() {
-                Ok(id) => ChannelId(id),
-                Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
-                    Some(channel_id) => channel_id,
-                    None => {
-                        if send_reply.unwrap_or(true) {
-                            ctx.say("You are not in a voice channel!").await?;
-                        }
-                        return Err(CrackedError::WrongVoiceChannel.into());
-                    }
-                },
+    let channel_id =
+        get_channel_id_for_summon(channel, channel_id_str, guild.clone(), user_id).await?;
+
+    let call: Arc<Mutex<Call>> = match manager.get(guild.id) {
+        Some(call) => {
+            let handler = call.lock().await;
+            let has_current_connection = handler.current_connection().is_some();
+
+            if has_current_connection {
+                // bot is in another channel
+                let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
+                Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
+            } else {
+                Ok(call.clone())
             }
         }
-        None => match get_voice_channel_for_user(&guild, &user_id) {
-            Some(channel_id) => channel_id,
-            None => {
-                if send_reply.unwrap_or(true) {
-                    ctx.say("You are not in a voice channel!").await?;
-                }
-                return Err(CrackedError::WrongVoiceChannel.into());
-            }
-        },
-    };
+        None => manager.join(guild.id, channel_id).await.map_err(|e| {
+            tracing::error!("Error joining channel: {:?}", e);
+            CrackedError::JoinChannelError(e)
+        }),
+    }?;
 
-    if let Some(call) = manager.get(guild.id) {
-        let handler = call.lock().await;
-        let has_current_connection = handler.current_connection().is_some();
-
-        if has_current_connection && send_reply.unwrap_or(true) {
-            // bot is in another channel
-            let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
-            return Err(CrackedError::AlreadyConnected(bot_channel_id.mention()).into());
-        }
-    }
-
-    // join the channel
-    let (call, result) = manager.join(guild.id, channel_id).await;
-    result.map_err(|e| {
-        tracing::error!("Error joining channel: {:?}", e);
-        CrackedError::JoinChannelError(e)
-    })?;
+    // // join the channel
+    // let result = manager.join(guild.id, channel_id).await?;
     let buffer = {
         // // Open the data lock in write mode, so keys can be inserted to it.
         // let mut data = ctx.data().write().await;
@@ -83,6 +80,9 @@ pub async fn summon(
     };
 
     use crate::handlers::voice::register_voice_handlers;
+
+    // FIXME
+    // use crate::handlers::voice::register_voice_handlers;
 
     let _ = register_voice_handlers(buffer, call.clone()).await;
     {
@@ -119,18 +119,56 @@ pub async fn summon(
             },
         );
 
-        if send_reply.unwrap_or(true) {
-            let text = CrackedMessage::Summon {
-                mention: channel_id.mention(),
-            }
-            .to_string();
-            ctx.send(|m| {
-                m.ephemeral = true;
-                m.content(text)
-            })
-            .await?;
+        let text = CrackedMessage::Summon {
+            mention: channel_id.mention(),
         }
+        .to_string();
+        ctx.send(CreateReply::new().content(text).ephemeral(true))
+            .await?;
     }
 
     Ok(())
+}
+
+async fn get_channel_id_for_summon(
+    channel: Option<Channel>,
+    channel_id_str: Option<String>,
+    guild: Guild,
+    user_id: UserId,
+) -> Result<ChannelId, Error> {
+    if let Some(channel) = channel {
+        return Ok(channel.id());
+    }
+
+    match channel_id_str {
+        Some(id) => {
+            tracing::warn!("channel_id_str: {:?}", id);
+            match id.parse::<u64>() {
+                Ok(id) => Ok(ChannelId::new(id)),
+                Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
+                    Some(channel_id) => Ok(channel_id),
+                    None => get_voice_channel_for_user_with_error(&guild, &user_id),
+                },
+            }
+        }
+        None => get_voice_channel_for_user_with_error(&guild, &user_id),
+    }
+}
+
+fn get_voice_channel_for_user_with_error(
+    guild: &Guild,
+    user_id: &UserId,
+) -> Result<ChannelId, Error> {
+    match get_voice_channel_for_user(guild, user_id) {
+        Some(channel_id) => Ok(channel_id),
+        None => {
+            // ctx.say("You are not in a voice channel!").await?;
+            tracing::warn!(
+                "User {} is not in a voice channel in guild {}",
+                user_id,
+                guild.id
+            );
+            Err(CrackedError::WrongVoiceChannel.into())
+        }
+    }
 }

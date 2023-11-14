@@ -1,11 +1,8 @@
 use self::serenity::{
-    builder::{CreateComponents, CreateInputText},
-    collector::ModalInteractionCollectorBuilder,
+    builder::CreateInputText,
+    collector::ModalInteractionCollector,
     futures::StreamExt,
-    model::prelude::{
-        component::{ActionRowComponent, InputTextStyle},
-        interaction::InteractionResponseType,
-    },
+    model::prelude::{ActionRowComponent, InputTextStyle, InteractionType},
 };
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
@@ -16,6 +13,7 @@ use crate::{
     utils::get_interaction,
     Context, Error,
 };
+use ::serenity::builder::CreateActionRow;
 use poise::serenity_prelude as serenity;
 
 /// Manage the domains that are allowed or banned.
@@ -72,14 +70,14 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
         .value(banned_str)
         .required(false);
 
-    let mut components = CreateComponents::default();
+    let mut components = CreateActionRow::default();
     components
         .create_action_row(|r| r.add_input_text(allowed_input))
         .create_action_row(|r| r.add_input_text(banned_input));
 
     interaction
         .create_interaction_response(&ctx.serenity_context().http, |r| {
-            r.kind(InteractionResponseType::Modal);
+            r.kind(InteractionType::Modal);
             r.interaction_response_data(|d| {
                 d.title(DOMAIN_FORM_TITLE);
                 d.custom_id("manage_domains");
@@ -89,7 +87,7 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
 
     // collect the submitted data
-    let collector = ModalInteractionCollectorBuilder::new(ctx)
+    let collector = ModalInteractionCollector::new(ctx)
         .filter(|int| int.data.custom_id == "manage_domains")
         .build();
 
@@ -124,7 +122,7 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
 
             // it's now safe to close the modal, so send a response to it
             int.create_interaction_response(&ctx.serenity_context().http, |r| {
-                r.kind(InteractionResponseType::DeferredUpdateMessage)
+                r.kind(InteractionType::DeferredUpdateMessage)
             })
             .await
             .ok();

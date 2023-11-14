@@ -1,3 +1,5 @@
+use poise::CreateReply;
+
 use crate::{Context, Error};
 
 /// Flip a coin.
@@ -5,12 +7,10 @@ use crate::{Context, Error};
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     let res = rand::random::<bool>();
 
-    ctx.send(|m| {
-        m.content(format!(
-            "You flipped a coin and it landed on {}!",
-            if res { "heads" } else { "tails" }
-        ))
-    })
+    ctx.send(CreateReply::new().content(format!(
+        "You flipped a coin and it landed on {}!",
+        if res { "heads" } else { "tails" }
+    )))
     .await?;
 
     Ok(())
@@ -29,8 +29,7 @@ pub async fn rolldice(
         res.push(r);
     }
 
-    ctx.send(|m| {
-        m.content(format!(
+    ctx.send(CreateReply::new().content(format!(
             "You roll {}, {} sided dice. Here are the results.\n{}",
             number_of_dice,
             sides_per_die,
@@ -38,8 +37,7 @@ pub async fn rolldice(
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>()
                 .join(", ")
-        ))
-    })
+        )))
     .await?;
 
     Ok(())

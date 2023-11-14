@@ -1,0 +1,25 @@
+image: debian/bookworm
+tasks:
+  - install-dependencies: |
+      sudo apt-get update -y
+      sudo apt-get install -y \
+        autoconf \
+        automake \
+        cmake \
+        libtool \
+        libssl-dev \
+        pkg-config \
+        gcc g++ \
+        curl \
+        libopus-dev
+      sudo apt-get autoremove -y
+      sudo apt-get clean -y
+      sudo rm -rf /var/lib/apt/lists/* 
+  - install-rust: |
+      curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      source "$HOME/.cargo/env"
+      rustup default stable
+  - test: |
+      source "$HOME/.cargo/env"
+      cd cracktunes
+      cargo test

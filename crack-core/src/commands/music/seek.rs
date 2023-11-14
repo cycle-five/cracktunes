@@ -36,7 +36,7 @@ pub async fn seek(
         .ok_or(CrackedError::Other("No track playing"))?;
     drop(handler);
 
-    track.seek_time(Duration::from_secs(timestamp)).unwrap();
+    let _callback = track.seek(Duration::from_secs(timestamp));
 
     create_response_poise(
         ctx,
