@@ -17,7 +17,7 @@ tungstenite = "^0.20.1"
 async-tungstenite = "^0.23.0"
 reqwest = { version = "0.11.22", features = ["blocking", "json"] }
 tracing = "0.1.40"
-tracing-subscriber = "0.3.17"
+tracing-subscriber = "0.3.18"
 audiopus = "0.2.0"
 
 [workspace.dependencies.sqlx]
