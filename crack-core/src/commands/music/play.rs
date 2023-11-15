@@ -231,7 +231,12 @@ pub async fn play(
     // needed because interactions must be replied within 3s and queueing takes longer
     send_search_message(ctx).await?;
 
-    match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
+    // FIXME: Super hacky, fix this shit.
+    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
+
+    if !move_on {
+        return Ok(());
+    }
 
     let handler = call.lock().await;
 
@@ -262,7 +267,7 @@ pub async fn play(
                     Mode::Next,
                 ) => {
                     let track = queue.get(1).unwrap();
-                    let embed = create_queued_embed(PLAY_TOP, track, estimated_time).await;
+                    let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
@@ -271,7 +276,7 @@ pub async fn play(
                     Mode::End,
                 ) => {
                     let track = queue.last().unwrap();
-                    let embed = create_queued_embed(PLAY_QUEUE, track, estimated_time).await;
+                    let embed = build_queued_embed(PLAY_QUEUE, track, estimated_time).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
@@ -332,13 +337,16 @@ async fn print_queue(queue: Vec<TrackHandle>) {
 
 use std::process::Stdio;
 use tokio::process::Command;
-async fn download_file_ytdlp(url: &str) -> Result<Output, Error> {
+async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> {
     // let data = download(uri).await.unwrap();
 
     // tracing::warn!("Downloaded {} bytes from {}", data.len(), uri);
 
     // let url = Url::parse(uri).unwrap();
     // let file_name = url.path_segments().unwrap().last().unwrap();
+    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
+        .aux_metadata()
+        .await?;
 
     let child = Command::new("yt-dlp")
         .arg(url)
@@ -350,7 +358,8 @@ async fn download_file_ytdlp(url: &str) -> Result<Output, Error> {
 
     tracing::warn!("yt-dlp");
 
-    child.wait_with_output().await.map_err(Into::into)
+    let output = child.wait_with_output().await?;
+    Ok((output, metadata))
 }
 
 async fn match_mode(
@@ -358,7 +367,7 @@ async fn match_mode(
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -367,50 +376,18 @@ async fn match_mode(
     tracing::info!("mode: {:?}", mode);
 
     match mode {
-        Mode::Download => match query_type.clone() {
-            QueryType::VideoLink(url) => {
-                tracing::warn!("Mode::Download, QueryType::VideoLink");
-                ctx.defer().await?; // Why did I do this?
-                let src = download_file_ytdlp(&url).await?;
-                let status = src.status.success();
-                edit_response_poise(
-                    ctx,
-                    CrackedMessage::Other(format!("Download status {}", status)),
+        Mode::Download => {
+            let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
+            ctx.channel_id()
+                .send_message(
+                    ctx.http(),
+                    CreateMessage::new()
+                        .content(format!("Download status {}", status))
+                        .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
                 )
                 .await?;
-            }
-            QueryType::NewYoutubeDl((_src, metadata)) => {
-                tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
-                let url = metadata.source_url.unwrap();
-                let file_name = format!(
-                    "/home/lothrop/src/cracktunes/{} [{}].webm",
-                    metadata.title.unwrap(),
-                    url.split('=').last().unwrap()
-                );
-                tracing::warn!("file_name: {}", file_name);
-                let src = download_file_ytdlp(&url).await?;
-                let status = src.status.success();
-                ctx.channel_id()
-                    .send_message(
-                        ctx.http(),
-                        CreateMessage::new()
-                            .content(format!("Download status {}", status))
-                            .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
-                        // .add_file(CreateAttachment::bytes(src.stdout, file_name)),
-                    )
-                    .await?;
-            }
-            _ => {
-                // ctx.defer().await?; // Why did I do this?
-                tracing::error!("Mode::Download, QueryType::Other");
-                edit_response_poise(
-                    ctx,
-                    CrackedMessage::Other("QueryType not supported".to_string()),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
+            return Ok(false);
+        }
         Mode::End => match query_type.clone() {
             // QueryType::YoutubeSearch(query) => {
             //     tracing::warn!("Mode::End, QueryType::YoutubeSearch");
@@ -681,12 +658,12 @@ async fn match_mode(
             _ => {
                 ctx.defer().await?; // Why did I do this?
                 edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
-                return Ok(());
+                return Ok(false);
             }
         },
     }
 
-    Ok(())
+    Ok(true)
 }
 
 use colored::Colorize;
@@ -838,7 +815,7 @@ impl Default for MyAuxMetadata {
     }
 }
 
-async fn create_queued_embed(
+async fn build_queued_embed(
     title: &str,
     track: &TrackHandle,
     estimated_time: Duration,
@@ -874,6 +851,88 @@ async fn create_queued_embed(
         .thumbnail(thumbnail)
         .field(title_text, "", false)
         .footer(CreateEmbedFooter::new(footer_text))
+}
+
+// FIXME: Do you want to have a reqwest client we keep around and pass into
+// this instead of creating a new one every time?
+// FIXME: This is super expensive, literally we need to do this a lot better.
+// FIXME: Yeah, this is just a complete hack, do it better, bitch.
+async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool, String), Error> {
+    let client = reqwest::Client::new();
+    tracing::warn!("query_type: {:?}", query_type);
+    match query_type {
+        QueryType::VideoLink(url) => {
+            tracing::warn!("Mode::Download, QueryType::VideoLink");
+            // ctx.defer().await?; // Why did I do this?
+            let (output, metadata) = download_file_ytdlp(&url).await?;
+            let status = output.status.success();
+            let url = metadata.source_url.unwrap();
+            let file_name = format!(
+                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap()
+            );
+            Ok((status, file_name))
+        }
+        QueryType::NewYoutubeDl((_src, metadata)) => {
+            tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
+            let url = metadata.source_url.unwrap();
+            let file_name = format!(
+                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap()
+            );
+            tracing::warn!("file_name: {}", file_name);
+            let (output, _metadata) = download_file_ytdlp(&url).await?;
+            let status = output.status.success();
+            Ok((status, file_name))
+        }
+        QueryType::Keywords(query) => {
+            tracing::warn!("In Keywords");
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
+            let metadata = ytdl.aux_metadata().await.unwrap();
+            let url = metadata.source_url.unwrap();
+            let (output, metadata) = download_file_ytdlp(&url).await?;
+
+            let file_name = format!(
+                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap()
+            );
+            let status = output.status.success();
+            Ok((status, file_name))
+        }
+        QueryType::File(file) => {
+            tracing::warn!("In File");
+            Ok((true, file.url.to_owned().to_string()))
+        }
+        QueryType::PlaylistLink(url) => {
+            tracing::warn!("In PlaylistLink");
+            let (output, metadata) = download_file_ytdlp(&url).await?;
+            let file_name = format!(
+                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap()
+            );
+            let status = output.status.success();
+            Ok((status, file_name))
+        }
+        QueryType::KeywordList(keywords_list) => {
+            tracing::warn!("In KeywordList");
+            let url = format!("ytsearch:{}", keywords_list.join(" "));
+            let mut ytdl = YoutubeDl::new(client, url.clone());
+            tracing::warn!("ytdl: {:?}", ytdl);
+            let metadata = ytdl.aux_metadata().await.unwrap();
+            let (output, _metadata) = download_file_ytdlp(&url).await?;
+            let file_name = format!(
+                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap()
+            );
+            let status = output.status.success();
+            Ok((status, file_name))
+        }
+    }
 }
 
 // FIXME: Do you want to have a reqwest client we keep around and pass into
