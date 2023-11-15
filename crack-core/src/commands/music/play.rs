@@ -22,10 +22,7 @@ use crate::{
 use ::serenity::builder::{
     CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
 };
-use poise::{
-    serenity_prelude::{self as serenity, Attachment, Http},
-    CreateReply,
-};
+use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
@@ -39,7 +36,7 @@ use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
 use url::Url;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
     End,
     Next,
@@ -120,13 +117,17 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
 fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
     let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
     if is_prefix {
-        Some(
-            mode.clone()
-                .map(|s| s.replace("query_or_url:", ""))
-                .unwrap_or("".to_string())
-                + " "
-                + &step1.unwrap_or("".to_string()),
-        )
+        match (mode
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or("".to_string())
+            + " "
+            + &step1.unwrap_or("".to_string()))
+            .trim()
+        {
+            "" => None,
+            x => Some(x.to_string()),
+        }
     } else {
         step1
     }
@@ -1083,4 +1084,105 @@ async fn rotate_tracks(
     });
 
     Ok(handler.queue().current_queue())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_get_mode() {
+        let is_prefix = true;
+        let msg = Some("".to_string());
+        let mode = Some("".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+
+        let is_prefix = true;
+        let msg = None;
+        let mode = Some("".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+
+        let is_prefix = true;
+        let msg = None;
+        let mode = None;
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+
+        let is_prefix = false;
+        let msg = Some("".to_string());
+        let mode = Some("next".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::Next);
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = Some("download".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::Download);
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = None;
+
+        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+    }
+
+    #[test]
+    fn test_get_msg() {
+        let mode = Some("".to_string());
+        let query_or_url = Some("".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = None;
+        let query_or_url = Some("".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = None;
+        let query_or_url = None;
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = Some("".to_string());
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("".to_string()));
+
+        let mode = None;
+        let query_or_url = Some("".to_string());
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("".to_string()));
+
+        let mode = None;
+        let query_or_url = None;
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = None;
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = None;
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode: Option<String> = None;
+        let query_or_url = Some("asdf asdf asdf asd f".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
+    }
 }
