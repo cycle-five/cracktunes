@@ -19,7 +19,9 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::builder::{CreateEmbedFooter, EditInteractionResponse};
+use ::serenity::builder::{
+    CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
+};
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
 use songbird::{
@@ -27,7 +29,9 @@ use songbird::{
     tracks::{Track, TrackHandle},
     Call,
 };
-use std::{cmp::Ordering, error::Error as StdError, sync::Arc, time::Duration};
+use std::{
+    cmp::Ordering, error::Error as StdError, path::Path, process::Output, sync::Arc, time::Duration,
+};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
 use url::Url;
@@ -40,6 +44,7 @@ pub enum Mode {
     Reverse,
     Shuffle,
     Jump,
+    Download,
 }
 
 #[derive(Clone, Debug)]
@@ -75,11 +80,12 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
             .next()
             .unwrap_or_default()
         {
-            "next:" => Mode::Next,
-            "all:" => Mode::All,
-            "reverse:" => Mode::Reverse,
-            "shuffle:" => Mode::Shuffle,
-            "jump:" => Mode::Jump,
+            "next:" | "next" => Mode::Next,
+            "all:" | "all" => Mode::All,
+            "reverse:" | "reverse" => Mode::Reverse,
+            "shuffle:" | "shuffle" => Mode::Shuffle,
+            "jump:" | "jump" => Mode::Jump,
+            "download:" | "download" => Mode::Download,
             _ => Mode::End,
         }
     } else {
@@ -94,6 +100,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
             "reverse" => Mode::Reverse,
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
+            "download" => Mode::Download,
             _ => Mode::End,
         }
     }
@@ -323,6 +330,29 @@ async fn print_queue(queue: Vec<TrackHandle>) {
     }
 }
 
+use std::process::Stdio;
+use tokio::process::Command;
+async fn download_file_ytdlp(url: &str) -> Result<Output, Error> {
+    // let data = download(uri).await.unwrap();
+
+    // tracing::warn!("Downloaded {} bytes from {}", data.len(), uri);
+
+    // let url = Url::parse(uri).unwrap();
+    // let file_name = url.path_segments().unwrap().last().unwrap();
+
+    let child = Command::new("yt-dlp")
+        .arg(url)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        // .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    tracing::warn!("yt-dlp");
+
+    child.wait_with_output().await.map_err(Into::into)
+}
+
 async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -337,6 +367,49 @@ async fn match_mode(
     tracing::info!("mode: {:?}", mode);
 
     match mode {
+        Mode::Download => match query_type.clone() {
+            QueryType::VideoLink(url) => {
+                tracing::warn!("Mode::Download, QueryType::VideoLink");
+                ctx.defer().await?; // Why did I do this?
+                let src = download_file_ytdlp(&url).await?;
+                let status = src.status.success();
+                edit_response_poise(
+                    ctx,
+                    CrackedMessage::Other(format!("Download status {}", status)),
+                )
+                .await?;
+            }
+            QueryType::NewYoutubeDl((_src, metadata)) => {
+                tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
+                let url = metadata.source_url.unwrap();
+                let file_name = format!(
+                    "/home/lothrop/src/cracktunes/{}",
+                    url.split("/").last().unwrap()
+                );
+                tracing::warn!("file_name: {}", file_name);
+                let src = download_file_ytdlp(&url).await?;
+                let status = src.status.success();
+                ctx.channel_id()
+                    .send_message(
+                        ctx.http(),
+                        CreateMessage::new()
+                            .content(format!("Download status {}", status))
+                            .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
+                        // .add_file(CreateAttachment::bytes(src.stdout, file_name)),
+                    )
+                    .await?;
+            }
+            _ => {
+                // ctx.defer().await?; // Why did I do this?
+                tracing::error!("Mode::Download, QueryType::Other");
+                edit_response_poise(
+                    ctx,
+                    CrackedMessage::Other("QueryType not supported".to_string()),
+                )
+                .await?;
+                return Ok(());
+            }
+        },
         Mode::End => match query_type.clone() {
             // QueryType::YoutubeSearch(query) => {
             //     tracing::warn!("Mode::End, QueryType::YoutubeSearch");

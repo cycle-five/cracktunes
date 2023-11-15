@@ -98,6 +98,51 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
+    format!(
+        "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
+        role.name,
+        role.id,
+        role.colour,
+        role.hoist,
+        role.mentionable,
+        role.permissions,
+        role.position,
+    )
+}
+
+pub fn guild_role_diff(
+    old: &serenity::model::prelude::Role,
+    new: &serenity::model::prelude::Role,
+) -> String {
+    let mut diff_str = String::new();
+    if old.name != new.name {
+        diff_str.push_str(&format!("Name: {} -> {}\n", old.name, new.name));
+    }
+    if old.colour != new.colour {
+        diff_str.push_str(&format!("Color: {:#?} -> {:#?}\n", old.colour, new.colour));
+    }
+    if old.hoist != new.hoist {
+        diff_str.push_str(&format!("Hoist: {} -> {}\n", old.hoist, new.hoist));
+    }
+    if old.mentionable != new.mentionable {
+        diff_str.push_str(&format!(
+            "Mentionable: {} -> {}\n",
+            old.mentionable, new.mentionable
+        ));
+    }
+    if old.permissions != new.permissions {
+        diff_str.push_str(&format!(
+            "Permissions: {:?} -> {:?}\n",
+            old.permissions, new.permissions
+        ));
+    }
+    if old.position != new.position {
+        diff_str.push_str(&format!("Position: {} -> {}\n", old.position, new.position));
+    }
+    diff_str
+}
+
 pub async fn log_guild_role_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -108,32 +153,13 @@ pub async fn log_guild_role_update(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, new) = log_data;
     let title = format!("Role Updated: {}", new.name);
-    let description = format!(
-        "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
-        new.name,
-        new.id,
-        new.colour,
-        new.hoist,
-        new.mentionable,
-        new.permissions,
-        new.position,
-    );
-    let description = format!(
-        "{}{}",
-        description,
-        format!(
-            "Old Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
-            old.clone().map(|x| x.name).unwrap_or_default(),
-            old.clone().map(|x| x.id).unwrap_or_default(),
-            old.clone().map(|x| x.colour).unwrap_or_default(),
-            old.clone().map(|x| x.hoist).unwrap_or_default(),
-            old.clone().map(|x| x.mentionable).unwrap_or_default(),
-            old.clone().map(|x| x.permissions).unwrap_or_default(),
-            old.clone().map(|x| x.position).unwrap_or_default(),
-        )
-    );
+    let description = old
+        .as_ref()
+        .map(|r| guild_role_diff(r, new))
+        .unwrap_or_else(|| guild_role_to_string(new));
+    // FIXME: Use icon or emoji
     let avatar_url = "";
-    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, avatar_url).await
 }
 
 pub async fn log_guild_member_removal(

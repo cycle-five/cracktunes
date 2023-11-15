@@ -48,17 +48,12 @@ pub async fn build_log_embed(
     avatar_url: &str,
 ) -> Result<CreateEmbed, Error> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer = CreateEmbedFooter::new("Crack").text(now_time_str);
+    let footer = CreateEmbedFooter::new(now_time_str);
     Ok(CreateEmbed::default()
         .title(title)
         .description(description)
         .thumbnail(avatar_url)
         .footer(footer))
-
-    // channel
-    //     .send_message(http, CreateMessage::new().embed(embed))
-    //     .await
-    //     .map_err(Into::into)
 }
 
 pub async fn send_log_embed(
@@ -68,7 +63,7 @@ pub async fn send_log_embed(
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = build_log_embed(title, description, &avatar_url).await?;
+    let embed = build_log_embed(title, description, avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))

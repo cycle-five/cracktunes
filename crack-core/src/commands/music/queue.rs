@@ -25,6 +25,7 @@ const EMBED_TIMEOUT: u64 = 3600;
 /// Display the current queue.
 #[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
+    tracing::info!("queue called");
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = match manager.get(guild_id) {
@@ -40,9 +41,10 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
     drop(handler);
+    tracing::info!("tracks: {:?}", tracks);
 
-    tracing::trace!("tracks: {:?}", tracks);
     let num_pages = calculate_num_pages(&tracks);
+    tracing::info!("num_pages: {}", num_pages);
 
     let mut message = match get_interaction(ctx) {
         Some(interaction) => {
