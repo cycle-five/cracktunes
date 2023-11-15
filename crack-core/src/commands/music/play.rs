@@ -385,7 +385,7 @@ async fn match_mode(
                 let file_name = format!(
                     "/home/lothrop/src/cracktunes/{} [{}].webm",
                     metadata.title.unwrap(),
-                    url.split("=").last().unwrap()
+                    url.split('=').last().unwrap()
                 );
                 tracing::warn!("file_name: {}", file_name);
                 let src = download_file_ytdlp(&url).await?;
