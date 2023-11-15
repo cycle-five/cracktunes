@@ -22,7 +22,10 @@ use crate::{
 use ::serenity::builder::{
     CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
 };
-use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use poise::{
+    serenity_prelude::{self as serenity, Attachment, Http},
+    CreateReply,
+};
 use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
