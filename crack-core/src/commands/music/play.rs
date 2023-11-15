@@ -22,7 +22,10 @@ use crate::{
 use ::serenity::builder::{
     CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
 };
-use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use poise::{
+    serenity_prelude::{self as serenity, Attachment, Http},
+    CreateReply,
+};
 use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
@@ -365,6 +368,7 @@ async fn match_mode(
     mode: Mode,
     query_type: QueryType,
 ) -> Result<bool, Error> {
+    let is_prefix = ctx.prefix() != "/";
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -375,6 +379,7 @@ async fn match_mode(
     match mode {
         Mode::Download => {
             let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
+            // if is_prefix {
             ctx.channel_id()
                 .send_message(
                     ctx.http(),
@@ -383,6 +388,14 @@ async fn match_mode(
                         .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
                 )
                 .await?;
+            // } else {
+            //     ctx.send(
+            //         CreateReply::new()
+            //             .content(format!("Download status {}", status))
+            //             .attachment(CreateAttachment::path(Path::new(&file_name)).await?),
+            //     )
+            //     .await?;
+            // }
             return Ok(false);
         }
         Mode::End => match query_type.clone() {
@@ -673,6 +686,12 @@ async fn match_url(
     // determine whether this is a link or a query string
     tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+
+    let url = if Url::parse(url).is_err() {
+        url.splitn(2, char::is_whitespace).last().unwrap()
+    } else {
+        url
+    };
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
