@@ -72,21 +72,25 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 
 fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode {
     if is_prefix {
-        match msg
+        let asdf2 = msg
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default()
-            .split_whitespace()
-            .next()
-            .unwrap_or_default()
-        {
-            "next:" | "next" => Mode::Next,
-            "all:" | "all" => Mode::All,
-            "reverse:" | "reverse" => Mode::Reverse,
-            "shuffle:" | "shuffle" => Mode::Shuffle,
-            "jump:" | "jump" => Mode::Jump,
-            "download:" | "download" => Mode::Download,
-            _ => Mode::End,
+            .unwrap_or_default();
+        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        if asdf.starts_with("next") {
+            Mode::Next
+        } else if asdf.starts_with("all") {
+            Mode::All
+        } else if asdf.starts_with("reverse") {
+            Mode::Reverse
+        } else if asdf.starts_with("shuffle") {
+            Mode::Shuffle
+        } else if asdf.starts_with("jump") {
+            Mode::Jump
+        } else if asdf.starts_with("download") {
+            Mode::Download
+        } else {
+            Mode::End
         }
     } else {
         match mode
@@ -338,12 +342,6 @@ async fn print_queue(queue: Vec<TrackHandle>) {
 use std::process::Stdio;
 use tokio::process::Command;
 async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> {
-    // let data = download(uri).await.unwrap();
-
-    // tracing::warn!("Downloaded {} bytes from {}", data.len(), uri);
-
-    // let url = Url::parse(uri).unwrap();
-    // let file_name = url.path_segments().unwrap().last().unwrap();
     let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
         .aux_metadata()
         .await?;
@@ -352,7 +350,6 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
         .arg(url)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        // .stdout(Stdio::piped())
         .spawn()
         .unwrap();
 
