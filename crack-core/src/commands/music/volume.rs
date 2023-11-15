@@ -68,7 +68,7 @@ pub async fn volume(
                 };
                 ctx.data()
                     .guild_settings_map
-                    .lock()
+                    .write()
                     .unwrap()
                     .entry(guild_id)
                     .or_insert_with(|| {
@@ -81,7 +81,7 @@ pub async fn volume(
                 let guild_settings = ctx
                     .data()
                     .guild_settings_map
-                    .lock()
+                    .read()
                     .unwrap()
                     .get(&guild_id)
                     .unwrap()
@@ -108,7 +108,7 @@ pub async fn volume(
         let new_vol = to_set.unwrap() as f32 / 100.0;
         let old_vol = {
             // let handler = call.lock().await;
-            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap();
+            let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
             let guild_settings = guild_settings_map
                 .entry(guild_id)
                 .and_modify(|guild_settings| {

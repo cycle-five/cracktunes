@@ -20,7 +20,7 @@ pub async fn set_welcome_settings(
     let _res = ctx
         .data()
         .guild_settings_map
-        .lock()
+        .write()
         .unwrap()
         .entry(ctx.guild_id().unwrap())
         .and_modify(|e| {

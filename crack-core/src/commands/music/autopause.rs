@@ -12,7 +12,7 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
     {
-        let mut settings = ctx.data().guild_settings_map.lock().unwrap();
+        let mut settings = ctx.data().guild_settings_map.write().unwrap();
 
         let guild_settings = settings.entry(guild_id).or_insert_with(|| {
             GuildSettings::new(

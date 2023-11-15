@@ -235,7 +235,7 @@ pub async fn play(
 
     let handler = call.lock().await;
 
-    let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+    let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
     let guild_settings = settings.entry(guild_id).or_insert_with(|| {
         GuildSettings::new(
             guild_id,
@@ -383,8 +383,9 @@ async fn match_mode(
                 tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
                 let url = metadata.source_url.unwrap();
                 let file_name = format!(
-                    "/home/lothrop/src/cracktunes/{}",
-                    url.split("/").last().unwrap()
+                    "/home/lothrop/src/cracktunes/{} [{}].webm",
+                    metadata.title.unwrap(),
+                    url.split("=").last().unwrap()
                 );
                 tracing::warn!("file_name: {}", file_name);
                 let src = download_file_ytdlp(&url).await?;
@@ -714,7 +715,7 @@ async fn match_url(
             }
 
             Some(other) => {
-                let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
+                let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
                 let guild_settings = settings.entry(guild_id).or_insert_with(|| {
                     GuildSettings::new(
                         guild_id,
@@ -761,14 +762,8 @@ async fn match_url(
             //     tracing::error!("search_query: {:?}", search_query);
             //     Some(search_query)
             // } else {
-            let mut settings = ctx.data().guild_settings_map.lock().unwrap().clone();
-            let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-                GuildSettings::new(
-                    guild_id,
-                    Some(ctx.prefix()),
-                    get_guild_name(ctx.serenity_context(), guild_id),
-                )
-            });
+            let settings = ctx.data().guild_settings_map.write().unwrap().clone();
+            let guild_settings = settings.get(&guild_id).unwrap();
             if !guild_settings.allow_all_domains.unwrap_or(true)
                 && (guild_settings.banned_domains.contains("youtube.com")
                     || (guild_settings.banned_domains.is_empty()

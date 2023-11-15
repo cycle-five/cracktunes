@@ -90,7 +90,7 @@ pub async fn summon(
         // unregister existing events and register idle notifier
         handler.remove_all_global_events();
 
-        let guild_settings_map = ctx.data().guild_settings_map.lock().unwrap().clone();
+        let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone();
 
         let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
             let timeout = guild_settings.timeout;

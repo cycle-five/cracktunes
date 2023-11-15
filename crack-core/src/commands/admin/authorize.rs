@@ -15,7 +15,7 @@ pub async fn authorize(
 
     let _res = data
         .guild_settings_map
-        .lock()
+        .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {

@@ -15,7 +15,7 @@ pub async fn set_all_log_channel_data(
     //let entry = data
     Ok(data
         .guild_settings_map
-        .lock()
+        .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {

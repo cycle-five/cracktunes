@@ -17,7 +17,7 @@ use poise::{
     CreateReply,
 };
 use songbird::serenity::SerenityInit;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
 /// on_error is called when an error occurs in the framework.
@@ -238,7 +238,7 @@ pub async fn poise_framework(
 
                 ctx.data()
                     .guild_settings_map
-                    .lock()
+                    .read()
                     .unwrap()
                     .get(&guild_id)
                     .map_or_else(
@@ -278,7 +278,7 @@ pub async fn poise_framework(
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
-        guild_settings_map: Arc::new(Mutex::new(cloned_map)),
+        guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
         database_pool: pool_opts.unwrap().into(),
         ..Default::default()
@@ -399,7 +399,7 @@ pub async fn poise_framework(
         tracing::warn!("Received Ctrl-C, shutting down...");
         save_data
             .guild_settings_map
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .for_each(|(k, v)| {

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -41,7 +41,7 @@ pub fn get_log_channel(
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.lock().unwrap().clone();
+    let guild_settings_map = data.guild_settings_map.read().unwrap().clone();
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -49,12 +49,12 @@ pub fn get_log_channel(
 }
 
 pub async fn get_channel_id(
-    guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+    guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
     let x = {
-        let guild_settings_map = guild_settings_map.lock().unwrap().clone();
+        let guild_settings_map = guild_settings_map.read().unwrap().clone();
 
         let guild_settings = guild_settings_map
             .get(guild_id)
@@ -786,7 +786,7 @@ pub async fn handle_event(
             new,
             event: _,
         } => {
-            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)

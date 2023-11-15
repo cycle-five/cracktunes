@@ -13,7 +13,7 @@ pub async fn set_prefix(
     let guild_id = ctx.guild_id().unwrap();
     ctx.data()
         .guild_settings_map
-        .lock()
+        .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {

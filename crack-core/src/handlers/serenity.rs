@@ -93,11 +93,10 @@ impl EventHandler for SerenityHandler {
             new_member.to_string().white()
         );
         let guild_id = new_member.guild_id;
-        let guild_settings = {
-            let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
-            let guild_settings = guild_settings_map.get_mut(&guild_id);
-            guild_settings.cloned()
-        };
+        let guild_settings_map = self.data.guild_settings_map.read().unwrap().clone();
+        let guild_settings = guild_settings_map.get(&guild_id);
+        // let guild_settings = guild_settings_map.get_mut(&guild_id);
+        // guild_settings.cloned()
 
         let (_guild_settings, welcome) = match guild_settings {
             Some(guild_settings) => match guild_settings.clone().welcome_settings {
@@ -230,7 +229,7 @@ impl EventHandler for SerenityHandler {
             let do_i_deafen = self
                 .data
                 .guild_settings_map
-                .lock()
+                .read()
                 .unwrap()
                 .get(&new.guild_id.unwrap())
                 .map(|x| x.self_deafen)
@@ -287,7 +286,7 @@ impl EventHandler for SerenityHandler {
         let num_inserted = {
             let lock = ctx.data.read().await;
             let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+            let mut data_write = self.data.guild_settings_map.write().unwrap();
 
             let mut x = 0;
             for (key, value) in guild_settings_map.clone().iter() {
@@ -373,7 +372,7 @@ impl SerenityHandler {
 
     async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
         // let mut data = ctx.data.write().await;
         // let settings = match data.get_mut::<GuildSettingsMap>() {
@@ -435,7 +434,8 @@ impl SerenityHandler {
 
     async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        // FIXME:
+        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
         // let mut data = ctx.data.write().await;
         // let settings = match data.get_mut::<GuildSettingsMap>() {

@@ -10,6 +10,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::RwLock;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -245,7 +246,8 @@ pub struct DataInner {
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    //pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
@@ -338,7 +340,7 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
