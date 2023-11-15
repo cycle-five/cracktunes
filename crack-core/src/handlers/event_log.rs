@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, utils::create_log_embed, Data, Error,
+    errors::CrackedError, guild::settings::GuildSettings, utils::send_log_embed, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -98,6 +98,44 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+pub async fn log_guild_role_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(
+        &Option<serenity::model::prelude::Role>,
+        &serenity::model::prelude::Role,
+    ),
+) -> Result<serenity::model::prelude::Message, Error> {
+    let &(old, new) = log_data;
+    let title = format!("Role Updated: {}", new.name);
+    let description = format!(
+        "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
+        new.name,
+        new.id,
+        new.colour,
+        new.hoist,
+        new.mentionable,
+        new.permissions,
+        new.position,
+    );
+    let description = format!(
+        "{}{}",
+        description,
+        format!(
+            "Old Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
+            old.clone().map(|x| x.name).unwrap_or_default(),
+            old.clone().map(|x| x.id).unwrap_or_default(),
+            old.clone().map(|x| x.colour).unwrap_or_default(),
+            old.clone().map(|x| x.hoist).unwrap_or_default(),
+            old.clone().map(|x| x.mentionable).unwrap_or_default(),
+            old.clone().map(|x| x.permissions).unwrap_or_default(),
+            old.clone().map(|x| x.position).unwrap_or_default(),
+        )
+    );
+    let avatar_url = "";
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+}
+
 pub async fn log_guild_member_removal(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -113,7 +151,7 @@ pub async fn log_guild_member_removal(
         member_data_if_available.clone().and_then(|m| m.joined_at)
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 pub async fn log_guild_member_addition(
@@ -130,7 +168,7 @@ pub async fn log_guild_member_addition(
         new_member.joined_at
     );
     let avatar_url = new_member.user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 struct PresencePrinter {
@@ -282,7 +320,7 @@ pub async fn log_presence_update(
             .map(|x| x.to_string())
             .unwrap_or_default(),
     );
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 pub async fn log_voice_state_update(
@@ -303,7 +341,7 @@ pub async fn log_voice_state_update(
         .clone()
         .and_then(|x| x.user.avatar_url())
         .unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 pub async fn log_typing_start(
@@ -338,7 +376,7 @@ pub async fn log_typing_start(
         user.name, event.user_id, event.channel_id
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 pub async fn log_message(
@@ -352,7 +390,7 @@ pub async fn log_message(
         new_message.author.name, new_message.author.id, new_message.channel_id, new_message.content
     );
     let avatar_url = new_message.author.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
 }
 
 macro_rules! log_event {
@@ -780,7 +818,7 @@ pub async fn handle_event(
             }
             match maybe_log_channel {
                 Some(channel_id) => {
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
+                    send_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
                         .await?;
                 }
                 None => {
@@ -825,8 +863,21 @@ pub async fn handle_event(
         FullEvent::GuildRoleUpdate {
             new,
             old_data_if_available,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
+            ctx,
+        } => {
+            let log_data = (new, old_data_if_available);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
+        // event_log.write_log_obj(event_name, &(new, old_data_if_available)),
         FullEvent::GuildScheduledEventCreate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }

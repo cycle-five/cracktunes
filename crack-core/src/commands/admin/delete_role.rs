@@ -9,9 +9,7 @@ use crate::{
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_role(
     ctx: Context<'_>,
-    #[rest]
-    #[description = "Role to delete."]
-    mut role: Role,
+    #[description = "Role to delete."] mut role: Role,
 ) -> Result<(), Error> {
     role.delete(&ctx).await.map_err(Into::into)
 }

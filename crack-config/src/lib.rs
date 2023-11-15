@@ -90,7 +90,7 @@ pub async fn poise_framework(
             .collect(),
         commands: vec![
             // admin commands
-            commands::admin::set_prefix(),
+            commands::admin(),
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),

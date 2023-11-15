@@ -20,6 +20,7 @@ use ::serenity::{
     },
     futures::StreamExt,
 };
+use chrono;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -39,19 +40,35 @@ use tokio::sync::RwLock;
 use url::Url;
 const EMBED_PAGE_SIZE: usize = 6;
 
-pub async fn create_log_embed(
+/// Create and sends an log message as an embed.
+/// FIXME: The avatar_url won't always be available. How do we best handle this?
+pub async fn build_log_embed(
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, Error> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer = CreateEmbedFooter::new("Crack").text(now_time_str);
+    Ok(CreateEmbed::default()
+        .title(title)
+        .description(description)
+        .thumbnail(avatar_url)
+        .footer(footer))
+
+    // channel
+    //     .send_message(http, CreateMessage::new().embed(embed))
+    //     .await
+    //     .map_err(Into::into)
+}
+
+pub async fn send_log_embed(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
     title: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = CreateEmbed::default()
-        .title(title)
-        .description(description)
-        .thumbnail(avatar_url);
-    // tracing::debug!("sending log embed: {:?}", embed);
-    tracing::debug!("thumbnail url: {:?}", avatar_url);
+    let embed = build_log_embed(title, description, &avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))
