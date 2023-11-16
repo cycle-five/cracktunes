@@ -8,7 +8,9 @@ use crate::{
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence},
+    serenity_prelude::{
+        ChannelId, ClientStatus, Context as SerenityContext, FullEvent, GuildId, Member, Presence,
+    },
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
@@ -351,7 +353,7 @@ pub async fn log_presence_update(
 
 pub async fn log_voice_state_update(
     channel_id: ChannelId,
-    http: &Arc<Http>,
+    ctx: &SerenityContext,
     log_data: &(
         &Option<serenity::model::prelude::VoiceState>,
         &serenity::model::prelude::VoiceState,
@@ -359,7 +361,7 @@ pub async fn log_voice_state_update(
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, new) = log_data;
     let title = format!("Voice State Update: {}", new.user_id);
-    let description = voice_state_diff_str(old, new);
+    let description = voice_state_diff_str(old, new, &ctx.cache);
     // let description = format!("FIXME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
 
     let avatar_url = new
@@ -367,9 +369,19 @@ pub async fn log_voice_state_update(
         .clone()
         .and_then(|x| x.user.avatar_url())
         .unwrap_or_default();
-    send_log_embed(&channel_id, http, &title, &description, &avatar_url).await
+    send_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url).await
 }
 
+/// Noop log a typing start event.
+pub async fn log_typing_start_noop(
+    _channel_id: ChannelId,
+    _http: &Arc<Http>,
+    _event: &serenity::model::prelude::TypingStartEvent,
+) -> Result<serenity::model::prelude::Message, Error> {
+    Ok(serenity::model::prelude::Message::default())
+}
+
+/// Log a typing start event.
 pub async fn log_typing_start(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -422,9 +434,18 @@ pub async fn log_message(
 macro_rules! log_event {
     // #[cfg(feature="no_log")]
     ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
+        $event_log.write_log_obj($event_name, $log_data)?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $http, $log_data).await?;
-        $event_log.write_log_obj($event_name, $log_data)
+        $log_func(channel_id, $http, $log_data).await.map(|_| ())
+    }};
+}
+
+macro_rules! log_event2 {
+    // #[cfg(feature="no_log")]
+    ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $ctx:expr, $event_log:expr, $event_name:expr) => {{
+        $event_log.write_log_obj($event_name, $log_data)?;
+        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        $log_func(channel_id, $ctx, $log_data).await.map(|_| ())
     }};
 }
 
@@ -456,9 +477,7 @@ pub async fn handle_event(
             let _ = new_data;
             Ok(())
         }
-        FullEvent::GuildMemberAddition {
-            ctx, new_member, ..
-        } => {
+        FullEvent::GuildMemberAddition { ctx, new_member } => {
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
@@ -490,19 +509,20 @@ pub async fn handle_event(
         }
         FullEvent::VoiceStateUpdate { ctx, old, new } => {
             let log_data = &(old, new);
-            log_event!(
+            log_event2!(
                 log_voice_state_update,
                 guild_settings,
                 event_in,
                 log_data,
                 &new.guild_id.unwrap(),
-                &ctx.http,
+                ctx,
                 event_log,
                 event_name
             )
         }
         FullEvent::Message { ctx, new_message } => {
-            if new_message.author.id == ctx.cache.current_user().id {
+            // Don't log other bots for now...
+            if new_message.author.bot {
                 return Ok(());
             }
             log_event!(
@@ -762,24 +782,6 @@ pub async fn handle_event(
                 event_name
             )
         }
-        #[cfg(feature = "cache")]
-        FullEvent::GuildMemberUpdate {
-            old_if_available,
-            new,
-        } => {
-            let log_data = (old_if_available, new);
-            log_event!(
-                log_unimplemented_event,
-                guild_settings,
-                event_in,
-                &log_data,
-                &new.guild_id,
-                &ctx.http,
-                event_log,
-                event_name
-            )
-        }
-        #[cfg(not(feature = "cache"))]
         FullEvent::GuildMemberUpdate {
             ctx,
             old_if_available,
@@ -857,29 +859,28 @@ pub async fn handle_event(
             event_log.write_log_obj(event_name, chunk)
         }
         FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
-        #[cfg(feature = "cache")]
-        GuildRoleDelete {
-            guild_id,
-            removed_role_id,
-            removed_role_data_global_if_available,
-        } => event_log.write_log_obj(
-            event_name,
-            &(
-                guild_id,
-                removed_role_id,
-                removed_role_data_global_if_available,
-            ),
-        ),
-        #[cfg(not(feature = "cache"))]
         FullEvent::GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
-            ctx: _,
-        } => event_log.write_log_obj(
-            event_name,
-            &(guild_id, removed_role_id, removed_role_data_if_available),
-        ),
+            ctx,
+        } => {
+            let log_data = (guild_id, removed_role_id, removed_role_data_if_available);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+            // event_log.write_log_obj(
+            //     event_name,
+            //     &(guild_id, removed_role_id, removed_role_data_if_available),
+            // )
+        }
         #[cfg(feature = "cache")]
         FullEvent::GuildRoleUpdate {
             old_data_global_if_available,
@@ -891,9 +892,9 @@ pub async fn handle_event(
             old_data_if_available,
             ctx,
         } => {
-            let log_data = (new, old_data_if_available);
+            let log_data = (old_data_if_available, new);
             log_event!(
-                log_unimplemented_event,
+                log_guild_role_update,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -987,8 +988,20 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
+            ctx,
+        } => {
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &(old_if_available, new, event),
+                &event.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+            // event_log.write_log_obj(event_name, &(old_if_available, new, event))
+        }
         FullEvent::ReactionAdd {
             add_reaction,
             ctx: _,

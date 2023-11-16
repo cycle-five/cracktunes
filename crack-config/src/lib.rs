@@ -118,6 +118,7 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
+            commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
@@ -218,6 +219,7 @@ pub async fn poise_framework(
                     "grab",
                     "create_playlist",
                     "delete_playlist",
+                    "voteskip",
                 ];
                 if music_commands.contains(&command.as_str()) {
                     return Ok(true);

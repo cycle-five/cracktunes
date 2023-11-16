@@ -390,36 +390,6 @@ pub async fn edit_embed_response_poise(
         },
         None => create_embed_response_poise(ctx, embed).await,
     }
-    // Some(interaction) => match interaction {
-    //     //CommandOrMessageInteraction::Command(interaction) => match interaction {
-    //         // Interaction::Command(interaction) => {
-    //         //     tracing::warn!("CommandInteraction");
-    //         //     interaction
-    //         //         .edit_response(
-    //         //             &ctx.serenity_context().http,
-    //         //             EditInteractionResponse::new().content(" ").embed(embed),
-    //         //         )
-    //         //         .await
-    //         //         .map(|_| ())
-    //         //         .map_err(Into::into)
-    //         // }
-    //         // Interaction::Autocomplete(_) => Ok(()),
-    //         // Interaction::Component(_) => Ok(()),
-    //         // Interaction::Modal(_) => Ok(()),
-    //         // Interaction::Ping(_) => Ok(()),
-    //         // _ => Ok(()),
-    // },
-    // CommandOrMessageInteraction::Message(_) => {
-    //     //     interaction.
-    //     //         (
-    //     //             &ctx.serenity_context().http,
-    //     //             EditInteractionResponse::new().content(" ").embed(embed),
-    //     //         )
-    //     //         .await
-    //     // }
-    //     Ok(())
-    // }
-    // None => create_embed_response_poise(ctx, embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
 }
 
 pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {

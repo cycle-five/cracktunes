@@ -10,6 +10,7 @@ pub mod deauthorize;
 pub mod delete_channel;
 pub mod delete_role;
 pub mod get_settings;
+pub mod invite_tracker;
 pub mod kick;
 pub mod mute;
 pub mod print_settings;
@@ -37,6 +38,7 @@ pub use deauthorize::*;
 pub use delete_channel::*;
 pub use delete_role::*;
 pub use get_settings::*;
+pub use invite_tracker::track_invites;
 pub use kick::*;
 pub use mute::*;
 pub use print_settings::*;
@@ -66,6 +68,7 @@ pub use unmute::*;
         "delete_role",
         "delete_role_by_id",
         "get_settings",
+        "track_invites",
         "kick",
         "mute",
         "print_settings",
@@ -80,6 +83,8 @@ pub use unmute::*;
 )]
 pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
+
+    // builtins::help(ctx, subcommands::as_deref(), config);
 
     Ok(())
 }

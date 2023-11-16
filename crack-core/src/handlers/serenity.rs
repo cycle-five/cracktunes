@@ -807,42 +807,27 @@ async fn server_mute_member(
     guild
         .edit_member(&ctx.http, cam.user_id, EditMember::default().mute(true))
         .await
-    // guild
-    //     .member(&ctx.http, cam.user_id)
-    //     .await
-    //     .expect("Member not found")
-    //     .edit(&ctx.http, EditMember::default().mute(true))
-    //     .await
 }
 
-pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(
+    old: &Option<VoiceState>,
+    new: &VoiceState,
+    cache: impl AsRef<serenity::Cache>,
+) -> String {
     let old = match old {
         Some(old) => old,
         None => {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            let user_id = new.user_id;
+            // let guild_id = new.guild_id.unwrap();
+            let channel_id = new.channel_id.unwrap();
+            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            let now_str = chrono::Local::now().to_string();
+
             return format!(
-                "{} / {} / {}",
-                new.member.as_ref().unwrap().user.name.blue(),
-                new.guild_id.unwrap().get().to_string().blue(),
-                new.channel_id.unwrap().get().to_string().blue()
+                "Member joined voice channel\n{} joined {}\nID: {} * {}",
+                user_name, channel_mention, user_id, now_str
             );
-            // return format!(
-            //     "channel_id: (none) -> {:?}
-            //     deaf: (none) -> {:?}
-            //     guild_id: (none) -> {:?}
-            //     member: (none) -> {:?}
-            //     mute: (none) -> {:?}
-            //     self_deaf: (none) -> {:?}
-            //     self_mute: (none) -> {:?}
-            //     self_stream: (none) -> {:?}
-            //     self_video: (none) -> {:?}
-            //     session_id: (none) -> {:?}
-            //     suppress: (none) -> {:?}
-            //     token: (none) -> {:?}
-            //     user_id: (none) -> {:?}
-            //     request_to_speak_timestamp: (none) -> {:?}",
-            //     new.channel_id, new.deaf, new.guild_id, new.mute, new.member, new.self_deaf, new.self_mute,
-            //     new.self_stream, new.self_video, new.session_id, new.suppress, new.token, new.user_id, new.request_to_speak_timestamp
-            // );
         }
     };
     let mut result = String::new();
@@ -901,9 +886,6 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             old.suppress, new.suppress
         ));
     }
-    // if old.token != new.token {
-    //     result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
-    // }
     if old.user_id != new.user_id {
         result.push_str(&format!(
             "user_id : {:?} -> {:?}\n",

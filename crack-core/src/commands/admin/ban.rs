@@ -1,12 +1,19 @@
-use serenity::all::User;
-
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::create_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::User;
 
 /// Ban a user from the server.
+/// There really doesn't seem to be a good way to restructure commands like this
+/// in a way that allows for unit testing.
+/// 1) Almost every call relies on the ctx, cache, or http, and these are basically
+///   impossible to mock.
+/// 2) Even trying to segragate the logic in the reponse creation pieces is difficult
+///    due to the fact that we're using poise to do prefix and slash commands at the
+///    same time. This makes creation of the response embeds relient on the type
+///    of command and thus the context.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn ban(
     ctx: Context<'_>,

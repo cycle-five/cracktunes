@@ -77,6 +77,7 @@ features = ["all"]
 git = "https://github.com/serenity-rs/poise"
 branch = "serenity-next"
 default-features = true
+features = ["cache", "chrono", "handle_panics"]
 
 [workspace.dependencies.tokio]
 version = "1.33.0"
