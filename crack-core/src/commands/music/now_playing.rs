@@ -1,6 +1,6 @@
 use crate::{
     errors::CrackedError,
-    utils::{create_embed_response_poise, create_now_playing_embed},
+    utils::{create_now_playing_embed, send_embed_response_poise},
     Context, Error,
 };
 
@@ -18,5 +18,5 @@ pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    create_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed).await
 }

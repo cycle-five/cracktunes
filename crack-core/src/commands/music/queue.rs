@@ -4,8 +4,8 @@ use crate::{
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::QUEUE_EXPIRED,
     utils::{
-        build_nav_btns, calculate_num_pages, create_embed_response_poise, create_queue_embed,
-        forget_queue_message, get_interaction,
+        build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
+        get_interaction, send_embed_response_poise,
     },
     Context, Error,
 };
@@ -33,7 +33,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         None => {
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };

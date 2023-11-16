@@ -2,7 +2,7 @@ use serenity::builder::CreateChannel;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -28,7 +28,7 @@ pub async fn set_join_leave_log_channel(
 
     let _res = settings.map(|s| s.save()).unwrap();
 
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
     )

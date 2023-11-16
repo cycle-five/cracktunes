@@ -1,6 +1,6 @@
 use crate::guild::settings::GuildSettingsMap;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -45,7 +45,7 @@ pub async fn set_prefix(
 
     // let _res = settings.map(|s| s.save()).unwrap();
 
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Prefix set to {}", prefix)),
     )

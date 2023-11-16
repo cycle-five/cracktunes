@@ -1,5 +1,5 @@
 use crate::{
-    messaging::message::CrackedMessage, playlist::Playlist, utils::create_response_poise, Context,
+    messaging::message::CrackedMessage, playlist::Playlist, utils::send_response_poise, Context,
     Error,
 };
 
@@ -10,7 +10,7 @@ pub async fn create_playlist(ctx: Context<'_>, name: String) -> Result<(), Error
 
     let res = Playlist::create(ctx.data().database_pool.as_ref().unwrap(), &name, user_id).await?;
 
-    create_response_poise(ctx, CrackedMessage::PlaylistCreated(res.name.clone())).await?;
+    send_response_poise(ctx, CrackedMessage::PlaylistCreated(res.name.clone())).await?;
 
     Ok(())
 }

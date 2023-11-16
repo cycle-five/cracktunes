@@ -71,44 +71,42 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
-pub async fn create_response_poise(
+pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
-    create_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed).await
 }
 
-pub async fn create_response_poise_text(
+pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let message_str = format!("{message}");
 
-    create_embed_response_str(ctx, message_str)
+    send_embed_response_str(ctx, message_str)
         .await
         .map(|_| Ok(()))?
 }
 
 pub async fn create_response(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
-    create_embed_response(ctx, interaction, embed).await
+    send_embed_response(ctx, interaction, embed).await
 }
 
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<(), Error> {
     let embed = CreateEmbed::default().description(content);
-    create_embed_response(ctx, interaction, embed).await
+    send_embed_response(ctx, interaction, embed).await
 }
 
 pub async fn edit_response_poise(
@@ -122,10 +120,7 @@ pub async fn edit_response_poise(
             let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
             res.map(|_| ())
         }
-        None => {
-            create_embed_response_poise(ctx, embed).await
-            //return Err(Box::new(SerenityError::Other("No interaction found"))),
-        }
+        None => send_embed_response_poise(ctx, embed).await,
     }
 }
 
@@ -147,7 +142,7 @@ pub async fn edit_response_text(
     edit_embed_response(http, interaction, embed).await
 }
 
-pub async fn create_embed_response_str(
+pub async fn send_embed_response_str(
     ctx: CrackContext<'_>,
     message_str: String,
 ) -> Result<Message, Error> {
@@ -161,11 +156,9 @@ pub async fn create_embed_response_str(
     .into_message()
     .await
     .map_err(Into::into)
-    //.map_err(Into::into)
-    // Ok(())
 }
 
-pub async fn create_embed_response_poise(
+pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
@@ -173,24 +166,22 @@ pub async fn create_embed_response_poise(
     match get_interaction_new(ctx) {
         Some(interaction) => {
             tracing::warn!("interaction found");
-            create_embed_response(ctx, &interaction, embed).await
+            send_embed_response(ctx, &interaction, embed).await
         }
         None => {
             tracing::warn!("prefix");
-            create_embed_response_prefix(ctx, embed)
+            send_embed_response_prefix(ctx, embed)
                 .await
                 .map(|_| Ok(()))?
         }
     }
 }
 
-pub async fn create_embed_response_prefix(
+pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     ctx.send(CreateReply::new().embed(embed))
-        // embeds.append(&mut vec![embed]);
-        //builder
         .await
         .unwrap()
         .into_message()
@@ -198,9 +189,8 @@ pub async fn create_embed_response_prefix(
         .map_err(Into::into)
 }
 
-pub async fn create_embed_response(
+pub async fn send_embed_response(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<(), Error> {
@@ -384,11 +374,9 @@ pub async fn edit_embed_response_poise(
                 }
                 _ => Ok(()),
             },
-            CommandOrMessageInteraction::Message(_) => {
-                create_embed_response_poise(ctx, embed).await
-            }
+            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
-        None => create_embed_response_poise(ctx, embed).await,
+        None => send_embed_response_poise(ctx, embed).await,
     }
 }
 

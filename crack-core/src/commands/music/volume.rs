@@ -1,7 +1,7 @@
 use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::utils::{create_embed_response_poise, get_guild_name};
+use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
@@ -21,7 +21,7 @@ pub async fn volume(
             tracing::error!("guild_id is None");
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -34,7 +34,7 @@ pub async fn volume(
                 tracing::error!("Can't get manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                create_embed_response_poise(ctx, embed).await?;
+                send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
         };
@@ -45,7 +45,7 @@ pub async fn volume(
                 tracing::error!("Can't get call from manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                create_embed_response_poise(ctx, embed).await?;
+                send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
         };
@@ -98,7 +98,7 @@ pub async fn volume(
                     guild_settings.volume * 100.0,
                     volume_track * 100.0
                 ));
-                create_embed_response_poise(ctx, embed).await?;
+                send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
         };
@@ -145,7 +145,7 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                create_embed_response_poise(ctx, embed).await?;
+                send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             }
         };
@@ -154,7 +154,7 @@ pub async fn volume(
         tracing::error!("embed: {:?}", embed);
         embed
     };
-    create_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed).await
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

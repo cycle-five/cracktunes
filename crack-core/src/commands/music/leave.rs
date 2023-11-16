@@ -1,6 +1,6 @@
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    Error,
 };
 
 /// Leave the current voice channel.
@@ -12,5 +12,5 @@ pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NotConnected)?;
     manager.remove(guild_id).await?;
 
-    create_response_poise(ctx, CrackedMessage::Leaving).await
+    send_response_poise(ctx, CrackedMessage::Leaving).await
 }

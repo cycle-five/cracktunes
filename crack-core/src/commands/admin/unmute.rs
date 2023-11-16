@@ -4,7 +4,7 @@ use serenity::builder::EditMember;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -22,14 +22,14 @@ pub async fn unmute(
                 .await
             {
                 // Handle error, send error message
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
                 )
                 .await?;
             } else {
                 // Send success message
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::UserUnmuted {
                         user: user.name.clone(),
@@ -86,7 +86,7 @@ fn get_guild_id(ctx: impl ContextMock) -> Option<GuildId> {
 //     guild_id.edit_member(ctx, user_id, edit_member)
 // }
 
-// fn create_response_poise(
+// fn send_response_poise(
 //     ctx: impl ContextMock,
 //     message: CrackedMessage,
 // ) -> Result<(), SerenityError> {

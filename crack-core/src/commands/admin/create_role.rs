@@ -2,7 +2,7 @@ use serenity::builder::EditRole;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 /// Create role.
@@ -20,7 +20,7 @@ pub async fn create_role(
             {
                 Err(e) => {
                     // Handle error, send error message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to create role: {}", e)),
                     )
@@ -28,7 +28,7 @@ pub async fn create_role(
                 }
                 Ok(role) => {
                     // Send success message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::RoleCreated {
                             role_name: role.name.clone(),

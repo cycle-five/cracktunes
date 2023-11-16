@@ -2,7 +2,7 @@ use serenity::builder::CreateChannel;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -27,7 +27,7 @@ pub async fn create_text_channel(
             {
                 Err(e) => {
                     // Handle error, send error message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to create channel: {}", e)),
                     )
@@ -35,7 +35,7 @@ pub async fn create_text_channel(
                 }
                 Ok(channel) => {
                     // Send success message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::TextChannelCreated {
                             channel_name: channel.name.clone(),

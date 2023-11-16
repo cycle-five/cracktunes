@@ -2,7 +2,7 @@ use serenity::all::Channel;
 
 use crate::{
     commands::set_all_log_channel_old_data, messaging::message::CrackedMessage,
-    utils::create_response_poise, Context, Error,
+    utils::send_response_poise, Context, Error,
 };
 /// Set the join-leave log channel.
 #[poise::command(prefix_command, owners_only)]
@@ -30,7 +30,7 @@ pub async fn set_all_log_channel(
 
     // let _res = settings.map(|s| s.save()).unwrap();
 
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
     )

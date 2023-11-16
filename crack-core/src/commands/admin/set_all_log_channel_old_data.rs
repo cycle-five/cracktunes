@@ -36,7 +36,7 @@ pub async fn set_all_log_channel_old_data(
     //     .unwrap()
     //     .get_mut(&guild_id);
 
-    // create_response_poise(
+    // send_response_poise(
     //     ctx,
     //     CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
     // )

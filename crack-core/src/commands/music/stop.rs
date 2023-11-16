@@ -2,7 +2,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    utils::create_response_poise_text,
+    utils::send_response_poise_text,
     Context, Error,
 };
 
@@ -24,7 +24,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    create_response_poise_text(ctx, CrackedMessage::Stop).await?;
+    send_response_poise_text(ctx, CrackedMessage::Stop).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

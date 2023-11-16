@@ -12,10 +12,10 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
-        compare_domains, create_embed_response_poise, create_now_playing_embed,
-        create_response_interaction, create_response_poise_text, edit_embed_response_poise,
-        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_interaction,
-        get_interaction_new, get_track_metadata, CommandOrMessageInteraction,
+        compare_domains, create_now_playing_embed, create_response_interaction,
+        edit_embed_response_poise, edit_response_poise, get_guild_name,
+        get_human_readable_timestamp, get_interaction, get_interaction_new, get_track_metadata,
+        send_embed_response_poise, send_response_poise_text, CommandOrMessageInteraction,
     },
     Context, Error,
 };
@@ -151,7 +151,7 @@ pub async fn get_call_with_fail_msg(
                 Err(_) => {
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));
-                    create_embed_response_poise(ctx, embed).await?;
+                    send_embed_response_poise(ctx, embed).await?;
                     Err(CrackedError::NotConnected.into())
                 }
             }
@@ -173,9 +173,9 @@ async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
                 )
                 .await?
             }
-            _ => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+            _ => send_response_poise_text(ctx, CrackedMessage::Search).await?,
         },
-        None => create_response_poise_text(ctx, CrackedMessage::Search).await?,
+        None => send_response_poise_text(ctx, CrackedMessage::Search).await?,
     }
 
     Ok(())
@@ -204,7 +204,7 @@ pub async fn play(
     if msg.is_none() && file.is_none() {
         let embed = CreateEmbed::default()
             .description(format!("{}", CrackedError::Other("No query provided!")));
-        create_embed_response_poise(ctx, embed).await?;
+        send_embed_response_poise(ctx, embed).await?;
         return Ok(());
     }
 
@@ -733,7 +733,7 @@ async fn match_url(
                             domain: other.to_string(),
                         };
 
-                        create_response_poise_text(ctx, message).await?;
+                        send_response_poise_text(ctx, message).await?;
                     }
                 }
 
@@ -767,7 +767,7 @@ async fn match_url(
                     domain: "youtube.com".to_string(),
                 };
 
-                create_response_poise_text(ctx, message).await?;
+                send_response_poise_text(ctx, message).await?;
             }
 
             Some(QueryType::Keywords(url.to_string()))

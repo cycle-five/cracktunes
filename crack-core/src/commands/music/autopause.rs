@@ -1,7 +1,7 @@
 use crate::{
     guild::settings::GuildSettings,
     messaging::message::CrackedMessage,
-    utils::{create_response_poise, get_guild_name},
+    utils::{get_guild_name, send_response_poise},
     Context, Error,
 };
 
@@ -25,9 +25,9 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
         guild_settings.save()?;
 
         if guild_settings.autopause {
-            create_response_poise(ctx, CrackedMessage::AutopauseOn)
+            send_response_poise(ctx, CrackedMessage::AutopauseOn)
         } else {
-            create_response_poise(ctx, CrackedMessage::AutopauseOff)
+            send_response_poise(ctx, CrackedMessage::AutopauseOff)
         }
     }
     .await?;

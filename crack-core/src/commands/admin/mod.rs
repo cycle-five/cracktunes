@@ -23,8 +23,8 @@ pub mod unban;
 pub mod unmute;
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    Error,
 };
 pub use audit_logs::*;
 pub use authorize::*;
@@ -81,10 +81,11 @@ pub use unmute::*;
     ephemeral,
     owners_only
 )]
-pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
+#[cfg(not(tarpaulin_include))]
+pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
-    // builtins::help(ctx, subcommands::as_deref(), config);
+    ctx.say("You found the admin command").await?;
 
     Ok(())
 }
@@ -103,21 +104,21 @@ pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<
             if let Some(category) = category {
                 if let Err(e) = category.1.delete(&ctx).await {
                     // Handle error, send error message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to delete category: {}", e)),
                     )
                     .await?;
                 } else {
                     // Send success message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Category deleted: {}", category_name)),
                     )
                     .await?;
                 }
             } else {
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::Other("Category not found.".to_string()),
                 )

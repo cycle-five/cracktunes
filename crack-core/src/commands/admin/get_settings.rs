@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
 use crate::utils::get_guild_name;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -22,7 +22,7 @@ pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
             settings.clone()
         };
 
-        create_response_poise(
+        send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
         )

@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::create_response_poise_text,
+    utils::send_response_poise_text,
     {Context, Error},
 };
 
@@ -22,7 +22,7 @@ pub async fn resume(
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
     if send_reply.unwrap_or(true) {
-        create_response_poise_text(ctx, CrackedMessage::Resume).await?
+        send_response_poise_text(ctx, CrackedMessage::Resume).await?
     }
     Ok(())
 }

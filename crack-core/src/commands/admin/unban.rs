@@ -4,7 +4,7 @@ use serenity::all::UserId;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -40,14 +40,14 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.unban(&ctx, user.id).await {
         // Handle error, send error message
-        create_response_poise(
+        send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to unban user: {}", e)),
         )
         .await
     } else {
         // Send success message
-        create_response_poise(
+        send_response_poise(
             ctx,
             CrackedMessage::UserUnbanned {
                 user: user.name.clone(),

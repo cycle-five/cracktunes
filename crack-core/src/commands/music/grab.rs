@@ -38,7 +38,6 @@ pub async fn send_now_playing(
     match handler.queue().current() {
         Some(track_handle) => {
             let embed = create_now_playing_embed(&track_handle).await;
-            // create_embed_response_poise(ctx, embed).await?;
             channel
                 .send_message(http, CreateMessage::new().embed(embed))
                 .await

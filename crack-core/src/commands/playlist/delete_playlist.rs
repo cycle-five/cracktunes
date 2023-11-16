@@ -1,5 +1,5 @@
 use crate::{
-    messaging::message::CrackedMessage, playlist::Playlist, utils::create_response_poise, Context,
+    messaging::message::CrackedMessage, playlist::Playlist, utils::send_response_poise, Context,
     Error,
 };
 
@@ -11,7 +11,7 @@ pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i64) -> Result<(), E
 
     Playlist::delete_playlist_by_id(pool, playlist_id, user_id).await?;
 
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::Other(format!(
             "Successfully deleted playlist with ID: {}",

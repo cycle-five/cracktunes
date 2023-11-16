@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{create_response_poise_text, get_track_metadata},
+    utils::{get_track_metadata, send_response_poise_text},
     Context, Error,
 };
 use songbird::{tracks::TrackHandle, Call};
@@ -19,7 +19,7 @@ pub async fn skip(
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            // create_response_poise_text(&ctx, CrackedMessage::NotInVoiceChannel).await?;
+            // send_response_poise_text(&ctx, CrackedMessage::NotInVoiceChannel).await?;
             tracing::warn!(
                 "Not in voice channel: manager.get({}) returned None",
                 guild_id
@@ -64,7 +64,7 @@ pub async fn create_skip_response(
     match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
-            create_response_poise_text(
+            send_response_poise_text(
                 ctx,
                 CrackedMessage::SkipTo {
                     title: metadata.title.as_ref().unwrap().to_owned(),
@@ -75,9 +75,9 @@ pub async fn create_skip_response(
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise_text(ctx, CrackedMessage::SkipAll).await
+                send_response_poise_text(ctx, CrackedMessage::SkipAll).await
             } else {
-                create_response_poise_text(ctx, CrackedMessage::Skip).await
+                send_response_poise_text(ctx, CrackedMessage::Skip).await
             }
         }
     }
