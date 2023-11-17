@@ -15,9 +15,10 @@ use crate::{
     Context,
     Error,
 };
-use ::serenity::all::{Channel, Guild, UserId};
-use poise::{serenity_prelude as serenity, CreateReply};
-use songbird::Call;
+use ::serenity::all::{Channel, Guild, GuildId, UserId};
+use ::serenity::builder::CreateEmbed;
+use poise::{serenity_prelude as serenity, CreateReply, ReplyHandle};
+use songbird::{Call, Songbird};
 use songbird::{Event, TrackEvent};
 use tokio::sync::Mutex;
 // use std::{sync::Arc, time::Duration};
@@ -67,6 +68,21 @@ pub async fn summon(
         }),
     }?;
 
+    let _ = register_handlers(ctx, call, manager, guild_id, channel_id).await;
+
+    Ok(())
+}
+
+use crate::handlers::voice::register_voice_handlers;
+
+/// Register the handlers for the voice channel.
+pub async fn register_handlers(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    manager: Arc<Songbird>,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<ReplyHandle, Error> {
     // // join the channel
     // let result = manager.join(guild.id, channel_id).await?;
     let buffer = {
@@ -79,13 +95,11 @@ pub async fn summon(
         data.clone()
     };
 
-    use crate::handlers::voice::register_voice_handlers;
-
     // FIXME
     // use crate::handlers::voice::register_voice_handlers;
 
     let _ = register_voice_handlers(buffer, call.clone()).await;
-    {
+    let text = {
         let mut handler = call.lock().await;
         // unregister existing events and register idle notifier
         handler.remove_all_global_events();
@@ -112,22 +126,90 @@ pub async fn summon(
         handler.add_global_event(
             Event::Track(TrackEvent::End),
             TrackEndHandler {
-                guild_id: guild.id,
+                guild_id,
                 http: ctx.serenity_context().http.clone(),
                 call: call.clone(),
                 data: ctx.data().clone(),
             },
         );
 
-        let text = CrackedMessage::Summon {
+        CrackedMessage::Summon {
             mention: channel_id.mention(),
         }
-        .to_string();
-        ctx.send(CreateReply::new().content(text).ephemeral(true))
-            .await?;
-    }
+        .to_string()
+    };
+    ctx.send(CreateReply::new().content(text).ephemeral(true))
+        .await
+        .map_err(|err| err.into())
+}
 
-    Ok(())
+pub async fn get_channel_id(
+    ctx: Context<'_>,
+    guild: Guild,
+    channel_id: Option<ChannelId>,
+) -> ChannelId {
+    match channel_id {
+        Some(channel_id) => channel_id,
+        None => guild
+            .voice_states
+            .get(&ctx.author().id)
+            .and_then(|voice_state| voice_state.channel_id)
+            .unwrap(),
+    }
+}
+
+use crate::utils::send_embed_response_poise;
+/// Get the call handle for songbird
+/// FIXME: Does this need to take the GuildId?
+#[inline]
+pub async fn get_call_with_fail_msg(
+    ctx: Context<'_>,
+    guild: Guild,
+    channel_id: Option<ChannelId>,
+) -> Result<Arc<Mutex<Call>>, Error> {
+    let guild_id = guild.id;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::Other(
+            "Songbird Voice client was not initialized.",
+        ))?
+        .clone();
+    tracing::warn!("manager: {:?}", manager);
+    let channel_id = get_channel_id(ctx, guild, channel_id).await;
+    match manager.get(guild_id) {
+        Some(call) => {
+            let _ = register_handlers(ctx, call.clone(), manager, guild_id, channel_id).await;
+            Ok(call)
+        }
+        None => {
+            // try to join a voice channel if not in one just yet
+            // FIXME:
+            let guild_chan = channel_id
+                .to_channel_cached(ctx)
+                .expect("Channel found")
+                .guild()
+                .expect("Chanel in a guild");
+
+            if guild_chan.kind == serenity::model::channel::ChannelType::Voice {
+                match manager.join(guild_id, channel_id).await {
+                    Ok(_) => {
+                        let call = manager.get(guild_id).unwrap();
+                        let _ = register_handlers(ctx, call.clone(), manager, guild_id, channel_id)
+                            .await;
+                        Ok(call)
+                    }
+                    Err(_) => {
+                        let embed = CreateEmbed::default()
+                            .description(format!("{}", CrackedError::NotConnected));
+                        send_embed_response_poise(ctx, embed).await?;
+                        Err(CrackedError::NotConnected.into())
+                    }
+                }
+            } else {
+                Err(CrackedError::Other("Not a voice channel").into())
+            }
+        }
+    }
 }
 
 async fn get_channel_id_for_summon(

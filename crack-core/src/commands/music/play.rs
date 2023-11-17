@@ -1,6 +1,6 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
-    commands::skip::force_skip_top_track,
+    commands::{get_call_with_fail_msg, skip::force_skip_top_track},
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
@@ -19,9 +19,8 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::{
-    all::{ChannelId, Guild},
-    builder::{CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse},
+use ::serenity::builder::{
+    CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
@@ -134,59 +133,6 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
     }
 }
 
-/// Get the call handle for songbird
-/// FIXME: Does this need to take the GuildId?
-#[inline]
-pub async fn get_call_with_fail_msg(
-    ctx: Context<'_>,
-    guild: Guild,
-    channel_id: Option<ChannelId>,
-) -> Result<Arc<Mutex<Call>>, Error> {
-    let guild_id = guild.id;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::Other(
-            "Songbird Voice client was not initialized.",
-        ))?
-        .clone();
-    tracing::warn!("manager: {:?}", manager);
-    match manager.get(guild_id) {
-        Some(call) => Ok(call),
-        None => {
-            // try to join a voice channel if not in one just yet
-            //match summon_short(ctx).await {
-            let channel_id = match channel_id {
-                Some(channel_id) => channel_id,
-                None => guild
-                    .voice_states
-                    .get(&ctx.author().id)
-                    .and_then(|voice_state| voice_state.channel_id)
-                    .unwrap(),
-            };
-            // FIXME:
-            let guild_chan = channel_id
-                .to_channel_cached(ctx)
-                .expect("Channel found")
-                .guild()
-                .expect("Chanel in a guild");
-
-            if guild_chan.kind == serenity::model::channel::ChannelType::Voice {
-                match manager.join(guild_id, channel_id).await {
-                    Ok(_) => Ok(manager.get(guild_id).unwrap()),
-                    Err(_) => {
-                        let embed = CreateEmbed::default()
-                            .description(format!("{}", CrackedError::NotConnected));
-                        send_embed_response_poise(ctx, embed).await?;
-                        Err(CrackedError::NotConnected.into())
-                    }
-                }
-            } else {
-                Err(CrackedError::Other("Not a voice channel").into())
-            }
-        }
-    }
-}
-
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
 async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
@@ -255,6 +201,8 @@ pub async fn play(
 
     let guild = ctx.guild().unwrap().clone();
     let call = get_call_with_fail_msg(ctx, guild, None).await?;
+
+    // register_handlers(ctx, call, manager, guild_id, channel_id);
 
     tracing::warn!(target: "PLAY", "call: {:?}", call);
 
