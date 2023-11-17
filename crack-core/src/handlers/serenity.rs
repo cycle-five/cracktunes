@@ -809,6 +809,13 @@ async fn server_mute_member(
         .await
 }
 
+fn format_option<A: std::fmt::Display>(option: Option<A>) -> String {
+    match option {
+        Some(real) => real.to_string(),
+        None => String::from("None"),
+    }
+}
+
 pub fn voice_state_diff_str(
     old: &Option<VoiceState>,
     new: &VoiceState,
@@ -832,10 +839,32 @@ pub fn voice_state_diff_str(
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
-        result.push_str(&format!(
-            "channel_id: {:?} -> {:?}\n",
-            old.channel_id, new.channel_id
-        ));
+        match new.channel_id {
+            Some(new_channel_id) => {
+                let new_channel_mention =
+                    new_channel_id.to_channel_cached(cache).unwrap().mention();
+                result.push_str(&format!(
+                    "Member moved voice channel\n{} moved to {}\n",
+                    old.member
+                        .as_ref()
+                        .map(|member| member.user.name.clone())
+                        .unwrap_or_default(),
+                    new_channel_mention
+                ));
+            }
+            None => {
+                // FIXME
+                result.push_str(&format!(
+                    "Member left voice channel\n{} left {}\n",
+                    new.member.as_ref().unwrap().user.name,
+                    old.channel_id
+                        .unwrap()
+                        .to_channel_cached(cache)
+                        .unwrap()
+                        .mention()
+                ));
+            }
+        }
     }
     if old.deaf != new.deaf {
         result.push_str(&format!("deaf: {:?} -> {:?}\n", old.deaf, new.deaf));
@@ -846,7 +875,8 @@ pub fn voice_state_diff_str(
     if old.guild_id != new.guild_id {
         result.push_str(&format!(
             "guild_id: {:?} -> {:?}\n",
-            old.guild_id, new.guild_id
+            format_option(old.guild_id),
+            format_option(new.guild_id)
         ));
     }
 
@@ -865,14 +895,16 @@ pub fn voice_state_diff_str(
     if old.self_stream != new.self_stream {
         result.push_str(&format!(
             "self_stream: {:?} -> {:?}\n",
-            old.self_stream, new.self_stream
+            format_option(old.self_stream),
+            format_option(new.self_stream)
         ));
     }
     if old.self_video != new.self_video {
-        result.push_str(&format!(
-            "self_video: {:?} -> {:?}\n",
-            old.self_video, new.self_video
-        ));
+        if new.self_video {
+            result.push_str("Turned on camera\n");
+        } else {
+            result.push_str("Turned off camera\n");
+        }
     }
     if old.session_id != new.session_id {
         result.push_str(&format!(
@@ -895,7 +927,8 @@ pub fn voice_state_diff_str(
     if old.request_to_speak_timestamp != new.request_to_speak_timestamp {
         result.push_str(&format!(
             "request_to_speak: {:?} -> {:?}\n",
-            old.request_to_speak_timestamp, new.request_to_speak_timestamp,
+            format_option(old.request_to_speak_timestamp),
+            format_option(new.request_to_speak_timestamp),
         ));
     }
     result

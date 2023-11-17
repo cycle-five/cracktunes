@@ -19,8 +19,9 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::builder::{
-    CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
+use ::serenity::{
+    all::{ChannelId, Guild},
+    builder::{CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse},
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
@@ -138,22 +139,49 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
 #[inline]
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
-    guild_id: serenity::GuildId,
+    guild: Guild,
+    channel_id: Option<ChannelId>,
 ) -> Result<Arc<Mutex<Call>>, Error> {
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let guild_id = guild.id;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::Other(
+            "Songbird Voice client was not initialized.",
+        ))?
+        .clone();
+    tracing::warn!("manager: {:?}", manager);
     match manager.get(guild_id) {
         Some(call) => Ok(call),
         None => {
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await {
-                Ok(_) => Ok(manager.get(guild_id).unwrap()),
-                Err(_) => {
-                    let embed = CreateEmbed::default()
-                        .description(format!("{}", CrackedError::NotConnected));
-                    send_embed_response_poise(ctx, embed).await?;
-                    Err(CrackedError::NotConnected.into())
+            let channel_id = match channel_id {
+                Some(channel_id) => channel_id,
+                None => guild
+                    .voice_states
+                    .get(&ctx.author().id)
+                    .and_then(|voice_state| voice_state.channel_id)
+                    .unwrap(),
+            };
+            // FIXME:
+            let guild_chan = channel_id
+                .to_channel_cached(ctx)
+                .expect("Channel found")
+                .guild()
+                .expect("Chanel in a guild");
+
+            if guild_chan.kind == serenity::model::channel::ChannelType::Voice {
+                match manager.join(guild_id, channel_id).await {
+                    Ok(_) => Ok(manager.get(guild_id).unwrap()),
+                    Err(_) => {
+                        let embed = CreateEmbed::default()
+                            .description(format!("{}", CrackedError::NotConnected));
+                        send_embed_response_poise(ctx, embed).await?;
+                        Err(CrackedError::NotConnected.into())
+                    }
                 }
+            } else {
+                Err(CrackedError::Other("Not a voice channel").into())
             }
         }
     }
@@ -181,8 +209,10 @@ async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
+fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
+    tracing::warn!("get_guild_id_with_fail_msg");
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    tracing::warn!("guild_id: {:?}", guild_id);
     Ok(guild_id)
 }
 
@@ -219,12 +249,19 @@ pub async fn play(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    let guild_id = get_guild_id_with_fail_msg(ctx).await?;
+    let guild_id = get_guild_id_with_fail_msg(ctx)?;
 
-    let call = get_call_with_fail_msg(ctx, guild_id).await?;
+    tracing::warn!(target: "PLAY", "guild_id: {:?}", guild_id);
+
+    let guild = ctx.guild().unwrap().clone();
+    let call = get_call_with_fail_msg(ctx, guild, None).await?;
+
+    tracing::warn!(target: "PLAY", "call: {:?}", call);
 
     // determine whether this is a link or a query string
     let query_type = match_url(ctx, url, file).await?;
+
+    tracing::warn!(target: "PLAY", "query_type: {:?}", query_type);
 
     // FIXME: Decide whether we're using this everywhere, or not.
     // Don't like the inconsistency.

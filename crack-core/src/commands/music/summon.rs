@@ -137,7 +137,14 @@ async fn get_channel_id_for_summon(
     user_id: UserId,
 ) -> Result<ChannelId, Error> {
     if let Some(channel) = channel {
-        return Ok(channel.id());
+        let guild_chan = channel.clone().guild().ok_or(CrackedError::Other(
+            "Channel is not in a guild, which is required for music.",
+        ))?;
+        if guild_chan.kind == serenity::model::channel::ChannelType::Voice {
+            return Ok(channel.id());
+        } else {
+            return Err(CrackedError::Other("Channel is not a voice channel").into());
+        }
     }
 
     match channel_id_str {
