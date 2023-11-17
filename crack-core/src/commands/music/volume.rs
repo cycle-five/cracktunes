@@ -38,7 +38,6 @@ pub async fn volume(
                 return Ok(());
             }
         };
-        tracing::error!("manager: {:?}", manager);
         let call = match manager.get(guild_id) {
             Some(call) => call,
             None => {
@@ -49,15 +48,10 @@ pub async fn volume(
                 return Ok(());
             }
         };
-        tracing::error!("call: {:?}", call);
 
         let handler = call.lock().await;
 
-        tracing::error!("handler: {:?}", handler);
-
         let track_handle: Option<TrackHandle> = handler.queue().current();
-
-        tracing::error!("track_handle: {:?}", track_handle);
 
         let to_set = match level {
             Some(arg) => Some(arg as isize),
@@ -103,11 +97,8 @@ pub async fn volume(
             }
         };
 
-        tracing::error!("to_set: {:?}", to_set);
-
         let new_vol = to_set.unwrap() as f32 / 100.0;
         let old_vol = {
-            // let handler = call.lock().await;
             let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
             let guild_settings = guild_settings_map
                 .entry(guild_id)
@@ -149,9 +140,8 @@ pub async fn volume(
                 return Ok(());
             }
         };
+
         track_handle.set_volume(new_vol).unwrap();
-        tracing::error!("track_handle: {:?}", track_handle);
-        tracing::error!("embed: {:?}", embed);
         embed
     };
     send_embed_response_poise(ctx, embed).await

@@ -27,7 +27,7 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
                 .map_err(|e| chatgpt::err::Error::ParsingError(e.to_string()))?,
         )
         .temperature(1.0)
-        .engine(ChatGPTEngine::Gpt35Turbo)
+        .engine(ChatGPTEngine::Custom("pai-001-light-beta"))
         .build()
         .unwrap();
     // .top_p(1.0)

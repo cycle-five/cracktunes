@@ -224,7 +224,6 @@ impl PhoneCodeData {
         // Save to local file
         fs::create_dir_all(Path::new(file_name).parent().unwrap()).map_err(CrackedError::IO)?;
         let mut file = fs::File::create(file_name).map_err(CrackedError::IO)?;
-        //.map_err(|_| CrackedError::Other("Failed to create file"))?;
         file.write_all(content.as_bytes())
             .map_err(CrackedError::IO)?;
 
@@ -364,9 +363,3 @@ impl std::ops::Deref for Data {
         &self.0
     }
 }
-
-// impl std::ops::DerefMut for Data {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.0
-//     }
-// }

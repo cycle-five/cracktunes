@@ -625,26 +625,6 @@ async fn match_mode(
                     guild_id,
                 )
                 .await;
-                // .await
-                // .ok_or(CrackedError::Other("failed to fetch playlist"))?
-                // .into_iter()
-                // .for_each(|track| async {
-                //     let _ = enqueue_track(ctx.http(), &call, &QueryType::File(track)).await;
-                // });
-                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                //     .await
-                //     .ok_or(CrackedError::PlayListFail)?;
-
-                // for url in urls.into_iter() {
-                //     let queue = enqueue_track(&call, &QueryType::VideoLink(url)).await?;
-                //     update_queue_messages(
-                //         &ctx.serenity_context().http,
-                //         ctx.data(),
-                //         &queue,
-                //         guild_id,
-                //     )
-                //     .await;
-                // }
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!(
@@ -742,12 +722,22 @@ async fn match_url(
                 let metadata = yt.aux_metadata().await?;
                 Some(QueryType::NewYoutubeDl((yt, metadata)))
             }
-            None => None, // This is where the ytsearch: query string is handled???
-                          // None => {
-                          //     let search_query = QueryType::YoutubeSearch(url.to_string());
-                          //     tracing::error!("None case under url_data, search_query: {:?}", search_query);
-                          //     Some(search_query)
-                          // }
+            None => {
+                // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?
+                // TODO: Why is this a thing?
+                if url.starts_with("spotify:") {
+                    let parts = url.split(':').collect::<Vec<_>>();
+                    let final_url =
+                        format!("https://open.spotify.com/track/{}", parts.last().unwrap());
+                    tracing::warn!("spotify: {} -> {}", url, final_url);
+                    let spotify = SPOTIFY.lock().await;
+                    let spotify =
+                        verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+                    Some(Spotify::extract(spotify, &final_url).await?)
+                } else {
+                    None
+                }
+            }
         },
         Err(e) => {
             tracing::error!("Url::parse error: {}", e);

@@ -7,7 +7,7 @@ use crate::Data;
 use crate::Error;
 
 pub async fn set_all_log_channel_data(
-    data: Data,
+    data: &Data,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<GuildSettings, Error> {

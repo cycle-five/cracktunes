@@ -19,7 +19,6 @@ use poise::{
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
 
-// const EMBED_PAGE_SIZE: usize = 6;
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.

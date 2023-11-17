@@ -1,5 +1,4 @@
 use lazy_static::lazy_static;
-//use prometheus::{labels, opts, register_counter, register_gauge, register_histogram_vec};
 use prometheus::{Gauge, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
 lazy_static! {

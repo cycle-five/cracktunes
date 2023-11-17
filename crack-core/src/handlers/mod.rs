@@ -1,4 +1,5 @@
 pub mod event_log;
+pub mod event_log_impl;
 pub mod idle;
 pub mod serenity;
 pub mod track_end;
