@@ -28,9 +28,9 @@ pub async fn track_invites(
 
     let mut invites_by_user_string = "{ ".to_string();
     invites_by_user.iter().for_each(|(key, &value)| {
-        let _ = write!(
+        let _ = writeln!(
             &mut invites_by_user_string,
-            "{}: {} {}/{}, \n",
+            "{}: {} {}/{}, ",
             key, value.code, value.uses, value.max_uses
         );
     });
@@ -49,7 +49,7 @@ fn _kv_iter_to_string(
 ) -> String {
     let mut string = "{ ".to_string();
     iter.for_each(|(key, value)| {
-        let _ = write!(&mut string, "{}: {}, \n", key, value);
+        let _ = writeln!(&mut string, "{}: {}, ", key, value);
     });
     string.pop(); // Remove the last comma.
     string.pop(); // Remove the last space.
