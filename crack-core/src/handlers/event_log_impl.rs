@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use super::serenity::voice_state_diff_str;
 
+/// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
     _http: &Arc<Http>,
@@ -20,6 +21,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+/// Log a guild ban.
 pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -27,7 +29,8 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
 ) -> Result<(), Error> {
     let &(_guild_id, user) = log_data;
     let title = format!("Member Banned: {}", user.name);
-    let description = format!("User: {}\nID: {}", user.name, user.id);
+    // let description = format!("User: {}\nID: {}", user.name, user.id);
+    let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();
 
     send_log_embed(
@@ -42,6 +45,7 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     .map(|_| ())
 }
 
+/// Guild Role to a string.
 pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
     format!(
         "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
@@ -55,6 +59,7 @@ pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
     )
 }
 
+/// Diff two guild roles.
 pub fn guild_role_diff(
     old: &serenity::model::prelude::Role,
     new: &serenity::model::prelude::Role,
@@ -87,6 +92,7 @@ pub fn guild_role_diff(
     diff_str
 }
 
+/// Log a guild role update event.
 pub async fn log_guild_role_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -114,6 +120,7 @@ pub async fn log_guild_role_update(
     .await
 }
 
+/// Log a guild role creation event.
 pub async fn log_guild_member_removal(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -122,9 +129,7 @@ pub async fn log_guild_member_removal(
     let &(_guild_id, user, member_data_if_available) = log_data;
     let title = format!("Member Left: {}", user.name);
     let description = format!(
-        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-        user.name,
-        user.id,
+        "Account Created: {}\nJoined: {:?}",
         user.created_at(),
         member_data_if_available.clone().and_then(|m| m.joined_at)
     );
@@ -140,6 +145,7 @@ pub async fn log_guild_member_removal(
     .await
 }
 
+/// Log a guild member addition event.
 pub async fn log_guild_member_addition(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -148,9 +154,7 @@ pub async fn log_guild_member_addition(
     let avatar_url = new_member.user.avatar_url().unwrap_or_default();
     let title = format!("Member Joined: {}", new_member.user.name);
     let description = format!(
-        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-        new_member.user.name,
-        new_member.user.id,
+        "Account Created: {}\nJoined: {:?}",
         new_member.user.created_at(),
         new_member.joined_at
     );
@@ -165,6 +169,7 @@ pub async fn log_guild_member_addition(
     .await
 }
 
+/// Harness struct for printing a presence.
 struct PresencePrinter {
     presence: Option<Presence>,
 }

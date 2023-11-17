@@ -86,6 +86,7 @@ impl EventHandler for SerenityHandler {
         // tracing::warn!("num_saved: {}", num_saved);
     }
 
+    /// Guild Member Addition handler (member joined)
     async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
         tracing::info!(
             "{}{}",
@@ -151,6 +152,7 @@ impl EventHandler for SerenityHandler {
         }
     }
 
+    /// Message handler
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
         struct MyMessage(serenity::Message);
         impl fmt::Display for MyMessage {
@@ -210,6 +212,7 @@ impl EventHandler for SerenityHandler {
         }
     }
 
+    /// VoiceState Update handler
     async fn voice_state_update(
         &self,
         ctx: SerenityContext,
@@ -517,6 +520,7 @@ impl SerenityHandler {
     }
 }
 
+/// Sends a message to the system log channel with the current system load.
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
@@ -555,14 +559,8 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     }
 }
 
+/// Checks the camera status for all users in voice channels in a guild.
 async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Vec<MyVoiceUserInfo> {
-    // let guild = match guild_id.to_guild_cached(&ctx.cache) {
-    //     Some(guild) => guild,
-    //     None => {
-    //         tracing::error!("Guild not found in cache");
-    //         return vec![];
-    //     }
-    // };
     let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
         None => {
@@ -768,6 +766,8 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
     });
 }
 
+/// Disconnects a member in a guild that's in a voice channel.
+#[cfg(not(tarpaulin_include))]
 #[allow(dead_code)]
 async fn disconnect_member(
     ctx: Arc<SerenityContext>,
@@ -783,6 +783,8 @@ async fn disconnect_member(
         .await
 }
 
+/// Deafens a member in a guild that's in a voice channel.
+#[cfg(not(tarpaulin_include))]
 async fn server_defeafen_member(
     ctx: Arc<SerenityContext>,
     cam: MyVoiceUserInfo,
@@ -791,14 +793,10 @@ async fn server_defeafen_member(
     guild
         .edit_member(&ctx.http, cam.user_id, EditMember::default().deafen(true))
         .await
-    // guild
-    //     .member(&ctx.http, cam.user_id)
-    //     .await
-    //     .expect("Member not found")
-    //     .edit(&ctx.http, |m| m.deafen(true))
-    //     .await
 }
 
+/// Mutes a member in a guild that's in a voice channel.
+#[cfg(not(tarpaulin_include))]
 async fn server_mute_member(
     ctx: Arc<SerenityContext>,
     cam: MyVoiceUserInfo,
@@ -825,15 +823,14 @@ pub fn voice_state_diff_str(
         Some(old) => old,
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
-            let user_id = new.user_id;
-            // let guild_id = new.guild_id.unwrap();
+            // let user_id = new.user_id;
             let channel_id = new.channel_id.unwrap();
             let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
-            let now_str = chrono::Local::now().to_string();
+            // let now_str = chrono::Local::now().to_string();
 
             return format!(
-                "Member joined voice channel\n{} joined {}\nID: {} * {}",
-                user_name, channel_mention, user_id, now_str
+                "Member joined voice channel\n{} joined {}\n",
+                user_name, channel_mention
             );
         }
     };
@@ -881,23 +878,30 @@ pub fn voice_state_diff_str(
     }
 
     if old.self_deaf != new.self_deaf {
-        result.push_str(&format!(
-            "self_deaf: {:?} -> {:?}\n",
-            old.self_deaf, new.self_deaf
-        ));
+        if new.self_deaf {
+            result.push_str("Deafened self\n");
+        } else {
+            result.push_str("Undeafened self\n");
+        }
     }
     if old.self_mute != new.self_mute {
-        result.push_str(&format!(
-            "self_mute: {:?} -> {:?}\n",
-            old.self_mute, new.self_mute
-        ));
+        if new.self_mute {
+            result.push_str("Unmuted mic\n");
+        } else {
+            result.push_str("Muted mic\n");
+        }
     }
     if old.self_stream != new.self_stream {
-        result.push_str(&format!(
-            "self_stream: {:?} -> {:?}\n",
-            format_option(old.self_stream),
-            format_option(new.self_stream)
-        ));
+        if new.self_stream.is_some() && new.self_stream.unwrap() {
+            result.push_str("Started streaming\n");
+        } else {
+            result.push_str("Stopped streaming\n");
+        }
+        // result.push_str(&format!(
+        //     "self_stream: {:?} -> {:?}\n",
+        //     format_option(old.self_stream),
+        //     format_option(new.self_stream)
+        // ));
     }
     if old.self_video != new.self_video {
         if new.self_video {
@@ -907,10 +911,11 @@ pub fn voice_state_diff_str(
         }
     }
     if old.session_id != new.session_id {
-        result.push_str(&format!(
-            "session_id: {:?} -> {:?}\n",
-            old.session_id, new.session_id
-        ));
+        result.push_str(&format!("Session started: {}\n", &new.session_id));
+        // result.push_str(&format!(
+        //     "session_id: {:?} -> {:?}\n",
+        //     old.session_id, new.session_id
+        // ));
     }
     if old.suppress != new.suppress {
         result.push_str(&format!(
@@ -918,18 +923,23 @@ pub fn voice_state_diff_str(
             old.suppress, new.suppress
         ));
     }
-    if old.user_id != new.user_id {
-        result.push_str(&format!(
-            "user_id : {:?} -> {:?}\n",
-            old.user_id, new.user_id
-        ));
-    }
+    // if old.user_id != new.user_id {
+    //     result.push_str(&format!(
+    //         "user_id : {:?} -> {:?}\n",
+    //         old.user_id, new.user_id
+    //     ));
+    // }
     if old.request_to_speak_timestamp != new.request_to_speak_timestamp {
-        result.push_str(&format!(
-            "request_to_speak: {:?} -> {:?}\n",
-            format_option(old.request_to_speak_timestamp),
-            format_option(new.request_to_speak_timestamp),
-        ));
+        if new.request_to_speak_timestamp.is_some() {
+            result.push_str("Request to speak\n");
+        } else {
+            result.push_str("Request to speak ended\n");
+        }
+        // result.push_str(&format!(
+        //     "request_to_speak: {:?} -> {:?}\n",
+        //     format_option(old.request_to_speak_timestamp),
+        //     format_option(new.request_to_speak_timestamp),
+        // ));
     }
     result
 }
