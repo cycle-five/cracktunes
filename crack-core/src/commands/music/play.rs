@@ -4,7 +4,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
-    handlers::{track_end::update_queue_messages, voice::register_voice_handlers},
+    handlers::track_end::update_queue_messages,
     http_utils,
     messaging::message::CrackedMessage,
     messaging::messages::{
@@ -168,11 +168,11 @@ pub async fn get_call_with_fail_msg(
             let _ =
                 register_track_end_handler(ctx, guild_id, ctx.channel_id(), call.clone(), manager)
                     .await;
-            let buffer = {
-                let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
-                data.clone()
-            };
-            let _ = register_voice_handlers(buffer, call.clone()).await;
+            // let buffer = {
+            //     let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+            //     data.clone()
+            // };
+            // let _ = register_voice_handlers(buffer, call.clone()).await;
             Ok(call)
         }
     }

@@ -2,26 +2,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use self::serenity::{model::id::ChannelId, Mentionable};
-use crate::handlers::voice::register_voice_handlers;
 use crate::handlers::IdleHandler;
 use crate::{
-    connection::get_voice_channel_for_user,
-    errors::CrackedError,
-    handlers::TrackEndHandler,
-    messaging::message::CrackedMessage,
-    // handlers::{IdleHandler, TrackEndHandler},
-    // handlers::TrackEndHandler,
-    // messaging::message::CrackedMessage,
-    utils::get_user_id,
-    Context,
-    Error,
+    connection::get_voice_channel_for_user, errors::CrackedError, handlers::TrackEndHandler,
+    messaging::message::CrackedMessage, utils::get_user_id, Context, Error,
 };
 use ::serenity::all::{Channel, Guild, GuildId, UserId};
 use poise::{serenity_prelude as serenity, CreateReply};
 use songbird::{Call, Songbird};
 use songbird::{Event, TrackEvent};
 use tokio::sync::Mutex;
-// use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
 #[poise::command(
@@ -70,17 +60,17 @@ pub async fn summon(
 
     register_track_end_handler(ctx, guild_id, channel_id, call.clone(), manager.clone()).await?;
 
-    let buffer = {
-        // // Open the data lock in write mode, so keys can be inserted to it.
-        // let mut data = ctx.data().write().await;
+    // let buffer = {
+    //     // // Open the data lock in write mode, so keys can be inserted to it.
+    //     // let mut data = ctx.data().write().await;
 
-        // // So, we have to insert the same type to it.
-        // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
-        let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
-        data.clone()
-    };
+    //     // // So, we have to insert the same type to it.
+    //     // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
+    //     let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    //     data.clone()
+    // };
 
-    let _ = register_voice_handlers(buffer, call.clone()).await;
+    // let _ = register_voice_handlers(buffer, call.clone()).await;
 
     let text = CrackedMessage::Summon {
         mention: channel_id.mention(),
