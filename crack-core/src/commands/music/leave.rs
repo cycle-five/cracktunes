@@ -8,9 +8,11 @@ use crate::{
 #[poise::command(prefix_command, slash_command, guild_only, aliases("dc", "fuckoff"))]
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    tracing::warn!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NotConnected)?;
+    tracing::warn!("manager: {:?}", manager);
     manager.remove(guild_id).await?;
 
     send_response_poise(ctx, CrackedMessage::Leaving).await

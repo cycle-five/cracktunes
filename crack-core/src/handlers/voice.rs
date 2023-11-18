@@ -1,27 +1,17 @@
-use std::sync::Arc;
-// use std::{mem, slice};
-
-use songbird::{Call, CoreEvent};
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
-
+use crate::errors::CrackedError;
 use serenity::async_trait;
-use serenity::prelude::RwLock;
-
 use serenity::client::EventHandler;
-
+use serenity::prelude::RwLock;
+use serenity::{client::Context as SerenityContext, model::gateway::Ready};
 use songbird::{
     model::payload::{ClientDisconnect, Speaking},
     Event, EventContext, EventHandler as VoiceEventHandler,
 };
-
-use serenity::{client::Context as SerenityContext, model::gateway::Ready};
+use songbird::{Call, CoreEvent};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::errors::CrackedError;
-
-// use crate::{Context, Error};
-// use typemap_rev::TypeMap;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
 
 struct Handler;
 
@@ -31,12 +21,6 @@ impl EventHandler for Handler {
         println!("{} is connected!", ready.user.name);
     }
 }
-
-// struct AudioBuffer;
-
-// impl TypeMapKey for AudioBuffer {
-//     type Value = Vec<u8>;
-// }
 
 pub struct Receiver {
     pub data: Arc<RwLock<Vec<u8>>>,
