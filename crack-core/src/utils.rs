@@ -40,30 +40,71 @@ use tokio::sync::RwLock;
 use url::Url;
 const EMBED_PAGE_SIZE: usize = 6;
 
-/// Create and sends an log message as an embed.
+// /// Create and sends an log message as an embed.
+// pub async fn create_log_embed(
+//     title: &str,
+//     description: &str,
+//     avatar_url: &str,
+// ) -> Result<CreateEmbed, Error> {
+//     let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
+//     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+//     let footer = CreateEmbedFooter::new(now_time_str);
+//     Ok(CreateEmbed::default()
+//         .title(title)
+//         .author(author)
+//         .description(description)
+//         .thumbnail(avatar_url)
+//         .footer(footer))
+// }
+
+/// Creates a log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
 pub async fn build_log_embed(
+    id: &str,
     title: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<CreateEmbed, Error> {
+    let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer = CreateEmbedFooter::new(now_time_str);
+    let footer_str = format!("{} | {}", id, now_time_str);
+    let footer = CreateEmbedFooter::new(footer_str);
     Ok(CreateEmbed::default()
-        .title(title)
+        // .title(title)
+        .author(author)
         .description(description)
-        .thumbnail(avatar_url)
+        //.thumbnail(avatar_url)
         .footer(footer))
+}
+
+pub async fn send_log_embed_thumb(
+    channel: &serenity::ChannelId,
+    http: &Arc<Http>,
+    id: &str,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, Error> {
+    let embed = build_log_embed(id, title, description, avatar_url).await?;
+
+    channel
+        .send_message(
+            http,
+            CreateMessage::new().embed(embed.thumbnail(avatar_url)),
+        )
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
+    id: &str,
     title: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = build_log_embed(title, description, avatar_url).await?;
+    let embed = build_log_embed(id, title, description, avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))
@@ -251,7 +292,10 @@ pub async fn create_response_interaction(
             //     int.defer(http).await.unwrap();
             // }
             let res = if defer {
-                CreateInteractionResponse::Defer(
+                // let ret = CreateInteractionResponse::Acknowledge;
+
+                // let _ = int.create_response(http, ret).await;
+                CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )
             } else {
