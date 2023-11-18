@@ -134,7 +134,7 @@ pub async fn register_track_end_handler(
     Ok(())
 }
 
-async fn get_channel_id_for_summon(
+pub async fn get_channel_id_for_summon(
     channel: Option<Channel>,
     channel_id_str: Option<String>,
     guild: Guild,
