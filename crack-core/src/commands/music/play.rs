@@ -23,7 +23,6 @@ use ::serenity::builder::{
     CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
-use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::{Track, TrackHandle},
@@ -362,7 +361,7 @@ async fn match_mode(
 
     tracing::info!("mode: {:?}", mode);
 
-    match mode {
+    let _ret = match mode {
         Mode::Download => {
             let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
             // if is_prefix {
@@ -457,25 +456,38 @@ async fn match_mode(
                     .await;
             }
             // FIXME
-            QueryType::PlaylistLink(_url) => {
+            QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
                 //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
-                let urls = vec!["".to_string()];
+                //let urls = vec!["".to_string()];
+                let mut src = YoutubeDl::new(reqwest::Client::new(), url);
+                let metadata = src.aux_metadata().await?;
+                let queue = insert_track(
+                    ctx.http(),
+                    &call,
+                    &QueryType::NewYoutubeDl((src, metadata)),
+                    1,
+                )
+                .await?;
+                // enqueue_track(ctx.http(), &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
 
-                for (idx, url) in urls.into_iter().enumerate() {
-                    let queue =
-                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), idx + 1)
-                            .await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
+                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
                     .await;
-                }
+
+                // for (idx, url) in urls.into_iter().enumerate() {
+                //     let queue =
+                //         insert_track(ctx.http(), &call, &QueryType::VideoLink(url), idx + 1)
+                //             .await?;
+                //     update_queue_messages(
+                //         &ctx.serenity_context().http,
+                //         ctx.data(),
+                //         &queue,
+                //         guild_id,
+                //     )
+                //     .await;
+                // }
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::Next, QueryType::KeywordList");
@@ -534,38 +546,49 @@ async fn match_mode(
             }
             QueryType::PlaylistLink(url) => {
                 tracing::error!("Mode::Jump, QueryType::PlaylistLink");
-                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                //     .await
-                //     .ok_or(CrackedError::PlayListFail)?;
-                // FIXME
-                let _src = YoutubeDl::new(Client::new(), url);
-                // .ok_or(CrackedError::Other("failed to fetch playlist"))?
-                // .into_iter()
-                // .for_each(|track| async {
-                //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
-                // });
-                let urls = vec!["".to_string()];
-                let mut insert_idx = 1;
+                let mut src = YoutubeDl::new(reqwest::Client::new(), url);
+                let metadata = src.aux_metadata().await?;
+                enqueue_track(ctx.http(), &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
+                update_queue_messages(
+                    &ctx.serenity_context().http,
+                    ctx.data(),
+                    &call.lock().await.queue().current_queue(),
+                    guild_id,
+                )
+                .await;
+                // todo!();
+                // // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                // //     .await
+                // //     .ok_or(CrackedError::PlayListFail)?;
+                // // FIXME
+                // let _src = YoutubeDl::new(Client::new(), url);
+                // // .ok_or(CrackedError::Other("failed to fetch playlist"))?
+                // // .into_iter()
+                // // .for_each(|track| async {
+                // //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
+                // // });
+                // let urls = vec!["".to_string()];
+                // let mut insert_idx = 1;
 
-                for (i, url) in urls.into_iter().enumerate() {
-                    let mut queue =
-                        insert_track(ctx.http(), &call, &QueryType::VideoLink(url), insert_idx)
-                            .await?;
+                // for (i, url) in urls.into_iter().enumerate() {
+                //     let mut queue =
+                //         insert_track(ctx.http(), &call, &QueryType::VideoLink(url), insert_idx)
+                //             .await?;
 
-                    if i == 0 && !queue_was_empty {
-                        queue = force_skip_top_track(&call.lock().await).await?;
-                    } else {
-                        insert_idx += 1;
-                    }
+                //     if i == 0 && !queue_was_empty {
+                //         queue = force_skip_top_track(&call.lock().await).await?;
+                //     } else {
+                //         insert_idx += 1;
+                //     }
 
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                //     update_queue_messages(
+                //         &ctx.serenity_context().http,
+                //         ctx.data(),
+                //         &queue,
+                //         guild_id,
+                //     )
+                //     .await;
+                // }
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::error!("Mode::Jump, QueryType::KeywordList");
@@ -637,7 +660,7 @@ async fn match_mode(
                 return Ok(false);
             }
         },
-    }
+    };
 
     Ok(true)
 }

@@ -37,9 +37,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         }
     };
 
-    let handler = call.lock().await;
-    let tracks = handler.queue().current_queue();
-    drop(handler);
+    let tracks = call.lock().await.queue().current_queue();
+
     tracing::info!("tracks: {:?}", tracks);
 
     let num_pages = calculate_num_pages(&tracks);

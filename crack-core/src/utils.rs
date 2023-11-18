@@ -292,9 +292,9 @@ pub async fn create_response_interaction(
             //     int.defer(http).await.unwrap();
             // }
             let res = if defer {
-                let ret = CreateInteractionResponse::Acknowledge;
+                // let ret = CreateInteractionResponse::Acknowledge;
 
-                let _ = int.create_response(http, ret).await;
+                // let _ = int.create_response(http, ret).await;
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )

@@ -143,11 +143,7 @@ pub async fn register_handlers(
         .map_err(|err| err.into())
 }
 
-pub async fn get_channel_id(
-    ctx: Context<'_>,
-    guild: Guild,
-    channel_id: Option<ChannelId>,
-) -> ChannelId {
+pub fn get_channel_id(ctx: Context<'_>, guild: Guild, channel_id: Option<ChannelId>) -> ChannelId {
     match channel_id {
         Some(channel_id) => channel_id,
         None => guild
@@ -175,15 +171,16 @@ pub async fn get_call_with_fail_msg(
         ))?
         .clone();
     tracing::warn!("manager: {:?}", manager);
-    let channel_id = get_channel_id(ctx, guild, channel_id).await;
     match manager.get(guild_id) {
         Some(call) => {
-            let _ = register_handlers(ctx, call.clone(), manager, guild_id, channel_id).await;
+            // let channel_id = get_channel_id(ctx, guild, channel_id).await;
+            // let _ = register_handlers(ctx, call.clone(), manager, guild_id, channel_id).await;
             Ok(call)
         }
         None => {
             // try to join a voice channel if not in one just yet
             // FIXME:
+            let channel_id = get_channel_id(ctx, guild, channel_id);
             let guild_chan = channel_id
                 .to_channel_cached(ctx)
                 .expect("Channel found")
@@ -192,8 +189,8 @@ pub async fn get_call_with_fail_msg(
 
             if guild_chan.kind == serenity::model::channel::ChannelType::Voice {
                 match manager.join(guild_id, channel_id).await {
-                    Ok(_) => {
-                        let call = manager.get(guild_id).unwrap();
+                    Ok(call) => {
+                        // let call = manager.get(guild_id).unwrap();
                         let _ = register_handlers(ctx, call.clone(), manager, guild_id, channel_id)
                             .await;
                         Ok(call)
