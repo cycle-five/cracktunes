@@ -7,6 +7,7 @@ use crate::{
 };
 
 /// Clear the queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
