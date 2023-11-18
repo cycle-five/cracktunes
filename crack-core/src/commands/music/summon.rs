@@ -89,8 +89,10 @@ pub async fn register_track_end_handler(
     call: Arc<Mutex<Call>>,
     manager: Arc<Songbird>,
 ) -> Result<(), Error> {
+    tracing::error!("register_track_end_handler");
     let mut handler = call.lock().await;
     // unregister existing events and register idle notifier
+    tracing::error!("Removing all global events");
     handler.remove_all_global_events();
 
     let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone();
@@ -98,6 +100,7 @@ pub async fn register_track_end_handler(
     let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
         let timeout = guild_settings.timeout;
         if timeout > 0 {
+            tracing::error!("Adding idle handler, with timeout: {}", timeout);
             handler.add_global_event(
                 Event::Periodic(Duration::from_secs(60), None),
                 IdleHandler {
@@ -109,8 +112,11 @@ pub async fn register_track_end_handler(
                     count: Default::default(),
                 },
             );
+        } else {
+            tracing::error!("Not adding idle handler");
         }
     });
+    tracing::error!("Adding track end handler");
     handler.add_global_event(
         Event::Track(TrackEvent::End),
         TrackEndHandler {
@@ -120,7 +126,7 @@ pub async fn register_track_end_handler(
             data: ctx.data().clone(),
         },
     );
-
+    tracing::error!("Done");
     Ok(())
 }
 

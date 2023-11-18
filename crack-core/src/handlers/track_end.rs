@@ -56,6 +56,7 @@ impl EventHandler for TrackEndHandler {
         if let Some(channel) = handler.current_channel() {
             tracing::warn!("Sending now playing message");
             let chan_id = ChannelId::new(channel.0.into());
+            tracing::warn!("chan_id: {:?}", chan_id);
 
             send_now_playing(chan_id, self.http.clone(), self.call.clone())
                 .await
@@ -71,6 +72,7 @@ impl EventHandler for TrackEndHandler {
 #[async_trait]
 impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::error!("ModifyQueueHandler");
         let (queue, vol) = {
             let handler = self.call.lock().await;
             let queue = handler.queue().current_queue().clone();
@@ -80,6 +82,9 @@ impl EventHandler for ModifyQueueHandler {
                 .map(|guild_settings| guild_settings.volume);
             (queue, vol)
         };
+
+        tracing::error!("queue: {:?}", queue);
+        tracing::error!("vol: {:?}", vol);
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
         update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;

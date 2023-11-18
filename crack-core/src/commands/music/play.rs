@@ -155,12 +155,20 @@ pub async fn get_call_with_fail_msg(
                 .unwrap()
                 .clone();
             let user_id = get_user_id(&ctx);
-            let channel_id = get_voice_channel_for_user(&guild, &user_id).unwrap();
-            let call = match manager.join(guild_id, channel_id).await {
-                Ok(_) => manager.get(guild_id).unwrap(),
-                Err(_) => {
+            let channel_id = match get_voice_channel_for_user(&guild, &user_id) {
+                Some(channel_id) => channel_id,
+                None => {
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));
+                    send_embed_response_poise(ctx, embed).await?;
+                    return Err(CrackedError::NotConnected.into());
+                }
+            };
+            let call = match manager.join(guild_id, channel_id).await {
+                Ok(call) => call,
+                Err(err) => {
+                    let embed = CreateEmbed::default()
+                        .description(format!("{}", CrackedError::JoinChannelError(err)));
                     send_embed_response_poise(ctx, embed).await?;
                     return Err(CrackedError::NotConnected.into());
                 }
