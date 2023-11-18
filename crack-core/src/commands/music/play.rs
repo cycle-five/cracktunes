@@ -3,7 +3,7 @@ use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
-    handlers::track_end::update_queue_messages,
+    handlers::{track_end::update_queue_messages, voice::register_voice_handlers},
     http_utils,
     messaging::message::CrackedMessage,
     messaging::messages::{
@@ -146,15 +146,24 @@ pub async fn get_call_with_fail_msg(
         None => {
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await {
-                Ok(_) => Ok(manager.get(guild_id).unwrap()),
+            let call = match manager.join(guild_id, ctx.channel_id()).await {
+                Ok(_) => manager.get(guild_id).unwrap(),
                 Err(_) => {
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));
                     send_embed_response_poise(ctx, embed).await?;
-                    Err(CrackedError::NotConnected.into())
+                    return Err(CrackedError::NotConnected.into());
                 }
-            }
+            };
+            let _ =
+                register_track_end_handler(ctx, guild_id, ctx.channel_id(), call.clone(), manager)
+                    .await;
+            let buffer = {
+                let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+                data.clone()
+            };
+            let _ = register_voice_handlers(buffer, call.clone()).await;
+            Ok(call)
         }
     }
 }
@@ -658,6 +667,8 @@ async fn match_mode(
 }
 
 use colored::Colorize;
+
+use super::register_track_end_handler;
 /// Matches a url (or query string) to a QueryType
 async fn match_url(
     ctx: Context<'_>,

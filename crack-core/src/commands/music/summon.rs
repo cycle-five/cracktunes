@@ -92,7 +92,7 @@ pub async fn summon(
     Ok(())
 }
 
-async fn register_track_end_handler(
+pub async fn register_track_end_handler(
     ctx: Context<'_>,
     guild_id: GuildId,
     channel_id: ChannelId,
