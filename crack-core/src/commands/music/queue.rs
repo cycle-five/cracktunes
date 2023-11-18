@@ -1,11 +1,10 @@
 use self::serenity::{builder::CreateEmbed, futures::StreamExt};
 use crate::{
-    errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::QUEUE_EXPIRED,
     utils::{
         build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
-        get_interaction, send_embed_response_poise,
+        get_interaction,
     },
     Context, Error,
 };

@@ -137,7 +137,7 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
 
 /// Get the call handle for songbird
 /// FIXME: Does this need to take the GuildId?
-#[inline]
+// #[inline]
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
     guild_id: serenity::GuildId,
