@@ -38,7 +38,7 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
         http,
         &user.id.to_string(),
         &title,
-        &description,
+        description,
         &avatar_url,
     )
     .await

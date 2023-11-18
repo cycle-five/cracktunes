@@ -26,16 +26,20 @@ const EMBED_TIMEOUT: u64 = 3600;
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("queue called");
     let guild_id = ctx.guild_id().unwrap();
+    tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            let embed =
-                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        }
-    };
+    tracing::info!("manager: {:?}", manager);
+    //let call = manager.get_or_insert(guild_id); //.unwrap();
+    let call = manager.get(guild_id).unwrap();
+    // let call = match manager.get(guild_id) {
+    //     Some(call) => call,
+    //     None => {
+    //         let embed =
+    //             CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
+    //         send_embed_response_poise(ctx, embed).await?;
+    //         return Ok(());
+    //     }
+    // };
 
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();

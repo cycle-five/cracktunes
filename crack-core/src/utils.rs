@@ -283,26 +283,26 @@ pub async fn create_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,
-    defer: bool,
+    _defer: bool,
 ) -> Result<(), Error> {
     match interaction {
         Interaction::Command(int) => {
-            // Is this "acknowledging" the interaction?
-            // if defer {
-            //     int.defer(http).await.unwrap();
-            // }
-            let res = if defer {
-                // let ret = CreateInteractionResponse::Acknowledge;
+            // FIXME:
+            // // Is this "acknowledging" the interaction?
+            // // if defer {
+            // //     int.defer(http).await.unwrap();
+            // // }
+            // let res = if defer {
+            //     // let ret = CreateInteractionResponse::Acknowledge;
 
-                // let _ = int.create_response(http, ret).await;
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            } else {
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            };
+            //     // let _ = int.create_response(http, ret).await;
+            //     CreateInteractionResponse::Message(
+            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
+            //     )
+            // } else {
+            let res = CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().embed(embed.clone()),
+            );
             int.create_response(http, res).await.map_err(Into::into)
         }
         Interaction::Ping(..)
