@@ -34,15 +34,15 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         None => {
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(ctx, embed).await?;
-            return Ok(());
+            return send_embed_response_poise(ctx, embed).await;
         }
     };
     tracing::info!("call: {:?}", call);
 
-    let handler = call.lock().await;
-    let tracks = handler.queue().current_queue();
-    drop(handler);
+    // let handler = call.lock().await;
+    // let tracks = handler.queue().current_queue();
+    // drop(handler);
+    let tracks = call.lock().await.queue().current_queue();
     tracing::info!("tracks: {:?}", tracks);
 
     let num_pages = calculate_num_pages(&tracks);
@@ -79,26 +79,33 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
-    let data = ctx.data().clone();
-    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
+    let data = ctx.data(); //.clone();
+    data.guild_cache_map
+        .lock()
+        .unwrap()
+        .entry(guild_id)
+        .or_default()
+        .queue_messages
+        .push((message.clone(), page.clone()));
+    // let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 
-    let cache = cache_map.entry(guild_id).or_default();
-    cache.queue_messages.push((message.clone(), page.clone()));
+    // let cache = cache_map.entry(guild_id).or_default();
+    // cache.queue_messages.push((message.clone(), page.clone()));
     // drop(data);
 
     // refresh the queue interaction whenever a track ends
-    let mut handler = call.lock().await;
+    // let mut handler = call.lock().await;
     // let data = ctx.data().clone();
-    handler.add_global_event(
+    call.lock().await.add_global_event(
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
             http: ctx.serenity_context().http.clone(),
-            data: ctx.data().clone(),
+            data: data.clone(),
             call: call.clone(),
             guild_id,
         },
     );
-    drop(handler);
+    // drop(handler);
 
     let mut cib = message
         .await_component_interactions(ctx)
@@ -109,9 +116,10 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         let btn_id = &mci.data.custom_id;
 
         // refetch the queue in case it changed
-        let handler = call.lock().await;
-        let tracks = handler.queue().current_queue();
-        drop(handler);
+        // let handler = call.lock().await;
+        // let tracks = handler.queue().current_queue();
+        // drop(handler);
+        let tracks = call.lock().await.queue().current_queue();
 
         let page_num = {
             let mut page_wlock = page.write().unwrap();
@@ -145,9 +153,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .unwrap();
 
-    forget_queue_message(ctx.data(), &message, guild_id)
+    forget_queue_message(data, &message, guild_id)
         .await
-        .ok();
-
-    Ok(())
+        .map_err(Into::into)
 }
