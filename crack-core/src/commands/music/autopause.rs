@@ -6,6 +6,7 @@ use crate::{
 };
 
 /// Toggle autopause at the end of everytrack.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();
