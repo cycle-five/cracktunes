@@ -353,7 +353,7 @@ impl Default for Data {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
 impl std::ops::Deref for Data {
