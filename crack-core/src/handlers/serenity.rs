@@ -814,6 +814,7 @@ pub fn voice_state_diff_str(
     new: &VoiceState,
     cache: impl AsRef<serenity::Cache>,
 ) -> String {
+    let premium = true; //DEFAULT_PREMIUM;
     let old = match old {
         Some(old) => old,
         None => {
@@ -830,18 +831,72 @@ pub fn voice_state_diff_str(
             );
         }
     };
+    let user = if premium {
+        old.member.as_ref().unwrap().user.mention().to_string()
+    } else {
+        old.member.as_ref().unwrap().user.name.to_string()
+    };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
-        result.push_str(&format!(
-            "channel_id: {:?} -> {:?}\n",
-            old.channel_id, new.channel_id
-        ));
+        if new.channel_id.is_none() {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            let user_mention = new.member.as_ref().unwrap().user.mention();
+            // let user_id = new.user_id;
+            let channel_id = old.channel_id.unwrap();
+            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            // let now_str = chrono::Local::now().to_string();
+
+            let user = if premium {
+                user_mention.to_string()
+            } else {
+                user_name.to_string()
+            };
+
+            let channel = if premium {
+                channel_mention.to_string()
+            } else {
+                channel_id.to_string()
+            };
+
+            return format!("Member left voice channel\n{} left {}\n", user, channel);
+        } else if old.channel_id.is_none() {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            // let user_id = new.user_id;
+            let channel_id = new.channel_id.unwrap();
+            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            // let now_str = chrono::Local::now().to_string();
+
+            return format!(
+                "Member joined voice channel\n{} joined {}\n",
+                user_name, channel_mention
+            );
+        } else {
+            let old_channel_id = old.channel_id.unwrap();
+            let new_channel_id = new.channel_id.unwrap();
+            let old_channel_mention = old_channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+            let new_channel_mention = new_channel_id.to_channel_cached(cache).unwrap().mention();
+            result.push_str(&format!(
+                "channel_id: {} -> {}\n",
+                old_channel_mention, new_channel_mention
+            ));
+        }
     }
     if old.deaf != new.deaf {
-        result.push_str(&format!("deaf: {:?} -> {:?}\n", old.deaf, new.deaf));
+        if new.deaf {
+            result.push_str(&format!("{} deafend\n", user));
+        } else {
+            result.push_str(&format!("{} undeafend\n", user));
+        }
     }
     if old.mute != new.mute {
-        result.push_str(&format!("mute: {:?} -> {:?}\n", old.mute, new.mute));
+        if new.mute {
+            result.push_str(&format!("{} muted\n", user));
+        } else {
+            result.push_str(&format!("{} unmuted\n", user));
+        }
     }
     if old.guild_id != new.guild_id {
         result.push_str(&format!(

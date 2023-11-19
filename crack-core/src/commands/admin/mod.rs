@@ -65,6 +65,7 @@ pub use unmute::*;
         "create_text_channel",
         "create_voice_channel",
         "deafen",
+        "debug",
         "deauthorize",
         "delete_channel",
         "delete_role",

@@ -27,6 +27,7 @@ pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str = "sqlite:///data/crackedmusic.db";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
+pub(crate) const DEFAULT_PREMIUM: bool = false;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -118,6 +119,7 @@ pub struct GuildSettings {
     pub guild_name: String,
     pub prefix: String,
     pub prefix_up: String,
+    pub premium: bool,
     pub autopause: bool,
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -142,11 +144,12 @@ impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
+            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, premium: {}, autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
             self.guild_id,
             self.guild_name,
             self.prefix,
             self.prefix_up,
+            self.premium,
             self.autopause,
             self.allow_all_domains.unwrap_or(true),
             self.allowed_domains,
@@ -186,6 +189,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             prefix_up: my_prefix.to_string().to_ascii_uppercase(),
+            premium: DEFAULT_PREMIUM,
             autopause: false,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,

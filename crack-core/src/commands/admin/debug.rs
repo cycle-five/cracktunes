@@ -1,16 +1,24 @@
 use crate::errors::CrackedError;
+use crate::guild::settings::GuildSettingsMap;
 use crate::utils::send_embed_response_poise;
 use crate::Context;
 use crate::Error;
 use serenity::builder::CreateEmbed;
 use songbird::tracks::TrackQueue;
 
-/// Mute a user.
+/// Print some debug info.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
 
     let data_str = format!("{:#?}", data);
+
+    let mut old_data_str = String::new();
+    let lock = ctx.serenity_context().data.read().await;
+    let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+    guild_settings_map.iter().for_each(|(k, v)| {
+        old_data_str.push_str(&format!("k: {:?}, v: {:?}", k, v));
+    });
 
     let guild_id = ctx.guild_id().unwrap();
     let guild = ctx
@@ -35,8 +43,10 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
     let queue_str = queue_to_str(queue);
     // let global_handlers = get_global_handlers(ctx);
 
-    let embed =
-        CreateEmbed::default().description(format!("data: {}\nqueue: {}", data_str, queue_str));
+    let embed = CreateEmbed::default().description(format!(
+        "data: {}old_data_str{}\nqueue: {}",
+        data_str, old_data_str, queue_str
+    ));
     send_embed_response_poise(ctx, embed).await?;
 
     Ok(())
@@ -51,5 +61,3 @@ pub fn queue_to_str(queue: &TrackQueue) -> String {
 
     buf
 }
-
-// pub async fn get_global_handlers(ctx: Context<'_>) -> String {}

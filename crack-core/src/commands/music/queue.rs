@@ -84,7 +84,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
 
     let cache = cache_map.entry(guild_id).or_default();
     cache.queue_messages.push((message.clone(), page.clone()));
-    drop(data);
+    // drop(data);
 
     // refresh the queue interaction whenever a track ends
     let mut handler = call.lock().await;
