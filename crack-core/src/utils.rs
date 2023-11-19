@@ -56,6 +56,22 @@ pub async fn build_log_embed(
         .footer(footer))
 }
 
+pub async fn send_log_embed_thumb(
+    channel: &serenity::ChannelId,
+    http: &Arc<Http>,
+    _id: &str,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, Error> {
+    let embed = build_log_embed(title, description, avatar_url).await?;
+
+    channel
+        .send_message(http, CreateMessage::new().embed(embed))
+        .await
+        .map_err(Into::into)
+}
+
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,

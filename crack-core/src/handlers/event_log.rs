@@ -7,7 +7,7 @@ use super::event_log_impl::*;
 
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed, Data, Error,
+    utils::send_log_embed_thumb, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -176,7 +176,7 @@ pub async fn handle_event(
         FullEvent::TypingStart { ctx, event } => {
             // let cache_http = ctx.http.clone()
             log_event!(
-                log_typing_start,
+                log_typing_start_noop,
                 guild_settings,
                 event_in,
                 event,
@@ -423,15 +423,16 @@ pub async fn handle_event(
             ctx,
             old_if_available,
             new,
-            event: _,
+            event,
         } => {
+            let _event = event;
             let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .map(|x| x.get_join_leave_log_channel())
                 .unwrap_or(None);
-
+            let id = new.user.id;
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
                 new.user.name,
@@ -439,6 +440,7 @@ pub async fn handle_event(
                 new.user.created_at(),
                 new.joined_at
             );
+
             let mut avatar_url = new.avatar_url().unwrap_or(
                 old_if_available
                     .clone()
@@ -455,6 +457,13 @@ pub async fn handle_event(
             let mut notes = "";
             let mut title: String = String::from("");
 
+            if let Some(old) = old_if_available {
+                if old.user.avatar.is_none() || old.user.avatar.unwrap() != new.user.avatar.unwrap()
+                {
+                    title = format!("Avatar Updated: {}", new.user.name);
+                }
+            }
+
             match (maybe_log_channel, old_if_available) {
                 (Some(_), Some(old)) => {
                     if old.pending && !new.pending {
@@ -468,7 +477,7 @@ pub async fn handle_event(
                     if old.pending && !new.pending {
                         notes = "Click Verify";
                         title = format!("Member Approved: {}", new.user.name);
-                    } else {
+                    } else if !title.is_empty() {
                         title = format!("Member Updated: {}", new.user.name);
                     };
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
@@ -483,8 +492,15 @@ pub async fn handle_event(
             }
             match maybe_log_channel {
                 Some(channel_id) => {
-                    send_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
+                    send_log_embed_thumb(
+                        &channel_id,
+                        &ctx.http,
+                        &id.to_string(),
+                        &title,
+                        &description,
+                        &avatar_url,
+                    )
+                    .await?;
                 }
                 None => {
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
