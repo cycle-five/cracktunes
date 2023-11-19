@@ -832,12 +832,10 @@ pub fn voice_state_diff_str(
         } else {
             old.member.as_ref().unwrap().user.mention().to_string()
         }
+    } else if old.member.is_none() {
+        new.member.as_ref().unwrap().user.name.to_string()
     } else {
-        if old.member.is_none() {
-            new.member.as_ref().unwrap().user.name.to_string()
-        } else {
-            old.member.as_ref().unwrap().user.name.to_string()
-        }
+        old.member.as_ref().unwrap().user.name.to_string()
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
