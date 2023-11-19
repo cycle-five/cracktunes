@@ -46,6 +46,7 @@ pub enum Mode {
     Shuffle,
     Jump,
     Download,
+    Search,
 }
 
 #[derive(Clone, Debug)]
@@ -56,7 +57,7 @@ pub enum QueryType {
     PlaylistLink(String),
     File(serenity::Attachment),
     NewYoutubeDl((YoutubeDl, AuxMetadata)),
-    // YoutubeSearch(String),
+    YoutubeSearch(String),
 }
 
 /// Get the guild name (guild-only)
@@ -90,6 +91,8 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
             Mode::Jump
         } else if asdf.starts_with("download") {
             Mode::Download
+        } else if asdf.starts_with("search") {
+            Mode::Search
         } else {
             Mode::End
         }
@@ -381,6 +384,32 @@ async fn match_mode(
     tracing::info!("mode: {:?}", mode);
 
     match mode {
+        Mode::Search => {
+            let search_results = match query_type.clone() {
+                QueryType::Keywords(keywords) => {
+                    let search_results = YoutubeDl::new_ytdl_(reqwest::Client::new(), keywords)
+                        .search()
+                        .await?;
+                    search_results
+                }
+                QueryType::YoutubeSearch(query) => {
+                    let search_results = YoutubeDl::new(reqwest::Client::new(), query)
+                        .search()
+                        .await?;
+                    search_results
+                }
+                _ => {
+                    let embed = CreateEmbed::default()
+                        .description(format!(
+                            "{}",
+                            CrackedError::Other("Something went wrong while parsing your query!")
+                        ))
+                        .footer(CreateEmbedFooter::default().text("Search failed!"));
+                    send_embed_response_poise(ctx, embed).await?;
+                    return Ok(false);
+                }
+            };
+        }
         Mode::Download => {
             let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
             // if is_prefix {
