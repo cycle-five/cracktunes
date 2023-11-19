@@ -119,6 +119,7 @@ pub struct GuildSettings {
     pub guild_name: String,
     pub prefix: String,
     pub prefix_up: String,
+    #[serde(default = "premium_default")]
     pub premium: bool,
     pub autopause: bool,
     pub allow_all_domains: Option<bool>,
@@ -138,6 +139,10 @@ pub struct GuildSettings {
 
 fn volume_default() -> f32 {
     DEFAULT_VOLUME_LEVEL
+}
+
+fn premium_default() -> bool {
+    DEFAULT_PREMIUM
 }
 
 impl Display for GuildSettings {

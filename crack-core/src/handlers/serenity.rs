@@ -1,10 +1,7 @@
 use crate::{
     guild::settings::{GuildSettings, GuildSettingsMap},
-    //handlers::track_end::update_queue_messages,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig,
-    CamKickConfig,
-    Data,
+    BotConfig, CamKickConfig, Data,
 };
 use ::serenity::{
     builder::{CreateEmbed, CreateMessage, EditMember},
@@ -185,29 +182,27 @@ impl EventHandler for SerenityHandler {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
-                GuildId::new(0)
+                return;
             }
         };
 
-        if guild_id.get() != 0 {
-            let guild_name = {
-                let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
-                guild.name.clone()
-            };
-            let name = msg.author.name.clone();
-            // let guild_name = guild.name;
-            let content = msg.content.clone();
-            let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
+        let guild_name = {
+            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+            guild.name.clone()
+        };
+        let name = msg.author.name.clone();
+        // let guild_name = guild.name;
+        let content = msg.content.clone();
+        let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
 
-            tracing::info!(
-                "Message: {} {} {} {}",
-                name.purple(),
-                guild_name.purple(),
-                channel_name.purple(),
-                content.purple(),
-            );
-            let _mm = MyMessage(msg);
-        }
+        tracing::info!(
+            "Message: {} {} {} {}",
+            name.purple(),
+            guild_name.purple(),
+            channel_name.purple(),
+            content.purple(),
+        );
+        let _mm = MyMessage(msg);
     }
 
     async fn voice_state_update(
@@ -832,9 +827,17 @@ pub fn voice_state_diff_str(
         }
     };
     let user = if premium {
-        old.member.as_ref().unwrap().user.mention().to_string()
+        if old.member.is_none() {
+            new.member.as_ref().unwrap().user.mention().to_string()
+        } else {
+            old.member.as_ref().unwrap().user.mention().to_string()
+        }
     } else {
-        old.member.as_ref().unwrap().user.name.to_string()
+        if old.member.is_none() {
+            new.member.as_ref().unwrap().user.name.to_string()
+        } else {
+            old.member.as_ref().unwrap().user.name.to_string()
+        }
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {

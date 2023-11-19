@@ -56,15 +56,35 @@ pub async fn build_log_embed(
         .footer(footer))
 }
 
+/// Create and sends an log message as an embed.
+/// FIXME: The avatar_url won't always be available. How do we best handle this?
+pub async fn build_log_embed_thumb(
+    title: &str,
+    id: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, Error> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer_str = format!("{} | {}", id, now_time_str);
+    let footer = CreateEmbedFooter::new(footer_str);
+    let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
+    Ok(CreateEmbed::default()
+        .author(author)
+        // .title(title)
+        .description(description)
+        // .thumbnail(avatar_url)
+        .footer(footer))
+}
+
 pub async fn send_log_embed_thumb(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
-    _id: &str,
+    id: &str,
     title: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = build_log_embed(title, description, avatar_url).await?;
+    let embed = build_log_embed_thumb(title, id, description, avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))
