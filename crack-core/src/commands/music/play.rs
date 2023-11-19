@@ -1,6 +1,7 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
     commands::skip::force_skip_top_track,
+    connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
@@ -146,7 +147,9 @@ pub async fn get_call_with_fail_msg(
         None => {
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
-            match manager.join(guild_id, ctx.channel_id()).await {
+            let channel_id =
+                get_voice_channel_for_user(&ctx.guild().unwrap().clone(), &ctx.author().id);
+            match manager.join(guild_id, channel_id.unwrap()).await {
                 Ok(_) => Ok(manager.get(guild_id).unwrap()),
                 Err(_) => {
                     let embed = CreateEmbed::default()

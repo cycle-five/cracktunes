@@ -26,7 +26,9 @@ const EMBED_TIMEOUT: u64 = 3600;
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("queue called");
     let guild_id = ctx.guild_id().unwrap();
+    tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    tracing::info!("manager: {:?}", manager);
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
@@ -36,6 +38,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             return Ok(());
         }
     };
+    tracing::info!("call: {:?}", call);
 
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
