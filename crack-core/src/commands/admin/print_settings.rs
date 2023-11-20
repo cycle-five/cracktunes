@@ -92,7 +92,7 @@ async fn get_messages(
         }
     }
     if filter_user.is_none() {
-        return Ok(messages);
+        Ok(messages)
     } else {
         let id = filter_user.unwrap().id;
         Ok(messages.into_iter().filter(|m| m.author.id == id).collect())

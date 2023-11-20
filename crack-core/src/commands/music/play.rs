@@ -311,12 +311,26 @@ pub async fn play(
                         }
                     }
                 }
-                (x, y) => {
-                    tracing::error!("Unexpected query_type: {:?}, mode: {:?}", x, y);
-                    // let track = queue.first().unwrap();
-                    // let embed = create_now_playing_embed(track).await;
+                (QueryType::File(_x_), y) => {
+                    tracing::warn!("QueryType::File, mode: {:?}", y);
+                    let track = queue.first().unwrap();
+                    let embed = create_now_playing_embed(track).await;
 
-                    // edit_embed_response_poise(ctx, embed).await?;
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (QueryType::YoutubeSearch(_x), y) => {
+                    tracing::warn!("QueryType::YoutubeSearch, mode: {:?}", y);
+                    let track = queue.first().unwrap();
+                    let embed = create_now_playing_embed(track).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
+                }
+                (x, y) => {
+                    tracing::warn!("{:?} {:?} {:?}", x, y, mode);
+                    let track = queue.first().unwrap();
+                    let embed = create_now_playing_embed(track).await;
+
+                    edit_embed_response_poise(ctx, embed).await?;
                 }
             }
         }
