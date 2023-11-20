@@ -307,7 +307,7 @@ pub async fn poise_framework(
         | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MODERATION
-        | GatewayIntents::GUILD_BANS
+        // | GatewayIntents::GUILD_BANS
         | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
         | GatewayIntents::GUILD_INTEGRATIONS
         | GatewayIntents::GUILD_WEBHOOKS
