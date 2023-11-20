@@ -817,7 +817,10 @@ pub fn voice_state_diff_str(
             let user_id = new.user_id;
             // let guild_id = new.guild_id.unwrap();
             let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
             let now_str = chrono::Local::now().to_string();
 
             return format!(
@@ -844,7 +847,10 @@ pub fn voice_state_diff_str(
             let user_mention = new.member.as_ref().unwrap().user.mention();
             // let user_id = new.user_id;
             let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
             // let now_str = chrono::Local::now().to_string();
 
             let user = if premium {
@@ -864,7 +870,10 @@ pub fn voice_state_diff_str(
             let user_name = &new.member.as_ref().unwrap().user.name;
             // let user_id = new.user_id;
             let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel_cached(cache).unwrap().mention();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
             // let now_str = chrono::Local::now().to_string();
 
             return format!(
@@ -878,7 +887,10 @@ pub fn voice_state_diff_str(
                 .to_channel_cached(cache.as_ref())
                 .unwrap()
                 .mention();
-            let new_channel_mention = new_channel_id.to_channel_cached(cache).unwrap().mention();
+            let new_channel_mention = new_channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
             result.push_str(&format!(
                 "channel_id: {} -> {}\n",
                 old_channel_mention, new_channel_mention
