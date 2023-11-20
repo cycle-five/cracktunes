@@ -718,11 +718,12 @@ async fn match_url(
     tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
-    let url = if Url::parse(url).is_err() {
-        url.splitn(2, char::is_whitespace).last().unwrap()
-    } else {
-        url
-    };
+    // wtf was this for?
+    // let url = if Url::parse(url).is_err() {
+    //     url.splitn(2, char::is_whitespace).last().unwrap()
+    // } else {
+    //     url
+    // };
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
@@ -785,37 +786,63 @@ async fn match_url(
                         verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                     Some(Spotify::extract(spotify, &final_url).await?)
                 } else {
-                    None
+                    Some(QueryType::Keywords(url.to_string()))
+                    //                None
                 }
             }
         },
         Err(e) => {
             tracing::error!("Url::parse error: {}", e);
+            Some(QueryType::Keywords(url.to_string()))
             // if url.contains("ytsearch") {
             //     let search_query = QueryType::YoutubeSearch(url.to_string());
             //     tracing::error!("search_query: {:?}", search_query);
             //     Some(search_query)
             // } else {
-            let settings = ctx.data().guild_settings_map.write().unwrap().clone();
-            let guild_settings = settings.get(&guild_id).unwrap();
-            if !guild_settings.allow_all_domains.unwrap_or(true)
-                && (guild_settings.banned_domains.contains("youtube.com")
-                    || (guild_settings.banned_domains.is_empty()
-                        && !guild_settings.allowed_domains.contains("youtube.com")))
-            {
-                let message = CrackedMessage::PlayDomainBanned {
-                    domain: "youtube.com".to_string(),
-                };
+            // let settings = ctx.data().guild_settings_map.write().unwrap().clone();
+            // let guild_settings = settings.get(&guild_id).unwrap();
+            // if !guild_settings.allow_all_domains.unwrap_or(true)
+            //     && (guild_settings.banned_domains.contains("youtube.com")
+            //         || (guild_settings.banned_domains.is_empty()
+            //             && !guild_settings.allowed_domains.contains("youtube.com")))
+            // {
+            //     let message = CrackedMessage::PlayDomainBanned {
+            //         domain: "youtube.com".to_string(),
+            //     };
 
-                send_response_poise_text(ctx, message).await?;
-            }
+            //     send_response_poise_text(ctx, message).await?;
+            // }
 
-            Some(QueryType::Keywords(url.to_string()))
+            // Some(QueryType::Keywords(url.to_string()))
+            // None
             // }
         }
     };
 
-    Result::Ok(query_type)
+    let res = if let Some(QueryType::Keywords(_)) = query_type {
+        let settings = ctx.data().guild_settings_map.write().unwrap().clone();
+        let guild_settings = settings.get(&guild_id).unwrap();
+        if !guild_settings.allow_all_domains.unwrap_or(true)
+            && (guild_settings.banned_domains.contains("youtube.com")
+                || (guild_settings.banned_domains.is_empty()
+                    && !guild_settings.allowed_domains.contains("youtube.com")))
+        {
+            let message = CrackedMessage::PlayDomainBanned {
+                domain: "youtube.com".to_string(),
+            };
+
+            send_response_poise_text(ctx, message).await?;
+            Ok(None)
+        } else {
+            Result::Ok(query_type)
+        }
+    } else {
+        Result::Ok(query_type)
+    };
+    res
+    // Some(QueryType::Keywords(url.to_string()))
+
+    // Result::Ok(query_type)
 }
 
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
