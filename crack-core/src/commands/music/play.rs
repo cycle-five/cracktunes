@@ -3,7 +3,7 @@ use crate::{
     commands::skip::force_skip_top_track,
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
-    guild::settings::GuildSettings,
+    guild::settings::{GuildSettings, DEFAULT_PREMIUM},
     handlers::track_end::update_queue_messages,
     http_utils,
     messaging::message::CrackedMessage,
@@ -20,8 +20,12 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::builder::{
-    CreateAttachment, CreateEmbedFooter, CreateMessage, EditInteractionResponse,
+use ::serenity::{
+    all::{GuildId, Mentionable, UserId},
+    builder::{
+        CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
+        EditInteractionResponse,
+    },
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
@@ -169,19 +173,16 @@ pub async fn get_call_with_fail_msg(
 /// Also defers the interaction so we won't timeout.
 async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
     match get_interaction_new(ctx) {
-        Some(interaction) => match interaction {
-            CommandOrMessageInteraction::Command(interaction) => {
-                create_response_interaction(
-                    &ctx.serenity_context().http,
-                    &interaction,
-                    CrackedMessage::Search.into(),
-                    true,
-                )
-                .await?
-            }
-            _ => send_response_poise_text(ctx, CrackedMessage::Search).await?,
-        },
-        None => send_response_poise_text(ctx, CrackedMessage::Search).await?,
+        Some(CommandOrMessageInteraction::Command(interaction)) => {
+            create_response_interaction(
+                &ctx.serenity_context().http,
+                &interaction,
+                CrackedMessage::Search.into(),
+                true,
+            )
+            .await?
+        }
+        _ => send_response_poise_text(ctx, CrackedMessage::Search).await?,
     }
 
     Ok(())
@@ -369,6 +370,33 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
     Ok((output, metadata))
 }
 
+async fn send_search_response(
+    ctx: Context<'_>,
+    guild_id: GuildId,
+    user_id: UserId,
+    query: String,
+    res: Vec<String>,
+) -> Result<(), Error> {
+    let author = ctx.author_member().await.unwrap();
+    let name = if DEFAULT_PREMIUM {
+        author.mention().to_string()
+    } else {
+        author.display_name().to_string()
+    };
+
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let description: String = res.clone().into_iter().collect::<Vec<String>>().join("\n");
+    let title = format!("Search results for {}", query);
+    let author = CreateEmbedAuthor::new(name);
+    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let embed = CreateEmbed::new()
+        .author(author)
+        .title(title)
+        .description(description)
+        .footer(footer);
+    send_embed_response_poise(ctx, embed).await
+}
+
 async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -385,18 +413,23 @@ async fn match_mode(
 
     match mode {
         Mode::Search => {
-            let search_results = match query_type.clone() {
+            // let search_results = match query_type.clone() {
+            match query_type.clone() {
                 QueryType::Keywords(keywords) => {
-                    let search_results = YoutubeDl::new_ytdl_(reqwest::Client::new(), keywords)
-                        .search()
-                        .await?;
-                    search_results
+                    let search_results =
+                        YoutubeDl::new_yt_search(reqwest::Client::new(), keywords.clone())
+                            .search()
+                            .await?;
+                    let user_id = ctx.author().id;
+                    send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 }
                 QueryType::YoutubeSearch(query) => {
-                    let search_results = YoutubeDl::new(reqwest::Client::new(), query)
+                    let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
                         .search()
                         .await?;
-                    search_results
+
+                    let user_id = ctx.author().id;
+                    send_search_response(ctx, guild_id, user_id, query, search_results).await?;
                 }
                 _ => {
                     let embed = CreateEmbed::default()
@@ -404,7 +437,7 @@ async fn match_mode(
                             "{}",
                             CrackedError::Other("Something went wrong while parsing your query!")
                         ))
-                        .footer(CreateEmbedFooter::default().text("Search failed!"));
+                        .footer(CreateEmbedFooter::new("Search failed!"));
                     send_embed_response_poise(ctx, embed).await?;
                     return Ok(false);
                 }
@@ -412,7 +445,6 @@ async fn match_mode(
         }
         Mode::Download => {
             let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
-            // if is_prefix {
             ctx.channel_id()
                 .send_message(
                     ctx.http(),
@@ -421,29 +453,18 @@ async fn match_mode(
                         .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
                 )
                 .await?;
-            // } else {
-            //     ctx.send(
-            //         CreateReply::new()
-            //             .content(format!("Download status {}", status))
-            //             .attachment(CreateAttachment::path(Path::new(&file_name)).await?),
-            //     )
-            //     .await?;
-            // }
+
             return Ok(false);
         }
         Mode::End => match query_type.clone() {
-            // QueryType::YoutubeSearch(query) => {
-            //     tracing::warn!("Mode::End, QueryType::YoutubeSearch");
-            //     do_yt_search(ctx, query).await?;
-            //     // let queue = enqueue_track(
-            //     //     ctx.http(),
-            //     //     &call,
-            //     //     &QueryType::YoutubeSearch(search_str.to_string()),
-            //     // )
-            //     // .await?;
-            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
-            //     //     .await;
-            // }
+            QueryType::YoutubeSearch(query) => {
+                tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+                let res = YoutubeDl::new_yt_search(reqwest::Client::new(), query.clone())
+                    .search()
+                    .await?;
+                let user_id = ctx.author().id;
+                send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
+            }
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let queue = enqueue_track(ctx.http(), &call, &query_type).await?;
@@ -548,20 +569,17 @@ async fn match_mode(
                     .await;
                 }
             }
+            QueryType::YoutubeSearch(_) => {
+                tracing::trace!("Mode::Next, QueryType::YoutubeSearch");
+                return Err(CrackedError::Other("Not implemented yet!").into());
+            }
         },
         Mode::Jump => match query_type.clone() {
-            // QueryType::YoutubeSearch(query) => {
-            //     tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-            //     do_yt_search(ctx, query).await?;
-            //     // let queue = enqueue_track(
-            //     //     ctx.http(),
-            //     //     &call,
-            //     //     &QueryType::YoutubeSearch(query.to_string()),
-            //     // )
-            //     // .await?;
-            //     // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
-            //     //     .await;
-            // }
+            QueryType::YoutubeSearch(query) => {
+                tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+                tracing::error!("query: {}", query);
+                return Err(CrackedError::Other("Not implemented yet!").into());
+            }
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)
@@ -900,6 +918,9 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
+        QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
+            "Download not valid with search results.",
+        ))),
         QueryType::VideoLink(url) => {
             tracing::warn!("Mode::Download, QueryType::VideoLink");
             // ctx.defer().await?; // Why did I do this?
@@ -983,6 +1004,14 @@ async fn get_track_source_and_metadata(
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
+        QueryType::YoutubeSearch(query) => {
+            tracing::error!("In YoutubeSearch");
+            let mut ytdl = YoutubeDl::new_yt_search(client, query);
+            let asdf = ytdl.search_query().await.unwrap();
+            tracing::error!("asdf: {:?}", asdf);
+            let my_metadata = MyAuxMetadata::default();
+            (ytdl.into(), my_metadata)
+        }
         // QueryType::YoutubeSearch(query) => {
         //     tracing::error!("In YoutubeSearch");
         //     let mut ytdl = YoutubeDl::new(client, query);
