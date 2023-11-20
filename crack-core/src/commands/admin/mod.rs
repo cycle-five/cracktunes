@@ -8,6 +8,7 @@ pub mod create_voice_channel;
 pub mod deafen;
 pub mod deauthorize;
 pub mod debug;
+pub mod defend;
 pub mod delete_channel;
 pub mod delete_role;
 pub mod get_settings;
@@ -37,6 +38,7 @@ pub use create_voice_channel::*;
 pub use deafen::*;
 pub use deauthorize::*;
 pub use debug::*;
+pub use defend::*;
 pub use delete_channel::*;
 pub use delete_role::*;
 pub use get_settings::*;
@@ -65,7 +67,7 @@ pub use unmute::*;
         "create_text_channel",
         "create_voice_channel",
         "deafen",
-        "debug",
+        "defend",
         "deauthorize",
         "delete_channel",
         "delete_role",
