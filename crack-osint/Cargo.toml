@@ -6,10 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-whois-rust = "1.5.2"
-sha1 = "0.10.6"
-ipinfo = "2.2.0"
-serde = { version = "1.0.192", features = ["derive"] }
+whois-rust = "1.5"
+sha1 = "0.10"
+ipinfo = "2.2"
+serde = { version = "1.0", features = ["derive"] }
 reqwest = { workspace = true }
 poise = { workspace = true }
 tracing = { workspace = true }

@@ -132,6 +132,12 @@ pub async fn poise_framework(
                 poise::Prefix::Literal("hey bot"),
                 poise::Prefix::Literal("bot,"),
                 poise::Prefix::Literal("bot"),
+                poise::Prefix::Literal("!play"),
+                poise::Prefix::Literal("!music"),
+                poise::Prefix::Literal("!youtube"),
+                poise::Prefix::Literal("!yt"),
+                poise::Prefix::Literal("m/"),
+                poise::Prefix::Literal("M/"),
             ],
             stripped_dynamic_prefix: Some(|ctx, msg, _| {
                 Box::pin(async move {

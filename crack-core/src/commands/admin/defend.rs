@@ -8,6 +8,7 @@ use serenity::all::Member;
 use serenity::async_trait;
 use serenity::builder::CreateChannel;
 use serenity::builder::EditMember;
+use serenity::futures::StreamExt;
 use songbird::Event;
 use songbird::EventContext;
 use songbird::EventHandler;
@@ -27,11 +28,8 @@ pub async fn defend(
 
     let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = songbird.get(guild_id).unwrap();
-    let mut handler = call.lock().await;
 
-    tracing::error!("Defending against {}", role.name);
-
-    handler.add_global_event(
+    call.lock().await.add_global_event(
         Event::Periodic(Duration::from_secs(5), None),
         DefendHandler {
             ctx: Arc::new(ctx.serenity_context().clone()),
@@ -43,7 +41,7 @@ pub async fn defend(
         },
     );
 
-    drop(handler);
+    poise::say_reply(ctx, format!("Defending against {}", role.name)).await?;
     Ok(())
 }
 
@@ -59,23 +57,17 @@ pub struct DefendHandler {
 #[async_trait]
 impl EventHandler for DefendHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        tracing::error!("DefendHandler act called");
-
-        // let prev_channel = &mut self.prev_channel.clone();
         unsafe {
             if !TEMP_CHANNEL_NAMES.is_empty() {
                 let channel = TEMP_CHANNEL_NAMES.pop().unwrap();
                 let _ = channel.delete(&self.http).await;
             }
         }
-        //let channel = self.prev_channel.lock().map(|c| c.delete(&self.http));
+
         // Get all users in the role
         let guild_id = self.guild_id.unwrap();
         let role = self.role.clone();
         let role_id = role.id;
-        // let role_name = role.name;
-        use serenity::futures::StreamExt;
-        // use serenity::model::guild::MembersIter;
 
         tracing::error!("Getting all members");
 
@@ -92,10 +84,9 @@ impl EventHandler for DefendHandler {
                     {
                         tracing::error!("{} is in the role {}", member.user.name, role.name);
                         attackers.push(member);
-                        // println!("{} is in the role {}", member.user.name, role_name);
                     }
                 }
-                Err(_err) => continue, //eprintln!("Uh oh!  Error: {}", error),
+                Err(_err) => continue,
             }
         }
 
@@ -116,11 +107,11 @@ impl EventHandler for DefendHandler {
 
         tracing::error!("Active attackers: {:?}", active_attackers);
 
-        let channel = if self.next_action.write().unwrap().clone() % 2 == 0 {
+        let channel = if *self.next_action.write().unwrap() % 2 == 0 {
             // Create a random voice channel
             let now_str = chrono::Utc::now().to_rfc3339();
             let channel_name = format!("Losers-{}", now_str);
-            tracing::error!("Creating channel {}", channel_name);
+            tracing::warn!("Creating channel {}", channel_name);
             // Now create the channel
             let channel = guild
                 .create_channel(
@@ -141,35 +132,16 @@ impl EventHandler for DefendHandler {
             }
             Some(channel)
         } else {
+            let _ = self.next_action.write().unwrap().checked_add(1);
             None
         };
 
-        // Sleep for 10 seconds
-        //let _ = tokio::time::sleep(Duration::from_secs(10)).await;
+        if let Some(c) = channel {
+            unsafe {
+                TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(c));
+            }
+        };
 
-        // for mut attacker in active_attackers {
-        //     let prev_channel = voice_users
-        //         .get(&attacker.user.id)
-        //         .unwrap()
-        //         .clone()
-        //         .channel_id;
-        //     if let Some(prev_channel) = prev_channel {
-        //         let _ = attacker
-        //             .edit(
-        //                 self.http.clone(),
-        //                 EditMember::default().voice_channel(prev_channel),
-        //             )
-        //             .await;
-        //     }
-        // }
-        // let prev_write = &mut self.prev_channel.clone();
-        //TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(channel));
-        channel.map(|c| unsafe {
-            TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(c));
-        });
-
-        // Sleep for 10 seconds
-        // let _ = tokio::time::sleep(Duration::from_secs(10)).await;
         None
     }
 }
