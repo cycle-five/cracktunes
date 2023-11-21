@@ -3,6 +3,7 @@ use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
+use ::serenity::all::Message;
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
@@ -21,7 +22,7 @@ pub async fn volume(
             tracing::error!("guild_id is None");
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(ctx, embed).await?;
+            let _msg = send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -34,7 +35,8 @@ pub async fn volume(
                 tracing::error!("Can't get manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                send_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                let _ts = ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
@@ -44,7 +46,9 @@ pub async fn volume(
                 tracing::error!("Can't get call from manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                send_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                let now = chrono::Utc::now();
+                ctx.data().add_msg_to_cache_ts(guild_id, now, msg);
                 return Ok(());
             }
         };
@@ -92,7 +96,8 @@ pub async fn volume(
                     guild_settings.volume * 100.0,
                     volume_track * 100.0
                 ));
-                send_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
@@ -136,15 +141,18 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                send_embed_response_poise(ctx, embed).await?;
-                return Ok(());
+                return send_embed_response_poise(ctx, embed).await.map(|m| {
+                    ctx.data().add_msg_to_cache(guild_id, m);
+                })
             }
         };
 
         track_handle.set_volume(new_vol).unwrap();
         embed
     };
-    send_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed).await.map(|m| {
+        ctx.data().add_msg_to_cache(guild_id, m);
+    })
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

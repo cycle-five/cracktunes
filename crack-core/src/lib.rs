@@ -1,18 +1,21 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::handlers::event_log::LogEntry;
+use chrono::DateTime;
+use chrono::Utc;
 use errors::CrackedError;
 use guild::settings::DEFAULT_DB_URL;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
+use serenity::all::Message;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::sync::RwLock;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     sync::{Arc, Mutex},
 };
@@ -248,6 +251,8 @@ pub struct DataInner {
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     //pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
+    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+    #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     pub event_log: EventLog,
@@ -341,6 +346,7 @@ impl Default for DataInner {
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
         }
@@ -361,5 +367,35 @@ impl std::ops::Deref for Data {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Data {
+    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        let now = chrono::Utc::now();
+        self.add_msg_to_cache_ts(guild_id, now, msg)
+    }
+    /// Add msg to the cache with a timestamp.
+    pub fn add_msg_to_cache_ts(
+        &self,
+        guild_id: GuildId,
+        ts: DateTime<Utc>,
+        msg: Message,
+    ) -> Option<Message> {
+        let mut guild_msg_cache_ordered = self
+            .guild_msg_cache_ordered
+            .lock()
+            .unwrap()
+            .get_mut(&guild_id)
+            .unwrap()
+            .time_ordered_messages;
+        guild_msg_cache_ordered.insert(ts, msg)
+    }
+
+    pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+        let guild_cache_map = self.guild_cache_map.lock().unwrap();
+        let guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        let mut guild_cache = guild_cache_map.get(&guild_id)?;
+        guild_cache.time_ordered_messages.remove(&ts)
     }
 }

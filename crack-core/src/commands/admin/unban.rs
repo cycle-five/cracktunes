@@ -45,6 +45,8 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
             CrackedMessage::Other(format!("Failed to unban user: {}", e)),
         )
         .await
+        .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
+        .map(|_| ())
     } else {
         // Send success message
         send_response_poise(
@@ -55,5 +57,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
             },
         )
         .await
+        .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
+        .map(|_| ())
     }
 }

@@ -110,7 +110,7 @@ pub async fn send_log_embed(
 pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     send_embed_response_poise(ctx, embed).await
@@ -131,7 +131,7 @@ pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
     send_embed_response(ctx, interaction, embed).await
 }
@@ -140,7 +140,7 @@ pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     content: &str,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(content);
     send_embed_response(ctx, interaction, embed).await
 }
@@ -148,13 +148,13 @@ pub async fn create_response_text(
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction_new(ctx) {
         Some(interaction) => {
             let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
-            res.map(|_| ())
+            res
         }
         None => send_embed_response_poise(ctx, embed).await,
     }
@@ -197,7 +197,7 @@ pub async fn send_embed_response_str(
 pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
     match get_interaction_new(ctx) {
         Some(interaction) => {
@@ -206,9 +206,8 @@ pub async fn send_embed_response_poise(
         }
         None => {
             tracing::warn!("prefix");
-            send_embed_response_prefix(ctx, embed)
-                .await
-                .map(|_| Ok(()))?
+            send_embed_response_prefix(ctx, embed).await
+            // .map(|_| Ok(()))?
         }
     }
 }
@@ -229,7 +228,7 @@ pub async fn send_embed_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
@@ -240,7 +239,6 @@ pub async fn send_embed_response(
             ctx.channel_id()
                 .send_message(ctx.http(), CreateMessage::new().embed(embed))
                 .await
-                .map(|_| ())
                 .map_err(Into::into)
         }
     }
@@ -279,7 +277,7 @@ pub async fn create_response_interaction(
     interaction: &Interaction,
     embed: CreateEmbed,
     defer: bool,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match interaction {
         Interaction::Command(int) => {
             // Is this "acknowledging" the interaction?
@@ -295,12 +293,19 @@ pub async fn create_response_interaction(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )
             };
-            int.create_response(http, res).await.map_err(Into::into)
+            // int.create_response(http, res).await.map_err(Into::into)
+            let message = int.get_response(http).await?; //.map_err(Into::into)?;
+            message
+                .clone()
+                .edit(http, EditMessage::default().embed(embed.clone()))
+                .await;
+            //.map_err(Into::into);
+            Ok(message)
         }
         Interaction::Ping(..)
         | Interaction::Component(..)
         | Interaction::Modal(..)
-        | Interaction::Autocomplete(..) => Ok(()),
+        | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented").into()),
         _ => todo!(),
     }
 }
@@ -393,7 +398,7 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match get_interaction_new(ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => match interaction2 {
@@ -405,10 +410,9 @@ pub async fn edit_embed_response_poise(
                             EditInteractionResponse::new().content(" ").embed(embed),
                         )
                         .await
-                        .map(|_| ())
                         .map_err(Into::into)
                 }
-                _ => Ok(()),
+                _ => Err(CrackedError::Other("not implemented").into()),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },

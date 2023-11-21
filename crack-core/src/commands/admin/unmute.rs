@@ -12,7 +12,7 @@ pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
-    match ctx.guild_id() {
+    let msg = match ctx.guild_id() {
         Some(guild) => {
             if let Err(e) = guild
                 .edit_member(ctx, user.clone().id, EditMember::new().mute(false))
@@ -37,5 +37,7 @@ pub async fn unmute(
         None => {
             Result::Err(CrackedError::Other("This command can only be used in a guild.").into())
         }
-    }
+    }?;
+
+    Ok(())
 }
