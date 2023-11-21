@@ -8,8 +8,8 @@ jobs:
     name: Build
     strategy:
       matrix:
-        rust-version: ['nightly', 'stable']
-        cache-key: ['']
+        rust-version: ["nightly", "stable"]
+        cache-key: [""]
     runs-on: ubuntu-latest
     steps:
       - name: Repository Checkout
@@ -19,12 +19,13 @@ jobs:
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
           rustup default ${{ matrix.rust-version }}
+          rustup update
         shell: bash
 
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
-      
+
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
 
