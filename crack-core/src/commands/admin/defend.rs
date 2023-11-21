@@ -12,7 +12,7 @@ use songbird::Event;
 use songbird::EventContext;
 use songbird::EventHandler;
 use songbird::Songbird;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 static mut TEMP_CHANNEL_NAMES: Vec<Channel> = Vec::new();
@@ -39,7 +39,7 @@ pub async fn defend(
             manager: songbird.clone(),
             role: role.clone(),
             guild_id: Some(guild_id),
-            prev_channel: Vec::new(),
+            next_action: Arc::new(RwLock::new(0)),
         },
     );
 
@@ -53,7 +53,7 @@ pub struct DefendHandler {
     pub manager: Arc<Songbird>,
     pub role: serenity::all::Role,
     pub guild_id: Option<serenity::all::GuildId>,
-    pub prev_channel: Vec<serenity::all::Channel>,
+    pub next_action: Arc<RwLock<u8>>,
 }
 
 #[async_trait]
@@ -79,6 +79,7 @@ impl EventHandler for DefendHandler {
 
         tracing::error!("Getting all members");
 
+        // Get all members with the idenitifies "attacker" role.
         let mut attackers: Vec<Member> = Vec::new();
         let mut members = guild_id.members_iter(&self.http).boxed();
         while let Some(member_result) = members.next().await {
@@ -108,62 +109,67 @@ impl EventHandler for DefendHandler {
         // Get all users in voice channels
         let voice_users = guild.voice_states.clone();
 
+        // Filter possible attackers to only those in voice channels
         let active_attackers = attackers
             .into_iter()
             .filter(|attacker| voice_users.contains_key(&attacker.user.id));
 
         tracing::error!("Active attackers: {:?}", active_attackers);
 
-        // Create a random voice channel
-        let now_str = chrono::Utc::now().to_rfc3339();
-        let channel_name = format!("Losers-{}", now_str);
-        tracing::error!("Creating channel {}", channel_name);
-        // Now create the channel
-        let channel = guild
-            .create_channel(
-                &self.http,
-                CreateChannel::new(channel_name.clone()).kind(ChannelType::Voice),
-            )
-            .await
-            .unwrap()
-            .clone();
-
-        // Now move all the attackers into the channel
-        for mut attacker in active_attackers.clone() {
-            let _ = attacker
-                .edit(
-                    self.http.clone(),
-                    EditMember::default().voice_channel(channel.id),
+        let channel = if self.next_action.write().unwrap().clone() % 2 == 0 {
+            // Create a random voice channel
+            let now_str = chrono::Utc::now().to_rfc3339();
+            let channel_name = format!("Losers-{}", now_str);
+            tracing::error!("Creating channel {}", channel_name);
+            // Now create the channel
+            let channel = guild
+                .create_channel(
+                    &self.http,
+                    CreateChannel::new(channel_name.clone()).kind(ChannelType::Voice),
                 )
-                .await;
-        }
-
-        // Sleep for 10 seconds
-        let _ = tokio::time::sleep(Duration::from_secs(10)).await;
-
-        for mut attacker in active_attackers {
-            let prev_channel = voice_users
-                .get(&attacker.user.id)
+                .await
                 .unwrap()
-                .clone()
-                .channel_id;
-            if let Some(prev_channel) = prev_channel {
+                .clone();
+            // Now move all the attackers into the channel
+            for mut attacker in active_attackers.clone() {
                 let _ = attacker
                     .edit(
                         self.http.clone(),
-                        EditMember::default().voice_channel(prev_channel),
+                        EditMember::default().voice_channel(channel.id),
                     )
                     .await;
             }
-        }
-        // let prev_write = &mut self.prev_channel.clone();
-        //TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(channel));
-        unsafe {
-            TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(channel));
-        }
+            Some(channel)
+        } else {
+            None
+        };
 
         // Sleep for 10 seconds
-        let _ = tokio::time::sleep(Duration::from_secs(10)).await;
+        //let _ = tokio::time::sleep(Duration::from_secs(10)).await;
+
+        // for mut attacker in active_attackers {
+        //     let prev_channel = voice_users
+        //         .get(&attacker.user.id)
+        //         .unwrap()
+        //         .clone()
+        //         .channel_id;
+        //     if let Some(prev_channel) = prev_channel {
+        //         let _ = attacker
+        //             .edit(
+        //                 self.http.clone(),
+        //                 EditMember::default().voice_channel(prev_channel),
+        //             )
+        //             .await;
+        //     }
+        // }
+        // let prev_write = &mut self.prev_channel.clone();
+        //TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(channel));
+        channel.map(|c| unsafe {
+            TEMP_CHANNEL_NAMES.push(poise::serenity_prelude::Channel::Guild(c));
+        });
+
+        // Sleep for 10 seconds
+        // let _ = tokio::time::sleep(Duration::from_secs(10)).await;
         None
     }
 }
