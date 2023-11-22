@@ -5,6 +5,7 @@ use crate::Error;
 use serenity::all::UserId;
 
 /// Kick command to kick a user from the server based on their ID
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, ephemeral, owners_only)]
 pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     match ctx.guild_id() {

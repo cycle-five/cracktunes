@@ -44,7 +44,7 @@ pub async fn track_invites(
     Ok(())
 }
 
-fn _kv_iter_to_string(
+pub fn kv_iter_to_string(
     iter: impl Iterator<Item = (impl std::fmt::Display, impl std::fmt::Display)>,
 ) -> String {
     let mut string = "{ ".to_string();
