@@ -281,7 +281,7 @@ pub async fn create_response_interaction(
             // if defer {
             //     int.defer(http).await.unwrap();
             // }
-            let _res = if defer {
+            let res = if defer {
                 CreateInteractionResponse::Defer(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )
@@ -290,14 +290,21 @@ pub async fn create_response_interaction(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )
             };
-            // int.create_response(http, res).await.map_err(Into::into)
-            let message = int.get_response(http).await?; //.map_err(Into::into)?;
-            let _res = message
-                .clone()
-                .edit(http, EditMessage::default().embed(embed.clone()))
-                .await;
-            //.map_err(Into::into);
-            Ok(message)
+            let message = int.get_response(http).await;
+            match message {
+                Ok(message) => {
+                    let _res = message
+                        .clone()
+                        .edit(http, EditMessage::default().embed(embed.clone()))
+                        .await?;
+                    Ok(message)
+                }
+                Err(_) => {
+                    let _ = int.create_response(http, res).await?;
+                    let message = int.get_response(http).await?;
+                    Ok(message)
+                }
+            }
         }
         Interaction::Ping(..)
         | Interaction::Component(..)

@@ -21,6 +21,34 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+/// Log a message update event.
+pub async fn log_message_update<T: Serialize + std::fmt::Debug>(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(
+        &serenity::model::prelude::Message,
+        &serenity::model::prelude::Message,
+    ),
+) -> Result<(), Error> {
+    let &(old, new) = log_data;
+    let title = format!("Message Updated: {}", new.author.name);
+    let description = format!(
+        "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: {}",
+        new.author.name, new.author.id, new.channel_id, old.content, new.content
+    );
+    let avatar_url = new.author.avatar_url().unwrap_or_default();
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &new.author.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Log a guild ban.
 pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,

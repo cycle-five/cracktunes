@@ -321,6 +321,16 @@ impl EventHandler for SerenityHandler {
                 });
             }
 
+            // tokio::spawn(async move {
+            //     loop {
+            //         // We clone Context again here, because Arc is owned, so it moves to the
+            //         // new function.
+            //         let ctx2 = Arc::clone(&ctx);
+            //         tokio::time::sleep(Duration::from_secs(60)).await;
+            //         cam_status_loop(ctx2).await;
+            //     }
+            // });
+
             let ctx3 = Arc::clone(&ctx);
 
             if config.get_video_status_poll_interval() > 0 {

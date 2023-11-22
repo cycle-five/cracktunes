@@ -296,21 +296,7 @@ pub async fn poise_framework(
     }));
 
     let save_data = data.clone();
-    // ctrlc::set_handler(move || {
-    //     tracing::warn!("Received Ctrl-C, shutting down...");
-    //     save_data
-    //         .guild_settings_map
-    //         .lock()
-    //         .unwrap()
-    //         .iter()
-    //         .for_each(|(k, v)| {
-    //             tracing::warn!("Saving Guild: {}", k);
-    //             v.save().expect("Error saving guild settings");
-    //         });
 
-    //     exit(0);
-    // })
-    // .expect("Error setting Ctrl-C handler");
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::privileged()
         | GatewayIntents::GUILDS
