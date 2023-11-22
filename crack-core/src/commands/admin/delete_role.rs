@@ -6,6 +6,7 @@ use crate::{
 };
 
 /// Delete role.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_role(
     ctx: Context<'_>,
@@ -15,6 +16,7 @@ pub async fn delete_role(
 }
 
 /// Delete role by id
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_role_by_id(
     ctx: Context<'_>,

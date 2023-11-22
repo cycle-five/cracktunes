@@ -384,8 +384,8 @@ impl Data {
     ) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
-            .get_mut(&guild_id)
-            .unwrap()
+            .entry(guild_id)
+            .or_insert(Default::default())
             .time_ordered_messages
             .insert(ts, msg)
     }

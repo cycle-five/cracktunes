@@ -8,16 +8,18 @@ use crate::Error;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
+    use crate::guild::cache::GuildCache;
+
     let guild_id = ctx.guild_id().unwrap();
-    let message_cache = ctx.data().guild_msg_cache_ordered.lock().unwrap().clone();
-    let cache_str = kv_iter_to_string(
+    let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().unwrap().clone();
+    let cache_str = kv_iter_to_string({
         message_cache
-            .get(&guild_id)
-            .unwrap()
+            .entry(guild_id)
+            .or_insert(GuildCache::default())
             .time_ordered_messages
             .iter()
-            .map(|(key, value)| (key, value.content.clone())),
-    );
+            .map(|(key, value)| (key, value.content.clone()))
+    });
 
     tracing::warn!("message_cache: {}", cache_str);
 

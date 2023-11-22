@@ -22,7 +22,7 @@ pub async fn volume(
             tracing::error!("guild_id is None");
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            let _msg = send_embed_response_poise(ctx, embed).await?;
+            let _ = send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -36,7 +36,7 @@ pub async fn volume(
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 let msg = send_embed_response_poise(ctx, embed).await?;
-                let _ts = ctx.data().add_msg_to_cache(guild_id, msg);
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
@@ -47,8 +47,7 @@ pub async fn volume(
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 let msg = send_embed_response_poise(ctx, embed).await?;
-                let now = chrono::Utc::now();
-                ctx.data().add_msg_to_cache_ts(guild_id, now, msg);
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
