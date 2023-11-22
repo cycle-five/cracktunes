@@ -34,7 +34,9 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         None => {
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            return send_embed_response_poise(ctx, embed).await;
+            let msg = send_embed_response_poise(ctx, embed).await?;
+            ctx.data().add_msg_to_cache(guild_id, msg);
+            return Ok(());
         }
     };
     tracing::info!("call: {:?}", call);

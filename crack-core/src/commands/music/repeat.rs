@@ -21,9 +21,11 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
         TrackHandle::enable_loop
     };
 
-    match toggler(&track) {
+    let msg = match toggler(&track) {
         Ok(_) if was_looping => send_response_poise(ctx, CrackedMessage::LoopDisable).await,
         Ok(_) if !was_looping => send_response_poise(ctx, CrackedMessage::LoopEnable).await,
         _ => Err(CrackedError::Other(FAIL_LOOP).into()),
-    }
+    }?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }

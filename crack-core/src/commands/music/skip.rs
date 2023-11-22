@@ -4,6 +4,7 @@ use crate::{
     utils::{get_track_metadata, send_response_poise_text},
     Context, Error,
 };
+use serenity::all::Message;
 use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;
 use tokio::sync::MutexGuard;
@@ -42,14 +43,16 @@ pub async fn skip(
     });
 
     force_skip_top_track(&handler).await?;
-    create_skip_response_poise(ctx, &handler, tracks_to_skip).await
+    let msg = create_skip_response_poise(ctx, &handler, tracks_to_skip).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
 
 pub async fn create_skip_response_poise(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     //ctx.defer().await?;
     //let mut interaction = get_interaction(ctx).unwrap();
 
@@ -60,7 +63,7 @@ pub async fn create_skip_response(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;

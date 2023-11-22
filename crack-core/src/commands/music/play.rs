@@ -21,7 +21,7 @@ use crate::{
     Context, Error,
 };
 use ::serenity::{
-    all::{GuildId, Mentionable, UserId},
+    all::{GuildId, Mentionable, Message, UserId},
     builder::{
         CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
         EditInteractionResponse,
@@ -171,7 +171,7 @@ pub async fn get_call_with_fail_msg(
 
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
-async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
+async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
     match get_interaction_new(ctx) {
         Some(CommandOrMessageInteraction::Command(interaction)) => {
             create_response_interaction(
@@ -180,12 +180,11 @@ async fn send_search_message(ctx: Context<'_>) -> Result<(), Error> {
                 CrackedMessage::Search.into(),
                 true,
             )
-            .await?
+            .await
         }
-        _ => send_response_poise_text(ctx, CrackedMessage::Search).await?,
+        _ => send_response_poise_text(ctx, CrackedMessage::Search).await,
     }
-
-    Ok(())
+    //Err(CrackedError::Other("Failed to send search message.").into())
 }
 
 async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
@@ -390,7 +389,7 @@ async fn send_search_response(
     user_id: UserId,
     query: String,
     res: Vec<String>,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let author = ctx.author_member().await.unwrap();
     let name = if DEFAULT_PREMIUM {
         author.mention().to_string()

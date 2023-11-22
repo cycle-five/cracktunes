@@ -119,12 +119,10 @@ pub async fn send_response_poise(
 pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let message_str = format!("{message}");
 
-    send_embed_response_str(ctx, message_str)
-        .await
-        .map(|_| Ok(()))?
+    send_embed_response_str(ctx, message_str).await
 }
 
 pub async fn create_response(
@@ -153,8 +151,7 @@ pub async fn edit_response_poise(
 
     match get_interaction_new(ctx) {
         Some(interaction) => {
-            let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
-            res
+            edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await
         }
         None => send_embed_response_poise(ctx, embed).await,
     }
@@ -284,7 +281,7 @@ pub async fn create_response_interaction(
             // if defer {
             //     int.defer(http).await.unwrap();
             // }
-            let res = if defer {
+            let _res = if defer {
                 CreateInteractionResponse::Defer(
                     CreateInteractionResponseMessage::new().embed(embed.clone()),
                 )
@@ -295,7 +292,7 @@ pub async fn create_response_interaction(
             };
             // int.create_response(http, res).await.map_err(Into::into)
             let message = int.get_response(http).await?; //.map_err(Into::into)?;
-            message
+            let _res = message
                 .clone()
                 .edit(http, EditMessage::default().embed(embed.clone()))
                 .await;

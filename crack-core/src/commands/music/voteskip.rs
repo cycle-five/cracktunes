@@ -47,7 +47,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
     let skip_threshold = channel_guild_users.count() / 2;
 
-    if cache.current_skip_votes.len() >= skip_threshold {
+    let msg = if cache.current_skip_votes.len() >= skip_threshold {
         force_skip_top_track(&handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
@@ -59,7 +59,9 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
             },
         )
         .await
-    }
+    }?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
 
 /// Forget all skip votes for a guild

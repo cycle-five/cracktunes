@@ -22,7 +22,8 @@ pub async fn pause(
     verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
     if send_reply.unwrap_or(true) {
-        return send_response_poise_text(ctx, CrackedMessage::Pause).await;
+        let msg = send_response_poise_text(ctx, CrackedMessage::Pause).await?;
+        ctx.data().add_msg_to_cache(guild_id, msg);
     }
     Ok(())
 }

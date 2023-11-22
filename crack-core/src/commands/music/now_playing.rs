@@ -18,5 +18,7 @@ pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    send_embed_response_poise(ctx, embed).await
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }

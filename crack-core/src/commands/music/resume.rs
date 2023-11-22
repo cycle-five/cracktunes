@@ -9,7 +9,7 @@ use crate::{
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn resume(
     ctx: Context<'_>,
-    #[description = "Resume the currently playing track"] send_reply: Option<bool>,
+    #[description = "Resume the currently playing track"] _send_reply: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
@@ -21,8 +21,9 @@ pub async fn resume(
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    if send_reply.unwrap_or(true) {
-        send_response_poise_text(ctx, CrackedMessage::Resume).await?
-    }
+    // FIXME: Do we want to do the send_reply parameter?
+    let msg = send_response_poise_text(ctx, CrackedMessage::Resume).await?;
+
+    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

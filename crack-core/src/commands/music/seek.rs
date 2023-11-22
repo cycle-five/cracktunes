@@ -38,11 +38,13 @@ pub async fn seek(
 
     let _callback = track.seek(Duration::from_secs(timestamp));
 
-    send_response_poise(
+    let msg = send_response_poise(
         ctx,
         CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },
     )
-    .await
+    .await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }

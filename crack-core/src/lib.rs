@@ -382,20 +382,20 @@ impl Data {
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self
-            .guild_msg_cache_ordered
-            .lock()
-            .unwrap()
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        guild_msg_cache_ordered
             .get_mut(&guild_id)
             .unwrap()
-            .time_ordered_messages;
-        guild_msg_cache_ordered.insert(ts, msg)
+            .time_ordered_messages
+            .insert(ts, msg)
     }
 
     pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
-        let guild_cache_map = self.guild_cache_map.lock().unwrap();
-        let guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
-        let mut guild_cache = guild_cache_map.get(&guild_id)?;
-        guild_cache.time_ordered_messages.remove(&ts)
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        guild_msg_cache_ordered
+            .get_mut(&guild_id)
+            .unwrap()
+            .time_ordered_messages
+            .remove(&ts)
     }
 }

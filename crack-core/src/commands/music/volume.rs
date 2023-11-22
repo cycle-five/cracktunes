@@ -3,7 +3,6 @@ use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
-use ::serenity::all::Message;
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;

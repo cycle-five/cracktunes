@@ -47,7 +47,10 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             match get_interaction_new(ctx) {
                 Some(interaction) => {
                     check_interaction(
-                        create_response_text(ctx, &interaction, &format!("{error}")).await,
+                        create_response_text(ctx, &interaction, &format!("{error}"))
+                            .await
+                            .map(|_| ())
+                            .map_err(Into::into),
                     );
                 }
                 None => {

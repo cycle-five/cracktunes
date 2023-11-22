@@ -38,6 +38,6 @@ pub async fn unmute(
             Result::Err(CrackedError::Other("This command can only be used in a guild.").into())
         }
     }?;
-
+    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
     Ok(())
 }
