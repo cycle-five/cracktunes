@@ -22,6 +22,7 @@ use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("queue called");

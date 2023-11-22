@@ -12,6 +12,7 @@ use poise::serenity_prelude as serenity;
 use std::collections::HashSet;
 
 /// Vote to skip the current track
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();

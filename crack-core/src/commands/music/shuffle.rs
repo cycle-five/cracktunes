@@ -5,6 +5,7 @@ use crate::{
 use rand::Rng;
 
 /// Shuffle the current queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();

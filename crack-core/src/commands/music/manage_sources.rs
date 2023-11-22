@@ -17,6 +17,7 @@ use ::serenity::builder::CreateActionRow;
 use poise::serenity_prelude as serenity;
 
 /// Manage the domains that are allowed or banned.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();

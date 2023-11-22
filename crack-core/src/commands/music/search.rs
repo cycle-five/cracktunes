@@ -5,6 +5,7 @@ use serenity::builder::CreateEmbed;
 use songbird::input::YoutubeDl;
 
 /// Search for a song and play it.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn search(
     ctx: Context<'_>,

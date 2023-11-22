@@ -6,6 +6,7 @@ use crate::{
 };
 
 /// Resume the current track.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn resume(
     ctx: Context<'_>,

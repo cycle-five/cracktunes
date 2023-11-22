@@ -18,6 +18,7 @@ impl LyricFinderClient for lyric_finder::Client {
 }
 
 /// Search for song lyrics.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn lyrics(
     ctx: Context<'_>,

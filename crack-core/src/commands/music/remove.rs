@@ -13,6 +13,7 @@ use songbird::tracks::TrackHandle;
 use std::cmp::min;
 
 /// Remove track(s) from the queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn remove(
     ctx: Context<'_>,

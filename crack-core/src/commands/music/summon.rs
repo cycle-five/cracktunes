@@ -23,6 +23,7 @@ use tokio::sync::Mutex;
 // use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,

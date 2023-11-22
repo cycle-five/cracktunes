@@ -8,6 +8,7 @@ use crate::{
 use std::time::Duration;
 
 /// Seek to a specific timestamp in the current track.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn seek(
     ctx: Context<'_>,

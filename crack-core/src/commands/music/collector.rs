@@ -7,6 +7,7 @@ use poise::{serenity_prelude as serenity, CreateReply};
 
 /// Boop the bot!
 /// TODO: get this working
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     let uuid_boop = ctx.id();
