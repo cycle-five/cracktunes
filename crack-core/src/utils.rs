@@ -273,7 +273,7 @@ pub async fn create_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,
-    defer: bool,
+    _defer: bool,
 ) -> Result<Message, Error> {
     match interaction {
         Interaction::Command(int) => {
@@ -281,26 +281,30 @@ pub async fn create_response_interaction(
             // if defer {
             //     int.defer(http).await.unwrap();
             // }
-            let res = if defer {
-                CreateInteractionResponse::Defer(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            } else {
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            };
+            // let res = if defer {
+            //     CreateInteractionResponse::Defer(
+            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
+            //     )
+            // } else {
+            //     CreateInteractionResponse::Message(
+            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
+            //     )
+            // };
+
+            let res = CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().embed(embed.clone()),
+            );
             let message = int.get_response(http).await;
             match message {
                 Ok(message) => {
-                    let _res = message
+                    message
                         .clone()
                         .edit(http, EditMessage::default().embed(embed.clone()))
                         .await?;
                     Ok(message)
                 }
                 Err(_) => {
-                    let _ = int.create_response(http, res).await?;
+                    int.create_response(http, res).await?;
                     let message = int.get_response(http).await?;
                     Ok(message)
                 }

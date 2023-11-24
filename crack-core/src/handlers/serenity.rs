@@ -1,12 +1,17 @@
 use crate::{
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::{
+        operations::get_guilds,
+        settings::{GuildSettings, GuildSettingsMap},
+    },
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
 };
 use ::serenity::{
+    all::Message,
     builder::{CreateEmbed, CreateMessage, EditMember},
     gateway::ActivityData,
 };
+use chrono::{DateTime, Utc};
 use colored::Colorize;
 use poise::serenity_prelude::{
     self as serenity, Channel, Error as SerenityError, Member, Mentionable, UserId,
@@ -20,6 +25,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     sync::{atomic::Ordering, Arc, Mutex},
+    time::SystemTime,
 };
 use tokio::time::{Duration, Instant};
 
@@ -321,15 +327,23 @@ impl EventHandler for SerenityHandler {
                 });
             }
 
-            // tokio::spawn(async move {
-            //     loop {
-            //         // We clone Context again here, because Arc is owned, so it moves to the
-            //         // new function.
-            //         let ctx2 = Arc::clone(&ctx);
-            //         tokio::time::sleep(Duration::from_secs(60)).await;
-            //         cam_status_loop(ctx2).await;
-            //     }
-            // });
+            let ctx2 = Arc::clone(&ctx);
+            let data = self.data.clone();
+            tokio::spawn(async move {
+                loop {
+                    // We clone Context again here, because Arc is owned, so it moves to the
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let guilds = get_guilds(ctx2.clone()).await;
+                    tracing::warn!("Checking for old messages");
+                    let _ = check_delete_old_messages(
+                        ctx2.clone(),
+                        &data,
+                        guilds,
+                        chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
+                    )
+                    .await;
+                }
+            });
 
             let ctx3 = Arc::clone(&ctx);
 
@@ -561,13 +575,6 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
 }
 
 async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Vec<MyVoiceUserInfo> {
-    // let guild = match guild_id.to_guild_cached(&ctx.cache) {
-    //     Some(guild) => guild,
-    //     None => {
-    //         tracing::error!("Guild not found in cache");
-    //         return vec![];
-    //     }
-    // };
     let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
         None => {
@@ -622,6 +629,42 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
     }
     tracing::warn!("{}", output.bright_cyan());
     cams
+}
+
+async fn check_delete_old_messages(
+    ctx: Arc<SerenityContext>,
+    data: &Data,
+    guild_ids: Vec<GuildId>,
+    msg_timeout_interval: chrono::Duration,
+) -> Result<(), SerenityError> {
+    let mut to_delete = Vec::<Message>::new();
+    for guild_id in guild_ids.iter() {
+        tracing::warn!("Checking guild {}", guild_id);
+        data.guild_msg_cache_ordered
+            .lock()
+            .unwrap()
+            .get_mut(guild_id)
+            .map(|x| {
+                let now = DateTime::<Utc>::from(SystemTime::now());
+                for (creat_time, msg) in x.time_ordered_messages.iter() {
+                    let delta = now.signed_duration_since(*creat_time);
+                    if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
+                        tracing::warn!("Adding old message to delete queue");
+                        to_delete.push(msg.clone());
+                    }
+                }
+            });
+    }
+    for msg in to_delete {
+        tracing::error!("Deleting old message: {:#?}", msg);
+        match msg.delete(ctx.clone()).await {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::error!("Error deleting message: {}", err);
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guilds: Vec<GuildId>) {

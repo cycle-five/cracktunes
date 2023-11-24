@@ -1,11 +1,10 @@
 use self::serenity::{builder::CreateEmbed, futures::StreamExt};
 use crate::{
-    errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::QUEUE_EXPIRED,
     utils::{
         build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message,
-        get_interaction, send_embed_response_poise,
+        get_interaction,
     },
     Context, Error,
 };
@@ -30,22 +29,14 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     tracing::info!("manager: {:?}", manager);
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            let embed =
-                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            let msg = send_embed_response_poise(ctx, embed).await?;
-            ctx.data().add_msg_to_cache(guild_id, msg);
-            return Ok(());
-        }
-    };
+    let call = manager.get(guild_id).unwrap();
+
     tracing::info!("call: {:?}", call);
 
-    // let handler = call.lock().await;
-    // let tracks = handler.queue().current_queue();
-    // drop(handler);
-    let tracks = call.lock().await.queue().current_queue();
+    // FIXME
+    let handler = call.lock().await;
+    let tracks = handler.queue().current_queue();
+    drop(handler);
     tracing::info!("tracks: {:?}", tracks);
 
     let num_pages = calculate_num_pages(&tracks);

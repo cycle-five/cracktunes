@@ -76,19 +76,18 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode {
+fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
+    let opt_mode = mode.clone();
     if is_prefix {
         let asdf2 = msg
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
             .unwrap_or_default();
         let asdf = asdf2.split_whitespace().next().unwrap_or_default();
-        if asdf.starts_with("next") {
+        let mode = if asdf.starts_with("next") {
             Mode::Next
         } else if asdf.starts_with("all") {
             Mode::All
-        } else if asdf.starts_with("reverse") {
-            Mode::Reverse
         } else if asdf.starts_with("shuffle") {
             Mode::Shuffle
         } else if asdf.starts_with("jump") {
@@ -99,9 +98,16 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
             Mode::Search
         } else {
             Mode::End
+        };
+        if mode != Mode::End {
+            let s = msg.clone().unwrap_or_default();
+            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
+            (mode, s2.to_string())
+        } else {
+            (Mode::End, msg.unwrap_or_default())
         }
     } else {
-        match mode
+        let mode = match opt_mode
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
             .unwrap_or_default()
@@ -114,7 +120,8 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> Mode 
             "jump" => Mode::Jump,
             "download" => Mode::Download,
             _ => Mode::End,
-        }
+        };
+        (mode, msg.unwrap_or_default())
     }
 }
 
@@ -214,12 +221,12 @@ pub async fn play(
         return Ok(());
     }
 
-    let mode = get_mode(is_prefix, msg.clone(), mode);
+    let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
 
     // TODO: Maybe put into it's own function?
     let url = match file.clone() {
         Some(file) => file.url.as_str().to_owned().to_string(),
-        None => msg.clone().unwrap(),
+        None => msg.clone(),
     };
     let url = url.as_str();
 
@@ -731,13 +738,6 @@ async fn match_url(
     tracing::warn!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
-    // wtf was this for?
-    // let url = if Url::parse(url).is_err() {
-    //     url.splitn(2, char::is_whitespace).last().unwrap()
-    // } else {
-    //     url
-    // };
-
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") | Some("spotify.link") => {
@@ -853,9 +853,6 @@ async fn match_url(
         Result::Ok(query_type)
     };
     res
-    // Some(QueryType::Keywords(url.to_string()))
-
-    // Result::Ok(query_type)
 }
 
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
@@ -953,7 +950,6 @@ async fn build_queued_embed(
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 // FIXME: This is super expensive, literally we need to do this a lot better.
-// FIXME: Yeah, this is just a complete hack, do it better, bitch.
 async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool, String), Error> {
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
@@ -1047,7 +1043,7 @@ async fn get_track_source_and_metadata(
         QueryType::YoutubeSearch(query) => {
             tracing::error!("In YoutubeSearch");
             let mut ytdl = YoutubeDl::new_yt_search(client, query);
-            let asdf = ytdl.search_query().await.unwrap();
+            let asdf = ytdl.search_query().await.unwrap_or_default();
             tracing::error!("asdf: {:?}", asdf);
             let my_metadata = MyAuxMetadata::default();
             (ytdl.into(), my_metadata)
@@ -1064,14 +1060,14 @@ async fn get_track_source_and_metadata(
             tracing::warn!("In VideoLink");
             let mut ytdl = YoutubeDl::new(client, query);
             tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap();
+            let metdata = ytdl.aux_metadata().await.unwrap_or_default();
             let my_metadata = MyAuxMetadata::Data(metdata);
             (ytdl.into(), my_metadata)
         }
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
             let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
-            let metdata = ytdl.aux_metadata().await.unwrap();
+            let metdata = ytdl.aux_metadata().await.unwrap_or_default();
             let my_metadata = MyAuxMetadata::Data(metdata);
             (ytdl.into(), my_metadata)
         }
@@ -1184,40 +1180,42 @@ mod test {
     #[test]
     fn test_get_mode() {
         let is_prefix = true;
-        let msg = Some("".to_string());
+        let x = "asdf".to_string();
+        let msg = Some(x.clone());
         let mode = Some("".to_string());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
 
+        let x = "".to_string();
         let is_prefix = true;
         let msg = None;
-        let mode = Some("".to_string());
+        let mode = Some(x.clone());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
 
         let is_prefix = true;
         let msg = None;
         let mode = None;
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
 
         let is_prefix = false;
-        let msg = Some("".to_string());
+        let msg = Some(x.clone());
         let mode = Some("next".to_string());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::Next);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
 
         let is_prefix = false;
         let msg = None;
         let mode = Some("download".to_string());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::Download);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Download, x.clone()));
 
         let is_prefix = false;
         let msg = None;
         let mode = None;
 
-        assert_eq!(get_mode(is_prefix, msg, mode), Mode::End);
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x));
     }
 
     #[test]

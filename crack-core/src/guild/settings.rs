@@ -149,7 +149,10 @@ impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, premium: {}, autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
+            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, premium: {}, 
+                autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, 
+                authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, 
+                self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
             self.guild_id,
             self.guild_name,
             self.prefix,

@@ -2,7 +2,8 @@ use crate::{utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, Context as SerenityContext, GuildId, Http, Member, Presence,
+    ChannelId, ClientStatus, Context as SerenityContext, GuildId, Http, Member, MessageUpdateEvent,
+    Presence,
 };
 use std::sync::Arc;
 
@@ -22,31 +23,34 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 }
 
 /// Log a message update event.
-pub async fn log_message_update<T: Serialize + std::fmt::Debug>(
+pub async fn log_message_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
     log_data: &(
-        &serenity::model::prelude::Message,
-        &serenity::model::prelude::Message,
+        &Option<serenity::model::prelude::Message>,
+        &Option<serenity::model::prelude::Message>,
+        &MessageUpdateEvent,
     ),
 ) -> Result<(), Error> {
-    let &(old, new) = log_data;
-    let title = format!("Message Updated: {}", new.author.name);
-    let description = format!(
-        "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: {}",
-        new.author.name, new.author.id, new.channel_id, old.content, new.content
-    );
-    let avatar_url = new.author.avatar_url().unwrap_or_default();
-    send_log_embed_thumb(
-        &channel_id,
-        http,
-        &new.author.id.to_string(),
-        &title,
-        &description,
-        &avatar_url,
-    )
-    .await
-    .map(|_| ())
+    let (id, title, description, avatar_url) = if let &(Some(old), Some(new), _msg) = log_data {
+        let title = format!("Message Updated: {}", new.author.name);
+        let description = format!(
+            "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: {}",
+            new.author.name, new.author.id, new.channel_id, old.content, new.content
+        );
+        let avatar_url = new.author.avatar_url().unwrap_or_default();
+        let id = new.author.id.to_string();
+        (id, title, description, avatar_url)
+    } else {
+        let title = "Message Updated".to_string();
+        let description = "None".to_string();
+        let avatar_url = "".to_string();
+        let id = "".to_string();
+        (id, title, description, avatar_url)
+    };
+    send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
+        .await
+        .map(|_| ())
 }
 
 /// Log a guild ban.

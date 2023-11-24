@@ -158,7 +158,18 @@ pub async fn handle_event(
             )
         }
         FullEvent::Message { ctx, new_message } => {
-            // Don't log other bots for now...
+            let guild_id = new_message.guild_id.unwrap();
+            if new_message.author.id == ctx.http.get_current_user().await?.id {
+                let now = chrono::Utc::now();
+                let _ = data_global
+                    .guild_cache_map
+                    .lock()
+                    .unwrap()
+                    .get_mut(&guild_id)
+                    .map(|x| x.time_ordered_messages.insert(now, new_message.clone()))
+                    .unwrap_or_default();
+            }
+
             if new_message.author.bot {
                 return Ok(());
             }
@@ -647,11 +658,16 @@ pub async fn handle_event(
             event,
             ctx,
         } => {
+            let log_data: (
+                &Option<serenity::model::prelude::Message>,
+                &Option<serenity::model::prelude::Message>,
+                &serenity::model::prelude::MessageUpdateEvent,
+            ) = (old_if_available, new, event);
             log_event!(
-                log_unimplemented_event,
+                log_message_update,
                 guild_settings,
                 event_in,
-                &(old_if_available, new, event),
+                &log_data,
                 &event.guild_id.unwrap_or_default(),
                 &ctx.http,
                 event_log,
@@ -748,7 +764,6 @@ pub async fn handle_event(
         }
         _ => {
             tracing::info!("{}", event_in.snake_case_name().bright_green());
-            // event_log.write_log_obj(event_name, event_in);
             Ok(())
         }
     }
