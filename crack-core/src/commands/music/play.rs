@@ -260,7 +260,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    send_search_message(ctx).await?;
+    let msg = send_search_message(ctx).await?;
 
     // FIXME: Super hacky, fix this shit.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
@@ -297,6 +297,7 @@ pub async fn play(
                     QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
                     Mode::Next,
                 ) => {
+                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::Next");
                     let track = queue.get(1).unwrap();
                     let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
 
@@ -306,12 +307,17 @@ pub async fn play(
                     QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
                     Mode::End,
                 ) => {
+                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::End");
                     let track = queue.last().unwrap();
                     let embed = build_queued_embed(PLAY_QUEUE, track, estimated_time).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
-                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), _) => {
+                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), y) => {
+                    tracing::error!(
+                        "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
+                        y
+                    );
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
@@ -328,21 +334,21 @@ pub async fn play(
                     }
                 }
                 (QueryType::File(_x_), y) => {
-                    tracing::warn!("QueryType::File, mode: {:?}", y);
+                    tracing::error!("QueryType::File, mode: {:?}", y);
                     let track = queue.first().unwrap();
                     let embed = create_now_playing_embed(track).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (QueryType::YoutubeSearch(_x), y) => {
-                    tracing::warn!("QueryType::YoutubeSearch, mode: {:?}", y);
+                    tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
                     let track = queue.first().unwrap();
                     let embed = create_now_playing_embed(track).await;
 
                     edit_embed_response_poise(ctx, embed).await?;
                 }
                 (x, y) => {
-                    tracing::warn!("{:?} {:?} {:?}", x, y, mode);
+                    tracing::error!("{:?} {:?} {:?}", x, y, mode);
                     let track = queue.first().unwrap();
                     let embed = create_now_playing_embed(track).await;
 
