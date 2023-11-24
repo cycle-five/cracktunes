@@ -196,17 +196,25 @@ pub async fn send_embed_response_poise(
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
-    match get_interaction_new(ctx) {
-        Some(interaction) => {
-            tracing::warn!("interaction found");
-            send_embed_response(ctx, &interaction, embed).await
-        }
-        None => {
-            tracing::warn!("prefix");
-            send_embed_response_prefix(ctx, embed).await
-            // .map(|_| Ok(()))?
-        }
-    }
+    let res = ctx
+        .send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
+        .await?;
+    res.into_message().await.map_err(|e| {
+        tracing::error!("error: {:?}", e);
+        e.into()
+    })
+
+    // match get_interaction_new(ctx) {
+    //     Some(interaction) => {
+    //         tracing::warn!("interaction found");
+    //         send_embed_response(ctx, &interaction, embed).await
+    //     }
+    //     None => {
+    //         tracing::warn!("prefix");
+    //         send_embed_response_prefix(ctx, embed).await
+    //         // .map(|_| Ok(()))?
+    //     }
+    // }
 }
 
 pub async fn send_embed_response_prefix(
