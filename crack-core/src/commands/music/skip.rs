@@ -44,22 +44,14 @@ pub async fn skip(
     });
 
     force_skip_top_track(&handler).await?;
-    let msg = create_skip_response_poise(ctx, &handler, tracks_to_skip).await?;
+    let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
     ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }
 
-pub async fn create_skip_response_poise(
-    ctx: Context<'_>,
-    handler: &MutexGuard<'_, Call>,
-    tracks_to_skip: usize,
-) -> Result<Message, Error> {
-    //ctx.defer().await?;
-    //let mut interaction = get_interaction(ctx).unwrap();
-
-    create_skip_response(ctx, handler, tracks_to_skip).await
-}
-
+/// Send the response to discord for skipping a track.
+// Why don't we need to defer here?
+#[cfg(not(tarpaulin_include))]
 pub async fn create_skip_response(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
@@ -87,6 +79,8 @@ pub async fn create_skip_response(
     }
 }
 
+/// Do the actual skipping of the top track.
+#[cfg(not(tarpaulin_include))]
 pub async fn force_skip_top_track(
     handler: &MutexGuard<'_, Call>,
 ) -> Result<Vec<TrackHandle>, CrackedError> {

@@ -40,3 +40,15 @@ where
         values.swap(index, rng.gen_range(0..(index + 1)));
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_fisher_yates() {
+        let mut values = [1, 2, 3, 4, 5];
+        fisher_yates(&mut values, &mut rand::thread_rng());
+        assert_ne!(values, [1, 2, 3, 4, 5]);
+    }
+}

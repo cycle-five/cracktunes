@@ -260,7 +260,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let msg = send_search_message(ctx).await?;
+    let _msg = send_search_message(ctx).await?;
 
     // FIXME: Super hacky, fix this shit.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;

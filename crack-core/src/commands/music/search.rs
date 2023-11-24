@@ -21,6 +21,7 @@ pub async fn search(
 
 /// Perform a youtube search and send a list of results to discord
 /// FIXME: Think more about this, motherfucker
+#[cfg(not(tarpaulin_include))]
 async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHandle, CrackedError> {
     let mut ytdl = YoutubeDl::new(Client::new(), search_query);
     let results = ytdl.search_query().await?;
