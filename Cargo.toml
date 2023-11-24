@@ -34,6 +34,7 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
+#version = "0.12.0-rc2"
 version = "0.11.7"
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
@@ -56,6 +57,7 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
+# git = "https://github.com/serenity-rs/songbird"
 git = "https://github.com/CycleFive/songbird"
 # path = "../songbird"
 branch = "next"
