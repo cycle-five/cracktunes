@@ -645,17 +645,22 @@ async fn check_delete_old_messages(
         data.guild_msg_cache_ordered
             .lock()
             .unwrap()
+            .get_mut(guild_id);
+        if let Some(guild_cache) = data
+            .guild_msg_cache_ordered
+            .lock()
+            .unwrap()
             .get_mut(guild_id)
-            .map(|x| {
-                let now = DateTime::<Utc>::from(SystemTime::now());
-                for (creat_time, msg) in x.time_ordered_messages.iter() {
-                    let delta = now.signed_duration_since(*creat_time);
-                    if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
-                        tracing::warn!("Adding old message to delete queue");
-                        to_delete.push(msg.clone());
-                    }
+        {
+            let now = DateTime::<Utc>::from(SystemTime::now());
+            for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
+                let delta = now.signed_duration_since(*creat_time);
+                if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
+                    tracing::warn!("Adding old message to delete queue");
+                    to_delete.push(msg.clone());
                 }
-            });
+            }
+        }
     }
     for msg in to_delete {
         tracing::error!("Deleting old message: {:#?}", msg);

@@ -10,6 +10,6 @@ pub async fn get_guilds(ctx: Arc<SerenityContext>) -> Vec<GuildId> {
         .await
         .unwrap()
         .into_iter()
-        .map(|x| x.id.clone())
+        .map(|x| x.id)
         .collect::<Vec<_>>()
 }

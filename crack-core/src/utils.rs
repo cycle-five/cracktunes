@@ -107,6 +107,8 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
+/// Creates an embed from a CrackedMessage and sends it as an embed.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
@@ -175,6 +177,8 @@ pub async fn edit_response_text(
     edit_embed_response(http, interaction, embed).await
 }
 
+/// Sends a reply response as an embed.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_str(
     ctx: CrackContext<'_>,
     message_str: String,
@@ -191,30 +195,21 @@ pub async fn send_embed_response_str(
     .map_err(Into::into)
 }
 
+/// Sends a reply response with an embed.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
-    let res = ctx
-        .send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
-        .await?;
-    res.into_message().await.map_err(|e| {
-        tracing::error!("error: {:?}", e);
-        e.into()
-    })
-
-    // match get_interaction_new(ctx) {
-    //     Some(interaction) => {
-    //         tracing::warn!("interaction found");
-    //         send_embed_response(ctx, &interaction, embed).await
-    //     }
-    //     None => {
-    //         tracing::warn!("prefix");
-    //         send_embed_response_prefix(ctx, embed).await
-    //         // .map(|_| Ok(()))?
-    //     }
-    // }
+    ctx.send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
+        .await?
+        .into_message()
+        .await
+        .map_err(|e| {
+            tracing::error!("error: {:?}", e);
+            e.into()
+        })
 }
 
 pub async fn send_embed_response_prefix(
