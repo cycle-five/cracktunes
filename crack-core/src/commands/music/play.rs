@@ -13,10 +13,16 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
-        compare_domains, create_now_playing_embed, create_response_interaction,
-        edit_embed_response_poise, edit_response_poise, get_guild_name,
-        get_human_readable_timestamp, get_interaction, get_interaction_new, get_track_metadata,
-        send_embed_response_poise, send_response_poise_text, CommandOrMessageInteraction,
+        compare_domains,
+        create_now_playing_embed, //create_response_interaction, get_interaction_new,  CommandOrMessageInteraction,
+        edit_embed_response_poise,
+        edit_response_poise,
+        get_guild_name,
+        get_human_readable_timestamp,
+        get_interaction,
+        get_track_metadata,
+        send_embed_response_poise,
+        send_response_poise_text,
     },
     Context, Error,
 };
@@ -90,6 +96,8 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             Mode::All
         } else if asdf.starts_with("shuffle") {
             Mode::Shuffle
+        } else if asdf.starts_with("reverse") {
+            Mode::Reverse
         } else if asdf.starts_with("jump") {
             Mode::Jump
         } else if asdf.starts_with("download") {
@@ -179,18 +187,20 @@ pub async fn get_call_with_fail_msg(
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
 async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
-    match get_interaction_new(ctx) {
-        Some(CommandOrMessageInteraction::Command(interaction)) => {
-            create_response_interaction(
-                &ctx.serenity_context().http,
-                &interaction,
-                CrackedMessage::Search.into(),
-                true,
-            )
-            .await
-        }
-        _ => send_response_poise_text(ctx, CrackedMessage::Search).await,
-    }
+    let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
+    send_embed_response_poise(ctx, embed).await
+    // match get_interaction_new(ctx) {
+    //     Some(CommandOrMessageInteraction::Command(interaction)) => {
+    //         create_response_interaction(
+    //             &ctx.serenity_context().http,
+    //             &interaction,
+    //             CrackedMessage::Search.into(),
+    //             true,
+    //         )
+    //         .await
+    //     }
+    //     _ => send_response_poise_text(ctx, CrackedMessage::Search).await,
+    // }
     //Err(CrackedError::Other("Failed to send search message.").into())
 }
 
@@ -237,7 +247,7 @@ pub async fn play(
     let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
     // determine whether this is a link or a query string
-    let query_type = match_url(ctx, url, file).await?;
+    let query_type = get_query_type_from_url(ctx, url, file).await?;
 
     // FIXME: Decide whether we're using this everywhere, or not.
     // Don't like the inconsistency.
@@ -729,7 +739,7 @@ async fn match_mode(
 
 use colored::Colorize;
 /// Matches a url (or query string) to a QueryType
-async fn match_url(
+async fn get_query_type_from_url(
     ctx: Context<'_>,
     url: &str,
     file: Option<Attachment>,

@@ -328,20 +328,20 @@ impl EventHandler for SerenityHandler {
             }
 
             let ctx2 = Arc::clone(&ctx);
-            let data = self.data.clone();
+            let _data = self.data.clone();
             tokio::spawn(async move {
                 loop {
                     // We clone Context again here, because Arc is owned, so it moves to the
                     tokio::time::sleep(Duration::from_secs(60)).await;
-                    let guilds = get_guilds(ctx2.clone()).await;
-                    tracing::warn!("Checking for old messages");
-                    let _ = check_delete_old_messages(
-                        ctx2.clone(),
-                        &data,
-                        guilds,
-                        chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
-                    )
-                    .await;
+                    let _guilds = get_guilds(ctx2.clone()).await;
+                    tracing::warn!("*Not* checking for old messages");
+                    // let _ = check_delete_old_messages(
+                    //     ctx2.clone(),
+                    //     &data,
+                    //     guilds,
+                    //     chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
+                    // )
+                    // .await;
                 }
             });
 
@@ -631,6 +631,8 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
     cams
 }
 
+/// Checks the guilds' message cache for messages that are older than the timeout interval.
+#[allow(dead_code)]
 async fn check_delete_old_messages(
     ctx: Arc<SerenityContext>,
     data: &Data,
