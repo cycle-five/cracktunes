@@ -318,13 +318,14 @@ pub async fn play(
                         "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
                         y
                     );
+                    let embed = CreateEmbed::default()
+                        .description(format!("{}", CrackedMessage::PlaylistQueued));
                     match get_interaction(ctx) {
                         Some(interaction) => {
                             interaction
                                 .edit_response(
                                     &ctx.serenity_context().http,
-                                    EditInteractionResponse::new()
-                                        .content(CrackedMessage::PlaylistQueued),
+                                    EditInteractionResponse::new().add_embed(embed),
                                 )
                                 .await?;
                         }
