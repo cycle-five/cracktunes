@@ -15,6 +15,7 @@ pub mod get_settings;
 pub mod invite_tracker;
 pub mod kick;
 pub mod message_cache;
+pub mod move_users;
 pub mod mute;
 pub mod print_settings;
 pub mod set_all_log_channel;
@@ -46,6 +47,7 @@ pub use get_settings::*;
 pub use invite_tracker::track_invites;
 pub use kick::*;
 pub use message_cache::*;
+pub use move_users::*;
 pub use mute::*;
 pub use print_settings::*;
 pub use set_all_log_channel::*;
@@ -80,6 +82,7 @@ pub use unmute::*;
         "mute",
         "print_settings",
         "message_cache",
+        "move_",
         "set_all_log_channel",
         "set_prefix",
         "set_welcome_settings",
