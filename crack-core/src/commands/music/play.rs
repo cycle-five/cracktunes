@@ -13,16 +13,9 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
-        compare_domains,
-        create_now_playing_embed, //create_response_interaction, get_interaction_new,  CommandOrMessageInteraction,
-        edit_embed_response_poise,
-        edit_response_poise,
-        get_guild_name,
-        get_human_readable_timestamp,
-        get_interaction,
-        get_track_metadata,
-        send_embed_response_poise,
-        send_response_poise_text,
+        compare_domains, create_now_playing_embed, edit_response_poise, get_guild_name,
+        get_human_readable_timestamp, get_interaction, get_track_metadata,
+        send_embed_response_poise, send_response_poise_text,
     },
     Context, Error,
 };
@@ -30,7 +23,7 @@ use ::serenity::{
     all::{GuildId, Mentionable, Message, UserId},
     builder::{
         CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
-        EditInteractionResponse,
+        EditInteractionResponse, EditMessage,
     },
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
@@ -260,7 +253,7 @@ pub async fn play(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let _msg = send_search_message(ctx).await?;
+    let msg = send_search_message(ctx).await?;
 
     // FIXME: Super hacky, fix this shit.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
@@ -288,7 +281,7 @@ pub async fn play(
         .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
     drop(handler);
 
-    match queue.len().cmp(&1) {
+    let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
             let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
 
@@ -299,9 +292,7 @@ pub async fn play(
                 ) => {
                     tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::Next");
                     let track = queue.get(1).unwrap();
-                    let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
+                    build_queued_embed(PLAY_TOP, track, estimated_time).await
                 }
                 (
                     QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
@@ -309,51 +300,30 @@ pub async fn play(
                 ) => {
                     tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::End");
                     let track = queue.last().unwrap();
-                    let embed = build_queued_embed(PLAY_QUEUE, track, estimated_time).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
+                    build_queued_embed(PLAY_QUEUE, track, estimated_time).await
                 }
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), y) => {
                     tracing::error!(
                         "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
                         y
                     );
-                    let embed = CreateEmbed::default()
-                        .description(format!("{}", CrackedMessage::PlaylistQueued));
-                    match get_interaction(ctx) {
-                        Some(interaction) => {
-                            interaction
-                                .edit_response(
-                                    &ctx.serenity_context().http,
-                                    EditInteractionResponse::new().add_embed(embed),
-                                )
-                                .await?;
-                        }
-                        None => {
-                            edit_response_poise(ctx, CrackedMessage::PlaylistQueued).await?;
-                        }
-                    }
+                    CreateEmbed::default()
+                        .description(format!("{}", CrackedMessage::PlaylistQueued))
                 }
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    let embed = create_now_playing_embed(track).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
+                    create_now_playing_embed(track).await
                 }
                 (QueryType::YoutubeSearch(_x), y) => {
                     tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    let embed = create_now_playing_embed(track).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
+                    create_now_playing_embed(track).await
                 }
                 (x, y) => {
                     tracing::error!("{:?} {:?} {:?}", x, y, mode);
                     let track = queue.first().unwrap();
-                    let embed = create_now_playing_embed(track).await;
-
-                    edit_embed_response_poise(ctx, embed).await?;
+                    create_now_playing_embed(track).await
                 }
             }
         }
@@ -363,14 +333,43 @@ pub async fn play(
             let embed = create_now_playing_embed(track).await;
             print_queue(queue).await;
 
-            edit_embed_response_poise(ctx, embed).await?;
+            embed
         }
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
+            CreateEmbed::default()
+                .description("No tracks in queue!")
+                .footer(CreateEmbedFooter::new("No tracks in queue!"))
         }
-    }
+    };
 
-    Ok(())
+    edit_embed_response(ctx, embed, msg.clone())
+        .await
+        .map(|_| ())
+}
+
+async fn edit_embed_response(
+    ctx: Context<'_>,
+    embed: CreateEmbed,
+    mut msg: Message,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(interaction) => interaction
+            .edit_response(
+                &ctx.serenity_context().http,
+                EditInteractionResponse::new().add_embed(embed),
+            )
+            .await
+            .map_err(Into::into),
+        None => msg
+            .edit(
+                ctx.serenity_context().http.clone(),
+                EditMessage::new().embed(embed),
+            )
+            .await
+            .map(|_| msg)
+            .map_err(Into::into),
+    }
 }
 
 async fn print_queue(queue: Vec<TrackHandle>) {
