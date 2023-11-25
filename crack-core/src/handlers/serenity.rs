@@ -875,7 +875,6 @@ pub fn voice_state_diff_str(
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
             let user_id = new.user_id;
-            // let guild_id = new.guild_id.unwrap();
             let channel_id = new.channel_id.unwrap();
             let channel_mention = channel_id
                 .to_channel_cached(cache.as_ref())
@@ -905,13 +904,11 @@ pub fn voice_state_diff_str(
         if new.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
             let user_mention = new.member.as_ref().unwrap().user.mention();
-            // let user_id = new.user_id;
             let channel_id = old.channel_id.unwrap();
             let channel_mention = channel_id
                 .to_channel_cached(cache.as_ref())
                 .unwrap()
                 .mention();
-            // let now_str = chrono::Local::now().to_string();
 
             let user = if premium {
                 user_mention.to_string()
@@ -928,13 +925,11 @@ pub fn voice_state_diff_str(
             return format!("Member left voice channel\n{} left {}\n", user, channel);
         } else if old.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
-            // let user_id = new.user_id;
             let channel_id = new.channel_id.unwrap();
             let channel_mention = channel_id
                 .to_channel_cached(cache.as_ref())
                 .unwrap()
                 .mention();
-            // let now_str = chrono::Local::now().to_string();
 
             return format!(
                 "Member joined voice channel\n{} joined {}\n",
@@ -952,7 +947,7 @@ pub fn voice_state_diff_str(
                 .unwrap()
                 .mention();
             result.push_str(&format!(
-                "channel_id: {} -> {}\n",
+                "Switched voice channels from {} -> {}\n",
                 old_channel_mention, new_channel_mention
             ));
         }
@@ -997,10 +992,11 @@ pub fn voice_state_diff_str(
         ));
     }
     if old.self_video != new.self_video {
-        result.push_str(&format!(
-            "self_video: {:?} -> {:?}\n",
-            old.self_video, new.self_video
-        ));
+        if old.self_video {
+            result.push_str(&format!("{} turned off their camera\n", user));
+        } else {
+            result.push_str(&format!("{} turned on their camera\n", user));
+        }
     }
     if old.session_id != new.session_id {
         result.push_str(&format!(

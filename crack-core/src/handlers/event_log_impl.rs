@@ -41,16 +41,50 @@ pub async fn log_message_update(
         let avatar_url = new.author.avatar_url().unwrap_or_default();
         let id = new.author.id.to_string();
         (id, title, description, avatar_url)
-    } else {
-        let title = "Message Updated".to_string();
-        let description = "None".to_string();
-        let avatar_url = "".to_string();
-        let id = "".to_string();
+    } else if let &(None, Some(new), _msg) = log_data {
+        let title = format!("Message Updated: {}", new.author.name);
+        let description = format!(
+            "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: {}",
+            new.author.name, new.author.id, new.channel_id, new.content
+        );
+        let avatar_url = new.author.avatar_url().unwrap_or_default();
+        let id = new.author.id.to_string();
         (id, title, description, avatar_url)
+    } else if let &(Some(old), None, _msg) = log_data {
+        let title = format!("Message Updated: {}", old.author.name);
+        let description = format!(
+            "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: None",
+            old.author.name, old.author.id, old.channel_id, old.content
+        );
+        let avatar_url = old.author.avatar_url().unwrap_or_default();
+        let id = old.author.id.to_string();
+        (id, title, description, avatar_url)
+    } else {
+        let &(_, _, msg) = log_data;
+        if let Some(author) = &msg.author {
+            let title = format!("Message Updated: {}", author.name);
+            let description = format!(
+                "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: None",
+                author.name, author.id, channel_id
+            );
+            let avatar_url = author.avatar_url().unwrap_or_default();
+            let id = author.id.to_string();
+            (id, title, description, avatar_url)
+        } else {
+            default_msg_string(msg)
+        }
     };
     send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
         .await
         .map(|_| ())
+}
+
+pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
+    let title = "Message Updated".to_string();
+    let description = msg.id.to_string();
+    let avatar_url = "".to_string();
+    let id = "".to_string();
+    (id, title, description, avatar_url)
 }
 
 /// Log a guild ban.
