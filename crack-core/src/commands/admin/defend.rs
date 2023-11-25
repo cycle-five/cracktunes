@@ -1,3 +1,4 @@
+use crate::guild::settings::AtomicU8Key;
 use crate::Context;
 use crate::Error;
 use serenity::all::ChannelType;
@@ -13,15 +14,16 @@ use songbird::Event;
 use songbird::EventContext;
 use songbird::EventHandler;
 use songbird::Songbird;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
-// static mut TEMP_CHANNEL_NAMES: Vec<(Option<ChannelId>, GuildChannel)> = Vec::new();
 static mut TEMP_CHANNEL_NAMES: Vec<GuildChannel> = Vec::new();
 static N: u64 = 15;
 
 /// Defend the server.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, subcommands("cancel"), owners_only, ephemeral)]
 pub async fn defend(
     ctx: Context<'_>,
     #[description = "Role to defend against"] role: serenity::all::Role,
@@ -39,11 +41,27 @@ pub async fn defend(
             manager: songbird.clone(),
             role: role.clone(),
             guild_id: Some(guild_id),
-            next_action: Arc::new(RwLock::new(0)),
+            next_action: atomic::AtomicU8::new(0),
         },
     );
 
     poise::say_reply(ctx, format!("Tag with role {}", role.name)).await?;
+    Ok(())
+}
+
+#[poise::command(prefix_command, ephemeral, owners_only)]
+pub async fn cancel(ctx: Context<'_>) -> Result<(), Error> {
+    // let guild_id = ctx.guild_id().unwrap();
+
+    ctx.serenity_context()
+        .data
+        .write()
+        .await
+        .get_mut::<AtomicU8Key>()
+        .unwrap()
+        .store(u8::MAX, atomic::Ordering::Relaxed);
+
+    ctx.say("Cancelled").await?;
     Ok(())
 }
 
@@ -53,7 +71,7 @@ pub struct DefendHandler {
     pub manager: Arc<Songbird>,
     pub role: serenity::all::Role,
     pub guild_id: Option<serenity::all::GuildId>,
-    pub next_action: Arc<RwLock<u8>>,
+    pub next_action: atomic::AtomicU8,
 }
 
 #[async_trait]
@@ -69,6 +87,11 @@ impl EventHandler for DefendHandler {
                 }
             }
         }
+
+        if self.next_action.load(atomic::Ordering::Relaxed) == u8::MAX {
+            return None;
+        }
+
         let rand = rand::random::<u8>();
         if rand % 2 == 0 {
             unsafe {
@@ -78,7 +101,6 @@ impl EventHandler for DefendHandler {
                 }
             }
         }
-        let _ = self.next_action.write().unwrap().checked_add(1);
 
         // Get all users in the role
         let guild_id = self.guild_id.unwrap();
@@ -97,6 +119,7 @@ impl EventHandler for DefendHandler {
             .guild(self.guild_id.unwrap())
             .unwrap()
             .clone();
+
         // Get all users in voice channels
         let voice_users = guild.voice_states.clone();
 
@@ -107,7 +130,7 @@ impl EventHandler for DefendHandler {
 
         tracing::error!("Active attackers: {:?}", active_attackers);
 
-        let channel = if *self.next_action.write().unwrap() % 2 == 0 {
+        let channel = if self.next_action.fetch_add(0, Ordering::Relaxed) % 2 == 0 {
             // Create a random voice channel
             let now_str = chrono::Utc::now().to_rfc3339();
             let channel_name = format!("Losers-{}", now_str);
@@ -135,7 +158,10 @@ impl EventHandler for DefendHandler {
             None
         };
 
-        let _ = self.next_action.write().unwrap().checked_add(1);
+        let res = self.next_action.fetch_add(1, Ordering::Relaxed);
+        if res == u8::MAX {
+            return None;
+        }
 
         if let Some(c) = channel {
             unsafe { TEMP_CHANNEL_NAMES.push(c) }

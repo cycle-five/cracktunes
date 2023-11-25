@@ -51,7 +51,10 @@ impl EventHandler for TrackEndHandler {
         }
 
         // FIXME
-        forget_skip_votes(&self.data, self.guild_id).await.ok();
+        match forget_skip_votes(&self.data, self.guild_id).await {
+            Ok(_) => (),
+            Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
+        };
 
         if let Some(channel) = handler.current_channel() {
             tracing::warn!("Sending now playing message");
