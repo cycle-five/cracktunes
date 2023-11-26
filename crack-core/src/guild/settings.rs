@@ -6,7 +6,7 @@ use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
-use std::sync::atomic;
+use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -595,10 +595,10 @@ impl TypeMapKey for GuildSettingsMap {
 }
 
 #[derive(Default)]
-pub struct AtomicU8Key;
+pub struct AtomicU16Key;
 
-impl TypeMapKey for AtomicU8Key {
-    type Value = atomic::AtomicU8;
+impl TypeMapKey for AtomicU16Key {
+    type Value = Arc<atomic::AtomicU16>;
 }
 
 // impl GuildSettingsMap {

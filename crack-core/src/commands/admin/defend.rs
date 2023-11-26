@@ -1,4 +1,4 @@
-use crate::guild::settings::AtomicU8Key;
+use crate::guild::settings::AtomicU16Key;
 use crate::Context;
 use crate::Error;
 use serenity::all::ChannelType;
@@ -33,19 +33,26 @@ pub async fn defend(
     let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = songbird.get(guild_id).unwrap();
 
-    call.lock().await.add_global_event(
-        Event::Periodic(Duration::from_secs(N), None),
-        DefendHandler {
-            ctx: Arc::new(ctx.serenity_context().clone()),
-            http: ctx.serenity_context().http.clone(),
-            manager: songbird.clone(),
-            role: role.clone(),
-            guild_id: Some(guild_id),
-            next_action: atomic::AtomicU8::new(0),
-        },
-    );
+    let next_action = Arc::new(atomic::AtomicU16::new(0));
+    let handler = DefendHandler {
+        ctx: Arc::new(ctx.serenity_context().clone()),
+        http: ctx.serenity_context().http.clone(),
+        manager: songbird.clone(),
+        role: role.clone(),
+        guild_id: Some(guild_id),
+        next_action: Arc::clone(&next_action),
+    };
 
-    poise::say_reply(ctx, format!("Tag with role {}", role.name)).await?;
+    call.lock()
+        .await
+        .add_global_event(Event::Periodic(Duration::from_secs(N), None), handler);
+
+    let mut type_map = ctx.serenity_context().data.write().await;
+    let arc_atomic_u8 = type_map.get_mut::<AtomicU16Key>().unwrap();
+
+    *arc_atomic_u8 = next_action;
+
+    poise::say_reply(ctx, format!("Tag attackers with role {}", role.name)).await?;
     Ok(())
 }
 
@@ -57,9 +64,9 @@ pub async fn cancel(ctx: Context<'_>) -> Result<(), Error> {
         .data
         .write()
         .await
-        .get_mut::<AtomicU8Key>()
+        .get_mut::<AtomicU16Key>()
         .unwrap()
-        .store(u8::MAX, atomic::Ordering::Relaxed);
+        .store(u16::MAX, atomic::Ordering::Relaxed);
 
     ctx.say("Cancelled").await?;
     Ok(())
@@ -71,7 +78,7 @@ pub struct DefendHandler {
     pub manager: Arc<Songbird>,
     pub role: serenity::all::Role,
     pub guild_id: Option<serenity::all::GuildId>,
-    pub next_action: atomic::AtomicU8,
+    pub next_action: Arc<atomic::AtomicU16>,
 }
 
 #[async_trait]
@@ -88,7 +95,7 @@ impl EventHandler for DefendHandler {
             }
         }
 
-        if self.next_action.load(atomic::Ordering::Relaxed) == u8::MAX {
+        if self.next_action.load(atomic::Ordering::Relaxed) == u16::MAX {
             return None;
         }
 
@@ -159,7 +166,7 @@ impl EventHandler for DefendHandler {
         };
 
         let res = self.next_action.fetch_add(1, Ordering::Relaxed);
-        if res == u8::MAX {
+        if res == u16::MAX {
             return None;
         }
 
