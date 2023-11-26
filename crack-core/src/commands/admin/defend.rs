@@ -48,9 +48,7 @@ pub async fn defend(
         .add_global_event(Event::Periodic(Duration::from_secs(N), None), handler);
 
     let mut type_map = ctx.serenity_context().data.write().await;
-    let arc_atomic_u8 = type_map.get_mut::<AtomicU16Key>().unwrap();
-
-    *arc_atomic_u8 = next_action;
+    type_map.insert::<AtomicU16Key>(next_action);
 
     poise::say_reply(ctx, format!("Tag attackers with role {}", role.name)).await?;
     Ok(())
