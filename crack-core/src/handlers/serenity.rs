@@ -393,15 +393,7 @@ impl SerenityHandler {
         let prefix = self.data.bot_settings.get_prefix();
         let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
-        // let mut data = ctx.data.write().await;
-        // let settings = match data.get_mut::<GuildSettingsMap>() {
-        //     Some(settings) => settings,
-        //     None => {
-        //         tracing::error!("Guild settings not found");
-        //         data.insert::<GuildSettingsMap>(HashMap::default());
-        //         data.get_mut::<GuildSettingsMap>().unwrap()
-        //     }
-        // };
+
         for guild in &ready.guilds {
             let guild_id = guild.id;
             let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
@@ -447,26 +439,14 @@ impl SerenityHandler {
         }
         tracing::error!("guild_settings_map");
         tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
-        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
-        // ret_map
     }
 
     async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
         let prefix = self.data.bot_settings.get_prefix();
-        // FIXME:
         let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
-        // let mut data = ctx.data.write().await;
-        // let settings = match data.get_mut::<GuildSettingsMap>() {
-        //     Some(settings) => settings,
-        //     None => {
-        //         tracing::error!("Guild settings not found");
-        //         data.insert::<GuildSettingsMap>(HashMap::default());
-        //         data.get_mut::<GuildSettingsMap>().unwrap()
-        //     }
-        // };
+
         for guild_id in guilds {
-            // let guild_id = guild.id;
             let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
                 Some(guild_match) => guild_match,
                 None => {
@@ -513,8 +493,6 @@ impl SerenityHandler {
         }
         tracing::error!("guild_settings_map");
         tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
-        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
-        // ret_map
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
@@ -846,12 +824,6 @@ async fn server_defeafen_member(
     guild
         .edit_member(&ctx.http, cam.user_id, EditMember::default().deafen(true))
         .await
-    // guild
-    //     .member(&ctx.http, cam.user_id)
-    //     .await
-    //     .expect("Member not found")
-    //     .edit(&ctx.http, |m| m.deafen(true))
-    //     .await
 }
 
 async fn server_mute_member(
@@ -947,7 +919,7 @@ pub fn voice_state_diff_str(
                 .unwrap()
                 .mention();
             result.push_str(&format!(
-                "Switched voice channels from {} -> {}\n",
+                "Switched voice channels: {} -> {}\n",
                 old_channel_mention, new_channel_mention
             ));
         }
