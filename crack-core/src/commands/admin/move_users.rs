@@ -6,34 +6,8 @@ use serenity::all::GuildChannel;
 use serenity::all::Member;
 use serenity::builder::EditMember;
 
-/// Move users between VCs.
-#[poise::command(
-    rename = "move",
-    prefix_command,
-    owners_only,
-    ephemeral,
-    subcommands("move_users")
-)]
-pub async fn move_(_ctx: Context<'_>) -> Result<(), Error> {
-    Ok(())
-}
-
-/// Move users between VCs.
-#[poise::command(
-    rename = "users",
-    prefix_command,
-    owners_only,
-    ephemeral,
-    subcommands("move_users_to")
-)]
-pub async fn move_users(
-    _ctx: Context<'_>,
-    #[description = "Users to move"] _user: Vec<Member>,
-) -> Result<(), Error> {
-    Ok(())
-}
-
-#[poise::command(rename = "to", prefix_command, owners_only, ephemeral)]
+/// Move usrers to a given channel.
+#[poise::command(rename = "move_users_to", prefix_command, owners_only, ephemeral)]
 pub async fn move_users_to(
     ctx: Context<'_>,
     #[description = "Users to move"] users: Vec<Member>,

@@ -158,14 +158,14 @@ pub async fn poise_framework(
                         }
 
                         let prefix = &guild_settings.prefix;
-                        let prefix_up = &guild_settings.prefix_up;
+                        // let prefix_up = &guild_settings.prefix_up;
 
                         tracing::warn!("Checking for prefix: {}", prefix);
 
                         if msg.content.starts_with(prefix) {
                             Ok(Some(msg.content.split_at(prefix.len())))
-                        } else if msg.content.starts_with(prefix_up) {
-                            Ok(Some(msg.content.split_at(prefix_up.len())))
+                        // } else if msg.content.starts_with(prefix_up) {
+                        //     Ok(Some(msg.content.split_at(prefix_up.len())))
                         } else {
                             Ok(None)
                         }

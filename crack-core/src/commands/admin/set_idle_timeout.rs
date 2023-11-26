@@ -12,17 +12,10 @@ pub async fn set_idle_timeout(
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
 
-    // let timeout = match TimeParser::parse(&timeout) {
-    //     Some(time) => time,
-    //     None => return Err(CrackedError::ParseTimeFail.into()),
-    // };
-    // let timeout = timeout
-    //     .signed_duration_since(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
-    //     .num_seconds() as u32;
     let timeout = timeout * 60;
 
     data.guild_settings_map
-        .lock()
+        .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| e.timeout = timeout);

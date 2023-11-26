@@ -21,6 +21,7 @@ pub mod print_settings;
 pub mod set_all_log_channel;
 pub mod set_all_log_channel_data;
 pub mod set_all_log_channel_old_data;
+pub mod set_idle_timeout;
 pub mod set_prefix;
 pub mod set_welcome_settings;
 pub mod unban;
@@ -53,6 +54,7 @@ pub use print_settings::*;
 pub use set_all_log_channel::*;
 pub use set_all_log_channel_data::*;
 pub use set_all_log_channel_old_data::*;
+pub use set_idle_timeout::*;
 pub use set_prefix::*;
 pub use set_welcome_settings::*;
 pub use unban::*;
@@ -82,7 +84,8 @@ pub use unmute::*;
         "mute",
         "print_settings",
         "message_cache",
-        "move_",
+        "move_users_to",
+        "set_idle_timeout",
         "set_all_log_channel",
         "set_prefix",
         "set_welcome_settings",

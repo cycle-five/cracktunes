@@ -119,7 +119,6 @@ pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
-    pub prefix_up: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
     pub autopause: bool,
@@ -150,14 +149,13 @@ impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, premium: {}, 
+            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, premium: {}, 
                 autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, 
                 authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, 
                 self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
             self.guild_id,
             self.guild_name,
             self.prefix,
-            self.prefix_up,
             self.premium,
             self.autopause,
             self.allow_all_domains.unwrap_or(true),
@@ -197,7 +195,6 @@ impl GuildSettings {
             guild_id,
             guild_name,
             prefix: my_prefix.clone(),
-            prefix_up: my_prefix.to_string().to_ascii_uppercase(),
             premium: DEFAULT_PREMIUM,
             autopause: false,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
@@ -212,6 +209,10 @@ impl GuildSettings {
             welcome_settings: None,
             log_settings: None,
         }
+    }
+
+    pub fn get_prefix_up(&self) -> String {
+        self.prefix.to_ascii_uppercase()
     }
 
     pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
@@ -370,7 +371,7 @@ impl GuildSettings {
 
     pub fn set_prefix(&mut self, prefix: &str) {
         self.prefix = prefix.to_string();
-        self.prefix_up = prefix.to_string().to_ascii_uppercase();
+        // self.prefix_up = self.prefix.to_string().to_ascii_uppercase();
     }
 
     pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
