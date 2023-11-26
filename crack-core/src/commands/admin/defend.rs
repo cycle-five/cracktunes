@@ -1,3 +1,4 @@
+use crate::errors::CrackedError;
 use crate::guild::settings::AtomicU16Key;
 use crate::Context;
 use crate::Error;
@@ -31,7 +32,9 @@ pub async fn defend(
     let guild_id = ctx.guild_id().unwrap();
 
     let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = songbird.get(guild_id).unwrap();
+    let call = songbird
+        .get(guild_id)
+        .ok_or(CrackedError::WrongVoiceChannel)?;
 
     let next_action = Arc::new(atomic::AtomicU16::new(0));
     let handler = DefendHandler {
