@@ -658,6 +658,9 @@ pub async fn handle_event(
             event,
             ctx,
         } => {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false) {
+                return Ok(());
+            }
             let log_data: (
                 &Option<serenity::model::prelude::Message>,
                 &Option<serenity::model::prelude::Message>,
