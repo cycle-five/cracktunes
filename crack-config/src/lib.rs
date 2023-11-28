@@ -399,4 +399,15 @@ mod test {
         let prefix_len = super::check_prefixes(&prefixes, content).unwrap();
         assert_eq!(prefix_len, 5);
     }
+
+    #[test]
+    fn test_prefix_no_match() {
+        let prefixes = vec!["crack ", "crack", "crack!"]
+            .iter()
+            .map(|&s| s.trim().to_string())
+            .collect::<Vec<_>>();
+        let content = "crac test";
+        let prefix_len = super::check_prefixes(&prefixes, content);
+        assert!(prefix_len.is_none());
+    }
 }
