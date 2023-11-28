@@ -29,6 +29,9 @@ pub(crate) const DEFAULT_DB_URL: &str = "sqlite:///data/crackedmusic.db";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
+pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
+    "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", "m/", "M/",
+];
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -135,6 +138,12 @@ pub struct GuildSettings {
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
     pub log_settings: Option<LogSettings>,
+    #[serde(default = "additional_prefixes_default")]
+    pub additional_prefixes: Vec<String>,
+}
+
+fn additional_prefixes_default() -> Vec<String> {
+    Vec::<String>::new()
 }
 
 fn volume_default() -> f32 {
@@ -208,6 +217,7 @@ impl GuildSettings {
             timeout: DEFAULT_IDLE_TIMEOUT,
             welcome_settings: None,
             log_settings: None,
+            additional_prefixes: Vec::new(),
         }
     }
 
@@ -372,6 +382,15 @@ impl GuildSettings {
     pub fn set_prefix(&mut self, prefix: &str) {
         self.prefix = prefix.to_string();
         // self.prefix_up = self.prefix.to_string().to_ascii_uppercase();
+    }
+
+    pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
+        self.additional_prefixes = ADDITIONAL_PREFIXES
+            .to_vec()
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
+        self
     }
 
     pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {

@@ -78,6 +78,7 @@ pub async fn poise_framework(
 ) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
+
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
@@ -129,19 +130,7 @@ pub async fn poise_framework(
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
-            additional_prefixes: vec![
-                poise::Prefix::Literal(up_prefix_cloned),
-                // poise::Prefix::Literal("hey bot,"),
-                // poise::Prefix::Literal("hey bot"),
-                // poise::Prefix::Literal("bot,"),
-                // poise::Prefix::Literal("bot"),
-                // poise::Prefix::Literal("!play"),
-                // poise::Prefix::Literal("!music"),
-                // poise::Prefix::Literal("!youtube"),
-                // poise::Prefix::Literal("!yt"),
-                // poise::Prefix::Literal("m/"),
-                // poise::Prefix::Literal("M/"),
-            ],
+            additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
             stripped_dynamic_prefix: Some(|ctx, msg, _| {
                 Box::pin(async move {
                     let guild_id = msg.guild_id.unwrap();
@@ -149,7 +138,8 @@ pub async fn poise_framework(
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
-                        if guild_settings.prefix.is_empty() {
+                        let prefixes = &guild_settings.additional_prefixes;
+                        if prefixes.is_empty() {
                             tracing::warn!(
                                 "Prefix is empty for guild {}",
                                 guild_settings.guild_name
@@ -157,16 +147,10 @@ pub async fn poise_framework(
                             return Ok(None);
                         }
 
-                        let prefix = &guild_settings.prefix;
-                        // let prefix_up = &guild_settings.prefix_up;
-
-                        tracing::warn!("Checking for prefix: {}", prefix);
-
-                        if msg.content.starts_with(prefix) {
-                            Ok(Some(msg.content.split_at(prefix.len())))
-                        // } else if msg.content.starts_with(prefix_up) {
-                        //     Ok(Some(msg.content.split_at(prefix_up.len())))
+                        if let Some(prefix_len) = check_prefixes(prefixes, &msg.content) {
+                            Ok(Some(msg.content.split_at(prefix_len)))
                         } else {
+                            tracing::warn!("Prefix not found");
                             Ok(None)
                         }
                     } else {
@@ -255,7 +239,7 @@ pub async fn poise_framework(
                     .map_or_else(
                         || {
                             tracing::info!("Guild not found in guild settings map");
-                            Ok(true)
+                            Ok(false)
                         },
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
@@ -302,7 +286,6 @@ pub async fn poise_framework(
         | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MODERATION
-        // | GatewayIntents::GUILD_BANS
         | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
         | GatewayIntents::GUILD_INTEGRATIONS
         | GatewayIntents::GUILD_WEBHOOKS
@@ -326,32 +309,17 @@ pub async fn poise_framework(
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    let framework = poise::Framework::new(
-        options,
-        // .client_settings(|builder| {
-        //     builder
-        //         .event_handler(SerenityHandler {
-        //             is_loop_running: false.into(),
-        //             data: handler_data,
-        //         })
-        //         .register_songbird()
-        // })
-        // .token(token)
-        //.setup(move |ctx, ready, framework| {
-        |ctx, ready, framework| {
-            Box::pin(async move {
-                tracing::info!("Logged in as {}", ready.user.name);
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                ctx.data
-                    .write()
-                    .await
-                    .insert::<GuildSettingsMap>(guild_settings_map.clone());
-                Ok(setup_data)
-            })
-        },
-    );
-    // let res = framework.build().await?;
-    // let shard_manager = res.client().shard_manager.clone();
+    let framework = poise::Framework::new(options, |ctx, ready, framework| {
+        Box::pin(async move {
+            tracing::info!("Logged in as {}", ready.user.name);
+            poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+            ctx.data
+                .write()
+                .await
+                .insert::<GuildSettingsMap>(guild_settings_map.clone());
+            Ok(setup_data)
+        })
+    });
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
@@ -403,11 +371,32 @@ pub async fn poise_framework(
                 tracing::warn!("Saving Guild: {}", k);
                 v.save().expect("Error saving guild settings");
             });
-        //shard_manager.lock().await.shutdown_all().await;
         shard_manager.shutdown_all().await;
 
         exit(0);
     });
 
     Ok(client)
+}
+
+fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
+    for prefix in prefixes.iter() {
+        if content.starts_with(prefix) {
+            return Some(prefix.len());
+        }
+    }
+    None
+}
+
+mod test {
+    #[test]
+    fn test_prefix() {
+        let prefixes = vec!["crack ", "crack", "crack!"]
+            .iter()
+            .map(|&s| s.trim().to_string())
+            .collect::<Vec<_>>();
+        let content = "crack test";
+        let prefix_len = super::check_prefixes(&prefixes, content).unwrap();
+        assert_eq!(prefix_len, 5);
+    }
 }
