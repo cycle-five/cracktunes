@@ -1,3 +1,4 @@
+use crate::db::user::User;
 use songbird::tracks::TrackHandle;
 use sqlx::{
     types::chrono::{self},
@@ -5,18 +6,6 @@ use sqlx::{
 };
 
 use crate::CrackedError;
-
-#[derive(Debug, Default)]
-pub struct User {
-    pub id: i64,
-    pub username: String,
-    pub discriminator: Option<i64>,
-    pub avatar_url: String,
-    pub bot: bool,
-    pub created_at: chrono::NaiveDate,
-    pub updated_at: chrono::NaiveDate,
-    pub last_seen: chrono::NaiveDate,
-}
 
 #[derive(Debug, Default)]
 pub struct Playlist {
@@ -57,8 +46,8 @@ impl Playlist {
         name: &str,
         user_id: i64,
     ) -> Result<Playlist, CrackedError> {
-        if Self::get_user(pool, user_id).await.is_none() {
-            match Self::insert_user(pool, user_id, "FAKENAME".to_string()).await {
+        if User::get_user(pool, user_id).await.is_none() {
+            match User::insert_user(pool, user_id, "FAKENAME".to_string()).await {
                 Ok(_) => (),
                 Err(e) => {
                     return Err(CrackedError::SQLX(e));
@@ -99,30 +88,9 @@ impl Playlist {
         Ok(())
     }
 
-    pub async fn get_user(pool: &SqlitePool, user_id: i64) -> Option<User> {
-        sqlx::query_as!(User, "SELECT * FROM user WHERE id = ?", user_id)
-            .fetch_optional(pool)
-            .await
-            .ok()?
-    }
-
-    pub async fn insert_user(
-        pool: &SqlitePool,
-        user_id: i64,
-        username: String,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "INSERT INTO user (id, username) VALUES (?, ?)",
-            user_id,
-            username
-        )
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
     // Additional functions to retrieve, update, and delete playlists and tracks
-    // Function to retrieve a playlist by ID
+
+    /// Reterive a playlist by ID
     pub async fn get_playlist_by_id(
         pool: &SqlitePool,
         playlist_id: i64,
@@ -137,7 +105,24 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
-    // Function to update a playlist's name
+    /// Reterive a playlist by name and user ID.
+    pub async fn get_playlist_by_name(
+        pool: &SqlitePool,
+        name: String,
+        user_id: i64,
+    ) -> Result<Playlist, CrackedError> {
+        sqlx::query_as!(
+            Playlist,
+            "SELECT * FROM playlist WHERE user_id = $1 and name = $2",
+            user_id,
+            name
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(CrackedError::SQLX)
+    }
+
+    /// Function to update a playlist's name
     pub async fn update_playlist_name(
         pool: &SqlitePool,
         playlist_id: i64,
@@ -167,7 +152,7 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
-    // Function to delete a playlist by ID
+    /// Delete a playlist by playlist ID
     pub async fn delete_playlist(pool: &SqlitePool, playlist_id: i64) -> Result<u64, sqlx::Error> {
         sqlx::query!("DELETE FROM playlist WHERE id = $1", playlist_id)
             .execute(pool)
@@ -175,6 +160,7 @@ impl Playlist {
             .map(|r| r.rows_affected())
     }
 
+    /// Delete a playlist by playlist ID and user ID
     pub async fn delete_playlist_by_id(
         pool: &SqlitePool,
         playlist_id: i64,
@@ -186,6 +172,25 @@ impl Playlist {
         WHERE id = ? AND user_id = ?
         "#,
             playlist_id,
+            user_id
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_playlist_by_name(
+        pool: &SqlitePool,
+        playlist_name: String,
+        user_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+        DELETE FROM playlist
+        WHERE name = ? AND user_id = ?
+        "#,
+            playlist_name,
             user_id
         )
         .execute(pool)

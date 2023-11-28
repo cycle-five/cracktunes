@@ -22,13 +22,13 @@ use std::{
 
 pub mod commands;
 pub mod connection;
+pub mod db;
 pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
 pub mod messaging;
 pub mod metrics;
-pub mod playlist;
 pub mod sources;
 pub mod utils;
 
