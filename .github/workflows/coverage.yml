@@ -12,6 +12,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup default nightly 
+          rustup update
+        shell: bash
+      
       - uses: ikalnytskyi/action-setup-postgres@v4
         with:
           username: postgres
