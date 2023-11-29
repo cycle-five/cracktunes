@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM playlist\n        WHERE name = $1 AND user_id = $2 \n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b789de16a328b97800cf8530f51aed899c6a269e87da651946796f925c97144e"
+}
