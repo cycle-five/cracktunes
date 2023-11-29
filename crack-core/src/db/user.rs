@@ -1,16 +1,13 @@
-use songbird::tracks::TrackHandle;
 use sqlx::{
     types::chrono::{self},
-    SqlitePool,
+    PgPool,
 };
-
-use crate::CrackedError;
 
 #[derive(Debug, Default)]
 pub struct User {
     pub id: i64,
     pub username: String,
-    pub discriminator: Option<i64>,
+    pub discriminator: Option<i16>,
     pub avatar_url: String,
     pub bot: bool,
     pub created_at: chrono::NaiveDate,
@@ -19,22 +16,22 @@ pub struct User {
 }
 
 impl User {
-    pub async fn get_user(pool: &SqlitePool, user_id: i64) -> Option<User> {
-        sqlx::query_as!(User, "SELECT * FROM user WHERE id = ?", user_id)
+    pub async fn get_user(pool: &PgPool, user_id: i64) -> Option<User> {
+        sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
             .fetch_optional(pool)
             .await
             .ok()?
     }
 
     pub async fn insert_user(
-        pool: &SqlitePool,
+        pool: &PgPool,
         user_id: i64,
         username: String,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "INSERT INTO user (id, username) VALUES (?, ?)",
+            r#"INSERT INTO "user" (id, username) VALUES ($1, $2)"#,
             user_id,
-            username
+            username,
         )
         .execute(pool)
         .await?;

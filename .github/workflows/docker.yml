@@ -21,14 +21,14 @@ jobs:
         uses: actions/checkout@v4
       - 
         name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
+        run: cargo install sqlx-cli --no-default-features --features postgres
       - 
         name: Cache
         uses: Swatinem/rust-cache@v2
       - 
         name: Migrate database
         env:
-          DATABASE_URL: sqlite://./data/crackedmusic.db
+          DATABASE_URL: postgres://./data/crackedmusic.db
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
@@ -36,7 +36,7 @@ jobs:
       - 
         name: Build Docker Image
         env:
-          DATABASE_URL: sqlite://./data/crackedmusic.db
+          DATABASE_URL: postgres://./data/crackedmusic.db
         run: docker build . -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
   push:
     name: Build & Push Docker Image
@@ -53,7 +53,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - 
         name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
+        run: cargo install sqlx-cli --no-default-features --features postgres
       -
         name: Registry Login
         uses: docker/login-action@v3
@@ -70,7 +70,9 @@ jobs:
       - 
         name: Migrate database
         env:
-          DATABASE_URL: sqlite://./data/crackedmusic.db
+          DATABASE_URL: postgres://./data/crackedmusic.db
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: |
           sqlx database create
           sqlx migrate run --source migrations/

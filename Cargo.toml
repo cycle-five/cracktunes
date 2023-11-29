@@ -27,9 +27,9 @@ features = [
   "runtime-tokio",
   "tls-rustls",
   "macros",
-  "sqlite",
   "postgres",
   "chrono",
+  "time",
   "migrate",
 ]
 

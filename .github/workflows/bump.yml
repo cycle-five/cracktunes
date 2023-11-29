@@ -30,16 +30,20 @@ jobs:
         run: cargo install cargo-bump
 
       - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
+        run: cargo install sqlx-cli --no-default-features --features postgres
 
       - name: Bump Cargo version
         run: cargo-bump bump ${{ github.event.inputs.version }}
 
       - name: Bump Cargo.lock
+        env:
+          DATABASE_URL: postgres://./data/crackedmusic.db
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: |
-          sqlx database create --database-url sqlite://./data/crackedmusic.db
-          sqlx migrate run --database-url sqlite://./data/crackedmusic.db --source migrations/
-          cargo sqlx prepare --workspace --database-url sqlite://./data/crackedmusic.db
+          sqlx database create --database-url postgres://./data/crackedmusic.db
+          sqlx migrate run --database-url postgres://./data/crackedmusic.db --source migrations/
+          cargo sqlx prepare --workspace --database-url postgres://./data/crackedmusic.db
           cargo build
 
       - name: Get latest version

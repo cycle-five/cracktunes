@@ -1,10 +1,12 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "DELETE FROM playlist WHERE id = $1",
   "describe": {
     "columns": [],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Int4"
+      ]
     },
     "nullable": []
   },

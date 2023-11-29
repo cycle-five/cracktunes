@@ -1,41 +1,41 @@
 #[cfg(test)]
 mod tests {
-    use crack_core::playlist::{Playlist, PlaylistTrack};
+    use crack_core::db::playlist::{Playlist, PlaylistTrack};
 
     #[cfg(test)]
     use mockall::automock;
 
     use async_trait::async_trait;
-    use sqlx::SqlitePool;
+    use sqlx::PgPool;
     #[cfg_attr(test, automock)]
     #[async_trait]
     pub trait Database {
         async fn create_playlist(&self, name: &str, user_id: i64) -> Result<Playlist, sqlx::Error>;
         // other database functions
-        async fn get_playlist_by_id(&self, playlist_id: i64) -> Result<Playlist, sqlx::Error>;
+        async fn get_playlist_by_id(&self, playlist_id: i32) -> Result<Playlist, sqlx::Error>;
         async fn update_playlist_name(
             &self,
-            playlist_id: i64,
+            playlist_id: i32,
             new_name: String,
         ) -> Result<Playlist, sqlx::Error>;
-        async fn delete_playlist(&self, playlist_id: i64) -> Result<u64, sqlx::Error>;
+        async fn delete_playlist(&self, playlist_id: i32) -> Result<u64, sqlx::Error>;
         async fn add_track(
             &self,
-            playlist_id: i64,
-            metadata_id: i64,
+            playlist_id: i32,
+            metadata_id: i32,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<(), sqlx::Error>;
         async fn delete_track(
             &self,
-            playlist_id: i64,
-            metadata_id: i64,
+            playlist_id: i32,
+            metadata_id: i32,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<u64, sqlx::Error>;
         async fn get_tracks(
             &self,
-            playlist_id: i64,
+            playlist_id: i32,
             guild_id: i64,
             channel_id: i64,
         ) -> Result<Vec<PlaylistTrack>, sqlx::Error>;
@@ -110,7 +110,7 @@ mod tests {
     //#[tokio::test]
     #[ignore]
     #[sqlx::test]
-    async fn test_delete_playlist_by_id(pool: SqlitePool) {
+    async fn test_delete_playlist_by_id(pool: PgPool) {
         // Setup
         let user_id = 1; // or fetch a user id for the test
         let playlist_name = "Test Playlist";

@@ -257,7 +257,7 @@ pub struct DataInner {
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
-    pub database_pool: Option<sqlx::SqlitePool>,
+    pub database_pool: Option<sqlx::PgPool>,
 }
 
 #[derive(Clone, Debug)]

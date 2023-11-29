@@ -1,31 +1,34 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT * FROM playlist WHERE user_id = $1 and name = $2",
   "describe": {
     "columns": [
       {
-        "name": "id",
         "ordinal": 0,
-        "type_info": "Int64"
+        "name": "id",
+        "type_info": "Int4"
       },
       {
-        "name": "name",
         "ordinal": 1,
+        "name": "name",
         "type_info": "Text"
       },
       {
-        "name": "user_id",
         "ordinal": 2,
-        "type_info": "Int64"
+        "name": "user_id",
+        "type_info": "Int8"
       },
       {
-        "name": "privacy",
         "ordinal": 3,
+        "name": "privacy",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Left": [
+        "Int8",
+        "Text"
+      ]
     },
     "nullable": [
       false,

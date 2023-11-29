@@ -126,6 +126,10 @@ pub async fn poise_framework(
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
+            // Playlist
+            commands::playlist::add_to_playlist(),
+            commands::playlist::create_playlist(),
+            commands::playlist::delete_playlist(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
@@ -266,9 +270,7 @@ pub async fn poise_framework(
         .collect::<HashMap<GuildId, GuildSettings>>();
 
     let db_url = config.get_database_url();
-    let pool_opts = sqlx::sqlite::SqlitePoolOptions::new()
-        .connect(&db_url)
-        .await;
+    let pool_opts = sqlx::postgres::PgPoolOptions::new().connect(&db_url).await;
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),

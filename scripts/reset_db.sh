@@ -1,6 +1,7 @@
 #!/bin/bash
-cargo clean
-sqlx database drop --database-url sqlite://./data/crackedmusic.db
-sqlx database create --database-url sqlite://./data/crackedmusic.db
-sqlx migrate run --source migrations/  --database-url sqlite://./data/crackedmusic.db
-cargo sqlx prepare --workspace  --database-url sqlite://./data/crackedmusic.db
+export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5433/cracked_music
+# cargo clean
+sqlx database drop
+sqlx database create
+sqlx migrate run --source migrations/
+cargo sqlx prepare --workspace

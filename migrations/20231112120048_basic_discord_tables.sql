@@ -1,16 +1,15 @@
 -- Add migration script here
 -- Table for storing guilds (servers)
-CREATE TABLE guild (
+CREATE TABLE IF NOT EXISTS guild (
     id BIGINT NOT NULL PRIMARY KEY,
-    name VARCHAR(255),
+    "name" TEXT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
-
 -- Table for storing users
-CREATE TABLE user (
+CREATE TABLE IF NOT EXISTS "user" (
     id BIGINT NOT NULL PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
+    username TEXT NOT NULL,
     discriminator SMALLINT,
     avatar_url TEXT NOT NULL,
     bot BOOLEAN NOT NULL,
@@ -18,36 +17,33 @@ CREATE TABLE user (
     updated_at TIMESTAMP NOT NULL,
     last_seen TIMESTAMP NOT NULL
 );
-
 -- Table for storing channels
-CREATE TABLE channel (
+CREATE TABLE IF NOT EXISTS channel (
     id BIGINT NOT NULL PRIMARY KEY,
     guild_id BIGINT,
-    name VARCHAR(255),
-    type VARCHAR(50),
+    name TEXT,
+    type TEXT,
     position INT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    FOREIGN KEY (guild_id) REFERENCES guild(id)
+    CONSTRAINT fk_channel FOREIGN KEY (guild_id) REFERENCES guild(id)
 );
-
 -- Table for storing messages
-CREATE TABLE message (
+CREATE TABLE IF NOT EXISTS message (
     id BIGINT NOT NULL PRIMARY KEY,
     channel_id BIGINT,
     author_id BIGINT,
     content TEXT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    FOREIGN KEY (channel_id) REFERENCES channel(id),
-    FOREIGN KEY (author_id) REFERENCES user(id)
+    CONSTRAINT fk_message FOREIGN KEY (channel_id) REFERENCES channel(id),
+    FOREIGN KEY (author_id) REFERENCES "user"(id)
 );
-
 -- Table for storing roles
-CREATE TABLE role (
+CREATE TABLE IF NOT EXISTS role (
     id BIGINT NOT NULL PRIMARY KEY,
     guild_id BIGINT,
-    name VARCHAR(255),
+    name TEXT,
     color INT,
     hoist BOOLEAN,
     position INT,
@@ -56,33 +52,30 @@ CREATE TABLE role (
     mentionable BOOLEAN,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    FOREIGN KEY (guild_id) REFERENCES guild(id)
+    CONSTRAINT fk_role FOREIGN KEY (guild_id) REFERENCES guild(id)
 );
-
 -- Table for storing user roles
-CREATE TABLE user_role (
+CREATE TABLE IF NOT EXISTS user_role (
     user_id BIGINT,
     role_id BIGINT,
-    PRIMARY KEY (user_id, role_id)
-    FOREIGN KEY (user_id) REFERENCES user(id),
+    PRIMARY KEY (user_id, role_id),
+    CONSTRAINT fk_user_role FOREIGN KEY (user_id) REFERENCES "user"(id),
     FOREIGN KEY (role_id) REFERENCES role(id)
 );
-
 -- Table for storing the many-to-many relationship between users and guilds
-CREATE TABLE guild_member (
+CREATE TABLE IF NOT EXISTS guild_member (
     guild_id BIGINT,
     user_id BIGINT,
-    nick VARCHAR(255),
+    nick TEXT,
     joined_at TIMESTAMP,
     PRIMARY KEY (guild_id, user_id),
-    FOREIGN KEY (guild_id) REFERENCES guild(id),
-    FOREIGN KEY (user_id) REFERENCES user(id)
+    CONSTRAINT fk_guild_member FOREIGN KEY (guild_id) REFERENCES guild(id),
+    FOREIGN KEY (user_id) REFERENCES "user"(id)
 );
-
 CREATE TABLE user_channel (
     user_id BIGINT,
     channel_id BIGINT,
     PRIMARY KEY (user_id, channel_id),
-    FOREIGN KEY (user_id) REFERENCES user(user_id),
-    FOREIGN KEY (channel_id) REFERENCES channel(channel_id)
+    CONSTRAINT fk_user_channel FOREIGN KEY (user_id) REFERENCES "user"(id),
+    FOREIGN KEY (channel_id) REFERENCES channel(id)
 );
