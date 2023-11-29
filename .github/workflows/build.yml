@@ -11,6 +11,22 @@ jobs:
         rust-version: ["nightly", "stable"]
         cache-key: [""]
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: mysecretpassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432/tcp
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      # redis:
+      #   image: redis:latest
+      #   ports:
+      #     - 6379/tcp
+
     steps:
       - name: Repository Checkout
         uses: actions/checkout@v4
@@ -31,7 +47,7 @@ jobs:
 
       - name: Migrate database
         env:
-          DATABASE_URL: postgres://./data/crackedmusic.db
+          DATABASE_URL: postgresql://postgres:mysecretpassword@localhost:5432/postgres
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
         run: |
