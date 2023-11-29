@@ -23,13 +23,6 @@ jobs:
           rustup update
           rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
         shell: bash
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ matrix.cache-key }}
-
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres
       - 
         uses: ikalnytskyi/action-setup-postgres@v4
         with:
@@ -38,9 +31,14 @@ jobs:
           database: postgres
           port: 5432
         id: postgres
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.cache-key }}
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
       - name: Migrate database
         env:
-          DATABASE_URL: postgres://./data/crackedmusic.db
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
         run: |
