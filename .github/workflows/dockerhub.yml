@@ -55,7 +55,7 @@ jobs:
       -
         name: Migrate database
         env:
-          DATABASE_URL: postgres://./data/crackedmusic.db
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
         run: |

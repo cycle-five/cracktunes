@@ -20,7 +20,7 @@ use crate::{
     Context, Error,
 };
 use ::serenity::{
-    all::{GuildId, Mentionable, Message, UserId},
+    all::{EmbedField, GuildId, Mentionable, Message, UserId},
     builder::{
         CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
         EditInteractionResponse, EditMessage,
@@ -120,6 +120,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
             "download" => Mode::Download,
+            "search" => Mode::Search,
             _ => Mode::End,
         };
         (mode, msg.unwrap_or_default())
@@ -406,6 +407,25 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
     Ok((output, metadata))
 }
 
+async fn create_embed_fields(elems: Vec<String>) -> Vec<EmbedField> {
+    let fields_grp = elems.chunks(3);
+    let mut fields = vec![];
+    // let tmp = "".to_string();
+    for elem in fields_grp.into_iter() {
+        let title = elem.get(0).unwrap();
+        let link = elem.get(1).unwrap();
+        let link = format!("https://www.youtube.com/watch?v={}", link);
+        let duration = elem.get(2).unwrap();
+        let elem = format!("[{}]({}) - {}", title, link, duration);
+        fields.push(EmbedField::new(
+            format!("Search Result: {}", title),
+            elem,
+            false,
+        ));
+    }
+    fields
+}
+
 async fn send_search_response(
     ctx: Context<'_>,
     guild_id: GuildId,
@@ -420,16 +440,22 @@ async fn send_search_response(
         author.display_name().to_string()
     };
 
+    // let description: String = res.clone().into_iter().collect::<Vec<String>>().join("\n");
+
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let description: String = res.clone().into_iter().collect::<Vec<String>>().join("\n");
-    let title = format!("Search results for {}", query);
+    let fields = create_embed_fields(res).await;
     let author = CreateEmbedAuthor::new(name);
+    let title = format!("Search results for: {}", query);
     let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
     let embed = CreateEmbed::new()
         .author(author)
         .title(title)
-        .description(description)
+        //.description(description)
         .footer(footer);
+    //.fields(fields);
+    let embed = fields.into_iter().fold(embed, |embed, field| {
+        embed.field(field.name, field.value, field.inline)
+    });
     send_embed_response_poise(ctx, embed).await
 }
 

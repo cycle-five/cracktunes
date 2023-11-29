@@ -98,8 +98,6 @@ pub async fn poise_framework(
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),
-            //commands::create_playlist(),
-            //commands::delete_playlist(),
             commands::chatgpt(),
             commands::clear(),
             commands::help(),
