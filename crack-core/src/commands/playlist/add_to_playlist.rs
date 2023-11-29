@@ -58,14 +58,7 @@ pub async fn add_to_playlist(
 
     let metadata = Metadata::create(&db_pool, in_metadata).await?;
 
-    let res = Playlist::add_track(
-        &db_pool,
-        playlist.id.try_into().unwrap(),
-        metadata.id.try_into().unwrap(),
-        guild_id,
-        channel_id,
-    )
-    .await?;
+    let res = Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id, channel_id).await?;
 
     let operation_successfull = res.rows_affected() > 0;
 
@@ -100,19 +93,17 @@ fn aux_metadata_to_db_structures(
     let album = metadata.album.clone();
     let date = metadata
         .date
-        .clone()
-        .map(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").unwrap_or_default());
+        .as_ref()
+        .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
     let duration = metadata
         .duration
-        .clone()
         .map(|x| ::chrono::Duration::from_std(x).unwrap_or(chrono::Duration::zero()));
     let channel = metadata.channel.clone();
-    let channels = metadata.channels.clone().map(|d| i16::from(d));
+    let channels = metadata.channels.map(i16::from);
     let start_time = metadata
         .start_time
-        .clone()
         .map(|d| ::chrono::Duration::from_std(d).unwrap_or(chrono::Duration::zero()));
-    let sample_rate = metadata.sample_rate.clone().map(|d| i64::from(d) as i32);
+    let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
     let thumbnail = metadata.thumbnail.clone();
     let source_url = metadata.source_url.clone();
 

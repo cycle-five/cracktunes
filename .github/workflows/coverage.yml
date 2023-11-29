@@ -25,6 +25,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - uses: ikalnytskyi/action-setup-postgres@v4
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+        id: postgres
 
       - name: Generate code coverage
         run: |

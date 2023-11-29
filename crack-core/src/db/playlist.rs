@@ -92,12 +92,16 @@ impl Metadata {
             channels: r.channels,
             channel: r.channel,
             start_time: r.start_time.map(|x| {
-                Duration::from_std(std::time::Duration::from_micros(x.microseconds.abs() as u64))
-                    .unwrap()
+                Duration::from_std(std::time::Duration::from_micros(
+                    x.microseconds.unsigned_abs(),
+                ))
+                .unwrap()
             }),
             duration: r.duration.map(|x| {
-                Duration::from_std(std::time::Duration::from_micros(x.microseconds.abs() as u64))
-                    .unwrap()
+                Duration::from_std(std::time::Duration::from_micros(
+                    x.microseconds.unsigned_abs(),
+                ))
+                .unwrap()
             }),
             sample_rate: r.sample_rate,
             source_url: r.source_url,
