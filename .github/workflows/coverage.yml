@@ -19,7 +19,7 @@ jobs:
           rustup update
         shell: bash
       
-      - uses: ikalnytskyi/action-setup-postgres@v4
+      - uses: cycle-five/action-setup-postgres@v5
         with:
           username: postgres
           password: mysecretpassword
