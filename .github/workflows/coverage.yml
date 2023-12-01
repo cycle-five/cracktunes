@@ -9,6 +9,14 @@ jobs:
       image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
     steps:
+      - uses: cycle-five/action-setup-postgres@v5
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+        id: postgres
+
       - name: Checkout repository
         uses: actions/checkout@v4
       
@@ -19,14 +27,6 @@ jobs:
           rustup update
         shell: bash
       
-      - uses: cycle-five/action-setup-postgres@v5
-        with:
-          username: postgres
-          password: mysecretpassword
-          database: postgres
-          port: 5432
-        id: postgres
-
       - name: Generate code coverage
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
