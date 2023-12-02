@@ -89,6 +89,7 @@ pub use unmute::*;
         "set_all_log_channel",
         "set_prefix",
         "set_welcome_settings",
+        "set_auto_role",
         "unban",
         "unmute",
     ),

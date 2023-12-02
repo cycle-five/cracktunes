@@ -110,7 +110,7 @@ impl LogSettings {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
@@ -353,12 +353,46 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_welcome_settings(&mut self, channel_id: u64, message: &str) -> &mut Self {
+    pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
+        self.welcome_settings = Some(welcome_settings);
+        self
+    }
+
+    pub fn set_welcome_settings2(
+        &mut self,
+        channel_id: u64,
+        auto_role: Option<u64>,
+        message: &str,
+    ) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
-            auto_role: None,
+            auto_role,
         });
+        self
+    }
+
+    pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
+        self.welcome_settings = Some(WelcomeSettings {
+            channel_id: Some(channel_id),
+            message: Some(message.to_string()),
+            auto_role: self
+                .welcome_settings
+                .clone()
+                .map(|x| x.auto_role)
+                .unwrap_or_default(),
+        });
+        self
+    }
+
+    pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
+        if let Some(welcome_settings) = &mut self.welcome_settings {
+            welcome_settings.auto_role = auto_role;
+        } else {
+            let mut welcome_settings = WelcomeSettings::default();
+            welcome_settings.auto_role = auto_role;
+            self.welcome_settings = Some(welcome_settings);
+        }
         self
     }
 
@@ -371,12 +405,6 @@ impl GuildSettings {
             join_leave_log_channel: Some(join_leave_log_channel),
             voice_log_channel: None,
         });
-    }
-
-    pub fn set_auto_role(&mut self, auto_role: u64) {
-        if let Some(welcome_settings) = &mut self.welcome_settings {
-            welcome_settings.auto_role = Some(auto_role);
-        }
     }
 
     pub fn set_prefix(&mut self, prefix: &str) {
