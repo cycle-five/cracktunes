@@ -56,7 +56,8 @@ pub use set_all_log_channel_data::*;
 pub use set_all_log_channel_old_data::*;
 pub use set_idle_timeout::*;
 pub use set_prefix::*;
-pub use set_welcome_settings::*;
+pub use set_welcome_settings::set_auto_role;
+pub use set_welcome_settings::set_welcome_settings;
 pub use unban::*;
 pub use unmute::*;
 
