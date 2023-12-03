@@ -5,33 +5,34 @@ jobs:
   test:
     name: coverage
     runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
+    # container:
+    #   image: xd009642/tarpaulin:develop-nightly
+    #   options: --security-opt seccomp=unconfined
     steps:
-      - uses: cycle-five/action-setup-postgres@v5
+      - name: Repository Checkout
+        uses: actions/checkout@v4
+
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup default nightly
+          rustup update
+        shell: bash
+      
+      - uses: ikalnytskyi/action-setup-postgres@v4
         with:
           username: postgres
           password: mysecretpassword
           database: postgres
           port: 5432
         id: postgres
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: "Install Rust"
-        run: |
-          rustup toolchain install nightly --profile minimal --no-self-update
-          rustup default nightly 
-          rustup update
-        shell: bash
       
       - name: Generate code coverage
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
         run: |
-          apt-get update && apt-get install -y cmake
+          sudo apt-get update && sudo apt-get install -y cmake
+          cargo install cargo-tarpaulin
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
 
       - name: Upload to codecov.io

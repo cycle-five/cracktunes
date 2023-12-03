@@ -95,6 +95,7 @@ pub async fn poise_framework(
         commands: vec![
             // admin commands
             commands::admin(),
+            commands::settings(),
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),

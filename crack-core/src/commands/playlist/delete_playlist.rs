@@ -3,6 +3,8 @@ use crate::{
     Context, Error,
 };
 
+/// Deletes a playlist
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i32) -> Result<(), Error> {
     // Assuming you have a way to fetch the user_id of the command issuer
