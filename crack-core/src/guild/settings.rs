@@ -389,8 +389,10 @@ impl GuildSettings {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
         } else {
-            let mut welcome_settings = WelcomeSettings::default();
-            welcome_settings.auto_role = auto_role;
+            let welcome_settings = WelcomeSettings {
+                auto_role,
+                ..Default::default()
+            };
             self.welcome_settings = Some(welcome_settings);
         }
         self
