@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crack_core::db::playlist::{Playlist, PlaylistTrack};
+    use crack_core::db::{
+        playlist::{Playlist, PlaylistTrack},
+        Metadata,
+    };
 
     #[cfg(test)]
     use mockall::automock;
@@ -10,6 +13,7 @@ mod tests {
     #[cfg_attr(test, automock)]
     #[async_trait]
     pub trait Database {
+        async fn create_metadata(&self, in_metadata: Metadata) -> Result<Metadata, sqlx::Error>;
         async fn create_playlist(&self, name: &str, user_id: i64) -> Result<Playlist, sqlx::Error>;
         // other database functions
         async fn get_playlist_by_id(&self, playlist_id: i32) -> Result<Playlist, sqlx::Error>;
@@ -168,5 +172,20 @@ mod tests {
             .await
             .expect("Failed to get tracks");
         assert_eq!(tracks.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_create_metadata() {
+        let metadata = Metadata::default();
+        let mut mock_db = MockDatabase::new();
+        mock_db
+            .expect_create_metadata()
+            .returning(|_| Ok(Metadata::default()));
+
+        let metadata_out = mock_db
+            .create_metadata(metadata.clone())
+            .await
+            .expect("Failed to create metadata");
+        assert_eq!(metadata_out.id, metadata.id);
     }
 }

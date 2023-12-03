@@ -26,6 +26,7 @@ pub struct PlaylistTrack {
     pub channel_id: Option<i64>,
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct Metadata {
     pub id: i32,
     pub track: Option<String>,
