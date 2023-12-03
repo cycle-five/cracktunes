@@ -1,14 +1,16 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{create_response_poise_text, get_track_metadata},
+    utils::{get_track_metadata, send_response_poise_text},
     Context, Error,
 };
+use serenity::all::Message;
 use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;
 use tokio::sync::MutexGuard;
 
 /// Skip the current track, or a number of tracks.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn skip(
     ctx: Context<'_>,
@@ -19,7 +21,7 @@ pub async fn skip(
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            // create_response_poise_text(&ctx, CrackedMessage::NotInVoiceChannel).await?;
+            // send_response_poise_text(&ctx, CrackedMessage::NotInVoiceChannel).await?;
             tracing::warn!(
                 "Not in voice channel: manager.get({}) returned None",
                 guild_id
@@ -42,29 +44,23 @@ pub async fn skip(
     });
 
     force_skip_top_track(&handler).await?;
-    create_skip_response_poise(ctx, &handler, tracks_to_skip).await
+    let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
 
-pub async fn create_skip_response_poise(
-    ctx: Context<'_>,
-    handler: &MutexGuard<'_, Call>,
-    tracks_to_skip: usize,
-) -> Result<(), Error> {
-    //ctx.defer().await?;
-    //let mut interaction = get_interaction(ctx).unwrap();
-
-    create_skip_response(ctx, handler, tracks_to_skip).await
-}
-
+/// Send the response to discord for skipping a track.
+// Why don't we need to defer here?
+#[cfg(not(tarpaulin_include))]
 pub async fn create_skip_response(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
-            create_response_poise_text(
+            send_response_poise_text(
                 ctx,
                 CrackedMessage::SkipTo {
                     title: metadata.title.as_ref().unwrap().to_owned(),
@@ -75,14 +71,16 @@ pub async fn create_skip_response(
         }
         None => {
             if tracks_to_skip > 1 {
-                create_response_poise_text(ctx, CrackedMessage::SkipAll).await
+                send_response_poise_text(ctx, CrackedMessage::SkipAll).await
             } else {
-                create_response_poise_text(ctx, CrackedMessage::Skip).await
+                send_response_poise_text(ctx, CrackedMessage::Skip).await
             }
         }
     }
 }
 
+/// Do the actual skipping of the top track.
+#[cfg(not(tarpaulin_include))]
 pub async fn force_skip_top_track(
     handler: &MutexGuard<'_, Call>,
 ) -> Result<Vec<TrackHandle>, CrackedError> {

@@ -1,6 +1,6 @@
 use crack_core::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    Error,
 };
 use reqwest::Url;
 use serde::Deserialize;
@@ -31,7 +31,7 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let message = format_scan_result(&scan_result);
 
     // Send the response to the user
-    create_response_poise(ctx, CrackedMessage::ScanResult { result: message }).await
+    send_response_poise(ctx, CrackedMessage::ScanResult { result: message }).await
 
     //Ok(())
 }

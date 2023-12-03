@@ -2,11 +2,12 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    utils::create_response_poise,
+    utils::send_response_poise,
     Context, Error,
 };
 
 /// Clear the queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
@@ -26,7 +27,7 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    create_response_poise(ctx, CrackedMessage::Clear).await?;
+    send_response_poise(ctx, CrackedMessage::Clear).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

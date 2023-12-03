@@ -1,6 +1,5 @@
-use crate::guild::settings::GuildSettingsMap;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -13,24 +12,23 @@ pub async fn set_prefix(
     let guild_id = ctx.guild_id().unwrap();
     ctx.data()
         .guild_settings_map
-        .lock()
-        .unwrap()
-        .entry(guild_id)
-        .and_modify(|e| {
-            e.prefix = prefix.clone();
-            e.prefix_up = prefix.to_uppercase();
-        });
-    ctx.serenity_context()
-        .data
         .write()
-        .await
-        .get_mut::<GuildSettingsMap>()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {
             e.prefix = prefix.clone();
-            e.prefix_up = prefix.to_uppercase();
         });
+    // ctx.serenity_context()
+    //     .data
+    //     .write()
+    //     .await
+    //     .get_mut::<GuildSettingsMap>()
+    //     .unwrap()
+    //     .entry(guild_id)
+    //     .and_modify(|e| {
+    //         e.prefix = prefix.clone();
+    //         e.prefix_up = prefix.to_uppercase();
+    //     });
     // let _entry = &data
     //     .get_mut::<GuildSettingsMap>()
     //     .unwrap()
@@ -45,7 +43,7 @@ pub async fn set_prefix(
 
     // let _res = settings.map(|s| s.save()).unwrap();
 
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Prefix set to {}", prefix)),
     )

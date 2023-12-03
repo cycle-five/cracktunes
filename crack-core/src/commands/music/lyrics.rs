@@ -1,3 +1,4 @@
+use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
 
 use crate::{
@@ -17,6 +18,7 @@ impl LyricFinderClient for lyric_finder::Client {
 }
 
 /// Search for song lyrics.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn lyrics(
     ctx: Context<'_>,
@@ -63,12 +65,12 @@ pub async fn do_lyric_query(
     query: String,
 ) -> Result<(String, String, String), Error> {
     let result = match client.get_lyric(&query).await {
-        Ok(result) => result,
+        Ok(result) => Ok::<LyricResult, Error>(result),
         Err(e) => {
             tracing::error!("lyric search failed: {}", e);
-            return Err(CrackedError::Anyhow(e).into());
+            Err(CrackedError::Anyhow(e).into())
         }
-    };
+    }?;
     let (track, artists, lyric) = match result {
         lyric_finder::LyricResult::Some {
             track,

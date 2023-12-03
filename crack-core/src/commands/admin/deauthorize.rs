@@ -1,4 +1,3 @@
-use crate::errors::CrackedError;
 use crate::utils::check_reply;
 use crate::Context;
 use crate::Error;
@@ -15,23 +14,24 @@ pub async fn deauthorize(
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
-    let mut guild_settings = data
+    // FIXME: ASDFASDF
+    let _res = data
         .guild_settings_map
-        .lock()
+        .write()
         .unwrap()
-        .get_mut(&guild_id)
-        .expect("Failed to get guild settings map")
-        .clone();
-    let res = guild_settings.authorized_users.remove(&id);
-    guild_settings.save()?;
+        .entry(guild_id)
+        .and_modify(|settings| {
+            settings.authorized_users.remove(&id);
+        })
+        .key();
 
-    if res {
-        check_reply(
-            ctx.send(CreateReply::new().content("User deauthorized.").reply(true))
-                .await,
-        );
-        Ok(())
-    } else {
-        Err(CrackedError::UnauthorizedUser.into())
-    }
+    //if res {
+    check_reply(
+        ctx.send(CreateReply::new().content("User deauthorized.").reply(true))
+            .await,
+    );
+    Ok(())
+    // } else {
+    //     Err(CrackedError::UnauthorizedUser.into())
+    // }
 }

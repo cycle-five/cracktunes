@@ -5,7 +5,7 @@
 # volume = 1.0
 # prefix = "r!"
 # owners = [ ]
-# database_url = "sqlite:///data/crackedmusic.db"
+# database_url = "postgres:///data/crackedmusic.db"
 
 # [[cam_kick]]
 # cammed_down_timeout = 0

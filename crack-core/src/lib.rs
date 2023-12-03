@@ -1,30 +1,34 @@
 use crate::guild::settings::DEFAULT_PREFIX;
 use crate::handlers::event_log::LogEntry;
+use chrono::DateTime;
+use chrono::Utc;
 use errors::CrackedError;
 use guild::settings::DEFAULT_DB_URL;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
+use serenity::all::Message;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::RwLock;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     sync::{Arc, Mutex},
 };
 
 pub mod commands;
 pub mod connection;
+pub mod db;
 pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
 pub mod messaging;
 pub mod metrics;
-pub mod playlist;
 pub mod sources;
 pub mod utils;
 
@@ -223,7 +227,6 @@ impl PhoneCodeData {
         // Save to local file
         fs::create_dir_all(Path::new(file_name).parent().unwrap()).map_err(CrackedError::IO)?;
         let mut file = fs::File::create(file_name).map_err(CrackedError::IO)?;
-        //.map_err(|_| CrackedError::Other("Failed to create file"))?;
         file.write_all(content.as_bytes())
             .map_err(CrackedError::IO)?;
 
@@ -245,13 +248,16 @@ pub struct DataInner {
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    //pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
-    pub database_pool: Option<sqlx::SqlitePool>,
+    pub database_pool: Option<sqlx::PgPool>,
 }
 
 #[derive(Clone, Debug)]
@@ -338,8 +344,9 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            guild_settings_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
         }
@@ -352,7 +359,7 @@ impl Default for Data {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
 impl std::ops::Deref for Data {
@@ -363,8 +370,32 @@ impl std::ops::Deref for Data {
     }
 }
 
-// impl std::ops::DerefMut for Data {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.0
-//     }
-// }
+impl Data {
+    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        let now = chrono::Utc::now();
+        self.add_msg_to_cache_ts(guild_id, now, msg)
+    }
+    /// Add msg to the cache with a timestamp.
+    pub fn add_msg_to_cache_ts(
+        &self,
+        guild_id: GuildId,
+        ts: DateTime<Utc>,
+        msg: Message,
+    ) -> Option<Message> {
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        guild_msg_cache_ordered
+            .entry(guild_id)
+            .or_default()
+            .time_ordered_messages
+            .insert(ts, msg)
+    }
+
+    pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        guild_msg_cache_ordered
+            .get_mut(&guild_id)
+            .unwrap()
+            .time_ordered_messages
+            .remove(&ts)
+    }
+}

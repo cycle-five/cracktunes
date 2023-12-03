@@ -22,7 +22,7 @@ pub use ip::*;
 // pub use whois::*;
 
 pub use crack_core::{
-    messaging::message::CrackedMessage, utils::create_response_poise, Context, Error, Result,
+    messaging::message::CrackedMessage, utils::send_response_poise, Context, Error, Result,
 };
 
 /// Osint Commands

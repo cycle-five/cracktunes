@@ -2,7 +2,7 @@ use serenity::builder::CreateChannel;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::create_response_poise;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
@@ -26,14 +26,14 @@ pub async fn create_voice_channel(
                 .await
             {
                 // Handle error, send error message
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::Other(format!("Failed to create channel: {}", e)),
                 )
                 .await?;
             } else {
                 // Send success message
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::VoiceChannelCreated {
                         channel_name: channel_name.clone(),

@@ -1,22 +1,22 @@
 use serenity::all::{Role, RoleId};
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    Error,
 };
 
 /// Delete role.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_role(
     ctx: Context<'_>,
-    #[rest]
-    #[description = "Role to delete."]
-    mut role: Role,
+    #[description = "Role to delete."] mut role: Role,
 ) -> Result<(), Error> {
     role.delete(&ctx).await.map_err(Into::into)
 }
 
 /// Delete role by id
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_role_by_id(
     ctx: Context<'_>,
@@ -38,14 +38,14 @@ pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<
             if let Some(mut role) = role {
                 if let Err(e) = role.1.delete(&ctx).await {
                     // Handle error, send error message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to delete role: {}", e)),
                     )
                     .await?;
                 } else {
                     // Send success message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::RoleDeleted {
                             role_name: role.1.name.clone(),
@@ -55,7 +55,7 @@ pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<
                     .await?;
                 }
             } else {
-                create_response_poise(ctx, CrackedMessage::Other("Role not found.".to_string()))
+                send_response_poise(ctx, CrackedMessage::Other("Role not found.".to_string()))
                     .await?;
             }
         }

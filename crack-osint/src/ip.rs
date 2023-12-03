@@ -1,4 +1,4 @@
-use crate::{create_response_poise, Context, CrackedMessage, Error};
+use crate::{send_response_poise, Context, CrackedMessage, Error};
 use ipinfo::{IpDetails, IpInfo, IpInfoConfig};
 use std::net::IpAddr;
 
@@ -36,12 +36,12 @@ async fn fetch_ip_info(ip_address: &str) -> Result<IpDetails, Error> {
 }
 
 async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
-    create_response_poise(ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
+    send_response_poise(ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
     Ok(())
 }
 
 async fn send_ip_details_response(ctx: Context<'_>, ip_details: &IpDetails) -> Result<(), Error> {
-    create_response_poise(
+    send_response_poise(
         ctx,
         CrackedMessage::IPDetails(format!("IP Details: {:?}", ip_details)),
     )
@@ -61,12 +61,12 @@ async fn send_ip_details_response(ctx: Context<'_>, ip_details: &IpDetails) -> R
 // pub async fn ip(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
 //     // Validate the IP address
 //     if !is_valid_ip(&ip_address) {
-//         create_response_poise(ctx, CrackedMessage::InvalidIP).await?;
+//         send_response_poise(ctx, CrackedMessage::InvalidIP).await?;
 //         return Ok(());
 //     }
 
 //     let ip_info = fetch_ip_info(&ip_address).await;
-//     create_response_poise(ctx, CrackedMessage::IPInformation(ip_info)).await?;
+//     send_response_poise(ctx, CrackedMessage::IPInformation(ip_info)).await?;
 
 //     Ok(())
 // }

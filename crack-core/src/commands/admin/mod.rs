@@ -7,23 +7,21 @@ pub mod create_text_channel;
 pub mod create_voice_channel;
 pub mod deafen;
 pub mod deauthorize;
+pub mod debug;
+pub mod defend;
 pub mod delete_channel;
 pub mod delete_role;
-pub mod get_settings;
+pub mod invite_tracker;
 pub mod kick;
+pub mod message_cache;
+pub mod move_users;
 pub mod mute;
-pub mod print_settings;
-pub mod set_all_log_channel;
-pub mod set_all_log_channel_data;
-pub mod set_all_log_channel_old_data;
-pub mod set_prefix;
-pub mod set_welcome_settings;
 pub mod unban;
 pub mod unmute;
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::create_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    Error,
 };
 pub use audit_logs::*;
 pub use authorize::*;
@@ -34,17 +32,15 @@ pub use create_text_channel::*;
 pub use create_voice_channel::*;
 pub use deafen::*;
 pub use deauthorize::*;
+pub use debug::*;
+pub use defend::*;
 pub use delete_channel::*;
 pub use delete_role::*;
-pub use get_settings::*;
+pub use invite_tracker::track_invites;
 pub use kick::*;
+pub use message_cache::*;
+pub use move_users::*;
 pub use mute::*;
-pub use print_settings::*;
-pub use set_all_log_channel::*;
-pub use set_all_log_channel_data::*;
-pub use set_all_log_channel_old_data::*;
-pub use set_prefix::*;
-pub use set_welcome_settings::*;
 pub use unban::*;
 pub use unmute::*;
 
@@ -61,25 +57,27 @@ pub use unmute::*;
         "create_text_channel",
         "create_voice_channel",
         "deafen",
+        "defend",
         "deauthorize",
         "delete_channel",
         "delete_role",
         "delete_role_by_id",
-        "get_settings",
+        "track_invites",
         "kick",
         "mute",
-        "print_settings",
-        "set_all_log_channel",
-        "set_prefix",
-        "set_welcome_settings",
+        "message_cache",
+        "move_users_to",
         "unban",
         "unmute",
     ),
     ephemeral,
     owners_only
 )]
-pub async fn admin(_ctx: Context<'_>) -> Result<(), Error> {
+#[cfg(not(tarpaulin_include))]
+pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
+
+    ctx.say("You found the admin command").await?;
 
     Ok(())
 }
@@ -98,21 +96,21 @@ pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<
             if let Some(category) = category {
                 if let Err(e) = category.1.delete(&ctx).await {
                     // Handle error, send error message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to delete category: {}", e)),
                     )
                     .await?;
                 } else {
                     // Send success message
-                    create_response_poise(
+                    send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Category deleted: {}", category_name)),
                     )
                     .await?;
                 }
             } else {
-                create_response_poise(
+                send_response_poise(
                     ctx,
                     CrackedMessage::Other("Category not found.".to_string()),
                 )

@@ -1,4 +1,4 @@
-use crate::{create_response_poise, Context, CrackedMessage, Error};
+use crate::{send_response_poise, Context, CrackedMessage, Error};
 use reqwest::Client;
 use sha1::{Digest, Sha1};
 
@@ -30,7 +30,7 @@ pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> 
         CrackedMessage::PasswordSafe
     };
 
-    create_response_poise(ctx, message).await?;
+    send_response_poise(ctx, message).await?;
 
     Ok(())
 }

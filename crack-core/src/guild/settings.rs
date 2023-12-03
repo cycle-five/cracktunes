@@ -6,6 +6,7 @@ use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
+use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -24,9 +25,13 @@ pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_DB_URL: &str = "sqlite:///data/crackedmusic.db";
+pub(crate) const DEFAULT_DB_URL: &str = "postgres:///data/crackedmusic.db";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
+pub(crate) const DEFAULT_PREMIUM: bool = false;
+pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
+    "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", "m/", "M/",
+];
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -105,7 +110,7 @@ impl LogSettings {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
@@ -117,7 +122,8 @@ pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
-    pub prefix_up: String,
+    #[serde(default = "premium_default")]
+    pub premium: bool,
     pub autopause: bool,
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -132,21 +138,34 @@ pub struct GuildSettings {
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
     pub log_settings: Option<LogSettings>,
+    #[serde(default = "additional_prefixes_default")]
+    pub additional_prefixes: Vec<String>,
+}
+
+fn additional_prefixes_default() -> Vec<String> {
+    Vec::<String>::new()
 }
 
 fn volume_default() -> f32 {
     DEFAULT_VOLUME_LEVEL
 }
 
+fn premium_default() -> bool {
+    DEFAULT_PREMIUM
+}
+
 impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, prefix_up: {}, autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
+            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, premium: {}, 
+                autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, 
+                authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, 
+                self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
             self.guild_id,
             self.guild_name,
             self.prefix,
-            self.prefix_up,
+            self.premium,
             self.autopause,
             self.allow_all_domains.unwrap_or(true),
             self.allowed_domains,
@@ -185,7 +204,7 @@ impl GuildSettings {
             guild_id,
             guild_name,
             prefix: my_prefix.clone(),
-            prefix_up: my_prefix.to_string().to_ascii_uppercase(),
+            premium: DEFAULT_PREMIUM,
             autopause: false,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
@@ -198,7 +217,12 @@ impl GuildSettings {
             timeout: DEFAULT_IDLE_TIMEOUT,
             welcome_settings: None,
             log_settings: None,
+            additional_prefixes: Vec::new(),
         }
+    }
+
+    pub fn get_prefix_up(&self) -> String {
+        self.prefix.to_ascii_uppercase()
     }
 
     pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
@@ -329,12 +353,48 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_welcome_settings(&mut self, channel_id: u64, message: &str) -> &mut Self {
+    pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
+        self.welcome_settings = Some(welcome_settings);
+        self
+    }
+
+    pub fn set_welcome_settings2(
+        &mut self,
+        channel_id: u64,
+        auto_role: Option<u64>,
+        message: &str,
+    ) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
-            auto_role: None,
+            auto_role,
         });
+        self
+    }
+
+    pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
+        self.welcome_settings = Some(WelcomeSettings {
+            channel_id: Some(channel_id),
+            message: Some(message.to_string()),
+            auto_role: self
+                .welcome_settings
+                .clone()
+                .map(|x| x.auto_role)
+                .unwrap_or_default(),
+        });
+        self
+    }
+
+    pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
+        if let Some(welcome_settings) = &mut self.welcome_settings {
+            welcome_settings.auto_role = auto_role;
+        } else {
+            let welcome_settings = WelcomeSettings {
+                auto_role,
+                ..Default::default()
+            };
+            self.welcome_settings = Some(welcome_settings);
+        }
         self
     }
 
@@ -349,15 +409,18 @@ impl GuildSettings {
         });
     }
 
-    pub fn set_auto_role(&mut self, auto_role: u64) {
-        if let Some(welcome_settings) = &mut self.welcome_settings {
-            welcome_settings.auto_role = Some(auto_role);
-        }
-    }
-
     pub fn set_prefix(&mut self, prefix: &str) {
         self.prefix = prefix.to_string();
-        self.prefix_up = prefix.to_string().to_ascii_uppercase();
+        // self.prefix_up = self.prefix.to_string().to_ascii_uppercase();
+    }
+
+    pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
+        self.additional_prefixes = ADDITIONAL_PREFIXES
+            .to_vec()
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
+        self
     }
 
     pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
@@ -579,6 +642,13 @@ pub struct GuildSettingsMap;
 
 impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
+}
+
+#[derive(Default)]
+pub struct AtomicU16Key;
+
+impl TypeMapKey for AtomicU16Key {
+    type Value = Arc<atomic::AtomicU16>;
 }
 
 // impl GuildSettingsMap {

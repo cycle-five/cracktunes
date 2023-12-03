@@ -1,20 +1,20 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
+use super::event_log_impl::*;
+
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, utils::create_log_embed, Data, Error,
+    errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
+    utils::send_log_embed_thumb, Data, Error,
 };
 use colored::Colorize;
 use poise::{
-    serenity_prelude::{ChannelId, ClientStatus, FullEvent, GuildId, Member, Presence},
+    serenity_prelude::{ChannelId, FullEvent, GuildId},
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::http::Http;
-
-use super::serenity::voice_state_diff_str;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -41,7 +41,7 @@ pub fn get_log_channel(
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.lock().unwrap().clone();
+    let guild_settings_map = data.guild_settings_map.read().unwrap().clone();
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -49,12 +49,12 @@ pub fn get_log_channel(
 }
 
 pub async fn get_channel_id(
-    guild_settings_map: &Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+    guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
     let x = {
-        let guild_settings_map = guild_settings_map.lock().unwrap().clone();
+        let guild_settings_map = guild_settings_map.read().unwrap().clone();
 
         let guild_settings = guild_settings_map
             .get(guild_id)
@@ -86,284 +86,6 @@ pub async fn get_channel_id(
     x
 }
 
-pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
-    channel_id: ChannelId,
-    _http: &Arc<Http>,
-    log_data: T,
-) -> Result<(), Error> {
-    tracing::info!(
-        "{}",
-        format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
-    );
-    Ok(())
-}
-
-pub async fn log_guild_member_removal(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    log_data: &(&GuildId, &serenity::model::prelude::User, &Option<Member>),
-) -> Result<serenity::model::prelude::Message, Error> {
-    let &(_guild_id, user, member_data_if_available) = log_data;
-    let title = format!("Member Left: {}", user.name);
-    let description = format!(
-        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-        user.name,
-        user.id,
-        user.created_at(),
-        member_data_if_available.clone().and_then(|m| m.joined_at)
-    );
-    let avatar_url = user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-pub async fn log_guild_member_addition(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    new_member: &Member,
-) -> Result<serenity::model::prelude::Message, Error> {
-    let title = format!("Member Joined: {}", new_member.user.name);
-    let description = format!(
-        "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
-        new_member.user.name,
-        new_member.user.id,
-        new_member.user.created_at(),
-        new_member.joined_at
-    );
-    let avatar_url = new_member.user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-struct PresencePrinter {
-    presence: Option<Presence>,
-}
-
-impl std::fmt::Display for PresencePrinter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(presence) = self.presence.clone() {
-            let activities_str = presence
-                .activities
-                .iter()
-                .map(|activity| format!("{}\n", ActivityPrinter { activity }))
-                .collect::<Vec<_>>()
-                .join(", ");
-            write!(
-                f,
-                "Status: {}\nClientStatus: {}\nActivities: {}\nGuildId: {}\nUser: {}\n",
-                presence.status.name(),
-                presence
-                    .client_status
-                    .map(|x| ClientStatusPrinter {
-                        client_status: Some(x)
-                    }
-                    .to_string())
-                    .unwrap_or_default(),
-                activities_str,
-                presence.guild_id.map(|x| x.to_string()).unwrap_or_default(),
-                PresenceUserPrinter {
-                    user: presence.user
-                }
-            )
-        } else {
-            write!(f, "None")
-        }
-    }
-}
-
-struct PresenceUserPrinter {
-    user: serenity::model::prelude::PresenceUser,
-}
-
-impl std::fmt::Display for PresenceUserPrinter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-                f,
-                "User: {:?}\nID: {:?}\nDiscriminator: {:?}\nAvatar: {:?}\nBot: {:?}\nMFA Enabled: {:?}\nVerified: {:?}\nEmail: {:?}\nPublic Flags: {:?}\n",
-                self.user.name,
-                self.user.id,
-                self.user.discriminator,
-                self.user.avatar,
-                self.user.bot,
-                self.user.mfa_enabled,
-                self.user.verified,
-                self.user.email,
-                self.user.public_flags,
-            )
-    }
-}
-
-struct ActivityPrinter<'a> {
-    activity: &'a serenity::model::prelude::Activity,
-}
-
-impl std::fmt::Display for ActivityPrinter<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let activity = self.activity.clone();
-        let mut activity_str = String::new();
-        if let Some(url) = activity.url {
-            activity_str.push_str(&format!("URL: {}\n", url));
-        }
-        if let Some(application_id) = activity.application_id {
-            activity_str.push_str(&format!("Application ID: {}\n", application_id));
-        }
-        if let Some(timestamps) = activity.timestamps {
-            activity_str.push_str(&format!("Timestamps: {:?}\n", timestamps));
-        }
-        if let Some(details) = activity.details {
-            activity_str.push_str(&format!("Details: {}\n", details));
-        }
-        if let Some(state) = activity.state {
-            activity_str.push_str(&format!("State: {}\n", state));
-        }
-        if let Some(emoji) = activity.emoji {
-            activity_str.push_str(&format!("Emoji: {:?}\n", emoji));
-        }
-        if let Some(party) = activity.party {
-            activity_str.push_str(&format!("Party: {:?}\n", party));
-        }
-        if let Some(assets) = activity.assets {
-            activity_str.push_str(&format!("Assets: {:?}\n", assets));
-        }
-        if let Some(secrets) = activity.secrets {
-            activity_str.push_str(&format!("Secrets: {:?}\n", secrets));
-        }
-        if let Some(instance) = activity.instance {
-            activity_str.push_str(&format!("Instance: {:?}\n", instance));
-        }
-        if let Some(flags) = activity.flags {
-            activity_str.push_str(&format!("Flags: {:?}\n", flags));
-        }
-        write!(f, "{}", activity_str)
-    }
-}
-struct ClientStatusPrinter {
-    client_status: Option<ClientStatus>,
-}
-
-impl std::fmt::Display for ClientStatusPrinter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(client_status) = self.client_status.clone() {
-            let desktop = client_status.desktop.unwrap_or_default();
-            let mobile = client_status.mobile.unwrap_or_default();
-            let web = client_status.web.unwrap_or_default();
-            write!(
-                f,
-                "Desktop: {}\nMobile: {}\nWeb: {}",
-                desktop.name(),
-                mobile.name(),
-                web.name()
-            )
-        } else {
-            write!(f, "None")
-        }
-    }
-}
-
-pub async fn log_presence_update(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    new_data: &Presence,
-) -> Result<serenity::model::prelude::Message, Error> {
-    let presence_str = PresencePrinter {
-        presence: Some(new_data.clone()),
-    }
-    .to_string();
-
-    let title = format!(
-        "Presence Update: {}",
-        new_data.user.name.clone().unwrap_or_default()
-    );
-    let description = presence_str;
-    let avatar_url = format!(
-        "https://cdn.discordapp.com/{user_id}/{user_avatar}.png",
-        user_id = new_data.user.id,
-        user_avatar = new_data
-            .user
-            .avatar
-            .map(|x| x.to_string())
-            .unwrap_or_default(),
-    );
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-pub async fn log_voice_state_update(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    log_data: &(
-        &Option<serenity::model::prelude::VoiceState>,
-        &serenity::model::prelude::VoiceState,
-    ),
-) -> Result<serenity::model::prelude::Message, Error> {
-    let &(old, new) = log_data;
-    let title = format!("Voice State Update: {}", new.user_id);
-    let description = voice_state_diff_str(old, new);
-    // let description = format!("FIXME: {old:?} / {new:?}"); // voice_state_diff_str(old, new);
-
-    let avatar_url = new
-        .member
-        .clone()
-        .and_then(|x| x.user.avatar_url())
-        .unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-pub async fn log_typing_start(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    event: &serenity::model::prelude::TypingStartEvent,
-) -> Result<serenity::model::prelude::Message, Error> {
-    let user = event.user_id.to_user(http.clone()).await?;
-    let channel_name = http
-        .get_channel(channel_id)
-        .await
-        .ok()
-        .map(|x| x.to_string())
-        .unwrap_or_default();
-    let guild = event
-        .guild_id
-        .unwrap_or_default()
-        .to_partial_guild(http.clone())
-        .await?
-        .name;
-    tracing::info!(
-        "{}{} / {} / {} / {}",
-        "TypingStart: ".bright_green(),
-        user.name.bright_yellow(),
-        user.id.to_string().bright_yellow(),
-        channel_name.bright_yellow(),
-        guild.bright_yellow(),
-    );
-    let title = format!("Typing Start: {}", event.user_id);
-    let description = format!(
-        "User: {}\nID: {}\nChannel: {}",
-        user.name, event.user_id, event.channel_id
-    );
-    let avatar_url = user.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-pub async fn log_message(
-    channel_id: ChannelId,
-    http: &Arc<Http>,
-    new_message: &serenity::model::prelude::Message,
-) -> Result<serenity::model::prelude::Message, Error> {
-    let title = format!("Message: {}", new_message.author.name);
-    let description = format!(
-        "User: {}\nID: {}\nChannel: {}\nMessage: {}",
-        new_message.author.name, new_message.author.id, new_message.channel_id, new_message.content
-    );
-    let avatar_url = new_message.author.avatar_url().unwrap_or_default();
-    create_log_embed(&channel_id, http, &title, &description, &avatar_url).await
-}
-
-macro_rules! log_event {
-    // #[cfg(feature="no_log")]
-    ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
-        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $http, $log_data).await?;
-        $event_log.write_log_obj($event_name, $log_data)
-    }};
-}
-
 pub async fn handle_event(
     event_in: &FullEvent,
     _framework: FrameworkContext<'_, Data, Error>,
@@ -392,9 +114,7 @@ pub async fn handle_event(
             let _ = new_data;
             Ok(())
         }
-        FullEvent::GuildMemberAddition {
-            ctx, new_member, ..
-        } => {
+        FullEvent::GuildMemberAddition { ctx, new_member } => {
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
@@ -426,19 +146,31 @@ pub async fn handle_event(
         }
         FullEvent::VoiceStateUpdate { ctx, old, new } => {
             let log_data = &(old, new);
-            log_event!(
+            log_event2!(
                 log_voice_state_update,
                 guild_settings,
                 event_in,
                 log_data,
                 &new.guild_id.unwrap(),
-                &ctx.http,
+                ctx,
                 event_log,
                 event_name
             )
         }
         FullEvent::Message { ctx, new_message } => {
-            if new_message.author.id == ctx.cache.current_user().id {
+            let guild_id = new_message.guild_id.unwrap();
+            if new_message.author.id == ctx.http.get_current_user().await?.id {
+                let now = chrono::Utc::now();
+                let _ = data_global
+                    .guild_cache_map
+                    .lock()
+                    .unwrap()
+                    .get_mut(&guild_id)
+                    .map(|x| x.time_ordered_messages.insert(now, new_message.clone()))
+                    .unwrap_or_default();
+            }
+
+            if new_message.author.bot {
                 return Ok(());
             }
             log_event!(
@@ -455,7 +187,7 @@ pub async fn handle_event(
         FullEvent::TypingStart { ctx, event } => {
             // let cache_http = ctx.http.clone()
             log_event!(
-                log_typing_start,
+                log_typing_start_noop,
                 guild_settings,
                 event_in,
                 event,
@@ -564,7 +296,11 @@ pub async fn handle_event(
             event_name
         ),
         FullEvent::ChannelUpdate { ctx, old, new } => {
-            let guild_id = new.clone().guild().map(|x| x.guild_id).unwrap_or_default();
+            let guild_id = new
+                .clone()
+                .guild(&ctx.cache)
+                .map(|x| x.id)
+                .unwrap_or_default();
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -698,37 +434,20 @@ pub async fn handle_event(
                 event_name
             )
         }
-        #[cfg(feature = "cache")]
-        FullEvent::GuildMemberUpdate {
-            old_if_available,
-            new,
-        } => {
-            let log_data = (old_if_available, new);
-            log_event!(
-                log_unimplemented_event,
-                guild_settings,
-                event_in,
-                &log_data,
-                &new.guild_id,
-                &ctx.http,
-                event_log,
-                event_name
-            )
-        }
-        #[cfg(not(feature = "cache"))]
         FullEvent::GuildMemberUpdate {
             ctx,
             old_if_available,
             new,
-            event: _,
+            event,
         } => {
-            let guild_settings = data_global.guild_settings_map.lock().unwrap().clone();
+            let _event = event;
+            let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
                 .map(|x| x.get_join_leave_log_channel())
                 .unwrap_or(None);
-
+            let id = new.user.id;
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
                 new.user.name,
@@ -736,6 +455,7 @@ pub async fn handle_event(
                 new.user.created_at(),
                 new.joined_at
             );
+
             let mut avatar_url = new.avatar_url().unwrap_or(
                 old_if_available
                     .clone()
@@ -752,6 +472,13 @@ pub async fn handle_event(
             let mut notes = "";
             let mut title: String = String::from("");
 
+            if let Some(old) = old_if_available {
+                if old.user.avatar.is_none() || old.user.avatar.unwrap() != new.user.avatar.unwrap()
+                {
+                    title = format!("Avatar Updated: {}", new.user.name);
+                }
+            }
+
             match (maybe_log_channel, old_if_available) {
                 (Some(_), Some(old)) => {
                     if old.pending && !new.pending {
@@ -765,7 +492,7 @@ pub async fn handle_event(
                     if old.pending && !new.pending {
                         notes = "Click Verify";
                         title = format!("Member Approved: {}", new.user.name);
-                    } else {
+                    } else if !title.is_empty() {
                         title = format!("Member Updated: {}", new.user.name);
                     };
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
@@ -780,8 +507,15 @@ pub async fn handle_event(
             }
             match maybe_log_channel {
                 Some(channel_id) => {
-                    create_log_embed(&channel_id, &ctx.http, &title, &description, &avatar_url)
-                        .await?;
+                    send_log_embed_thumb(
+                        &channel_id,
+                        &ctx.http,
+                        &id.to_string(),
+                        &title,
+                        &description,
+                        &avatar_url,
+                    )
+                    .await?;
                 }
                 None => {
                     tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
@@ -793,29 +527,28 @@ pub async fn handle_event(
             event_log.write_log_obj(event_name, chunk)
         }
         FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
-        #[cfg(feature = "cache")]
-        GuildRoleDelete {
-            guild_id,
-            removed_role_id,
-            removed_role_data_global_if_available,
-        } => event_log.write_log_obj(
-            event_name,
-            &(
-                guild_id,
-                removed_role_id,
-                removed_role_data_global_if_available,
-            ),
-        ),
-        #[cfg(not(feature = "cache"))]
         FullEvent::GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
-            ctx: _,
-        } => event_log.write_log_obj(
-            event_name,
-            &(guild_id, removed_role_id, removed_role_data_if_available),
-        ),
+            ctx,
+        } => {
+            let log_data = (guild_id, removed_role_id, removed_role_data_if_available);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+            // event_log.write_log_obj(
+            //     event_name,
+            //     &(guild_id, removed_role_id, removed_role_data_if_available),
+            // )
+        }
         #[cfg(feature = "cache")]
         FullEvent::GuildRoleUpdate {
             old_data_global_if_available,
@@ -825,8 +558,21 @@ pub async fn handle_event(
         FullEvent::GuildRoleUpdate {
             new,
             old_data_if_available,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, &(new, old_data_if_available)),
+            ctx,
+        } => {
+            let log_data = (old_data_if_available, new);
+            log_event!(
+                log_guild_role_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
+        // event_log.write_log_obj(event_name, &(new, old_data_if_available)),
         FullEvent::GuildScheduledEventCreate { event, ctx: _ } => {
             event_log.write_log_obj(event_name, event)
         }
@@ -910,8 +656,28 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
+            ctx,
+        } => {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false) {
+                return Ok(());
+            }
+            let log_data: (
+                &Option<serenity::model::prelude::Message>,
+                &Option<serenity::model::prelude::Message>,
+                &serenity::model::prelude::MessageUpdateEvent,
+            ) = (old_if_available, new, event);
+            log_event!(
+                log_message_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+            // event_log.write_log_obj(event_name, &(old_if_available, new, event))
+        }
         FullEvent::ReactionAdd {
             add_reaction,
             ctx: _,
@@ -1001,7 +767,6 @@ pub async fn handle_event(
         }
         _ => {
             tracing::info!("{}", event_in.snake_case_name().bright_green());
-            // event_log.write_log_obj(event_name, event_in);
             Ok(())
         }
     }

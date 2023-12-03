@@ -1,15 +1,17 @@
 use crate::{
-    guild::settings::{GuildSettings, GuildSettingsMap},
-    //handlers::track_end::update_queue_messages,
+    guild::{
+        operations::get_guilds,
+        settings::{GuildSettings, GuildSettingsMap},
+    },
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig,
-    CamKickConfig,
-    Data,
+    BotConfig, CamKickConfig, Data,
 };
 use ::serenity::{
+    all::Message,
     builder::{CreateEmbed, CreateMessage, EditMember},
     gateway::ActivityData,
 };
+use chrono::{DateTime, Utc};
 use colored::Colorize;
 use poise::serenity_prelude::{
     self as serenity, Channel, Error as SerenityError, Member, Mentionable, UserId,
@@ -23,6 +25,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     sync::{atomic::Ordering, Arc, Mutex},
+    time::SystemTime,
 };
 use tokio::time::{Duration, Instant};
 
@@ -93,11 +96,10 @@ impl EventHandler for SerenityHandler {
             new_member.to_string().white()
         );
         let guild_id = new_member.guild_id;
-        let guild_settings = {
-            let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
-            let guild_settings = guild_settings_map.get_mut(&guild_id);
-            guild_settings.cloned()
-        };
+        let guild_settings_map = self.data.guild_settings_map.read().unwrap().clone();
+        let guild_settings = guild_settings_map.get(&guild_id);
+        // let guild_settings = guild_settings_map.get_mut(&guild_id);
+        // guild_settings.cloned()
 
         let (_guild_settings, welcome) = match guild_settings {
             Some(guild_settings) => match guild_settings.clone().welcome_settings {
@@ -186,29 +188,27 @@ impl EventHandler for SerenityHandler {
             Some(guild_id) => guild_id,
             None => {
                 tracing::warn!("Non-gateway message received: {:?}", msg);
-                GuildId::new(0)
+                return;
             }
         };
 
-        if guild_id.get() != 0 {
-            let guild_name = {
-                let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
-                guild.name.clone()
-            };
-            let name = msg.author.name.clone();
-            // let guild_name = guild.name;
-            let content = msg.content.clone();
-            let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
+        let guild_name = {
+            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
+            guild.name.clone()
+        };
+        let name = msg.author.name.clone();
+        // let guild_name = guild.name;
+        let content = msg.content.clone();
+        let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
 
-            tracing::info!(
-                "Message: {} {} {} {}",
-                name.purple(),
-                guild_name.purple(),
-                channel_name.purple(),
-                content.purple(),
-            );
-            let _mm = MyMessage(msg);
-        }
+        tracing::info!(
+            "Message: {} {} {} {}",
+            name.purple(),
+            guild_name.purple(),
+            channel_name.purple(),
+            content.purple(),
+        );
+        let _mm = MyMessage(msg);
     }
 
     async fn voice_state_update(
@@ -230,7 +230,7 @@ impl EventHandler for SerenityHandler {
             let do_i_deafen = self
                 .data
                 .guild_settings_map
-                .lock()
+                .read()
                 .unwrap()
                 .get(&new.guild_id.unwrap())
                 .map(|x| x.self_deafen)
@@ -287,7 +287,7 @@ impl EventHandler for SerenityHandler {
         let num_inserted = {
             let lock = ctx.data.read().await;
             let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.lock().unwrap();
+            let mut data_write = self.data.guild_settings_map.write().unwrap();
 
             let mut x = 0;
             for (key, value) in guild_settings_map.clone().iter() {
@@ -326,6 +326,24 @@ impl EventHandler for SerenityHandler {
                     }
                 });
             }
+
+            let ctx2 = Arc::clone(&ctx);
+            let _data = self.data.clone();
+            tokio::spawn(async move {
+                loop {
+                    // We clone Context again here, because Arc is owned, so it moves to the
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let _guilds = get_guilds(ctx2.clone()).await;
+                    tracing::warn!("*Not* checking for old messages");
+                    // let _ = check_delete_old_messages(
+                    //     ctx2.clone(),
+                    //     &data,
+                    //     guilds,
+                    //     chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
+                    // )
+                    // .await;
+                }
+            });
 
             let ctx3 = Arc::clone(&ctx);
 
@@ -373,17 +391,9 @@ impl SerenityHandler {
 
     async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
-        // let mut data = ctx.data.write().await;
-        // let settings = match data.get_mut::<GuildSettingsMap>() {
-        //     Some(settings) => settings,
-        //     None => {
-        //         tracing::error!("Guild settings not found");
-        //         data.insert::<GuildSettingsMap>(HashMap::default());
-        //         data.get_mut::<GuildSettingsMap>().unwrap()
-        //     }
-        // };
+
         for guild in &ready.guilds {
             let guild_id = guild.id;
             let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
@@ -429,25 +439,14 @@ impl SerenityHandler {
         }
         tracing::error!("guild_settings_map");
         tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
-        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
-        // ret_map
     }
 
     async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.lock().unwrap();
+        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
-        // let mut data = ctx.data.write().await;
-        // let settings = match data.get_mut::<GuildSettingsMap>() {
-        //     Some(settings) => settings,
-        //     None => {
-        //         tracing::error!("Guild settings not found");
-        //         data.insert::<GuildSettingsMap>(HashMap::default());
-        //         data.get_mut::<GuildSettingsMap>().unwrap()
-        //     }
-        // };
+
         for guild_id in guilds {
-            // let guild_id = guild.id;
             let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
                 Some(guild_match) => guild_match,
                 None => {
@@ -494,8 +493,6 @@ impl SerenityHandler {
         }
         tracing::error!("guild_settings_map");
         tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
-        // let ret_map = self.data.guild_settings_map.lock().unwrap().copy();
-        // ret_map
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
@@ -556,13 +553,6 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
 }
 
 async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Vec<MyVoiceUserInfo> {
-    // let guild = match guild_id.to_guild_cached(&ctx.cache) {
-    //     Some(guild) => guild,
-    //     None => {
-    //         tracing::error!("Guild not found in cache");
-    //         return vec![];
-    //     }
-    // };
     let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx.cache) {
         Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
         None => {
@@ -617,6 +607,49 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
     }
     tracing::warn!("{}", output.bright_cyan());
     cams
+}
+
+/// Checks the guilds' message cache for messages that are older than the timeout interval.
+#[allow(dead_code)]
+async fn check_delete_old_messages(
+    ctx: Arc<SerenityContext>,
+    data: &Data,
+    guild_ids: Vec<GuildId>,
+    msg_timeout_interval: chrono::Duration,
+) -> Result<(), SerenityError> {
+    let mut to_delete = Vec::<Message>::new();
+    for guild_id in guild_ids.iter() {
+        tracing::warn!("Checking guild {}", guild_id);
+        data.guild_msg_cache_ordered
+            .lock()
+            .unwrap()
+            .get_mut(guild_id);
+        if let Some(guild_cache) = data
+            .guild_msg_cache_ordered
+            .lock()
+            .unwrap()
+            .get_mut(guild_id)
+        {
+            let now = DateTime::<Utc>::from(SystemTime::now());
+            for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
+                let delta = now.signed_duration_since(*creat_time);
+                if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
+                    tracing::warn!("Adding old message to delete queue");
+                    to_delete.push(msg.clone());
+                }
+            }
+        }
+    }
+    for msg in to_delete {
+        tracing::error!("Deleting old message: {:#?}", msg);
+        match msg.delete(ctx.clone()).await {
+            Ok(_) => {}
+            Err(err) => {
+                tracing::error!("Error deleting message: {}", err);
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guilds: Vec<GuildId>) {
@@ -791,12 +824,6 @@ async fn server_defeafen_member(
     guild
         .edit_member(&ctx.http, cam.user_id, EditMember::default().deafen(true))
         .await
-    // guild
-    //     .member(&ctx.http, cam.user_id)
-    //     .await
-    //     .expect("Member not found")
-    //     .edit(&ctx.http, |m| m.deafen(true))
-    //     .await
 }
 
 async fn server_mute_member(
@@ -807,56 +834,109 @@ async fn server_mute_member(
     guild
         .edit_member(&ctx.http, cam.user_id, EditMember::default().mute(true))
         .await
-    // guild
-    //     .member(&ctx.http, cam.user_id)
-    //     .await
-    //     .expect("Member not found")
-    //     .edit(&ctx.http, EditMember::default().mute(true))
-    //     .await
 }
 
-pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> String {
+pub fn voice_state_diff_str(
+    old: &Option<VoiceState>,
+    new: &VoiceState,
+    cache: impl AsRef<serenity::Cache>,
+) -> String {
+    let premium = true; //DEFAULT_PREMIUM;
     let old = match old {
         Some(old) => old,
         None => {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            let user_id = new.user_id;
+            let channel_id = new.channel_id.unwrap();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+            let now_str = chrono::Local::now().to_string();
+
             return format!(
-                "{} / {} / {}",
-                new.member.as_ref().unwrap().user.name.blue(),
-                new.guild_id.unwrap().get().to_string().blue(),
-                new.channel_id.unwrap().get().to_string().blue()
+                "Member joined voice channel\n{} joined {}\nID: {} * {}",
+                user_name, channel_mention, user_id, now_str
             );
-            // return format!(
-            //     "channel_id: (none) -> {:?}
-            //     deaf: (none) -> {:?}
-            //     guild_id: (none) -> {:?}
-            //     member: (none) -> {:?}
-            //     mute: (none) -> {:?}
-            //     self_deaf: (none) -> {:?}
-            //     self_mute: (none) -> {:?}
-            //     self_stream: (none) -> {:?}
-            //     self_video: (none) -> {:?}
-            //     session_id: (none) -> {:?}
-            //     suppress: (none) -> {:?}
-            //     token: (none) -> {:?}
-            //     user_id: (none) -> {:?}
-            //     request_to_speak_timestamp: (none) -> {:?}",
-            //     new.channel_id, new.deaf, new.guild_id, new.mute, new.member, new.self_deaf, new.self_mute,
-            //     new.self_stream, new.self_video, new.session_id, new.suppress, new.token, new.user_id, new.request_to_speak_timestamp
-            // );
         }
+    };
+    let user = if premium {
+        if old.member.is_none() {
+            new.member.as_ref().unwrap().user.mention().to_string()
+        } else {
+            old.member.as_ref().unwrap().user.mention().to_string()
+        }
+    } else if old.member.is_none() {
+        new.member.as_ref().unwrap().user.name.to_string()
+    } else {
+        old.member.as_ref().unwrap().user.name.to_string()
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
-        result.push_str(&format!(
-            "channel_id: {:?} -> {:?}\n",
-            old.channel_id, new.channel_id
-        ));
+        if new.channel_id.is_none() {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            let user_mention = new.member.as_ref().unwrap().user.mention();
+            let channel_id = old.channel_id.unwrap();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+
+            let user = if premium {
+                user_mention.to_string()
+            } else {
+                user_name.to_string()
+            };
+
+            let channel = if premium {
+                channel_mention.to_string()
+            } else {
+                channel_id.to_string()
+            };
+
+            return format!("Member left voice channel\n{} left {}\n", user, channel);
+        } else if old.channel_id.is_none() {
+            let user_name = &new.member.as_ref().unwrap().user.name;
+            let channel_id = new.channel_id.unwrap();
+            let channel_mention = channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+
+            return format!(
+                "Member joined voice channel\n{} joined {}\n",
+                user_name, channel_mention
+            );
+        } else {
+            let old_channel_id = old.channel_id.unwrap();
+            let new_channel_id = new.channel_id.unwrap();
+            let old_channel_mention = old_channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+            let new_channel_mention = new_channel_id
+                .to_channel_cached(cache.as_ref())
+                .unwrap()
+                .mention();
+            result.push_str(&format!(
+                "Switched voice channels: {} -> {}\n",
+                old_channel_mention, new_channel_mention
+            ));
+        }
     }
     if old.deaf != new.deaf {
-        result.push_str(&format!("deaf: {:?} -> {:?}\n", old.deaf, new.deaf));
+        if new.deaf {
+            result.push_str(&format!("{} deafend\n", user));
+        } else {
+            result.push_str(&format!("{} undeafend\n", user));
+        }
     }
     if old.mute != new.mute {
-        result.push_str(&format!("mute: {:?} -> {:?}\n", old.mute, new.mute));
+        if new.mute {
+            result.push_str(&format!("{} muted\n", user));
+        } else {
+            result.push_str(&format!("{} unmuted\n", user));
+        }
     }
     if old.guild_id != new.guild_id {
         result.push_str(&format!(
@@ -884,10 +964,11 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
         ));
     }
     if old.self_video != new.self_video {
-        result.push_str(&format!(
-            "self_video: {:?} -> {:?}\n",
-            old.self_video, new.self_video
-        ));
+        if old.self_video {
+            result.push_str(&format!("{} turned off their camera\n", user));
+        } else {
+            result.push_str(&format!("{} turned on their camera\n", user));
+        }
     }
     if old.session_id != new.session_id {
         result.push_str(&format!(
@@ -901,9 +982,6 @@ pub fn voice_state_diff_str(old: &Option<VoiceState>, new: &VoiceState) -> Strin
             old.suppress, new.suppress
         ));
     }
-    // if old.token != new.token {
-    //     result.push_str(&format!("token: {:?} -> {:?}\n", old.token, new.token));
-    // }
     if old.user_id != new.user_id {
         result.push_str(&format!(
             "user_id : {:?} -> {:?}\n",

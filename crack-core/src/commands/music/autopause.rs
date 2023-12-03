@@ -1,18 +1,19 @@
 use crate::{
     guild::settings::GuildSettings,
     messaging::message::CrackedMessage,
-    utils::{create_response_poise, get_guild_name},
+    utils::{get_guild_name, send_response_poise},
     Context, Error,
 };
 
 /// Toggle autopause at the end of everytrack.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = ctx.guild_id().unwrap();
 
     {
-        let mut settings = ctx.data().guild_settings_map.lock().unwrap();
+        let mut settings = ctx.data().guild_settings_map.write().unwrap();
 
         let guild_settings = settings.entry(guild_id).or_insert_with(|| {
             GuildSettings::new(
@@ -25,9 +26,9 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
         guild_settings.save()?;
 
         if guild_settings.autopause {
-            create_response_poise(ctx, CrackedMessage::AutopauseOn)
+            send_response_poise(ctx, CrackedMessage::AutopauseOn)
         } else {
-            create_response_poise(ctx, CrackedMessage::AutopauseOff)
+            send_response_poise(ctx, CrackedMessage::AutopauseOff)
         }
     }
     .await?;

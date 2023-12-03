@@ -2,12 +2,13 @@ use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    utils::create_response_poise,
+    utils::send_response_poise,
     Context, Error,
 };
 use std::time::Duration;
 
 /// Seek to a specific timestamp in the current track.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn seek(
     ctx: Context<'_>,
@@ -38,11 +39,13 @@ pub async fn seek(
 
     let _callback = track.seek(Duration::from_secs(timestamp));
 
-    create_response_poise(
+    let msg = send_response_poise(
         ctx,
         CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },
     )
-    .await
+    .await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }

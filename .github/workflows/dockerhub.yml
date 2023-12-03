@@ -43,11 +43,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - 
         name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
+        run: cargo install sqlx-cli --no-default-features --features postgres
+      - 
+        uses: ikalnytskyi/action-setup-postgres@v4
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+        id: postgres
       -
         name: Migrate database
         env:
-          DATABASE_URL: sqlite://./data/crackedmusic.db
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: |
           sqlx database create
           sqlx migrate run --source migrations/

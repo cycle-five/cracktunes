@@ -1,51 +1,53 @@
 {
-  "db_name": "SQLite",
-  "query": "SELECT * FROM user WHERE id = ?",
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM \"user\" WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id",
         "ordinal": 0,
-        "type_info": "Int64"
+        "name": "id",
+        "type_info": "Int8"
       },
       {
-        "name": "username",
         "ordinal": 1,
+        "name": "username",
         "type_info": "Text"
       },
       {
-        "name": "discriminator",
         "ordinal": 2,
-        "type_info": "Int64"
+        "name": "discriminator",
+        "type_info": "Int2"
       },
       {
-        "name": "avatar_url",
         "ordinal": 3,
+        "name": "avatar_url",
         "type_info": "Text"
       },
       {
-        "name": "bot",
         "ordinal": 4,
+        "name": "bot",
         "type_info": "Bool"
       },
       {
-        "name": "created_at",
         "ordinal": 5,
-        "type_info": "Datetime"
+        "name": "created_at",
+        "type_info": "Timestamp"
       },
       {
-        "name": "updated_at",
         "ordinal": 6,
-        "type_info": "Datetime"
+        "name": "updated_at",
+        "type_info": "Timestamp"
       },
       {
-        "name": "last_seen",
         "ordinal": 7,
-        "type_info": "Datetime"
+        "name": "last_seen",
+        "type_info": "Timestamp"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Int8"
+      ]
     },
     "nullable": [
       false,
@@ -58,5 +60,5 @@
       false
     ]
   },
-  "hash": "b9ec2211672bc544b95281318be44056c7e74dc07c5914d9fbbfd46b3e1cffb9"
+  "hash": "0328176ec0c66942bf7c518fe10dd928cbe3fcb229c34e3d14b5e892822da4c7"
 }

@@ -1,26 +1,17 @@
+use crate::db::user::User;
+use ::chrono::Duration;
 use songbird::tracks::TrackHandle;
 use sqlx::{
+    postgres::{types::PgInterval, PgQueryResult},
     types::chrono::{self},
-    SqlitePool,
+    PgPool,
 };
 
 use crate::CrackedError;
 
 #[derive(Debug, Default)]
-pub struct User {
-    pub id: i64,
-    pub username: String,
-    pub discriminator: Option<i64>,
-    pub avatar_url: String,
-    pub bot: bool,
-    pub created_at: chrono::NaiveDate,
-    pub updated_at: chrono::NaiveDate,
-    pub last_seen: chrono::NaiveDate,
-}
-
-#[derive(Debug, Default)]
 pub struct Playlist {
-    pub id: i64,
+    pub id: i32,
     pub name: String,
     pub user_id: Option<i64>,
     pub privacy: String,
@@ -29,50 +20,116 @@ pub struct Playlist {
 #[derive(Debug, Default)]
 pub struct PlaylistTrack {
     pub id: i64,
-    pub playlist_id: i64,
-    pub metadata_id: i64,
+    pub playlist_id: i32,
+    pub metadata_id: i32,
     pub guild_id: Option<i64>,
     pub channel_id: Option<i64>,
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct Metadata {
-    pub id: i64,
+    pub id: i32,
     pub track: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
     pub date: Option<chrono::NaiveDate>,
-    pub channels: Option<i64>,
+    pub channels: Option<i16>,
     pub channel: Option<String>,
-    pub start_time: Option<i64>,
-    pub duration: Option<i64>,
-    pub sample_rate: Option<i64>,
+    pub start_time: Option<Duration>,
+    pub duration: Option<Duration>,
+    pub sample_rate: Option<i32>,
     pub source_url: Option<String>,
     pub title: Option<String>,
     pub thumbnail: Option<String>,
 }
 
+pub struct MetadataRead {
+    pub id: i32,
+    pub track: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub date: Option<chrono::NaiveDate>,
+    pub channels: Option<i16>,
+    pub channel: Option<String>,
+    pub start_time: Option<PgInterval>,
+    pub duration: Option<PgInterval>,
+    pub sample_rate: Option<i32>,
+    pub source_url: Option<String>,
+    pub title: Option<String>,
+    pub thumbnail: Option<String>,
+}
+
+impl Metadata {
+    pub async fn create(pool: &PgPool, in_metadata: Metadata) -> Result<Metadata, CrackedError> {
+        let r = sqlx::query_as!(
+            MetadataRead,
+            r#"INSERT INTO
+                metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+            "#,
+            in_metadata.track,
+            in_metadata.artist,
+            in_metadata.album,
+            in_metadata.date,
+            in_metadata.channels.map(|x| i16::try_from(x).unwrap()),
+            in_metadata.channel,
+            in_metadata.start_time.map(|x| PgInterval::try_from(x.to_std().unwrap()).unwrap()),
+            in_metadata.duration.map(|x| PgInterval::try_from(x.to_std().unwrap()).unwrap()),
+            in_metadata.sample_rate,
+            in_metadata.source_url,
+            in_metadata.title,
+            in_metadata.thumbnail,
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(CrackedError::SQLX)?;
+        Ok(Metadata {
+            id: r.id,
+            track: r.track,
+            artist: r.artist,
+            album: r.album,
+            date: r.date,
+            channels: r.channels,
+            channel: r.channel,
+            start_time: r.start_time.map(|x| {
+                Duration::from_std(std::time::Duration::from_micros(
+                    x.microseconds.unsigned_abs(),
+                ))
+                .unwrap()
+            }),
+            duration: r.duration.map(|x| {
+                Duration::from_std(std::time::Duration::from_micros(
+                    x.microseconds.unsigned_abs(),
+                ))
+                .unwrap()
+            }),
+            sample_rate: r.sample_rate,
+            source_url: r.source_url,
+            title: r.title,
+            thumbnail: r.thumbnail,
+        })
+    }
+}
+
 impl Playlist {
-    pub async fn create(
-        pool: &SqlitePool,
-        name: &str,
-        user_id: i64,
-    ) -> Result<Playlist, CrackedError> {
-        if Self::get_user(pool, user_id).await.is_none() {
-            match Self::insert_user(pool, user_id, "FAKENAME".to_string()).await {
-                Ok(_) => (),
-                Err(e) => {
-                    return Err(CrackedError::SQLX(e));
-                }
-            }
-            // return Err(CrackedError::Other(
-            //     "(playlist::create) User does not exist",
-            // ));
+    pub async fn create(pool: &PgPool, name: &str, user_id: i64) -> Result<Playlist, CrackedError> {
+        if User::get_user(pool, user_id).await.is_none() {
+            // match User::insert_user(pool, user_id, "FAKENAME".to_string()).await {
+            //     Ok(_) => (),
+            //     Err(e) => {
+            //         return Err(CrackedError::SQLX(e));
+            //     }
+            // }
+            return Err(CrackedError::Other(
+                "(playlist::create) User does not exist",
+            ));
         }
         let rec = sqlx::query_as!(
             Playlist,
-            "INSERT INTO playlist (name, user_id) VALUES (?, ?) RETURNING id, name, user_id, privacy",
+            "INSERT INTO playlist (name, user_id) VALUES ($1, $2) RETURNING id, name, user_id, privacy",
             name,
-            user_id
+            user_id,
         )
         .fetch_one(pool)
         .await?;
@@ -81,51 +138,29 @@ impl Playlist {
     }
 
     pub async fn add_track(
-        pool: &SqlitePool,
+        pool: &PgPool,
         playlist_id: i32,
         metadata_id: i32,
-        guild_id: i32,
-        channel_id: i32,
-    ) -> sqlx::Result<()> {
+        guild_id: i64,
+        channel_id: i64,
+    ) -> sqlx::Result<PgQueryResult> {
         sqlx::query!(
-            "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES ($1, $2, $3, $4)",
             playlist_id,
             metadata_id,
             guild_id,
             channel_id
         )
         .execute(pool)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn get_user(pool: &SqlitePool, user_id: i64) -> Option<User> {
-        sqlx::query_as!(User, "SELECT * FROM user WHERE id = ?", user_id)
-            .fetch_optional(pool)
-            .await
-            .ok()?
-    }
-
-    pub async fn insert_user(
-        pool: &SqlitePool,
-        user_id: i64,
-        username: String,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "INSERT INTO user (id, username) VALUES (?, ?)",
-            user_id,
-            username
-        )
-        .execute(pool)
-        .await?;
-        Ok(())
+        .await
     }
 
     // Additional functions to retrieve, update, and delete playlists and tracks
-    // Function to retrieve a playlist by ID
+
+    /// Reterive a playlist by ID
     pub async fn get_playlist_by_id(
-        pool: &SqlitePool,
-        playlist_id: i64,
+        pool: &PgPool,
+        playlist_id: i32,
     ) -> Result<Playlist, CrackedError> {
         sqlx::query_as!(
             Playlist,
@@ -137,14 +172,31 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
-    // Function to update a playlist's name
+    /// Reterive a playlist by name and user ID.
+    pub async fn get_playlist_by_name(
+        pool: &PgPool,
+        name: String,
+        user_id: i64,
+    ) -> Result<Playlist, CrackedError> {
+        sqlx::query_as!(
+            Playlist,
+            "SELECT * FROM playlist WHERE user_id = $1 and name = $2",
+            user_id,
+            name
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(CrackedError::SQLX)
+    }
+
+    /// Function to update a playlist's name
     pub async fn update_playlist_name(
-        pool: &SqlitePool,
-        playlist_id: i64,
+        pool: &PgPool,
+        playlist_id: i32,
         new_name: String,
     ) -> Result<Playlist, CrackedError> {
         struct PlaylistOpt {
-            id: Option<i64>,
+            id: i32,
             name: String,
             user_id: Option<i64>,
             privacy: String,
@@ -159,7 +211,7 @@ impl Playlist {
         .await;
 
         res.map(|r| Playlist {
-            id: r.id.unwrap(),
+            id: r.id,
             name: r.name,
             user_id: r.user_id,
             privacy: r.privacy,
@@ -167,26 +219,43 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
-    // Function to delete a playlist by ID
-    pub async fn delete_playlist(pool: &SqlitePool, playlist_id: i64) -> Result<u64, sqlx::Error> {
+    /// Delete a playlist by playlist ID
+    pub async fn delete_playlist(pool: &PgPool, playlist_id: i32) -> Result<u64, sqlx::Error> {
         sqlx::query!("DELETE FROM playlist WHERE id = $1", playlist_id)
             .execute(pool)
             .await
             .map(|r| r.rows_affected())
     }
 
+    /// Delete a playlist by playlist ID and user ID
     pub async fn delete_playlist_by_id(
-        pool: &SqlitePool,
-        playlist_id: i64,
+        pool: &PgPool,
+        playlist_id: i32,
+        user_id: i64,
+    ) -> Result<PgQueryResult, sqlx::Error> {
+        sqlx::query!(
+            r#"
+        DELETE FROM playlist
+        WHERE id = $1 AND user_id = $2"#,
+            playlist_id,
+            user_id
+        )
+        .execute(pool)
+        .await
+    }
+
+    pub async fn delete_playlist_by_name(
+        pool: &PgPool,
+        playlist_name: String,
         user_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
         DELETE FROM playlist
-        WHERE id = ? AND user_id = ?
+        WHERE name = $1 AND user_id = $2 
         "#,
-            playlist_id,
-            user_id
+            playlist_name,
+            user_id,
         )
         .execute(pool)
         .await?;
@@ -196,7 +265,7 @@ impl Playlist {
 }
 
 pub async fn track_handle_to_db_structures(
-    _pool: &SqlitePool,
+    _pool: &PgPool,
     _track_handle: TrackHandle,
     _playlist_id: i64,
     _guild_id: i64,

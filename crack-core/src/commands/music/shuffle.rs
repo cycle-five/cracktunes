@@ -1,10 +1,11 @@
 use crate::{
     handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    utils::create_response_poise, Context, Error,
+    utils::send_response_poise, Context, Error,
 };
 use rand::Rng;
 
 /// Shuffle the current queue.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
@@ -24,7 +25,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    create_response_poise(ctx, CrackedMessage::Shuffle).await?;
+    send_response_poise(ctx, CrackedMessage::Shuffle).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }
@@ -37,5 +38,17 @@ where
     while index >= 2 {
         index -= 1;
         values.swap(index, rng.gen_range(0..(index + 1)));
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_fisher_yates() {
+        let mut values = [1, 2, 3, 4, 5];
+        fisher_yates(&mut values, &mut rand::thread_rng());
+        assert_ne!(values, [1, 2, 3, 4, 5]);
     }
 }

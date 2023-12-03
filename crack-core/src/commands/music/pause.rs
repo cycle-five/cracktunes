@@ -1,11 +1,12 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::create_response_poise_text,
+    utils::send_response_poise_text,
     {Context, Error},
 };
 
 /// Pause the current track.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn pause(
     ctx: Context<'_>,
@@ -22,7 +23,8 @@ pub async fn pause(
     verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
     if send_reply.unwrap_or(true) {
-        return create_response_poise_text(ctx, CrackedMessage::Pause).await;
+        let msg = send_response_poise_text(ctx, CrackedMessage::Pause).await?;
+        ctx.data().add_msg_to_cache(guild_id, msg);
     }
     Ok(())
 }

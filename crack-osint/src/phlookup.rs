@@ -1,6 +1,4 @@
-use crack_core::{
-    messaging::message::CrackedMessage, utils::create_response_poise, Context, Error,
-};
+use crack_core::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -54,7 +52,7 @@ pub async fn phlookup(ctx: Context<'_>, number: String, country: String) -> Resu
         CrackedMessage::PhoneNumberInfoError
     };
 
-    create_response_poise(ctx, message).await?;
+    send_response_poise(ctx, message).await?;
 
     Ok(())
 }

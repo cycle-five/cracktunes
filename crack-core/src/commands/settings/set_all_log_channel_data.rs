@@ -1,23 +1,21 @@
-use std::sync::Arc;
-
 use serenity::all::ChannelId;
 use serenity::all::GuildId;
-use typemap_rev::TypeMap;
 
 use crate::guild::settings::GuildSettings;
-use crate::guild::settings::GuildSettingsMap;
 use crate::guild::settings::DEFAULT_PREFIX;
+use crate::Data;
 use crate::Error;
 
-pub async fn set_all_log_channel_old_data(
-    map: Arc<tokio::sync::RwLock<TypeMap>>,
+pub async fn set_all_log_channel_data(
+    data: &Data,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<GuildSettings, Error> {
-    let mut data = map.write().await;
+    //let mut data = map.write().await;
     //let entry = data
     Ok(data
-        .get_mut::<GuildSettingsMap>()
+        .guild_settings_map
+        .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {
@@ -36,7 +34,7 @@ pub async fn set_all_log_channel_old_data(
     //     .unwrap()
     //     .get_mut(&guild_id);
 
-    // create_response_poise(
+    // send_response_poise(
     //     ctx,
     //     CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
     // )

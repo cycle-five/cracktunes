@@ -20,6 +20,7 @@ use ::serenity::{
     },
     futures::StreamExt,
 };
+use chrono;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -39,19 +40,51 @@ use tokio::sync::RwLock;
 use url::Url;
 const EMBED_PAGE_SIZE: usize = 6;
 
-pub async fn create_log_embed(
+/// Create and sends an log message as an embed.
+/// FIXME: The avatar_url won't always be available. How do we best handle this?
+pub async fn build_log_embed(
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, Error> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer = CreateEmbedFooter::new(now_time_str);
+    Ok(CreateEmbed::default()
+        .title(title)
+        .description(description)
+        .thumbnail(avatar_url)
+        .footer(footer))
+}
+
+/// Create and sends an log message as an embed.
+/// FIXME: The avatar_url won't always be available. How do we best handle this?
+pub async fn build_log_embed_thumb(
+    title: &str,
+    id: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, Error> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer_str = format!("{} | {}", id, now_time_str);
+    let footer = CreateEmbedFooter::new(footer_str);
+    let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
+    Ok(CreateEmbed::default()
+        .author(author)
+        // .title(title)
+        .description(description)
+        // .thumbnail(avatar_url)
+        .footer(footer))
+}
+
+pub async fn send_log_embed_thumb(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
+    id: &str,
     title: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = CreateEmbed::default()
-        .title(title)
-        .description(description)
-        .thumbnail(avatar_url);
-    // tracing::debug!("sending log embed: {:?}", embed);
-    tracing::debug!("thumbnail url: {:?}", avatar_url);
+    let embed = build_log_embed_thumb(title, id, description, avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))
@@ -59,61 +92,70 @@ pub async fn create_log_embed(
         .map_err(Into::into)
 }
 
-pub async fn create_response_poise(
-    ctx: CrackContext<'_>,
-    message: CrackedMessage,
-) -> Result<(), Error> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
+pub async fn send_log_embed(
+    channel: &serenity::ChannelId,
+    http: &Arc<Http>,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, Error> {
+    let embed = build_log_embed(title, description, avatar_url).await?;
 
-    create_embed_response_poise(ctx, embed).await
+    channel
+        .send_message(http, CreateMessage::new().embed(embed))
+        .await
+        .map_err(Into::into)
 }
 
-pub async fn create_response_poise_text(
+/// Creates an embed from a CrackedMessage and sends it as an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
+    let embed = CreateEmbed::default().description(format!("{message}"));
+
+    send_embed_response_poise(ctx, embed).await
+}
+
+pub async fn send_response_poise_text(
+    ctx: CrackContext<'_>,
+    message: CrackedMessage,
+) -> Result<Message, Error> {
     let message_str = format!("{message}");
 
-    create_embed_response_str(ctx, message_str)
-        .await
-        .map(|_| Ok(()))?
+    send_embed_response_str(ctx, message_str).await
 }
 
 pub async fn create_response(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
-    create_embed_response(ctx, interaction, embed).await
+    send_embed_response(ctx, interaction, embed).await
 }
 
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     content: &str,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(content);
-    create_embed_response(ctx, interaction, embed).await
+    send_embed_response(ctx, interaction, embed).await
 }
 
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction_new(ctx) {
         Some(interaction) => {
-            let res = edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await;
-            res.map(|_| ())
+            edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await
         }
-        None => {
-            create_embed_response_poise(ctx, embed).await
-            //return Err(Box::new(SerenityError::Other("No interaction found"))),
-        }
+        None => send_embed_response_poise(ctx, embed).await,
     }
 }
 
@@ -135,7 +177,9 @@ pub async fn edit_response_text(
     edit_embed_response(http, interaction, embed).await
 }
 
-pub async fn create_embed_response_str(
+/// Sends a reply response as an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_embed_response_str(
     ctx: CrackContext<'_>,
     message_str: String,
 ) -> Result<Message, Error> {
@@ -149,36 +193,30 @@ pub async fn create_embed_response_str(
     .into_message()
     .await
     .map_err(Into::into)
-    //.map_err(Into::into)
-    // Ok(())
 }
 
-pub async fn create_embed_response_poise(
+/// Sends a reply response with an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
-    match get_interaction_new(ctx) {
-        Some(interaction) => {
-            tracing::warn!("interaction found");
-            create_embed_response(ctx, &interaction, embed).await
-        }
-        None => {
-            tracing::warn!("prefix");
-            create_embed_response_prefix(ctx, embed)
-                .await
-                .map(|_| Ok(()))?
-        }
-    }
+    ctx.send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
+        .await?
+        .into_message()
+        .await
+        .map_err(|e| {
+            tracing::error!("error: {:?}", e);
+            e.into()
+        })
 }
 
-pub async fn create_embed_response_prefix(
+pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     ctx.send(CreateReply::new().embed(embed))
-        // embeds.append(&mut vec![embed]);
-        //builder
         .await
         .unwrap()
         .into_message()
@@ -186,12 +224,11 @@ pub async fn create_embed_response_prefix(
         .map_err(Into::into)
 }
 
-pub async fn create_embed_response(
+pub async fn send_embed_response(
     ctx: CrackContext<'_>,
-    // http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
@@ -202,7 +239,6 @@ pub async fn create_embed_response(
             ctx.channel_id()
                 .send_message(ctx.http(), CreateMessage::new().embed(embed))
                 .await
-                .map(|_| ())
                 .map_err(Into::into)
         }
     }
@@ -240,29 +276,47 @@ pub async fn create_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,
-    defer: bool,
-) -> Result<(), Error> {
+    _defer: bool,
+) -> Result<Message, Error> {
     match interaction {
         Interaction::Command(int) => {
             // Is this "acknowledging" the interaction?
             // if defer {
             //     int.defer(http).await.unwrap();
             // }
-            let res = if defer {
-                CreateInteractionResponse::Defer(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            } else {
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                )
-            };
-            int.create_response(http, res).await.map_err(Into::into)
+            // let res = if defer {
+            //     CreateInteractionResponse::Defer(
+            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
+            //     )
+            // } else {
+            //     CreateInteractionResponse::Message(
+            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
+            //     )
+            // };
+
+            let res = CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().embed(embed.clone()),
+            );
+            let message = int.get_response(http).await;
+            match message {
+                Ok(message) => {
+                    message
+                        .clone()
+                        .edit(http, EditMessage::default().embed(embed.clone()))
+                        .await?;
+                    Ok(message)
+                }
+                Err(_) => {
+                    int.create_response(http, res).await?;
+                    let message = int.get_response(http).await?;
+                    Ok(message)
+                }
+            }
         }
         Interaction::Ping(..)
         | Interaction::Component(..)
         | Interaction::Modal(..)
-        | Interaction::Autocomplete(..) => Ok(()),
+        | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented").into()),
         _ => todo!(),
     }
 }
@@ -355,7 +409,7 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     match get_interaction_new(ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => match interaction2 {
@@ -367,47 +421,14 @@ pub async fn edit_embed_response_poise(
                             EditInteractionResponse::new().content(" ").embed(embed),
                         )
                         .await
-                        .map(|_| ())
                         .map_err(Into::into)
                 }
-                _ => Ok(()),
+                _ => Err(CrackedError::Other("not implemented").into()),
             },
-            CommandOrMessageInteraction::Message(_) => {
-                create_embed_response_poise(ctx, embed).await
-            }
+            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
-        None => create_embed_response_poise(ctx, embed).await,
+        None => send_embed_response_poise(ctx, embed).await,
     }
-    // Some(interaction) => match interaction {
-    //     //CommandOrMessageInteraction::Command(interaction) => match interaction {
-    //         // Interaction::Command(interaction) => {
-    //         //     tracing::warn!("CommandInteraction");
-    //         //     interaction
-    //         //         .edit_response(
-    //         //             &ctx.serenity_context().http,
-    //         //             EditInteractionResponse::new().content(" ").embed(embed),
-    //         //         )
-    //         //         .await
-    //         //         .map(|_| ())
-    //         //         .map_err(Into::into)
-    //         // }
-    //         // Interaction::Autocomplete(_) => Ok(()),
-    //         // Interaction::Component(_) => Ok(()),
-    //         // Interaction::Modal(_) => Ok(()),
-    //         // Interaction::Ping(_) => Ok(()),
-    //         // _ => Ok(()),
-    // },
-    // CommandOrMessageInteraction::Message(_) => {
-    //     //     interaction.
-    //     //         (
-    //     //             &ctx.serenity_context().http,
-    //     //             EditInteractionResponse::new().content(" ").embed(embed),
-    //     //         )
-    //     //         .await
-    //     // }
-    //     Ok(())
-    // }
-    // None => create_embed_response_poise(ctx, embed).await, //Err(Box::new(SerenityError::Other("No interaction found"))),
 }
 
 pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
@@ -612,10 +633,12 @@ pub async fn forget_queue_message(
     data: &Data,
     message: &Message,
     guild_id: GuildId,
-) -> Result<(), ()> {
+) -> Result<(), CrackedError> {
     let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
 
-    let cache = cache_map.get_mut(&guild_id).ok_or(())?;
+    let cache = cache_map
+        .get_mut(&guild_id)
+        .ok_or(CrackedError::NoGuildId)?;
     cache.queue_messages.retain(|(m, _)| m.id != message.id);
 
     Ok(())

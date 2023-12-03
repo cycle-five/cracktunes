@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use crate::{errors::CrackedError, utils::create_now_playing_embed, Context, Error};
 
 /// Have the current song sent to your DMs.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("save"), guild_only)]
 pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
@@ -29,6 +30,8 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Send the current track information as an ebmed to the given channel.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_now_playing(
     channel: ChannelId,
     http: Arc<Http>,
@@ -38,7 +41,6 @@ pub async fn send_now_playing(
     match handler.queue().current() {
         Some(track_handle) => {
             let embed = create_now_playing_embed(&track_handle).await;
-            // create_embed_response_poise(ctx, embed).await?;
             channel
                 .send_message(http, CreateMessage::new().embed(embed))
                 .await

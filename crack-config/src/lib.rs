@@ -17,7 +17,7 @@ use poise::{
     CreateReply,
 };
 use songbird::serenity::SerenityInit;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
 /// on_error is called when an error occurs in the framework.
@@ -47,7 +47,10 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             match get_interaction_new(ctx) {
                 Some(interaction) => {
                     check_interaction(
-                        create_response_text(ctx, &interaction, &format!("{error}")).await,
+                        create_response_text(ctx, &interaction, &format!("{error}"))
+                            .await
+                            .map(|_| ())
+                            .map_err(Into::into),
                     );
                 }
                 None => {
@@ -75,6 +78,7 @@ pub async fn poise_framework(
 ) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
+
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
@@ -90,13 +94,12 @@ pub async fn poise_framework(
             .collect(),
         commands: vec![
             // admin commands
-            commands::admin::set_prefix(),
+            commands::admin(),
+            commands::settings(),
             commands::autopause(),
             // commands::boop(),
             commands::coinflip(),
-            // //commands::create_playlist(),
-            // //commands::delete_playlist(),
-            // //commands::chatgpt(),
+            commands::chatgpt(),
             commands::clear(),
             commands::help(),
             commands::leave(),
@@ -118,20 +121,19 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
+            commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
+            // Playlist
+            commands::playlist::add_to_playlist(),
+            commands::playlist::create_playlist(),
+            commands::playlist::delete_playlist(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
-            additional_prefixes: vec![
-                poise::Prefix::Literal(up_prefix_cloned),
-                poise::Prefix::Literal("hey bot,"),
-                poise::Prefix::Literal("hey bot"),
-                poise::Prefix::Literal("bot,"),
-                poise::Prefix::Literal("bot"),
-            ],
+            additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
             stripped_dynamic_prefix: Some(|ctx, msg, _| {
                 Box::pin(async move {
                     let guild_id = msg.guild_id.unwrap();
@@ -139,7 +141,8 @@ pub async fn poise_framework(
                     let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
-                        if guild_settings.prefix.is_empty() {
+                        let prefixes = &guild_settings.additional_prefixes;
+                        if prefixes.is_empty() {
                             tracing::warn!(
                                 "Prefix is empty for guild {}",
                                 guild_settings.guild_name
@@ -147,16 +150,10 @@ pub async fn poise_framework(
                             return Ok(None);
                         }
 
-                        let prefix = &guild_settings.prefix;
-                        let prefix_up = &guild_settings.prefix_up;
-
-                        tracing::warn!("Checking for prefix: {}", prefix);
-
-                        if msg.content.starts_with(prefix) {
-                            Ok(Some(msg.content.split_at(prefix.len())))
-                        } else if msg.content.starts_with(prefix_up) {
-                            Ok(Some(msg.content.split_at(prefix_up.len())))
+                        if let Some(prefix_len) = check_prefixes(prefixes, &msg.content) {
+                            Ok(Some(msg.content.split_at(prefix_len)))
                         } else {
+                            tracing::warn!("Prefix not found");
                             Ok(None)
                         }
                     } else {
@@ -218,6 +215,7 @@ pub async fn poise_framework(
                     "grab",
                     "create_playlist",
                     "delete_playlist",
+                    "voteskip",
                 ];
                 if music_commands.contains(&command.as_str()) {
                     return Ok(true);
@@ -238,13 +236,13 @@ pub async fn poise_framework(
 
                 ctx.data()
                     .guild_settings_map
-                    .lock()
+                    .read()
                     .unwrap()
                     .get(&guild_id)
                     .map_or_else(
                         || {
                             tracing::info!("Guild not found in guild settings map");
-                            Ok(true)
+                            Ok(false)
                         },
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
@@ -271,41 +269,24 @@ pub async fn poise_framework(
         .collect::<HashMap<GuildId, GuildSettings>>();
 
     let db_url = config.get_database_url();
-    let pool_opts = sqlx::sqlite::SqlitePoolOptions::new()
-        .connect(&db_url)
-        .await;
+    let pool_opts = sqlx::postgres::PgPoolOptions::new().connect(&db_url).await;
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
-        guild_settings_map: Arc::new(Mutex::new(cloned_map)),
+        guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
         database_pool: pool_opts.unwrap().into(),
         ..Default::default()
     }));
 
     let save_data = data.clone();
-    // ctrlc::set_handler(move || {
-    //     tracing::warn!("Received Ctrl-C, shutting down...");
-    //     save_data
-    //         .guild_settings_map
-    //         .lock()
-    //         .unwrap()
-    //         .iter()
-    //         .for_each(|(k, v)| {
-    //             tracing::warn!("Saving Guild: {}", k);
-    //             v.save().expect("Error saving guild settings");
-    //         });
 
-    //     exit(0);
-    // })
-    // .expect("Error setting Ctrl-C handler");
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::privileged()
         | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MODERATION
-        | GatewayIntents::GUILD_BANS
         | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
         | GatewayIntents::GUILD_INTEGRATIONS
         | GatewayIntents::GUILD_WEBHOOKS
@@ -329,32 +310,17 @@ pub async fn poise_framework(
         .credentials
         .expect("Error getting discord token")
         .discord_token;
-    let framework = poise::Framework::new(
-        options,
-        // .client_settings(|builder| {
-        //     builder
-        //         .event_handler(SerenityHandler {
-        //             is_loop_running: false.into(),
-        //             data: handler_data,
-        //         })
-        //         .register_songbird()
-        // })
-        // .token(token)
-        //.setup(move |ctx, ready, framework| {
-        |ctx, ready, framework| {
-            Box::pin(async move {
-                tracing::info!("Logged in as {}", ready.user.name);
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                ctx.data
-                    .write()
-                    .await
-                    .insert::<GuildSettingsMap>(guild_settings_map.clone());
-                Ok(setup_data)
-            })
-        },
-    );
-    // let res = framework.build().await?;
-    // let shard_manager = res.client().shard_manager.clone();
+    let framework = poise::Framework::new(options, |ctx, ready, framework| {
+        Box::pin(async move {
+            tracing::info!("Logged in as {}", ready.user.name);
+            poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+            ctx.data
+                .write()
+                .await
+                .insert::<GuildSettingsMap>(guild_settings_map.clone());
+            Ok(setup_data)
+        })
+    });
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
@@ -399,18 +365,50 @@ pub async fn poise_framework(
         tracing::warn!("Received Ctrl-C, shutting down...");
         save_data
             .guild_settings_map
-            .lock()
+            .read()
             .unwrap()
             .iter()
             .for_each(|(k, v)| {
                 tracing::warn!("Saving Guild: {}", k);
                 v.save().expect("Error saving guild settings");
             });
-        //shard_manager.lock().await.shutdown_all().await;
         shard_manager.shutdown_all().await;
 
         exit(0);
     });
 
     Ok(client)
+}
+
+fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
+    for prefix in prefixes.iter() {
+        if content.starts_with(prefix) {
+            return Some(prefix.len());
+        }
+    }
+    None
+}
+
+mod test {
+    #[test]
+    fn test_prefix() {
+        let prefixes = vec!["crack ", "crack", "crack!"]
+            .iter()
+            .map(|&s| s.trim().to_string())
+            .collect::<Vec<_>>();
+        let content = "crack test";
+        let prefix_len = super::check_prefixes(&prefixes, content).unwrap();
+        assert_eq!(prefix_len, 5);
+    }
+
+    #[test]
+    fn test_prefix_no_match() {
+        let prefixes = vec!["crack ", "crack", "crack!"]
+            .iter()
+            .map(|&s| s.trim().to_string())
+            .collect::<Vec<_>>();
+        let content = "crac test";
+        let prefix_len = super::check_prefixes(&prefixes, content);
+        assert!(prefix_len.is_none());
+    }
 }

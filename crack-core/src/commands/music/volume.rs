@@ -1,13 +1,14 @@
 use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::utils::{create_embed_response_poise, get_guild_name};
+use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 
 /// Get or set the volume of the bot.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("vol"))]
 pub async fn volume(
     ctx: Context<'_>,
@@ -21,7 +22,7 @@ pub async fn volume(
             tracing::error!("guild_id is None");
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            create_embed_response_poise(ctx, embed).await?;
+            let _ = send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         }
     };
@@ -34,30 +35,26 @@ pub async fn volume(
                 tracing::error!("Can't get manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                create_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
-        tracing::error!("manager: {:?}", manager);
         let call = match manager.get(guild_id) {
             Some(call) => call,
             None => {
                 tracing::error!("Can't get call from manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                create_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
-        tracing::error!("call: {:?}", call);
 
         let handler = call.lock().await;
 
-        tracing::error!("handler: {:?}", handler);
-
         let track_handle: Option<TrackHandle> = handler.queue().current();
-
-        tracing::error!("track_handle: {:?}", track_handle);
 
         let to_set = match level {
             Some(arg) => Some(arg as isize),
@@ -68,7 +65,7 @@ pub async fn volume(
                 };
                 ctx.data()
                     .guild_settings_map
-                    .lock()
+                    .write()
                     .unwrap()
                     .entry(guild_id)
                     .or_insert_with(|| {
@@ -81,7 +78,7 @@ pub async fn volume(
                 let guild_settings = ctx
                     .data()
                     .guild_settings_map
-                    .lock()
+                    .read()
                     .unwrap()
                     .get(&guild_id)
                     .unwrap()
@@ -98,17 +95,15 @@ pub async fn volume(
                     guild_settings.volume * 100.0,
                     volume_track * 100.0
                 ));
-                create_embed_response_poise(ctx, embed).await?;
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
             }
         };
 
-        tracing::error!("to_set: {:?}", to_set);
-
         let new_vol = to_set.unwrap() as f32 / 100.0;
         let old_vol = {
-            // let handler = call.lock().await;
-            let mut guild_settings_map = ctx.data().guild_settings_map.lock().unwrap();
+            let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
             let guild_settings = guild_settings_map
                 .entry(guild_id)
                 .and_modify(|guild_settings| {
@@ -145,16 +140,18 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                create_embed_response_poise(ctx, embed).await?;
-                return Ok(());
+                return send_embed_response_poise(ctx, embed).await.map(|m| {
+                    ctx.data().add_msg_to_cache(guild_id, m);
+                })
             }
         };
+
         track_handle.set_volume(new_vol).unwrap();
-        tracing::error!("track_handle: {:?}", track_handle);
-        tracing::error!("embed: {:?}", embed);
         embed
     };
-    create_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed).await.map(|m| {
+        ctx.data().add_msg_to_cache(guild_id, m);
+    })
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

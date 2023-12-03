@@ -28,7 +28,7 @@ pub struct ModifyQueueHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let settings = self.data.guild_settings_map.lock().unwrap().clone();
+        let settings = self.data.guild_settings_map.read().unwrap().clone();
 
         let autopause = settings
             .get(&self.guild_id)
@@ -51,7 +51,10 @@ impl EventHandler for TrackEndHandler {
         }
 
         // FIXME
-        forget_skip_votes(&self.data, self.guild_id).await.ok();
+        match forget_skip_votes(&self.data, self.guild_id).await {
+            Ok(_) => (),
+            Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
+        };
 
         if let Some(channel) = handler.current_channel() {
             tracing::warn!("Sending now playing message");
@@ -74,7 +77,7 @@ impl EventHandler for ModifyQueueHandler {
         let (queue, vol) = {
             let handler = self.call.lock().await;
             let queue = handler.queue().current_queue().clone();
-            let settings = self.data.guild_settings_map.lock().unwrap().clone();
+            let settings = self.data.guild_settings_map.read().unwrap().clone();
             let vol = settings
                 .get(&self.guild_id)
                 .map(|guild_settings| guild_settings.volume);

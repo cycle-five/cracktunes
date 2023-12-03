@@ -1,6 +1,7 @@
 use crate::{Context, Error};
 
-/// Show this help menu.
+/// Show the help menu.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn help(
     ctx: Context<'_>,
@@ -21,6 +22,7 @@ pub async fn help(
 }
 
 /// Get information about the servers this bot is in.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, owners_only)]
 pub async fn servers(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::servers(ctx).await?;

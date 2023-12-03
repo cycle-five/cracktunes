@@ -3,6 +3,7 @@ use poise::CreateReply;
 use crate::{Context, Error};
 
 /// Flip a coin.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     let res = rand::random::<bool>();
@@ -17,6 +18,7 @@ pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Roll N DM dice.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn rolldice(
     ctx: Context<'_>,

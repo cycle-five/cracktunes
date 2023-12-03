@@ -6,6 +6,7 @@ use crack_gpt::get_chatgpt_response;
 #[cfg(feature = "crack-gpt")]
 /// Talk with chatgpt.
 #[allow(unused)]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn chatgpt(
     ctx: Context<'_>,

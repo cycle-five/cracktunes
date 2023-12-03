@@ -4,7 +4,7 @@ sys_log_channel_id = 0
 authorized_users = [ ]
 self_deafen = true
 volume = 0.3
-database_url = "sqlite://./data/crackedmusic.db"
+database_url = "postgres://./data/crackedmusic.db"
 
 [[cam_kick]]
 cammed_down_timeout = 0

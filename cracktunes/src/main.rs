@@ -16,6 +16,8 @@ use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
 use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+/// Main function, get everything kicked off.
+#[cfg(not(tarpaulin_include))]
 fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -27,6 +29,8 @@ fn main() -> Result<(), Error> {
     rt.block_on(async { main_async(event_log).await })
 }
 
+/// Main async function, needed so we can  initialize everything.
+#[cfg(not(tarpaulin_include))]
 async fn main_async(event_log: EventLog) -> Result<(), Error> {
     init_logging();
     init_metrics();

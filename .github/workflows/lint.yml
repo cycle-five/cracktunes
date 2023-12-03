@@ -8,40 +8,47 @@ jobs:
     name: Fmt and clippy
     strategy:
       matrix:
-        rust-version: ['nightly', 'stable']
-        cache-key: ['']
+        rust-version: ["nightly", "stable"]
+        cache-key: [""]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-      
+
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
           rustup default ${{ matrix.rust-version }}
+          rustup update
           rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
         shell: bash
-
+      - 
+        uses: ikalnytskyi/action-setup-postgres@v4
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+        id: postgres
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
-
       - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres,sqlite
-
+        run: cargo install sqlx-cli --no-default-features --features postgres
       - name: Migrate database
         env:
-          DATABASE_URL: sqlite://./data/crackedmusic.db
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
           cargo sqlx prepare --workspace -- --tests
-        
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
       - name: Run clippy
         if: success() || failure()
         run: cargo clippy --all -- -D clippy::all -D warnings
-        

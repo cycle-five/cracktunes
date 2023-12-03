@@ -22,7 +22,7 @@ WORKDIR "/app"
 
 COPY . .
 RUN ls -al . && ls -al data
-ENV DATABASE_URL sqlite:///app/data/crackedmusic.db
+ENV DATABASE_URL postgres:///app/data/crackedmusic.db
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
@@ -45,6 +45,6 @@ COPY --from=build /app/data  /data
 RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
-ENV DATABASE_URL sqlite:///data/crackedmusic.db
+ENV DATABASE_URL postgres:///data/crackedmusic.db
 ENV RUST_BACKTRACE 1
 CMD ["/app/cracktunes"]

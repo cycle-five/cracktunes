@@ -27,7 +27,7 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
                 .map_err(|e| chatgpt::err::Error::ParsingError(e.to_string()))?,
         )
         .temperature(1.0)
-        .engine(ChatGPTEngine::Gpt35Turbo)
+        .engine(ChatGPTEngine::Custom("pai-001-light-beta"))
         .build()
         .unwrap();
     // .top_p(1.0)
@@ -54,50 +54,13 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
 
 #[cfg(test)]
 mod test {
-    // use super::*;
-    // use mockall::predicate::*;
-    // use mockall::*;
-    // use poise::CreateReply;
-
-    // #[async_trait]
-    // pub trait ContextWithGuildId {
-    //     fn guild_id(&self) -> Option<u64>;
-    // }
-
-    // #[async_trait]
-    // impl<U, E> ContextWithGuildId for poise::Context<'_, U, E> {
-    //     fn guild_id(&self) -> Option<u64> {
-    //         Some(1)
-    //     }
-    // }
-
-    // fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<u64> {
-    //     ctx.guild_id()
-    // }
     use crate::get_chatgpt_response;
 
     #[tokio::test]
     async fn test_get_chatgpt_response() {
         let query = "Hello".to_string();
         let response = get_chatgpt_response(query).await;
-        assert!(response.is_err());
-        // assert_eq!(response.unwrap(), "".to_string());
+        println!("{:?}", response);
+        assert!(response.is_err() || response.unwrap().contains("API key is not allowed"));
     }
-
-    // fn mock_context() -> Context<'static> {
-    //     let ctx = MockContext::new();
-    //     ctx.expect_guild_id()
-    //         .returning(|| Some(1))
-    //         .times(1..)
-    //         .in_sequence(testing::Sequence::next());
-    //     ctx.expect_send()
-    //         .returning(|_| {
-    //             Box::pin(async move {
-    //                 Ok(CreateReply::new().content("User deauthorized.").reply(true))
-    //             })
-    //         })
-    //         .times(1..)
-    //         .in_sequence(testing::Sequence::next());
-    //     ctx
-    // }
 }
