@@ -66,7 +66,7 @@ impl Metadata {
                 metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
-        "#,
+            "#,
             in_metadata.track,
             in_metadata.artist,
             in_metadata.album,

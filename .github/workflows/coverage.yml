@@ -12,12 +12,29 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v4
 
+      - name: "Install dependencies"
+        run: |
+          sudo apt-get update && sudo apt-get install -y cmake
+        shell: bash
+
       - name: "Install Rust"
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           rustup default nightly
           rustup update
         shell: bash
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "coverage"
+
+      - name: "Install cargo-tarpaulin"
+        run: |
+          cargo install cargo-tarpaulin
+        shell: bash
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
       
       - uses: ikalnytskyi/action-setup-postgres@v4
         with:
@@ -26,13 +43,21 @@ jobs:
           database: postgres
           port: 5432
         id: postgres
+
+      - name: Migrate database
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
+        run: |
+          sqlx database create
+          sqlx migrate run --source migrations/
+          cargo sqlx prepare --workspace -- --tests
       
       - name: Generate code coverage
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
         run: |
-          sudo apt-get update && sudo apt-get install -y cmake
-          cargo install cargo-tarpaulin
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
 
       - name: Upload to codecov.io
