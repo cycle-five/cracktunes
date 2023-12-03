@@ -11,20 +11,11 @@ pub mod debug;
 pub mod defend;
 pub mod delete_channel;
 pub mod delete_role;
-pub mod get_settings;
 pub mod invite_tracker;
 pub mod kick;
 pub mod message_cache;
 pub mod move_users;
 pub mod mute;
-pub mod print_settings;
-pub mod set_all_log_channel;
-pub mod set_all_log_channel_data;
-pub mod set_all_log_channel_old_data;
-pub mod set_auto_role;
-pub mod set_idle_timeout;
-pub mod set_prefix;
-pub mod set_welcome_settings;
 pub mod unban;
 pub mod unmute;
 
@@ -45,20 +36,11 @@ pub use debug::*;
 pub use defend::*;
 pub use delete_channel::*;
 pub use delete_role::*;
-pub use get_settings::*;
 pub use invite_tracker::track_invites;
 pub use kick::*;
 pub use message_cache::*;
 pub use move_users::*;
 pub use mute::*;
-pub use print_settings::*;
-pub use set_all_log_channel::*;
-pub use set_all_log_channel_data::*;
-pub use set_all_log_channel_old_data::*;
-pub use set_auto_role::*;
-pub use set_idle_timeout::*;
-pub use set_prefix::*;
-pub use set_welcome_settings::*;
 pub use unban::*;
 pub use unmute::*;
 
@@ -80,18 +62,11 @@ pub use unmute::*;
         "delete_channel",
         "delete_role",
         "delete_role_by_id",
-        "get_settings",
         "track_invites",
         "kick",
         "mute",
-        "print_settings",
         "message_cache",
         "move_users_to",
-        "set_idle_timeout",
-        "set_all_log_channel",
-        "set_prefix",
-        "set_welcome_settings",
-        "set_auto_role",
         "unban",
         "unmute",
     ),
