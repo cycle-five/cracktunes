@@ -87,6 +87,7 @@ pub async fn get_channel_id(
 }
 
 pub async fn handle_event(
+    ctx: &serenity::all::Context,
     event_in: &FullEvent,
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
@@ -121,7 +122,7 @@ pub async fn handle_event(
                 event_in,
                 new_member,
                 &new_member.guild_id,
-                &_framework.http,
+                &ctx.http,
                 event_log,
                 event_name
             )

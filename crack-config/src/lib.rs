@@ -255,8 +255,8 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: true,
-        event_handler: |event, framework, data_global| {
-            Box::pin(async move { handle_event(event, framework, data_global).await })
+        event_handler: |ctx: serenity::Context, event, framework, data_global| {
+            Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
         ..Default::default()
     };

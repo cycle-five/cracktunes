@@ -184,7 +184,7 @@ pub async fn send_embed_response_str(
     message_str: String,
 ) -> Result<Message, Error> {
     ctx.send(
-        CreateReply::new()
+        CreateReply::default()
             .embed(CreateEmbed::new().description(message_str))
             .reply(true),
     )
@@ -202,21 +202,26 @@ pub async fn send_embed_response_poise(
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
-    ctx.send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
-        .await?
-        .into_message()
-        .await
-        .map_err(|e| {
-            tracing::error!("error: {:?}", e);
-            e.into()
-        })
+    ctx.send(
+        CreateReply::default()
+            .embed(embed)
+            .ephemeral(false)
+            .reply(true),
+    )
+    .await?
+    .into_message()
+    .await
+    .map_err(|e| {
+        tracing::error!("error: {:?}", e);
+        e.into()
+    })
 }
 
 pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
-    ctx.send(CreateReply::new().embed(embed))
+    ctx.send(CreateReply::default().embed(embed))
         .await
         .unwrap()
         .into_message()
@@ -694,7 +699,7 @@ pub async fn create_paged_embed(
     let mut message = {
         let reply = ctx
             .send(
-                CreateReply::new()
+                CreateReply::default()
                     .embed(
                         CreateEmbed::new()
                             .title(title.clone())
@@ -914,14 +919,14 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
 
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.user().id,
+        CrackContext::Application(ctx) => ctx.interaction.user.id,
         CrackContext::Prefix(ctx) => ctx.msg.author.id,
     }
 }
 
 pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
     match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.channel_id(),
+        CrackContext::Application(ctx) => ctx.interaction.channel_id,
         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
     }
 }
