@@ -3113,7 +3113,7 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.3.2"
-source = "git+https://github.com/CycleFive/songbird?branch=next#0a03dd8e4138f12b976a2c64767260e555e7f181"
+source = "git+https://github.com/CycleFive/songbird?branch=my-next#26f6552da0990ea26ad343aba74c4957e8965d88"
 dependencies = [
  "async-trait",
  "audiopus",

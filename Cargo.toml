@@ -60,7 +60,7 @@ features = [
 # git = "https://github.com/serenity-rs/songbird"
 git = "https://github.com/CycleFive/songbird"
 # path = "../songbird"
-branch = "next"
+branch = "my-next"
 # version = "0.3.2"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
