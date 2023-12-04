@@ -24,11 +24,11 @@ pub use set_welcome_settings::*;
 #[poise::command(
     prefix_command,
     subcommands(
+        "add_prefix",
         "get_settings",
         "print_settings",
         "set_idle_timeout",
         "set_all_log_channel",
-        "set_prefix",
         "set_welcome_settings",
         "set_auto_role",
     ),
