@@ -55,7 +55,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 }
                 None => {
                     check_reply(
-                        ctx.send(CreateReply::new().content(&format!("{error}")))
+                        ctx.send(CreateReply::default().content(&format!("{error}")))
                             .await,
                     );
                 }

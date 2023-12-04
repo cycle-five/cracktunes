@@ -61,7 +61,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         _ => {
             let reply = ctx
                 .send(
-                    CreateReply::new()
+                    CreateReply::default()
                         .embed(create_queue_embed(&tracks, 0).await)
                         .components(build_nav_btns(0, num_pages)),
                 )

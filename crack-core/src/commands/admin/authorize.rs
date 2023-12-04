@@ -26,8 +26,12 @@ pub async fn authorize(
 
     //ctx.send("User authorized").await;
     check_reply(
-        ctx.send(CreateReply::new().content("User authorized.").reply(true))
-            .await,
+        ctx.send(
+            CreateReply::default()
+                .content("User authorized.")
+                .reply(true),
+        )
+        .await,
     );
 
     Ok(())

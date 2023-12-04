@@ -13,7 +13,7 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let _ = msg
         .edit(
             ctx,
-            CreateReply::new().content(format!("Pong! ({}ms)", (end - start).as_millis())),
+            CreateReply::default().content(format!("Pong! ({}ms)", (end - start).as_millis())),
         )
         .await;
     Ok(())

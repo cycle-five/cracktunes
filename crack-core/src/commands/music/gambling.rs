@@ -8,7 +8,7 @@ use crate::{Context, Error};
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     let res = rand::random::<bool>();
 
-    ctx.send(CreateReply::new().content(format!(
+    ctx.send(CreateReply::default().content(format!(
         "You flipped a coin and it landed on {}!",
         if res { "heads" } else { "tails" }
     )))
@@ -31,7 +31,7 @@ pub async fn rolldice(
         res.push(r);
     }
 
-    ctx.send(CreateReply::new().content(format!(
+    ctx.send(CreateReply::default().content(format!(
             "You roll {}, {} sided dice. Here are the results.\n{}",
             number_of_dice,
             sides_per_die,

@@ -124,7 +124,7 @@ pub async fn summon(
             mention: channel_id.mention(),
         }
         .to_string();
-        ctx.send(CreateReply::new().content(text).ephemeral(true))
+        ctx.send(CreateReply::default().content(text).ephemeral(true))
             .await?;
     }
 
