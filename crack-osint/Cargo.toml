@@ -1,6 +1,6 @@
 [package]
 name = "crack-osint"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 whois-rust = "1.5"
 sha1 = "0.10"
-ipinfo = "2.2"
+ipinfo = "3.0"
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { workspace = true }
 poise = { workspace = true }
