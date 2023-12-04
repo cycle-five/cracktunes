@@ -35,9 +35,9 @@ features = [
 
 [workspace.dependencies.serenity]
 #version = "0.12.0-rc2"
-version = "0.11.7"
-git = "https://github.com/serenity-rs/serenity"
-branch = "next"
+version = "0.12.0"
+# git = "https://github.com/serenity-rs/serenity"
+# branch = "next"
 default-features = false
 features = [
   "builder",
@@ -58,10 +58,10 @@ features = [
 
 [workspace.dependencies.songbird]
 # git = "https://github.com/serenity-rs/songbird"
-git = "https://github.com/CycleFive/songbird"
+#git = "https://github.com/CycleFive/songbird"
 # path = "../songbird"
-branch = "my-next"
-# version = "0.3.2"
+#branch = "my-next"
+version = "0.4.0"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
 
@@ -77,7 +77,7 @@ features = ["all"]
 # version = "0.5.5"
 # path = "../poise"
 git = "https://github.com/serenity-rs/poise"
-branch = "serenity-next"
+# branch = "serenity-next"
 default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
