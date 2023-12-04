@@ -1,36 +1,38 @@
 -- Add migration script here
+CREATE TABLE guild_settings (
+    guild_id BIGINT NOT NULL,
+    guild_name TEXT NOT NULL,
+    prefix TEXT NOT NULL DEFAULT 'r!',
+    premium BOOLEAN NOT NULL DEFAULT FALSE,
+    autopause BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_all_domains BOOLEAN NOT NULL DEFAULT FALSE,
+    allowed_domains TEXT [] NOT NULL DEFAULT '{}',
+    banned_domains TEXT [] NOT NULL DEFAULT '{}',
+    authorized_users BIGINT [] NOT NULL DEFAULT '{}',
+    ignored_channels BIGINT [] NOT NULL DEFAULT '{}',
+    old_volume FLOAT NOT NULL DEFAULT 1.0,
+    volume FLOAT NOT NULL DEFAULT 1.0,
+    self_deafen BOOLEAN NOT NULL DEFAULT FALSE,
+    timeout_seconds INT NOT NULL DEFAULT 0,
+    additional_prefixes TEXT [] NOT NULL DEFAULT '{}',
+    PRIMARY KEY (guild_id)
+);
 CREATE TABLE welcome_settings (
-    id SERIAL PRIMARY KEY,
+    guild_id BIGINT PRIMARY KEY,
     channel_id BIGINT,
     message TEXT,
-    auto_role BIGINT
+    auto_role BIGINT,
+    CONSTRAINT fk_welcome_settings FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
 );
 CREATE TABLE log_settings (
-    id SERIAL PRIMARY KEY,
+    guild_id BIGINT PRIMARY KEY,
     all_log_channel BIGINT,
     raw_event_log_channel BIGINT,
     server_log_channel BIGINT,
     member_log_channel BIGINT,
     join_leave_log_channel BIGINT,
-    voice_log_channel BIGINT
-);
-CREATE TABLE guild_settings (
-    guild_id BIGINT,
-    guild_name TEXT,
-    prefix TEXT,
-    prefix_up TEXT,
-    autopause BOOLEAN,
-    allow_all_domains BOOLEAN,
-    old_volume FLOAT,
-    volume FLOAT,
-    self_deafen BOOLEAN,
-    timeout_seconds INT,
-    welcome_settings_id BIGINT,
-    log_settings_id BIGINT,
-    PRIMARY KEY (guild_id),
-    CONSTRAINT fk_guild_settings FOREIGN KEY (guild_id) REFERENCES guild(id),
-    FOREIGN KEY (welcome_settings_id) REFERENCES welcome_settings(id),
-    FOREIGN KEY (log_settings_id) REFERENCES log_settings(id)
+    voice_log_channel BIGINT,
+    CONSTRAINT fk_log_settings FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
 );
 CREATE TABLE allowed_domains (
     guild_id BIGINT,

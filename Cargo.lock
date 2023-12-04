@@ -444,6 +444,7 @@ name = "crack-core"
 version = "0.2.15"
 dependencies = [
  "anyhow",
+ "async-trait",
  "async-tungstenite",
  "audiopus",
  "chatgpt_rs",

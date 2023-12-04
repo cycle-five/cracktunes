@@ -2,9 +2,9 @@
 -- Table for storing guilds (servers)
 CREATE TABLE IF NOT EXISTS guild (
     id BIGINT NOT NULL PRIMARY KEY,
-    "name" TEXT,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
+    "name" TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 -- Table for storing users
 CREATE TABLE IF NOT EXISTS "user" (

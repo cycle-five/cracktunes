@@ -4,6 +4,7 @@ use self::serenity::model::prelude::UserId;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::sync::{atomic, Arc};
@@ -16,6 +17,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
+use crate::db::WelcomeSettingsRead;
 use crate::errors::CrackedError;
 //use crate::Data;
 
@@ -49,6 +51,19 @@ pub struct LogSettings {
     member_log_channel: Option<u64>,
     join_leave_log_channel: Option<u64>,
     voice_log_channel: Option<u64>,
+}
+
+impl From<crate::db::LogSettingsRead> for LogSettings {
+    fn from(settings_db: crate::db::LogSettingsRead) -> Self {
+        LogSettings {
+            all_log_channel: settings_db.all_log_channel.map(|x| x as u64),
+            raw_event_log_channel: settings_db.raw_event_log_channel.map(|x| x as u64),
+            server_log_channel: settings_db.server_log_channel.map(|x| x as u64),
+            member_log_channel: settings_db.member_log_channel.map(|x| x as u64),
+            join_leave_log_channel: settings_db.join_leave_log_channel.map(|x| x as u64),
+            voice_log_channel: settings_db.voice_log_channel.map(|x| x as u64),
+        }
+    }
 }
 
 const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
@@ -117,7 +132,17 @@ pub struct WelcomeSettings {
     pub auto_role: Option<u64>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+impl From<WelcomeSettingsRead> for WelcomeSettings {
+    fn from(settings_db: WelcomeSettingsRead) -> Self {
+        WelcomeSettings {
+            channel_id: settings_db.channel_id.map(|x| x as u64),
+            message: settings_db.message,
+            auto_role: settings_db.auto_role.map(|x| x as u64),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
@@ -182,6 +207,39 @@ impl Display for GuildSettings {
     }
 }
 
+impl From<crate::db::GuildSettingsRead> for GuildSettings {
+    fn from(settings_db: crate::db::GuildSettingsRead) -> Self {
+        let mut settings = GuildSettings::new(
+            GuildId::new(settings_db.guild_id as u64),
+            Some(&settings_db.prefix),
+            Some(settings_db.guild_name),
+        );
+        settings.premium = settings_db.premium;
+        settings.autopause = settings_db.autopause;
+        settings.allow_all_domains = Some(settings_db.allow_all_domains);
+        settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
+        settings.banned_domains = settings_db.banned_domains.into_iter().collect();
+        settings.authorized_users = settings_db
+            .authorized_users
+            .into_iter()
+            .map(|x| x as u64)
+            .collect();
+        settings.ignored_channels = settings_db
+            .ignored_channels
+            .into_iter()
+            .map(|x| x as u64)
+            .collect();
+        settings.old_volume = settings_db.old_volume as f32;
+        settings.volume = settings_db.volume as f32;
+        settings.self_deafen = settings_db.self_deafen;
+        settings.timeout = settings_db.timeout_seconds.unwrap_or(0) as u32;
+        settings.welcome_settings = None; // FIXME
+        settings.log_settings = None; //FIXME
+        settings.additional_prefixes = settings_db.additional_prefixes;
+        settings
+    }
+}
+
 impl GuildSettings {
     pub fn new(
         guild_id: GuildId,
@@ -223,6 +281,21 @@ impl GuildSettings {
 
     pub fn get_prefix_up(&self) -> String {
         self.prefix.to_ascii_uppercase()
+    }
+
+    pub async fn load_or_create(
+        &mut self,
+        pool: &PgPool,
+        guild_id: i64,
+        name: String,
+    ) -> Result<GuildSettings, CrackedError> {
+        let guild = crate::db::GuildEntity::get_or_create(pool, guild_id, name).await?;
+        let mut settings = guild.get_settings(pool).await?;
+        let welcome_settings = guild.get_welcome_settings(pool).await?;
+        let log_settings = guild.get_log_settings(pool).await?;
+        settings.welcome_settings = welcome_settings;
+        settings.log_settings = log_settings;
+        Ok(settings)
     }
 
     pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {

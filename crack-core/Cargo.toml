@@ -10,13 +10,14 @@ keywords = ["discord", "music-bot", "rust"]
 
 [features]
 default = ["playlist", "crack-gpt"]
-playlist = ["sqlx"]
+playlist = []
 shuttle = []
 log_all = []
 crack-gpt = []
 
 [dependencies]
 audiopus = "0.3.0-rc.0"
+async-trait = "0.1"
 colored = "2.0"
 lazy_static = "1.4"
 lyric_finder = "0.1"
