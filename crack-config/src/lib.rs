@@ -132,7 +132,7 @@ pub async fn poise_framework(
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
-            edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
+            edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
             stripped_dynamic_prefix: Some(|ctx, msg, _| {
                 Box::pin(async move {
@@ -255,7 +255,7 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: true,
-        event_handler: |ctx: serenity::Context, event, framework, data_global| {
+        event_handler: |ctx, event, framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
         ..Default::default()

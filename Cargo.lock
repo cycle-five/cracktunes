@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "crack-config"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "colored",
  "crack-core",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.2.13"
+version = "0.2.15"
 dependencies = [
  "anyhow",
  "async-tungstenite",
@@ -502,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.2.13"
+version = "0.2.15"
 dependencies = [
  "async-trait",
  "async-tungstenite",
@@ -3182,8 +3182,7 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b905d2cdd4becf0e643a4aa5491cdfe8f193d5676b5bae7c0460e0e3c6358d63"
+source = "git+https://github.com/cycle-five/songbird?branch=ytdl-search#93f23818a1503052f190d692ed5b8f56d7df3e1b"
 dependencies = [
  "async-trait",
  "audiopus",

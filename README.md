@@ -6,7 +6,7 @@
 [![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
 [![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
-[![Rust Version](https://img.shields.io/badge/rustc-1.72-blue.svg)](https://github.com/cycle-five/cracktunes/)
+[![Rust Version](https://img.shields.io/badge/rustc-1.74-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Deployment
 

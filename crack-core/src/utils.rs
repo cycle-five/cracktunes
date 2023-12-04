@@ -26,7 +26,7 @@ use poise::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
         MessageInteraction,
     },
-    CommandOrAutocompleteInteraction, CreateReply, ReplyHandle,
+    CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::fmt::Write;
@@ -883,10 +883,11 @@ pub enum CommandOrMessageInteraction {
 
 pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
-            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        },
+        CrackContext::Application(app_ctx) => app_ctx.interaction.clone().into(),
+        // match app_ctx.interaction {
+        //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+        //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        // },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         CrackContext::Prefix(_ctx) => None,
     }
@@ -894,12 +895,16 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(
-                CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
-            ),
-            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        },
+        CrackContext::Application(app_ctx) => {
+            Some(CommandOrMessageInteraction::Command(Interaction::Command(
+                app_ctx.interaction.clone(),
+            )))
+            // match app_ctx.interaction {
+            // CommandOrAutocompleteInteraction::Command(x) => Some(
+            //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
+            // ),
+            // CommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        }
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
             ctx.msg.interaction.clone(),

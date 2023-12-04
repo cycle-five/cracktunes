@@ -141,7 +141,7 @@ impl EventHandler for SerenityHandler {
 
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
-            let mut new_member = new_member;
+            // let mut new_member = new_member;
             let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
