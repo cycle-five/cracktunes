@@ -93,7 +93,7 @@ impl GuildEntity {
         )
         .fetch_optional(pool)
         .await?;
-        Ok(settings_read.map(|s| crate::guild::settings::LogSettings::from(s)))
+        Ok(settings_read.map(crate::guild::settings::LogSettings::from))
     }
 
     pub async fn get_welcome_settings(
@@ -110,7 +110,7 @@ impl GuildEntity {
         )
         .fetch_optional(pool)
         .await?;
-        Ok(settings_read.map(|s| WelcomeSettings::from(s)))
+        Ok(settings_read.map(WelcomeSettings::from))
     }
     pub async fn get_settings(&self, pool: &PgPool) -> Result<GuildSettings, Error> {
         let settings_opt = sqlx::query_as!(

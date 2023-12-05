@@ -613,7 +613,19 @@ pub async fn handle_event(
             channel_id,
             deleted_message_id,
             guild_id,
-        } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
+        } => {
+            let log_data = (channel_id, deleted_message_id, guild_id);
+            log_event!(
+                log_message_delete,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         FullEvent::MessageDeleteBulk {
             channel_id,
             multiple_deleted_messages_ids,
@@ -631,7 +643,12 @@ pub async fn handle_event(
             new,
             event,
         } => {
-            if new.as_ref().map(|x| x.author.bot).unwrap_or(false) {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+                || old_if_available
+                    .as_ref()
+                    .map(|x| x.author.bot)
+                    .unwrap_or(false)
+            {
                 return Ok(());
             }
             let log_data: (
@@ -693,14 +710,19 @@ pub async fn handle_event(
         } => event_log.write_log_obj(event_name, thread_members_update),
         FullEvent::ThreadUpdate { old, new } => event_log.write_log_obj(event_name, &(old, new)),
         // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
-        #[cfg(feature = "cache")]
-        UserUpdate {
-            old_data_global,
-            new,
-        } => event_log.write_log_obj(&(old_data_global, new)),
-        #[cfg(not(feature = "cache"))]
         FullEvent::UserUpdate { old_data, new } => {
-            event_log.write_log_obj(event_name, &(old_data, new))
+            let log_data = (old_data, new);
+            let guild_id = new.member.as_ref().unwrap().guild_id.unwrap();
+            log_event!(
+                log_user_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]

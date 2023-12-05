@@ -2,8 +2,8 @@ use crate::{utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, Context as SerenityContext, GuildId, Http, Member, MessageUpdateEvent,
-    Presence,
+    ChannelId, ClientStatus, Context as SerenityContext, CurrentUser, GuildId, Http, Member,
+    Message, MessageId, MessageUpdateEvent, Presence,
 };
 use std::sync::Arc;
 
@@ -20,6 +20,60 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
     );
     Ok(())
+}
+
+pub async fn log_message_delete(
+    _channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
+) -> Result<(), Error> {
+    let &(channel_id, message_id, _guild_id) = log_data;
+    let id = message_id.to_string();
+    let title = format!("Message Deleted: {}", id);
+    let description = format!("Channel: {}", channel_id);
+    let avatar_url = "";
+    send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
+        .await
+        .map(|_| ())
+}
+
+pub async fn log_user_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&Option<CurrentUser>, &CurrentUser),
+) -> Result<Message, Error> {
+    let &(old, new) = log_data;
+    let title = format!("User Updated: {}", new.name);
+    let description = format!(
+        "Old User: {}\nNew User: {}",
+        old.as_ref()
+            .map(|x| x.name.clone())
+            .unwrap_or_else(|| "None".to_string()),
+        new.name
+    );
+
+    let name = new.name.clone();
+    let avatar_url = new.avatar_url().unwrap_or_default();
+    let old_avatar_url = old
+        .as_ref()
+        .and_then(|x| x.avatar_url())
+        .unwrap_or_default();
+
+    let description = if avatar_url != old_avatar_url {
+        format!("Avatar Updated: {}", name)
+    } else {
+        description
+    };
+
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &new.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
 }
 
 /// Log a message update event.

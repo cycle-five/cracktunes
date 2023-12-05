@@ -414,30 +414,40 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
 async fn yt_search_select(
     ctx: SerenityContext,
     channel_id: ChannelId,
-    _res: Vec<String>,
-) -> Result<(), Error> {
+    res: Vec<String>,
+) -> Result<QueryType, Error> {
+    let res = res.chunks_exact(3).map(|x| {
+        let title = x.first().unwrap();
+        let link = x.get(1).unwrap();
+        let link = format!("https://www.youtube.com/watch?v={}", link);
+        let duration = x.get(2).unwrap();
+        let elem = format!("[{}]({})", title, duration);
+        tracing::warn!("elem: {}", elem);
+        (elem, link)
+    });
     // Ask the user for its favorite animal
     let m = channel_id
         .send_message(
             &ctx,
-            CreateMessage::new()
-                .content("Please select your favorite animal")
-                .select_menu(
-                    CreateSelectMenu::new(
-                        "animal_select",
-                        CreateSelectMenuKind::String {
-                            options: vec![
-                                CreateSelectMenuOption::new("🐈 meow", "Cat"),
-                                CreateSelectMenuOption::new("🐕 woof", "Dog"),
-                                CreateSelectMenuOption::new("🐎 neigh", "Horse"),
-                                CreateSelectMenuOption::new("🦙 hoooooooonk", "Alpaca"),
-                                CreateSelectMenuOption::new("🦀 crab rave", "Ferris"),
-                            ],
-                        },
-                    )
-                    .custom_id("song_select")
-                    .placeholder("Select Song to Play"),
-                ),
+            CreateMessage::new().content("Search results").select_menu(
+                CreateSelectMenu::new(
+                    "song_select",
+                    CreateSelectMenuKind::String {
+                        options: res
+                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
+                            .collect(),
+                        // vec![
+                        //     CreateSelectMenuOption::new("🐈 meow", "Cat"),
+                        //     CreateSelectMenuOption::new("🐕 woof", "Dog"),
+                        //     CreateSelectMenuOption::new("🐎 neigh", "Horse"),
+                        //     CreateSelectMenuOption::new("🦙 hoooooooonk", "Alpaca"),
+                        //     CreateSelectMenuOption::new("🦀 crab rave", "Ferris"),
+                        // ],
+                    },
+                )
+                .custom_id("song_select")
+                .placeholder("Select Song to Play"),
+            ),
         )
         .await?;
 
@@ -452,7 +462,7 @@ async fn yt_search_select(
         Some(x) => x,
         None => {
             m.reply(&ctx, "Timed out").await.unwrap();
-            return Ok(());
+            return Err(CrackedError::Other("Timed out").into());
         }
     };
 
@@ -462,6 +472,8 @@ async fn yt_search_select(
         ComponentInteractionDataKind::StringSelect { values } => &values[0],
         _ => panic!("unexpected interaction data kind"),
     };
+
+    let qt = QueryType::VideoLink(url.to_string());
 
     // Acknowledge the interaction and edit the message
     interaction
@@ -476,6 +488,7 @@ async fn yt_search_select(
         )
         .await
         .map_err(|e| e.into())
+        .map(|_| qt)
 
     // // Wait for multiple interactions
     // let mut interaction_stream = m
@@ -515,7 +528,7 @@ async fn create_embed_fields(elems: Vec<String>) -> Vec<EmbedField> {
         if elem.len() < 3 {
             break;
         }
-        let title = elem.get(0).unwrap();
+        let title = elem.first().unwrap();
         let link = elem.get(1).unwrap();
         let link = format!("https://www.youtube.com/watch?v={}", link);
         let duration = elem.get(2).unwrap();
@@ -583,16 +596,28 @@ async fn match_mode(
                         YoutubeDl::new_yt_search(reqwest::Client::new(), keywords.clone())
                             .search()
                             .await?;
-                    let user_id = ctx.author().id;
-                    send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
+                    // let user_id = ctx.author().id;
+                    yt_search_select(
+                        ctx.serenity_context().clone(),
+                        ctx.channel_id(),
+                        search_results,
+                    )
+                    .await?;
+                    // send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 }
                 QueryType::YoutubeSearch(query) => {
                     let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
                         .search()
                         .await?;
+                    yt_search_select(
+                        ctx.serenity_context().clone(),
+                        ctx.channel_id(),
+                        search_results,
+                    )
+                    .await?;
+                    // let user_id = ctx.author().id;
 
-                    let user_id = ctx.author().id;
-                    send_search_response(ctx, guild_id, user_id, query, search_results).await?;
+                    // send_search_response(ctx, guild_id, user_id, query, search_results).await?;
                 }
                 _ => {
                     let embed = CreateEmbed::default()
