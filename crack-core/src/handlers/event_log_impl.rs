@@ -2,8 +2,8 @@ use crate::{utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, Context as SerenityContext, CurrentUser, GuildId, Http, Member,
-    Message, MessageId, MessageUpdateEvent, Presence,
+    ChannelId, ClientStatus, Context as SerenityContext, CurrentUser, GuildChannel, GuildId, Http,
+    Member, Message, MessageId, MessageUpdateEvent, Presence,
 };
 use std::sync::Arc;
 
@@ -20,6 +20,31 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
     );
     Ok(())
+}
+
+pub async fn log_channel_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildChannel, &Option<Vec<Message>>),
+) -> Result<(), Error> {
+    let &(guild_channel, messages) = log_data;
+    let del_channel_id = guild_channel.id;
+    let title = format!("Channel Deleted: {}", del_channel_id);
+    let description = format!(
+        "messages deleted: {}",
+        messages.as_ref().map(|x| x.len()).unwrap_or_default()
+    );
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &channel_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn log_message_delete(

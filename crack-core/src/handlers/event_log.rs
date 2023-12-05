@@ -272,7 +272,7 @@ pub async fn handle_event(
             event_name
         ),
         FullEvent::ChannelDelete { channel, messages } => log_event!(
-            log_unimplemented_event,
+            log_channel_delete,
             guild_settings,
             event_in,
             &(channel, messages),
