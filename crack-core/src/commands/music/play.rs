@@ -38,7 +38,8 @@ use songbird::{
     Call,
 };
 use std::{
-    cmp::Ordering, error::Error as StdError, path::Path, process::Output, sync::Arc, time::Duration,
+    cmp::Ordering, collections::HashMap, error::Error as StdError, path::Path, process::Output,
+    sync::Arc, time::Duration,
 };
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -425,6 +426,10 @@ async fn yt_search_select(
         tracing::warn!("elem: {}", elem);
         (elem, link)
     });
+    let rev_map = res
+        .clone()
+        .map(|(elem, link)| (link, elem))
+        .collect::<HashMap<_, _>>();
     // Ask the user for its favorite animal
     let m = channel_id
         .send_message(
@@ -436,13 +441,6 @@ async fn yt_search_select(
                         options: res
                             .map(|(x, y)| CreateSelectMenuOption::new(x, y))
                             .collect(),
-                        // vec![
-                        //     CreateSelectMenuOption::new("🐈 meow", "Cat"),
-                        //     CreateSelectMenuOption::new("🐕 woof", "Dog"),
-                        //     CreateSelectMenuOption::new("🐎 neigh", "Horse"),
-                        //     CreateSelectMenuOption::new("🦙 hoooooooonk", "Alpaca"),
-                        //     CreateSelectMenuOption::new("🦀 crab rave", "Ferris"),
-                        // ],
                     },
                 )
                 .custom_id("song_select")
@@ -473,23 +471,28 @@ async fn yt_search_select(
         _ => panic!("unexpected interaction data kind"),
     };
 
+    tracing::error!("url: {}", url);
+
     let qt = QueryType::VideoLink(url.to_string());
+    tracing::error!("url: {:?}", qt);
 
     // Acknowledge the interaction and edit the message
-    interaction
+    let res = interaction
         .create_response(
             &ctx,
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
-                    title: "asdf".to_owned(),
+                    title: rev_map.get(url).unwrap().to_string(),
                     url: url.to_owned(),
                 }),
             ),
         )
         .await
         .map_err(|e| e.into())
-        .map(|_| qt)
+        .map(|_| qt);
 
+    m.delete(&ctx).await.unwrap();
+    res
     // // Wait for multiple interactions
     // let mut interaction_stream = m
     //     .await_component_interaction(&ctx.shard)
@@ -516,7 +519,6 @@ async fn yt_search_select(
 
     // // Delete the orig message or there will be dangling components (components that still
     // // exist, but no collector is running so any user who presses them sees an error)
-    // m.delete(&ctx).await.unwrap()
 }
 
 async fn create_embed_fields(elems: Vec<String>) -> Vec<EmbedField> {
@@ -597,24 +599,43 @@ async fn match_mode(
                             .search()
                             .await?;
                     // let user_id = ctx.author().id;
-                    yt_search_select(
+                    let qt = yt_search_select(
                         ctx.serenity_context().clone(),
                         ctx.channel_id(),
                         search_results,
                     )
                     .await?;
+                    let queue = enqueue_track(ctx.http(), &call, &qt).await?;
+                    update_queue_messages(
+                        &ctx.serenity_context().http,
+                        ctx.data(),
+                        &queue,
+                        guild_id,
+                    )
+                    .await
+                    // match_mode(ctx, call.clone(), Mode::End, qt).await
                     // send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 }
                 QueryType::YoutubeSearch(query) => {
                     let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
                         .search()
                         .await?;
-                    yt_search_select(
+                    let qt = yt_search_select(
                         ctx.serenity_context().clone(),
                         ctx.channel_id(),
                         search_results,
                     )
                     .await?;
+                    // match_mode(ctx, call.clone(), Mode::End, qt).await
+                    let queue = enqueue_track(ctx.http(), &call, &qt).await?;
+                    update_queue_messages(
+                        &ctx.serenity_context().http,
+                        ctx.data(),
+                        &queue,
+                        guild_id,
+                    )
+                    .await
+
                     // let user_id = ctx.author().id;
 
                     // send_search_response(ctx, guild_id, user_id, query, search_results).await?;

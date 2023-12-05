@@ -48,14 +48,18 @@ pub async fn log_channel_delete(
 }
 
 pub async fn log_message_delete(
-    _channel_id: ChannelId,
+    channel_id: ChannelId,
     http: &Arc<Http>,
     log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
 ) -> Result<(), Error> {
-    let &(channel_id, message_id, _guild_id) = log_data;
+    let &(del_channel_id, message_id, guild_id) = log_data;
     let id = message_id.to_string();
     let title = format!("Message Deleted: {}", id);
-    let description = format!("Channel: {}", channel_id);
+    let description = format!(
+        "ChannelId: {}\nGuildId: {}",
+        del_channel_id,
+        guild_id.unwrap_or_default()
+    );
     let avatar_url = "";
     send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
         .await
@@ -111,6 +115,12 @@ pub async fn log_message_update(
         &MessageUpdateEvent,
     ),
 ) -> Result<(), Error> {
+    // Don't log message updates from bots
+    // TODO: Make this configurable
+    if log_data.2.author.as_ref().map(|x| x.bot).unwrap_or(false) {
+        return Ok(());
+    }
+
     let (id, title, description, avatar_url) = if let &(Some(old), Some(new), _msg) = log_data {
         let title = format!("Message Updated: {}", new.author.name);
         let description = format!(
