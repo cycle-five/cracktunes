@@ -20,10 +20,14 @@ use crate::{
     Context, Error,
 };
 use ::serenity::{
-    all::{EmbedField, GuildId, Mentionable, Message, UserId},
+    all::{
+        ChannelId, ComponentInteractionDataKind, Context as SerenityContext, EmbedField, GuildId,
+        Mentionable, Message, UserId,
+    },
     builder::{
-        CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
-        EditInteractionResponse, EditMessage,
+        CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateInteractionResponseMessage, CreateMessage, CreateSelectMenu, CreateSelectMenuKind,
+        CreateSelectMenuOption, EditInteractionResponse, EditMessage,
     },
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
@@ -407,21 +411,117 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
     Ok((output, metadata))
 }
 
+async fn yt_search_select(
+    ctx: SerenityContext,
+    channel_id: ChannelId,
+    _res: Vec<String>,
+) -> Result<(), Error> {
+    // Ask the user for its favorite animal
+    let m = channel_id
+        .send_message(
+            &ctx,
+            CreateMessage::new()
+                .content("Please select your favorite animal")
+                .select_menu(
+                    CreateSelectMenu::new(
+                        "animal_select",
+                        CreateSelectMenuKind::String {
+                            options: vec![
+                                CreateSelectMenuOption::new("🐈 meow", "Cat"),
+                                CreateSelectMenuOption::new("🐕 woof", "Dog"),
+                                CreateSelectMenuOption::new("🐎 neigh", "Horse"),
+                                CreateSelectMenuOption::new("🦙 hoooooooonk", "Alpaca"),
+                                CreateSelectMenuOption::new("🦀 crab rave", "Ferris"),
+                            ],
+                        },
+                    )
+                    .custom_id("song_select")
+                    .placeholder("Select Song to Play"),
+                ),
+        )
+        .await?;
+
+    // Wait for the user to make a selection
+    // This uses a collector to wait for an incoming event without needing to listen for it
+    // manually in the EventHandler.
+    let interaction = match m
+        .await_component_interaction(&ctx.shard)
+        .timeout(Duration::from_secs(60 * 3))
+        .await
+    {
+        Some(x) => x,
+        None => {
+            m.reply(&ctx, "Timed out").await.unwrap();
+            return Ok(());
+        }
+    };
+
+    // data.values contains the selected value from each select menus. We only have one menu,
+    // so we retrieve the first
+    let url = match &interaction.data.kind {
+        ComponentInteractionDataKind::StringSelect { values } => &values[0],
+        _ => panic!("unexpected interaction data kind"),
+    };
+
+    // Acknowledge the interaction and edit the message
+    interaction
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
+                    title: "asdf".to_owned(),
+                    url: url.to_owned(),
+                }),
+            ),
+        )
+        .await
+        .map_err(|e| e.into())
+
+    // // Wait for multiple interactions
+    // let mut interaction_stream = m
+    //     .await_component_interaction(&ctx.shard)
+    //     .timeout(Duration::from_secs(60 * 3))
+    //     .stream();
+
+    // while let Some(interaction) = interaction_stream.next().await {
+    //     let sound = &interaction.data.custom_id;
+    //     // Acknowledge the interaction and send a reply
+    //     interaction
+    //         .create_response(
+    //             &ctx,
+    //             // This time we dont edit the message but reply to it
+    //             CreateInteractionResponse::Message(
+    //                 CreateInteractionResponseMessage::default()
+    //                     // Make the message hidden for other users by setting `ephemeral(true)`.
+    //                     .ephemeral(true)
+    //                     .content(format!("The **{animal}** says __{sound}__")),
+    //             ),
+    //         )
+    //         .await
+    //         .unwrap();
+    // }
+
+    // // Delete the orig message or there will be dangling components (components that still
+    // // exist, but no collector is running so any user who presses them sees an error)
+    // m.delete(&ctx).await.unwrap()
+}
+
 async fn create_embed_fields(elems: Vec<String>) -> Vec<EmbedField> {
+    tracing::warn!("num elems: {:?}", elems.len());
     let fields_grp = elems.chunks(3);
     let mut fields = vec![];
     // let tmp = "".to_string();
     for elem in fields_grp.into_iter() {
+        if elem.len() < 3 {
+            break;
+        }
         let title = elem.get(0).unwrap();
         let link = elem.get(1).unwrap();
         let link = format!("https://www.youtube.com/watch?v={}", link);
         let duration = elem.get(2).unwrap();
-        let elem = format!("[{}]({}) - {}", title, link, duration);
-        fields.push(EmbedField::new(
-            format!("Search Result: {}", title),
-            elem,
-            false,
-        ));
+        // let elem = format!("[{}]({}) - {}", title, link, duration);
+        let elem = format!("({}) - {}", link, duration);
+        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
     }
     fields
 }
@@ -451,11 +551,12 @@ async fn send_search_response(
         .author(author)
         .title(title)
         //.description(description)
-        .footer(footer);
+        .footer(footer)
+        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
     //.fields(fields);
-    let embed = fields.into_iter().fold(embed, |embed, field| {
-        embed.field(field.name, field.value, field.inline)
-    });
+    // let embed = fields.into_iter().fold(embed, |embed, field| {
+    //     embed.field(field.name, field.value, field.inline)
+    // });
     send_embed_response_poise(ctx, embed).await
 }
 

@@ -1,3 +1,4 @@
+pub const ADDED_QUEUE: &str = "📃 Added to queue!";
 pub const AUTOPAUSE_OFF: &str = "🤖 Autopause OFF!";
 pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";

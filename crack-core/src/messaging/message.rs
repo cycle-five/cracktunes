@@ -69,6 +69,10 @@ pub enum CrackedMessage {
     SocialMediaResponse {
         response: String,
     },
+    SongQueued {
+        title: String,
+        url: String,
+    },
     Summon {
         mention: Mention,
     },
@@ -174,6 +178,9 @@ impl Display for CrackedMessage {
                 SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
+            Self::SongQueued { title, url } => {
+                f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
+            }
             Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
