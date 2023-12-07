@@ -37,9 +37,8 @@ async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHan
             if i != 0 {
                 Some(
                     CreateEmbed::default()
-                        .title(format!("({})[{}]", i, result))
-                        .description(&result)
-                        .url(&result),
+                        .title(format!("({})[{}]", i, result.title.unwrap_or_default()))
+                        .url(&result.source_url.unwrap_or_default()),
                 )
             } else {
                 None

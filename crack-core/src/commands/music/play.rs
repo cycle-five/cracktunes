@@ -415,14 +415,14 @@ async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> 
 async fn yt_search_select(
     ctx: SerenityContext,
     channel_id: ChannelId,
-    res: Vec<String>,
+    metadata: Vec<AuxMetadata>,
 ) -> Result<QueryType, Error> {
-    let res = res.chunks_exact(3).map(|x| {
-        let title = x.first().unwrap();
-        let link = x.get(1).unwrap();
-        let link = format!("https://www.youtube.com/watch?v={}", link);
-        let duration = x.get(2).unwrap();
-        let elem = format!("[{}]({})", title, duration);
+    let res = metadata.iter().map(|x| {
+        let title = x.title.clone().unwrap_or_default();
+        let link = x.source_url.clone().unwrap_or_default();
+        // let link = format!("https://www.youtube.com/watch?v={}", link);
+        let duration = x.duration.clone().unwrap_or_default();
+        let elem = format!("[{}]({})", title, duration_to_string(duration));
         tracing::warn!("elem: {}", elem);
         (elem, link)
     });
@@ -521,24 +521,27 @@ async fn yt_search_select(
     // // exist, but no collector is running so any user who presses them sees an error)
 }
 
-async fn create_embed_fields(elems: Vec<String>) -> Vec<EmbedField> {
+async fn create_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
     tracing::warn!("num elems: {:?}", elems.len());
-    let fields_grp = elems.chunks(3);
     let mut fields = vec![];
     // let tmp = "".to_string();
-    for elem in fields_grp.into_iter() {
-        if elem.len() < 3 {
-            break;
-        }
-        let title = elem.first().unwrap();
-        let link = elem.get(1).unwrap();
-        let link = format!("https://www.youtube.com/watch?v={}", link);
-        let duration = elem.get(2).unwrap();
-        // let elem = format!("[{}]({}) - {}", title, link, duration);
-        let elem = format!("({}) - {}", link, duration);
+    for elem in elems.into_iter() {
+        let title = elem.title.unwrap_or_default();
+        let link = elem.source_url.unwrap_or_default();
+        let duration = elem.duration.unwrap_or_default();
+        let elem = format!("({}) - {}", link, duration_to_string(duration));
         fields.push(EmbedField::new(format!("[{}]", title), elem, true));
     }
     fields
+}
+
+fn duration_to_string(duration: Duration) -> String {
+    let mut secs = duration.as_secs();
+    let hours = secs / 3600;
+    secs = secs % 3600;
+    let minutes = secs / 60;
+    secs = secs % 60;
+    format!("{}:{}:{}", hours, minutes, secs)
 }
 
 async fn send_search_response(
@@ -546,7 +549,7 @@ async fn send_search_response(
     guild_id: GuildId,
     user_id: UserId,
     query: String,
-    res: Vec<String>,
+    res: Vec<AuxMetadata>,
 ) -> Result<Message, Error> {
     let author = ctx.author_member().await.unwrap();
     let name = if DEFAULT_PREMIUM {
@@ -554,8 +557,6 @@ async fn send_search_response(
     } else {
         author.display_name().to_string()
     };
-
-    // let description: String = res.clone().into_iter().collect::<Vec<String>>().join("\n");
 
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let fields = create_embed_fields(res).await;
@@ -565,13 +566,9 @@ async fn send_search_response(
     let embed = CreateEmbed::new()
         .author(author)
         .title(title)
-        //.description(description)
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
-    //.fields(fields);
-    // let embed = fields.into_iter().fold(embed, |embed, field| {
-    //     embed.field(field.name, field.value, field.inline)
-    // });
+
     send_embed_response_poise(ctx, embed).await
 }
 
@@ -595,8 +592,8 @@ async fn match_mode(
             match query_type.clone() {
                 QueryType::Keywords(keywords) => {
                     let search_results =
-                        YoutubeDl::new_yt_search(reqwest::Client::new(), keywords.clone())
-                            .search()
+                        YoutubeDl::new_yt_search(reqwest::Client::new(), keywords.clone(), None)
+                            .search_query()
                             .await?;
                     // let user_id = ctx.author().id;
                     let qt = yt_search_select(
@@ -618,7 +615,7 @@ async fn match_mode(
                 }
                 QueryType::YoutubeSearch(query) => {
                     let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
-                        .search()
+                        .search_query()
                         .await?;
                     let qt = yt_search_select(
                         ctx.serenity_context().clone(),
@@ -668,8 +665,8 @@ async fn match_mode(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-                let res = YoutubeDl::new_yt_search(reqwest::Client::new(), query.clone())
-                    .search()
+                let res = YoutubeDl::new_yt_search(reqwest::Client::new(), query.clone(), None)
+                    .search_query()
                     .await?;
                 let user_id = ctx.author().id;
                 send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
@@ -1231,7 +1228,7 @@ async fn get_track_source_and_metadata(
     match query_type {
         QueryType::YoutubeSearch(query) => {
             tracing::error!("In YoutubeSearch");
-            let mut ytdl = YoutubeDl::new_yt_search(client, query);
+            let mut ytdl = YoutubeDl::new_yt_search(client, query, None);
             let asdf = ytdl.search_query().await.unwrap_or_default();
             tracing::error!("asdf: {:?}", asdf);
             let my_metadata = MyAuxMetadata::default();
