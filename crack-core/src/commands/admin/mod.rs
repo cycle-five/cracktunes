@@ -11,11 +11,13 @@ pub mod debug;
 pub mod defend;
 pub mod delete_channel;
 pub mod delete_role;
+pub mod get_active;
 pub mod invite_tracker;
 pub mod kick;
 pub mod message_cache;
 pub mod move_users;
 pub mod mute;
+pub mod random_mute_lol;
 pub mod unban;
 pub mod unmute;
 
@@ -36,11 +38,13 @@ pub use debug::*;
 pub use defend::*;
 pub use delete_channel::*;
 pub use delete_role::*;
+pub use get_active::*;
 pub use invite_tracker::track_invites;
 pub use kick::*;
 pub use message_cache::*;
 pub use move_users::*;
 pub use mute::*;
+pub use random_mute_lol::*;
 pub use unban::*;
 pub use unmute::*;
 
@@ -69,6 +73,8 @@ pub use unmute::*;
         "move_users_to",
         "unban",
         "unmute",
+        "random_mute",
+        "get_active_vcs",
     ),
     ephemeral,
     owners_only

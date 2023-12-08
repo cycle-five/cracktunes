@@ -220,7 +220,7 @@ impl From<reqwest::Error> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a rspotify [`ClientError`] to a [`CrackedError`].
+/// Provides an implementation to convert a rspotify [`RSpotifyClientError`] to a [`CrackedError`].
 impl From<RSpotifyClientError> for CrackedError {
     fn from(err: RSpotifyClientError) -> CrackedError {
         CrackedError::RSpotify(err)

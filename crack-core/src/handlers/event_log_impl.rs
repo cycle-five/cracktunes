@@ -41,7 +41,7 @@ pub async fn log_channel_delete(
         &channel_id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -61,7 +61,7 @@ pub async fn log_message_delete(
         guild_id.unwrap_or_default()
     );
     let avatar_url = "";
-    send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
+    send_log_embed_thumb(&channel_id, http, &id, &title, &description, avatar_url)
         .await
         .map(|_| ())
 }

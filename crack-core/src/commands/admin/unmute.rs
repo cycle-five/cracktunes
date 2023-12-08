@@ -3,6 +3,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::Message;
 use serenity::builder::EditMember;
 
 /// Unmute a user.
@@ -12,32 +13,35 @@ pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
-    let msg = match ctx.guild_id() {
-        Some(guild) => {
-            if let Err(e) = guild
-                .edit_member(ctx, user.clone().id, EditMember::new().mute(false))
-                .await
-            {
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
-                )
-                .await
-            } else {
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::UserUnmuted {
-                        user: user.name.clone(),
-                        user_id: user.clone().id,
-                    },
-                )
-                .await
-            }
-        }
-        None => {
-            Result::Err(CrackedError::Other("This command can only be used in a guild.").into())
-        }
-    }?;
-    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
-    Ok(())
+    unmute_impl(ctx, user).await.map(|_| ())
+}
+
+pub async fn unmute_impl(
+    ctx: Context<'_>,
+    user: serenity::model::user::User,
+) -> Result<Message, Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or(CrackedError::Other("Guild ID not found"))?;
+    if let Err(e) = guild_id
+        .edit_member(ctx, user.clone().id, EditMember::new().mute(false))
+        .await
+    {
+        // Handle error, send error message
+        send_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+        )
+        .await
+    } else {
+        // Send success message
+        send_response_poise(
+            ctx,
+            CrackedMessage::UserUnmuted {
+                user: user.name.clone(),
+                user_id: user.clone().id,
+            },
+        )
+        .await
+    }
 }

@@ -421,7 +421,7 @@ async fn yt_search_select(
         let title = x.title.clone().unwrap_or_default();
         let link = x.source_url.clone().unwrap_or_default();
         // let link = format!("https://www.youtube.com/watch?v={}", link);
-        let duration = x.duration.clone().unwrap_or_default();
+        let duration = x.duration.unwrap_or_default();
         let elem = format!("[{}]({})", title, duration_to_string(duration));
         tracing::warn!("elem: {}", elem);
         (elem, link)
@@ -538,9 +538,9 @@ async fn create_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 fn duration_to_string(duration: Duration) -> String {
     let mut secs = duration.as_secs();
     let hours = secs / 3600;
-    secs = secs % 3600;
+    secs %= 3600;
     let minutes = secs / 60;
-    secs = secs % 60;
+    secs %= 60;
     format!("{}:{}:{}", hours, minutes, secs)
 }
 
