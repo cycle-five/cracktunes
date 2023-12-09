@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO guild (id, name)\n            VALUES ($1, $2)\n            ON CONFLICT (id)\n            DO UPDATE SET name = $2, updated_at = now()\n            RETURNING *\n            ",
+  "query": "\n                INSERT INTO guild (id, name)\n                VALUES ($1, $2)\n                ON CONFLICT (id)\n                DO UPDATE SET name = $2, updated_at = now()\n                RETURNING *\n                ",
   "describe": {
     "columns": [
       {
@@ -37,5 +37,5 @@
       false
     ]
   },
-  "hash": "08fe120487accf2f5f3d7189282b40b41f39808e97578123dc33d8fbebbb7430"
+  "hash": "1db863174c76d966b48450bf689b5b4b10ad4f6c137cc3bc6392c15caabbfe69"
 }

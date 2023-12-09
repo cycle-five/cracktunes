@@ -174,20 +174,65 @@ impl GuildEntity {
         guild_id: i64,
         name: String,
     ) -> Result<GuildEntity, Error> {
-        let guild = sqlx::query_as!(
+        let guild_opt = match sqlx::query_as!(
             GuildEntity,
             r#"
-            INSERT INTO guild (id, name)
-            VALUES ($1, $2)
-            ON CONFLICT (id)
-            DO UPDATE SET name = $2, updated_at = now()
-            RETURNING *
+            SELECT * FROM guild
+            WHERE id = $1
             "#,
-            guild_id,
-            name
+            guild_id
         )
         .fetch_one(pool)
-        .await?;
+        .await
+        {
+            Ok(guild) => Some(guild),
+            Err(sqlx::Error::RowNotFound) => None,
+            Err(e) => return Err(e.into()),
+        };
+
+        let guild = match guild_opt {
+            Some(guild) => guild,
+            None => {
+                let guild_entity = sqlx::query_as!(
+                    GuildEntity,
+                    r#"
+                INSERT INTO guild (id, name)
+                VALUES ($1, $2)
+                ON CONFLICT (id)
+                DO UPDATE SET name = $2, updated_at = now()
+                RETURNING *
+                "#,
+                    guild_id,
+                    name
+                )
+                .fetch_one(pool)
+                .await?;
+
+                // let guild_settings = GuildSettings::new(
+                //     GuildId::new(guild_id as u64),
+                //     Some(DEFAULT_PREFIX),
+                //     Some(name),
+                // );
+
+                let _guild_settings = sqlx::query_as!(
+                    GuildSettingsRead,
+                    r#"
+                    INSERT INTO guild_settings (guild_id, guild_name)
+                    VALUES ($1, $2)
+                    ON CONFLICT (guild_id)
+                    DO UPDATE SET guild_name = $2
+                    RETURNING *
+                    "#,
+                    guild_id,
+                    Some(name.clone())
+                )
+                .fetch_one(pool)
+                .await?;
+
+                // let guild_settings = GuildSettings::from(guild_settings);
+                guild_entity
+            }
+        };
 
         Ok(guild)
     }
