@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, authorized_users, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::FLOAT, $12::FLOAT, $13, $14, $15)\n            ON CONFLICT (guild_id)\n            DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, authorized_users = $9, ignored_channels = $10, old_volume = $11::FLOAT, volume = $12::FLOAT, self_deafen = $13, timeout_seconds = $14, additional_prefixes = $15\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "Int8Array",
+        "Float8",
+        "Float8",
+        "Bool",
+        "Int4",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4777d0a31379b6f063e5d9ca254429adec92ccb9602b718bf5493228a549d754"
+}

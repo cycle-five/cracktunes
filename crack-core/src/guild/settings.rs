@@ -43,14 +43,14 @@ lazy_static! {
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
-    all_log_channel: Option<u64>,
-    raw_event_log_channel: Option<u64>,
+    pub all_log_channel: Option<u64>,
+    pub raw_event_log_channel: Option<u64>,
     // TODO: Decide on what level of granularity I want for logging options.
     // Also should they be able to overlap?
-    server_log_channel: Option<u64>,
-    member_log_channel: Option<u64>,
-    join_leave_log_channel: Option<u64>,
-    voice_log_channel: Option<u64>,
+    pub server_log_channel: Option<u64>,
+    pub member_log_channel: Option<u64>,
+    pub join_leave_log_channel: Option<u64>,
+    pub voice_log_channel: Option<u64>,
 }
 
 impl From<crate::db::LogSettingsRead> for LogSettings {
