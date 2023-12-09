@@ -1,8 +1,5 @@
 use crate::{
-    guild::{
-        operations::get_guilds,
-        settings::{GuildSettings, GuildSettingsMap},
-    },
+    guild::settings::{GuildSettings, GuildSettingsMap},
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
 };
@@ -141,7 +138,6 @@ impl EventHandler for SerenityHandler {
 
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
-            // let mut new_member = new_member;
             let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
@@ -275,17 +271,22 @@ impl EventHandler for SerenityHandler {
         }
 
         let config = self.data.bot_settings.clone();
+        let video_status_poll_interval = config.get_video_status_poll_interval();
+        // let config.get
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
-        let ctx = Arc::new(ctx);
-        let config = Arc::new(config);
+        let arc_ctx = Arc::new(ctx.clone());
+        let arc_config = Arc::new(config.clone());
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
-        let _ = self.load_guilds_settings_cache_ready(&ctx, &guilds).await;
+        let _ = self
+            .load_guilds_settings_cache_ready(&arc_ctx.clone(), &guilds)
+            .await;
 
         let num_inserted = {
-            let lock = ctx.data.read().await;
+            let ctx1 = arc_ctx.clone();
+            let lock = ctx1.data.read().await;
             let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
             let mut data_write = self.data.guild_settings_map.write().unwrap();
 
@@ -309,47 +310,46 @@ impl EventHandler for SerenityHandler {
         // we don't have one due to self being an immutable reference.
         if !self.is_loop_running.load(Ordering::Relaxed) {
             // We have to clone the Arc, as it gets moved into the new thread.
-            let ctx1 = Arc::clone(&ctx);
-            let config1 = Arc::clone(&config);
             // tokio::spawn creates a new green thread that can run in parallel with the rest of
             // the application.
             if false {
-                tokio::spawn(async move {
+                let ctx2 = arc_ctx.clone();
+                let config2 = arc_config.clone();
+                let _res = tokio::spawn(async move {
                     loop {
                         // We clone Context again here, because Arc is owned, so it moves to the
                         // new function.
-                        log_system_load(ctx1.clone(), config1.clone()).await;
-                        tokio::time::sleep(Duration::from_secs(
-                            config1.get_video_status_poll_interval(),
-                        ))
-                        .await;
+                        log_system_load(ctx2.clone(), config2.clone()).await;
+                        tokio::time::sleep(Duration::from_secs(video_status_poll_interval)).await;
                     }
-                });
+                })
+                .await;
             }
 
-            let ctx2 = Arc::clone(&ctx);
-            let _data = self.data.clone();
-            tokio::spawn(async move {
-                loop {
-                    // We clone Context again here, because Arc is owned, so it moves to the
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                    let _guilds = get_guilds(ctx2.clone()).await;
-                    tracing::warn!("*Not* checking for old messages");
-                    // let _ = check_delete_old_messages(
-                    //     ctx2.clone(),
-                    //     &data,
-                    //     guilds,
-                    //     chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
-                    // )
-                    // .await;
-                }
-            });
+            // let _data = self.data.clone();
+            // let _res: JoinHandle<()> = tokio::spawn(async move {
+            //     let ctx3 = arc_ctx.clone();
+            //     loop {
+            //         let ctx4 = ctx3.clone();
+            //         // We clone Context again here, because Arc is owned, so it moves to the
+            //         tokio::time::sleep(Duration::from_secs(60)).await;
+            //         let _guilds = get_guilds(ctx4.clone()).await;
+            //         tracing::warn!("*Not* checking for old messages");
+            //         // let _ = check_delete_old_messages(
+            //         //     ctx2.clone(),
+            //         //     &data,
+            //         //     guilds,
+            //         //     chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
+            //         // )
+            //         // .await;
+            //     }
+            // });
 
-            let ctx3 = Arc::clone(&ctx);
-
-            if config.get_video_status_poll_interval() > 0 {
-                cam_status_loop(ctx3, config.clone(), guilds.clone()).await;
-            }
+            let ctx3 = arc_ctx.clone();
+            let config3 = arc_config.clone();
+            if video_status_poll_interval > 0 {
+                cam_status_loop(ctx3.clone(), config3.clone(), guilds.clone()).await;
+            };
 
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
@@ -391,13 +391,12 @@ impl SerenityHandler {
 
     async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
 
         for guild in &ready.guilds {
             let guild_id = guild.id;
-            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match,
+            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match.name.clone(),
                 None => {
                     tracing::error!("Guild not found in cache");
                     continue;
@@ -405,50 +404,45 @@ impl SerenityHandler {
             };
             tracing::info!(
                 "Loading guild settings for {}, {}",
-                guild_full.id,
-                guild_full.name.clone()
+                guild_id,
+                guild_name.clone()
             );
 
-            let mut default =
-                GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
+            let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name.clone()));
 
             let _ = default.load_if_exists().map_err(|err| {
-                tracing::error!(
-                    "Failed to load guild {} settings due to {}",
-                    default.guild_id,
-                    err
-                );
+                tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
             });
 
             tracing::warn!("GuildSettings: {:?}", default);
 
-            let _ = guild_settings_map.insert(default.guild_id, default.clone());
+            self.data
+                .guild_settings_map
+                .write()
+                .unwrap()
+                .insert(guild_id, default.clone());
 
-            let guild_settings = guild_settings_map.get_mut(&default.guild_id);
-
-            guild_settings
-                .map(|x| {
-                    x.save().expect("Error saving guild settings");
-                    tracing::info!("saving guild {}...", x);
-                    x
-                })
-                .or_else(|| {
-                    tracing::error!("Guild not found in settings map");
-                    None
-                });
+            // match guild_settings {
+            //     Some(guild_settings) => {
+            default.save().await.expect("Error saving guild settings");
+            tracing::info!("saving guild {}...", default);
+            //     }
+            //     None => {
+            //         tracing::error!("Guild not found in settings map");
+            //     }
+            // }
         }
-        tracing::error!("guild_settings_map");
-        tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
     }
 
     async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
         let prefix = self.data.bot_settings.get_prefix();
-        let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
         tracing::info!("Loading guilds' settings");
 
+        let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
-            let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match,
+            let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
+            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
+                Some(guild_match) => guild_match.name.clone(),
                 None => {
                     tracing::error!("Guild not found in cache");
                     continue;
@@ -456,43 +450,45 @@ impl SerenityHandler {
             };
             tracing::info!(
                 "Loading guild settings for {}, {}",
-                guild_full.id,
-                guild_full.name.clone()
+                guild_id,
+                guild_name.clone()
             );
 
             let mut default = GuildSettings::new(
-                guild_full.id,
+                *guild_id,
                 Some(&prefix),
-                Some(guild_full.name.to_ascii_lowercase().clone()),
+                Some(guild_name.to_ascii_lowercase().clone()),
             );
 
             let _ = default.load_if_exists().map_err(|err| {
-                tracing::error!(
-                    "Failed to load guild {} settings due to {}",
-                    default.guild_id,
-                    err
-                );
+                tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
             });
 
             tracing::warn!("GuildSettings: {:?}", default);
 
-            let _ = guild_settings_map.insert(default.guild_id, default.clone());
+            let _ = guild_settings_map.insert(*guild_id, default.clone());
+            tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
 
-            let guild_settings = guild_settings_map.get_mut(&default.guild_id);
+            let guild_settings_opt = guild_settings_map.get_mut(guild_id);
 
-            guild_settings
-                .map(|x| {
-                    x.save().expect("Error saving guild settings");
-                    tracing::info!("saving guild {}...", x);
-                    x
-                })
-                .or_else(|| {
+            match guild_settings_opt {
+                Some(&mut ref guild_settings) => {
+                    tracing::info!("saving guild {}...", guild_settings);
+                    guild_settings_list.push(guild_settings.clone());
+                    // guild_settings
+                    //     .save()
+                    //     .await
+                    //     .expect("Error saving guild settings");
+                }
+                None => {
                     tracing::error!("Guild not found in settings map");
-                    None
-                });
+                }
+            }
         }
-        tracing::error!("guild_settings_map");
-        tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
+
+        for guild in guild_settings_list.clone() {
+            guild.save().await.expect("Error saving guild settings");
+        }
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {

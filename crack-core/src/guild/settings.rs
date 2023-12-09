@@ -326,7 +326,19 @@ impl GuildSettings {
         Ok(())
     }
 
-    pub fn save(&self) -> Result<(), CrackedError> {
+    pub async fn save(&self) -> Result<(), CrackedError> {
+        tracing::warn!("Saving guild settings: {:?}", self);
+        let pool = PgPool::connect_lazy(&env::var("DATABASE_URL").unwrap()).unwrap();
+        let guild_id = self.guild_id.get() as i64;
+        let guild_name = self.guild_name.clone();
+        let guild = crate::db::GuildEntity::get_or_create(&pool, guild_id, guild_name.clone())
+            .await
+            .unwrap();
+        let _ = guild.write_settings(&pool, self).await;
+        Ok(())
+    }
+
+    pub fn old_save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!(
@@ -638,7 +650,7 @@ impl GuildSettings {
 
 pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
     for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save();
+        let _ = guild_settings.save().await;
     }
 }
 

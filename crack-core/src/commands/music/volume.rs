@@ -103,8 +103,8 @@ pub async fn volume(
 
         let new_vol = to_set.unwrap() as f32 / 100.0;
         let old_vol = {
-            let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
-            let guild_settings = guild_settings_map
+            let mut asdf = ctx.data().guild_settings_map.write().unwrap().clone();
+            let guild_settings = asdf
                 .entry(guild_id)
                 .and_modify(|guild_settings| {
                     guild_settings.set_volume(new_vol);
@@ -117,23 +117,26 @@ pub async fn volume(
                     )
                     .set_volume(new_vol)
                     .clone();
-                    match guild_settings.save() {
-                        Ok(_) => (),
-                        Err(e) => {
-                            tracing::error!("Error saving guild_settings: {:?}", e);
-                        }
-                    }
+
                     tracing::warn!(
                         "guild_settings: {:?}",
                         format!("{:?}", guild_settings).white(),
                     );
+
                     guild_settings
                 });
             tracing::warn!(
                 "guild_settings: {:?}",
                 format!("{:?}", guild_settings).white(),
             );
-            guild_settings.old_volume
+            let old_volume = guild_settings.old_volume;
+            match guild_settings.save().await {
+                Ok(_) => (),
+                Err(e) => {
+                    tracing::error!("Error saving guild_settings: {:?}", e);
+                }
+            }
+            old_volume
         };
 
         let embed = create_volume_embed(old_vol, new_vol);

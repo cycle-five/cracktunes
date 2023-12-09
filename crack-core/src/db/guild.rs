@@ -129,7 +129,7 @@ impl GuildEntity {
     pub async fn write_settings(
         &self,
         pool: &PgPool,
-        settings: crate::guild::settings::GuildSettings,
+        settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
@@ -144,10 +144,10 @@ impl GuildEntity {
             settings.premium,
             settings.autopause,
             settings.allow_all_domains,
-            &settings.allowed_domains.into_iter().collect::<Vec<String>>(),
-            &settings.banned_domains.into_iter().collect::<Vec<String>>(),
-            &settings.authorized_users.into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
-            &settings.ignored_channels.into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
+            &settings.allowed_domains.clone().into_iter().collect::<Vec<String>>(),
+            &settings.banned_domains.clone().into_iter().collect::<Vec<String>>(),
+            &settings.authorized_users.clone().into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
+            &settings.ignored_channels.clone().into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
             settings.old_volume as i64,
             settings.volume as i64,
             settings.self_deafen,
