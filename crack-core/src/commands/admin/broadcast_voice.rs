@@ -15,7 +15,7 @@ pub async fn broadcast_voice(
     let data = ctx.data();
     let http = ctx.http();
     let serenity_ctx = ctx.serenity_context().clone();
-    let guilds = data.guild_settings_map.read().unwrap().clone();
+    let guilds = data.guild_settings_map.read().await.clone();
 
     for (guild_id, _settings) in guilds.iter() {
         let message = message.clone();

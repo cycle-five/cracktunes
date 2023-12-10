@@ -9,7 +9,7 @@ use crate::Error;
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().unwrap().clone();
+    let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await.clone();
     let cache_str = kv_iter_to_string({
         message_cache
             .entry(guild_id)

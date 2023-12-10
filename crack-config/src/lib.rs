@@ -17,8 +17,8 @@ use poise::{
     CreateReply,
 };
 use songbird::serenity::SerenityInit;
-use std::sync::RwLock;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -270,14 +270,16 @@ pub async fn poise_framework(
         .collect::<HashMap<GuildId, GuildSettings>>();
 
     let db_url = config.get_database_url();
-    let pool_opts = sqlx::postgres::PgPoolOptions::new().connect(&db_url).await;
+    let pool_opts = sqlx::postgres::PgPoolOptions::new()
+        .connect(&db_url)
+        .await?;
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
-        database_pool: pool_opts.unwrap().into(),
+        database_pool: pool_opts.into(),
         ..Default::default()
     }));
 
@@ -325,7 +327,7 @@ pub async fn poise_framework(
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
-        .event_handler(SerenityHandler {
+        .event_handler(&mut SerenityHandler {
             is_loop_running: false.into(),
             data: handler_data,
         })
@@ -367,7 +369,7 @@ pub async fn poise_framework(
         let guilds = save_data.guild_settings_map.read().unwrap().clone();
         for (k, v) in guilds.iter() {
             tracing::warn!("Saving Guild: {}", k);
-            match v.save().await {
+            match v.save(pool).await {
                 Ok(_) => {}
                 Err(e) => {
                     tracing::error!("Error saving guild settings: {}", e);

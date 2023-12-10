@@ -389,7 +389,7 @@ impl SerenityHandler {
         );
     }
 
-    async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
+    async fn _load_guilds_settings(&mut self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
 
@@ -424,7 +424,10 @@ impl SerenityHandler {
 
             // match guild_settings {
             //     Some(guild_settings) => {
-            default.save().await.expect("Error saving guild settings");
+            default
+                .save(&self.data.get_db_pool())
+                .await
+                .expect("Error saving guild settings");
             tracing::info!("saving guild {}...", default);
             //     }
             //     None => {
@@ -440,7 +443,7 @@ impl SerenityHandler {
 
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
-            let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
+            let mut guild_settings_map = self.data.guild_settings_map.write().await;
             let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
                 Some(guild_match) => guild_match.name.clone(),
                 None => {
@@ -487,7 +490,10 @@ impl SerenityHandler {
         }
 
         for guild in guild_settings_list.clone() {
-            guild.save().await.expect("Error saving guild settings");
+            guild
+                .save(self.data.get_db_pool())
+                .await
+                .expect("Error saving guild settings");
         }
     }
 

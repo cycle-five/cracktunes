@@ -14,6 +14,8 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "The volume to set the player to"] level: Option<u32>,
 ) -> Result<(), Error> {
+    use crate::Data;
+
     tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = match ctx.guild_id() {
@@ -130,7 +132,8 @@ pub async fn volume(
                 format!("{:?}", guild_settings).white(),
             );
             let old_volume = guild_settings.old_volume;
-            match guild_settings.save().await {
+            let data: &mut Data = &mut ctx.data().clone();
+            match guild_settings.save(&data.get_db_pool()).await {
                 Ok(_) => (),
                 Err(e) => {
                     tracing::error!("Error saving guild_settings: {:?}", e);

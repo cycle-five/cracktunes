@@ -18,7 +18,7 @@ pub async fn deauthorize(
     let _res = data
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|settings| {
             settings.authorized_users.remove(&id);

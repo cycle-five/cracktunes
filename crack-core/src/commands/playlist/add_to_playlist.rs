@@ -14,6 +14,10 @@ pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[description = "Track to add to playlist"] track: String,
 ) -> Result<(), Error> {
+    use std::sync::Arc;
+
+    use crate::Data;
+
     let _ = track;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(ctx.guild_id().unwrap()).unwrap();
@@ -39,7 +43,8 @@ pub async fn add_to_playlist(
     let user_id = ctx.author().id.get() as i64;
     let playlist_name = format!("{}-0", user_id);
     // Database pool to execute queries
-    let db_pool: PgPool = ctx.data().database_pool.clone().unwrap();
+    let data: &mut Data = &mut ctx.data().clone();
+    let db_pool: Arc<PgPool> = data.get_db_pool();
 
     // Check if the playlist exists
     // TODO: Add the SQL query and logic here

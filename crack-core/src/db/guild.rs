@@ -1,10 +1,11 @@
-use chrono::NaiveDateTime;
-use sqlx::PgPool;
-
 use crate::{
     guild::settings::{GuildSettings, WelcomeSettings},
     Error,
 };
+use chrono::NaiveDateTime;
+use sqlx::PgPool;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // CREATE TABLE guild_settings (
 //     guild_id BIGINT NOT NULL,
@@ -128,7 +129,7 @@ impl GuildEntity {
 
     pub async fn write_settings(
         &self,
-        pool: &PgPool,
+        pool: Arc<Mutex<PgPool>>,
         settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
@@ -154,7 +155,7 @@ impl GuildEntity {
             settings.timeout as i32,
             &settings.additional_prefixes,
         )
-        .execute(pool)
+        .execute(pool.clone())
         .await?;
         Ok(())
     }
@@ -250,7 +251,7 @@ impl GuildEntity {
     }
 
     pub async fn get_or_create(
-        pool: &PgPool,
+        pool: Arc<Mutex<PgPool>>,
         guild_id: i64,
         name: String,
     ) -> Result<GuildEntity, Error> {
@@ -262,7 +263,7 @@ impl GuildEntity {
             "#,
             guild_id
         )
-        .fetch_one(pool)
+        .fetch_one(&pool.lock().unwrap().clone())
         .await
         {
             Ok(guild) => Some(guild),

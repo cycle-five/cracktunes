@@ -1,6 +1,7 @@
 use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
-//use ::serenity::prelude::Context;
+use crate::db::WelcomeSettingsRead;
+use crate::errors::CrackedError;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
@@ -15,11 +16,8 @@ use std::{
     io::BufReader,
     path::Path,
 };
+use tokio::sync::{Mutex, RwLock};
 use typemap_rev::TypeMapKey;
-
-use crate::db::WelcomeSettingsRead;
-use crate::errors::CrackedError;
-//use crate::Data;
 
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
@@ -38,6 +36,25 @@ pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
 lazy_static! {
     static ref SETTINGS_PATH: String =
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializableData {
+    #[serde(skip)]
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+}
+
+impl SerializableData {
+    pub fn serialize_inner(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&*self.guild_settings_map.read().unwrap())
+    }
+
+    pub fn deserialize_inner(serialized_data: &str) -> Result<Self, serde_json::Error> {
+        let map: HashMap<GuildId, GuildSettings> = serde_json::from_str(serialized_data)?;
+        Ok(Self {
+            guild_settings_map: Arc::new(RwLock::new(map)),
+        })
+    }
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -165,6 +182,8 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
+    // #[serde(skip)]
+    // pub db_pool: Option<Arc<RwLock<Pin<Box<PgPool>>>>>,
 }
 
 fn additional_prefixes_default() -> Vec<String> {
@@ -276,6 +295,9 @@ impl GuildSettings {
             welcome_settings: None,
             log_settings: None,
             additional_prefixes: Vec::new(),
+            // db_pool: Some(Arc::new(
+            //     sqlx::PgPool::connect_lazy(DEFAULT_DB_URL).unwrap(),
+            // )),
         }
     }
 
@@ -285,14 +307,14 @@ impl GuildSettings {
 
     pub async fn load_or_create(
         &mut self,
-        pool: &PgPool,
+        pool: Arc<Mutex<PgPool>>,
         guild_id: i64,
         name: String,
     ) -> Result<GuildSettings, CrackedError> {
         let guild = crate::db::GuildEntity::get_or_create(pool, guild_id, name).await?;
-        let mut settings = guild.get_settings(pool).await?;
-        let welcome_settings = guild.get_welcome_settings(pool).await?;
-        let log_settings = guild.get_log_settings(pool).await?;
+        let mut settings = guild.get_settings(pool.clone()).await?;
+        let welcome_settings = guild.get_welcome_settings(pool.clone()).await?;
+        let log_settings = guild.get_log_settings(pool.clone()).await?;
         settings.welcome_settings = welcome_settings;
         settings.log_settings = log_settings;
         Ok(settings)
@@ -326,15 +348,15 @@ impl GuildSettings {
         Ok(())
     }
 
-    pub async fn save(&self) -> Result<(), CrackedError> {
+    pub async fn save(&self, pool: Arc<Mutex<PgPool>>) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
-        let pool = PgPool::connect_lazy(&env::var("DATABASE_URL").unwrap()).unwrap();
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
-        let guild = crate::db::GuildEntity::get_or_create(&pool, guild_id, guild_name.clone())
-            .await
-            .unwrap();
-        let _ = guild.write_settings(&pool, self).await;
+        let guild =
+            crate::db::GuildEntity::get_or_create(pool.clone(), guild_id, guild_name.clone())
+                .await
+                .unwrap();
+        let _ = guild.write_settings(pool.clone(), self).await;
         Ok(())
     }
 
@@ -648,9 +670,12 @@ impl GuildSettings {
     }
 }
 
-pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
+pub async fn save_guild_settings(
+    guild_settings_map: &HashMap<GuildId, GuildSettings>,
+    pool: &PgPool,
+) {
     for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save().await;
+        let _ = guild_settings.save(pool).await;
     }
 }
 

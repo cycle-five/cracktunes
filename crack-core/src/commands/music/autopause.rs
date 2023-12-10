@@ -1,3 +1,4 @@
+use crate::Data;
 use crate::{
     guild::settings::GuildSettings,
     messaging::message::CrackedMessage,
@@ -14,7 +15,7 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
 
     let autopause = {
         let mut guild_settings = {
-            let mut settings = ctx.data().guild_settings_map.write().unwrap();
+            let mut settings = ctx.data().guild_settings_map.write().await;
             settings
                 .entry(guild_id)
                 .or_insert_with(|| {
@@ -27,7 +28,8 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
                 .clone()
         };
         guild_settings.toggle_autopause();
-        guild_settings.save().await?;
+        let data: &mut Data = &mut ctx.data().clone();
+        guild_settings.save(data.get_db_pool()).await?;
         guild_settings.autopause
     };
     if autopause {

@@ -9,16 +9,18 @@ use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use serenity::all::Message;
+use sqlx::PgPool;
+use std::borrow::BorrowMut;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use std::sync::RwLock;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+use tokio::sync::{Mutex, RwLock};
 
 pub mod commands;
 pub mod connection;
@@ -257,7 +259,7 @@ pub struct DataInner {
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
-    pub database_pool: Option<sqlx::PgPool>,
+    pub database_pool: Option<Arc<Mutex<sqlx::PgPool>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -348,7 +350,9 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
-            database_pool: None,
+            database_pool: Some(Arc::new(Mutex::new(
+                PgPool::connect_lazy(&DEFAULT_DB_URL).unwrap(),
+            ))),
         }
     }
 }
@@ -370,19 +374,54 @@ impl std::ops::Deref for Data {
     }
 }
 
+// impl std::ops::DerefMut for Data {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
+
+impl DataInner {
+    pub fn get_db_pool(&mut self) -> Arc<Mutex<PgPool>> {
+        match &self.database_pool {
+            Some(pool) => Arc::clone(pool),
+            None => {
+                let pool = PgPool::connect_lazy(&self.bot_settings.get_database_url())
+                    .ok()
+                    .unwrap();
+                let arc_pool = Arc::new(Mutex::new(pool));
+                //let pool_ref = Arc::new(Pin::new(Box::new(pool))));
+                self.set_db_pool(Arc::clone(&arc_pool));
+                arc_pool
+            }
+        }
+    }
+
+    pub fn set_db_pool(&mut self, pool: Arc<Mutex<PgPool>>) -> &Self {
+        self.database_pool = Some(Arc::clone(&pool));
+        self
+    }
+
+    pub fn init_db_pool(&mut self, url: &str) -> Arc<Mutex<PgPool>> {
+        let pool = PgPool::connect_lazy(url).ok();
+        let arc_pool = Arc::new(Mutex::new(pool.unwrap()));
+        self.database_pool = Some(Arc::clone(&arc_pool));
+        arc_pool
+    }
+}
+
 impl Data {
-    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+    pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
         self.add_msg_to_cache_ts(guild_id, now, msg)
     }
     /// Add msg to the cache with a timestamp.
-    pub fn add_msg_to_cache_ts(
+    pub async fn add_msg_to_cache_ts(
         &self,
         guild_id: GuildId,
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
         guild_msg_cache_ordered
             .entry(guild_id)
             .or_default()
@@ -390,12 +429,40 @@ impl Data {
             .insert(ts, msg)
     }
 
-    pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+    pub async fn get_msg_from_cache(
+        &self,
+        guild_id: GuildId,
+        ts: DateTime<Utc>,
+    ) -> Option<Message> {
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
         guild_msg_cache_ordered
             .get_mut(&guild_id)
             .unwrap()
             .time_ordered_messages
             .remove(&ts)
+    }
+
+    pub async fn get_db_pool(&self) -> Arc<Mutex<PgPool>> {
+        match &self.database_pool {
+            Some(pool) => Arc::clone(pool),
+            None => {
+                // let pool = PgPool::connect_lazy(&self.bot_settings.get_database_url())
+                //     .ok()
+                //     .unwrap();
+                // let pool_ref = Arc::new(Pin::new(Box::new(pool.as_ref())));
+                let pool = self
+                    .0
+                    .clone()
+                    .init_db_pool(&self.bot_settings.get_database_url());
+                // self.set_db_pool(&pool);
+                pool.clone()
+            }
+        }
+    }
+
+    async fn set_db_pool(&self, pool: Arc<Mutex<PgPool>>) -> &Self {
+        let mut asdf = self.0.database_pool.unwrap();
+        asdf.lock().await = pool;
+        self
     }
 }

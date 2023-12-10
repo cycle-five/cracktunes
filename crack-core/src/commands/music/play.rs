@@ -268,9 +268,7 @@ pub async fn play(
         return Ok(());
     }
 
-    let handler = call.lock().await;
-
-    let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
+    let mut settings = ctx.data().guild_settings_map.write().await.clone();
     let guild_settings = settings.entry(guild_id).or_insert_with(|| {
         GuildSettings::new(
             guild_id,
@@ -278,6 +276,8 @@ pub async fn play(
             get_guild_name(ctx.serenity_context(), guild_id),
         )
     });
+
+    let handler = call.lock().await;
 
     tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
@@ -939,7 +939,7 @@ async fn get_query_type_from_url(
             }
 
             Some(other) => {
-                let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
+                let mut settings = ctx.data().guild_settings_map.write().await.clone();
                 let guild_settings = settings.entry(guild_id).or_insert_with(|| {
                     GuildSettings::new(
                         guild_id,
@@ -1019,7 +1019,7 @@ async fn get_query_type_from_url(
     };
 
     let res = if let Some(QueryType::Keywords(_)) = query_type {
-        let settings = ctx.data().guild_settings_map.write().unwrap().clone();
+        let settings = ctx.data().guild_settings_map.write().await.clone();
         let guild_settings = settings.get(&guild_id).unwrap();
         if !guild_settings.allow_all_domains.unwrap_or(true)
             && (guild_settings.banned_domains.contains("youtube.com")
