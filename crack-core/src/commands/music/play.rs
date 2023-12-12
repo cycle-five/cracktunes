@@ -591,10 +591,10 @@ async fn match_mode(
             // let search_results = match query_type.clone() {
             match query_type.clone() {
                 QueryType::Keywords(keywords) => {
-                    let search_results =
-                        YoutubeDl::new_yt_search(reqwest::Client::new(), keywords.clone(), None)
-                            .search_query()
-                            .await?;
+                    let reqwest_client = reqwest::Client::new();
+                    let search_results = YoutubeDl::new_search(reqwest_client, keywords)
+                        .search(None)
+                        .await?;
                     // let user_id = ctx.author().id;
                     let qt = yt_search_select(
                         ctx.serenity_context().clone(),
@@ -615,7 +615,7 @@ async fn match_mode(
                 }
                 QueryType::YoutubeSearch(query) => {
                     let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
-                        .search_query()
+                        .search(None)
                         .await?;
                     let qt = yt_search_select(
                         ctx.serenity_context().clone(),
@@ -665,8 +665,8 @@ async fn match_mode(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-                let res = YoutubeDl::new_yt_search(reqwest::Client::new(), query.clone(), None)
-                    .search_query()
+                let res = YoutubeDl::new_search(reqwest::Client::new(), query.clone())
+                    .search(None)
                     .await?;
                 let user_id = ctx.author().id;
                 send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
@@ -1081,6 +1081,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum MyAuxMetadata {
     Data(AuxMetadata),
 }
@@ -1222,17 +1223,20 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
 async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
-) -> (SongbirdInput, MyAuxMetadata) {
+) -> (SongbirdInput, Vec<MyAuxMetadata>) {
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
         QueryType::YoutubeSearch(query) => {
             tracing::error!("In YoutubeSearch");
-            let mut ytdl = YoutubeDl::new_yt_search(client, query, None);
-            let asdf = ytdl.search_query().await.unwrap_or_default();
-            tracing::error!("asdf: {:?}", asdf);
-            let my_metadata = MyAuxMetadata::default();
-            (ytdl.into(), my_metadata)
+            let mut ytdl = YoutubeDl::new_search(client, query);
+            let mut res = Vec::new();
+            let asdf = ytdl.search(None).await.unwrap_or_default();
+            for metadata in asdf {
+                let my_metadata = MyAuxMetadata::Data(metadata);
+                res.push(my_metadata);
+            }
+            (ytdl.into(), res)
         }
         // QueryType::YoutubeSearch(query) => {
         //     tracing::error!("In YoutubeSearch");
@@ -1246,27 +1250,27 @@ async fn get_track_source_and_metadata(
             tracing::warn!("In VideoLink");
             let mut ytdl = YoutubeDl::new(client, query);
             tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap_or_default();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), my_metadata)
+            let metadata = ytdl.aux_metadata().await.unwrap_or_default();
+            let my_metadata = MyAuxMetadata::Data(metadata);
+            (ytdl.into(), vec![my_metadata])
         }
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
             let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
             let metdata = ytdl.aux_metadata().await.unwrap_or_default();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), my_metadata)
+            (ytdl.into(), vec![my_metadata])
         }
         QueryType::File(file) => {
             tracing::warn!("In File");
             (
                 HttpRequest::new(client, file.url.to_owned()).into(),
-                MyAuxMetadata::default(),
+                vec![MyAuxMetadata::default()],
             )
         }
         QueryType::NewYoutubeDl(ytdl) => {
             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
-            (ytdl.0.into(), MyAuxMetadata::Data(ytdl.1))
+            (ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)])
         }
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
@@ -1274,7 +1278,7 @@ async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), my_metadata)
+            (ytdl.into(), vec![my_metadata])
         }
         QueryType::KeywordList(keywords_list) => {
             tracing::warn!("In KeywordList");
@@ -1282,7 +1286,7 @@ async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), my_metadata)
+            (ytdl.into(), vec![my_metadata])
         }
     }
 }
@@ -1295,14 +1299,15 @@ async fn enqueue_track(
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let (source, metadata): (SongbirdInput, MyAuxMetadata) =
+    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(http, query_type.clone()).await;
+    let res = metadata.get(0).unwrap().clone();
     let track: Track = source.into();
 
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(track).await;
     let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(metadata);
+    map.insert::<MyAuxMetadata>(res);
 
     Ok(handler.queue().current_queue())
 }

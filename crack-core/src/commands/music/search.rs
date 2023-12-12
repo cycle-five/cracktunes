@@ -24,7 +24,7 @@ pub async fn search(
 #[cfg(not(tarpaulin_include))]
 async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHandle, CrackedError> {
     let mut ytdl = YoutubeDl::new(Client::new(), search_query);
-    let results = ytdl.search_query().await?;
+    let results = ytdl.search(None).await?;
     // CreateSelectMenuOption::new("url", "link").description("ASDF");
     // CreateActionRow::SelectMenu(CreateSelectMenu::new(
     //     "Search Results: {}",
