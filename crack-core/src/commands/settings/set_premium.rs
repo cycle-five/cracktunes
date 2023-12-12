@@ -13,24 +13,22 @@ pub async fn set_premium(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
+    let prefix = ctx.data().bot_settings.get_prefix();
 
-    ctx.data()
-        .guild_settings_map
-        .write()
-        .unwrap()
-        .entry(guild_id)
-        .and_modify(|e| {
-            let tmp = e.premium;
-            e.premium = set_premium.parse::<bool>().unwrap_or(tmp);
-        });
-
-    send_response_poise(
-        ctx,
-        CrackedMessage::Other(format!(
-            "Current additional prefixes {}",
-            additional_prefixes.join(", ")
-        )),
-    )
-    .await?;
+    let premium = {
+        let mut write_guard = ctx.data().guild_settings_map.write().unwrap();
+        let settings = write_guard
+            .entry(guild_id)
+            .and_modify(|e| {
+                let tmp = e.premium;
+                e.premium = set_premium.parse::<bool>().unwrap_or(tmp);
+            })
+            .or_insert(
+                GuildSettings::new(guild_id, Some(&prefix.clone()), Some(guild_name.clone()))
+                    .with_premium(set_premium.parse::<bool>().unwrap_or(false).clone()),
+            );
+        settings.premium.clone()
+    };
+    send_response_poise(ctx, CrackedMessage::Premium(premium)).await?;
     Ok(())
 }

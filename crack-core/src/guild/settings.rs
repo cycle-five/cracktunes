@@ -378,6 +378,10 @@ impl GuildSettings {
         Ok(())
     }
 
+    pub fn with_premium(self, premium: bool) -> Self {
+        Self { premium, ..self }
+    }
+
     pub fn toggle_autopause(&mut self) {
         self.autopause = !self.autopause;
     }
