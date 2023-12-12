@@ -861,17 +861,17 @@ pub fn voice_state_diff_str(
         Some(old) => old,
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
-            let user_id = new.user_id;
+            // let user_id = new.user_id;
             let channel_id = new.channel_id.unwrap();
             let channel_mention = channel_id
                 .to_channel_cached(cache.as_ref())
                 .unwrap()
                 .mention();
-            let now_str = chrono::Local::now().to_string();
+            // let now_str = chrono::Local::now().to_string();
 
             return format!(
-                "Member joined voice channel\n{} joined {}\nID: {} * {}",
-                user_name, channel_mention, user_id, now_str
+                "Member joined voice channel\n{} joined {}",
+                user_name, channel_mention
             );
         }
     };
@@ -941,42 +941,45 @@ pub fn voice_state_diff_str(
     }
     if old.deaf != new.deaf {
         if new.deaf {
-            result.push_str(&format!("{} deafend\n", user));
+            result.push_str(&format!("{} was deafend\n", user));
         } else {
-            result.push_str(&format!("{} undeafend\n", user));
+            result.push_str(&format!("{} was undeafend\n", user));
         }
     }
     if old.mute != new.mute {
         if new.mute {
-            result.push_str(&format!("{} muted\n", user));
+            result.push_str(&format!("{} was muted\n", user));
         } else {
-            result.push_str(&format!("{} unmuted\n", user));
+            result.push_str(&format!("{} was unmuted\n", user));
         }
     }
     if old.guild_id != new.guild_id {
         result.push_str(&format!(
-            "guild_id: {:?} -> {:?}\n",
-            old.guild_id, new.guild_id
+            "{} switched guilds?!?! guild_id: {:?} -> {:?}\n",
+            user, old.guild_id, new.guild_id
         ));
     }
 
     if old.self_deaf != new.self_deaf {
-        result.push_str(&format!(
-            "self_deaf: {:?} -> {:?}\n",
-            old.self_deaf, new.self_deaf
-        ));
+        if new.self_deaf {
+            result.push_str(&format!("{} deafened themselves\n", user));
+        } else {
+            result.push_str(&format!("{} undeafened themselves\n", user));
+        }
     }
     if old.self_mute != new.self_mute {
-        result.push_str(&format!(
-            "self_mute: {:?} -> {:?}\n",
-            old.self_mute, new.self_mute
-        ));
+        if new.self_mute {
+            result.push_str(&format!("{} muted themselves\n", user));
+        } else {
+            result.push_str(&format!("{} unmuted themselves\n", user));
+        }
     }
     if old.self_stream != new.self_stream {
-        result.push_str(&format!(
-            "self_stream: {:?} -> {:?}\n",
-            old.self_stream, new.self_stream
-        ));
+        if new.self_stream.unwrap_or(false) {
+            result.push_str(&format!("{} started streaming\n", user));
+        } else {
+            result.push_str(&format!("{} stopped streaming\n", user));
+        }
     }
     if old.self_video != new.self_video {
         if old.self_video {

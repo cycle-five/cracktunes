@@ -2,8 +2,8 @@ use crate::{utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, Context as SerenityContext, CurrentUser, GuildChannel, GuildId, Http,
-    Member, Message, MessageId, MessageUpdateEvent, Presence,
+    ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext, CurrentUser,
+    GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent, Presence,
 };
 use std::sync::Arc;
 
@@ -20,6 +20,29 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
     );
     Ok(())
+}
+
+pub async fn log_command_permissions_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &CommandPermissions,
+) -> Result<(), Error> {
+    let permissions = log_data;
+
+    let title = format!("Command Permissions Updated: {}", permissions.id);
+    let description = format!("Permissions: {:?}", permissions.permissions);
+    let avatar_url = "";
+
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &permissions.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn log_channel_delete(
