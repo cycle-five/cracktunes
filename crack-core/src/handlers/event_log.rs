@@ -676,7 +676,16 @@ pub async fn handle_event(
             // event_log.write_log_obj(event_name, &(old_if_available, new, event))
         }
         FullEvent::ReactionAdd { add_reaction } => {
-            event_log.write_log_obj(event_name, add_reaction)
+            log_event!(
+                log_reaction_add,
+                guild_settings,
+                event_in,
+                add_reaction,
+                &add_reaction.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         FullEvent::ReactionRemove { removed_reaction } => {
             event_log.write_log_obj(event_name, removed_reaction)

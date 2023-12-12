@@ -198,6 +198,33 @@ pub async fn log_user_update(
     .await
 }
 
+pub async fn log_reaction_add(
+    channel_id_first: ChannelId,
+    http: &Arc<Http>,
+    log_data: &serenity::model::prelude::Reaction,
+) -> Result<(), Error> {
+    let reaction = log_data;
+    let member = reaction.member.clone().unwrap_or_default();
+    let message_id = reaction.message_id;
+    let channel_id = reaction.channel_id;
+    let title = format!("Reaction Added: {}", reaction.emoji);
+    let description = format!(
+        "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
+        channel_id, message_id, reaction.emoji, member.user.name
+    );
+    let avatar_url = member.avatar_url().unwrap_or_default();
+    send_log_embed_thumb(
+        &channel_id_first,
+        http,
+        &member.user.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Log a message update event.
 pub async fn log_message_update(
     channel_id: ChannelId,
