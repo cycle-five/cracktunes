@@ -25,9 +25,9 @@ pub async fn set_premium(
             })
             .or_insert(
                 GuildSettings::new(guild_id, Some(&prefix.clone()), Some(guild_name.clone()))
-                    .with_premium(set_premium.parse::<bool>().unwrap_or(false).clone()),
+                    .with_premium(set_premium.parse::<bool>().unwrap_or(false)),
             );
-        settings.premium.clone()
+        settings.premium
     };
     send_response_poise(ctx, CrackedMessage::Premium(premium)).await?;
     Ok(())
