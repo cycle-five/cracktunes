@@ -15,7 +15,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
-use crate::db::WelcomeSettingsRead;
+use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
 //use crate::Data;
 
@@ -342,14 +342,14 @@ impl GuildSettings {
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
-        let (guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
+        let (_guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
             &pool,
             guild_id,
             guild_name.clone(),
             prefix.clone(),
         )
         .await?;
-        let _ = guild.write_settings(&pool, self).await;
+        let _ = GuildEntity::write_settings(&pool, self).await;
         Ok(())
     }
 

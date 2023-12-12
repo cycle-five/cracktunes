@@ -128,7 +128,6 @@ impl GuildEntity {
     }
 
     pub async fn write_settings(
-        &self,
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), sqlx::Error> {
@@ -139,8 +138,8 @@ impl GuildEntity {
             ON CONFLICT (guild_id)
             DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, authorized_users = $9, ignored_channels = $10, old_volume = $11::FLOAT, volume = $12::FLOAT, self_deafen = $13, timeout_seconds = $14, additional_prefixes = $15
             "#,
-            self.id,
-            self.name,
+            settings.guild_id.get() as i64,
+            settings.guild_name,
             settings.prefix,
             settings.premium,
             settings.autopause,
