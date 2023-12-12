@@ -6,6 +6,7 @@ use crate::Error;
 
 /// Set the welcome settings for the server.
 #[poise::command(prefix_command, owners_only, ephemeral)]
+#[cfg(not(tarpaulin_include))]
 pub async fn set_welcome_settings(
     ctx: Context<'_>,
     #[description = "The channel to send welcome messages"] channel: Channel,

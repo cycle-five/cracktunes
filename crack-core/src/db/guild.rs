@@ -127,6 +127,27 @@ impl GuildEntity {
         Ok(())
     }
 
+    pub async fn set_premium(
+        pool: &PgPool,
+        guild_id: i64,
+        premium: bool,
+    ) -> Result<GuildSettings, sqlx::Error> {
+        let settings = sqlx::query_as!(
+            GuildSettingsRead,
+            r#"
+            UPDATE guild_settings
+            SET premium = $1
+            WHERE guild_id = $2
+            RETURNING *
+            "#,
+            premium,
+            guild_id,
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(GuildSettings::from(settings))
+    }
+
     pub async fn write_settings(
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,

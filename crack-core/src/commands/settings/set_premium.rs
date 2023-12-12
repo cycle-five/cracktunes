@@ -6,8 +6,9 @@ use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
-/// Set the prefix for the bot.
+/// Set the premium status of the guild.
 #[poise::command(prefix_command, owners_only)]
+#[cfg(not(tarpaulin_include))]
 pub async fn set_premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] set_premium: String,
@@ -31,7 +32,9 @@ pub async fn set_premium(
         settings.clone()
     };
     let pool = ctx.data().database_pool.clone().unwrap();
-    GuildEntity::write_settings(&pool, &settings).await.unwrap();
+    GuildEntity::set_premium(&pool, settings.guild_id.get() as i64, premium)
+        .await
+        .unwrap();
     send_response_poise(ctx, CrackedMessage::Premium(premium)).await?;
     Ok(())
 }
