@@ -199,7 +199,7 @@ pub async fn handle_event(
         }
         FullEvent::CommandPermissionsUpdate { permission } => {
             log_event!(
-                log_unimplemented_event,
+                log_command_permissions_update,
                 guild_settings,
                 event_in,
                 permission,
@@ -211,7 +211,7 @@ pub async fn handle_event(
         }
         FullEvent::AutoModActionExecution { execution } => {
             log_event!(
-                log_unimplemented_event,
+                log_automod_command_execution,
                 guild_settings,
                 event_in,
                 execution,

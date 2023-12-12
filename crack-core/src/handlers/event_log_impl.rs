@@ -2,8 +2,9 @@ use crate::{utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext, CurrentUser,
-    GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent, Presence,
+    ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
+    CurrentUser, GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent,
+    Presence,
 };
 use std::sync::Arc;
 
@@ -20,6 +21,32 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
     );
     Ok(())
+}
+
+pub async fn log_automod_command_execution(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ActionExecution,
+) -> Result<(), Error> {
+    let title = format!("Automod Action Executed: {}", log_data.rule_id);
+    let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .user_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &log_data.user_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn log_command_permissions_update(
