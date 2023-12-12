@@ -37,7 +37,7 @@ pub async fn log_guild_role_create(
         &log_data.id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -52,7 +52,7 @@ pub async fn log_guild_role_delete(
     let default_role = Role::default();
     let role = role.as_ref().unwrap_or(&default_role);
     let title = format!("Role Deleted: {}", role.name);
-    let description = guild_role_to_string(&role);
+    let description = guild_role_to_string(role);
     let avatar_url = "";
     send_log_embed_thumb(
         &channel_id,
@@ -60,7 +60,7 @@ pub async fn log_guild_role_delete(
         &role_id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -109,7 +109,7 @@ pub async fn log_command_permissions_update(
         &permissions.id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -199,7 +199,7 @@ pub async fn log_user_update(
 }
 
 pub async fn log_reaction_remove(
-    channel_id: ChannelId,
+    channel_id_first: ChannelId,
     http: &Arc<Http>,
     log_data: &serenity::model::prelude::Reaction,
 ) -> Result<(), Error> {
@@ -214,7 +214,7 @@ pub async fn log_reaction_remove(
     );
     let avatar_url = member.avatar_url().unwrap_or_default();
     send_log_embed_thumb(
-        &channel_id,
+        &channel_id_first,
         http,
         &member.user.id.to_string(),
         &title,
