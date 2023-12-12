@@ -364,13 +364,15 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
-        let guilds = save_data.guild_settings_map.read().unwrap().clone();
-        for (k, v) in guilds.iter() {
-            tracing::warn!("Saving Guild: {}", k);
-            match v.save().await {
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("Error saving guild settings: {}", e);
+        {
+            let guilds_read_guard = save_data.guild_settings_map.read().unwrap().clone();
+            for (k, v) in guilds_read_guard.iter() {
+                tracing::warn!("Saving Guild: {}", k);
+                match v.save().await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::error!("Error saving guild settings: {}", e);
+                    }
                 }
             }
         }
