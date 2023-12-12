@@ -688,7 +688,16 @@ pub async fn handle_event(
             )
         }
         FullEvent::ReactionRemove { removed_reaction } => {
-            event_log.write_log_obj(event_name, removed_reaction)
+            log_event!(
+                log_reaction_remove,
+                guild_settings,
+                event_in,
+                removed_reaction,
+                &removed_reaction.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
         FullEvent::ReactionRemoveAll {
             channel_id,
