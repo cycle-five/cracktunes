@@ -459,11 +459,11 @@ impl SerenityHandler {
                 guild_name.clone()
             );
 
-            let default = GuildSettings::new(
-                *guild_id,
-                Some(&prefix),
-                Some(guild_name.to_ascii_lowercase().clone()),
-            );
+            // let default = GuildSettings::new(
+            //     *guild_id,
+            //     Some(&prefix),
+            //     Some(guild_name.to_ascii_lowercase().clone()),
+            // );
 
             // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.to_ascii_lowercase().clone());
             let guild_id_int = guild_id.get() as i64;
@@ -483,7 +483,7 @@ impl SerenityHandler {
 
             tracing::warn!("GuildSettings: {:?}", settings);
 
-            let _ = guild_settings_map.insert(*guild_id, default.clone());
+            let _ = guild_settings_map.insert(*guild_id, settings);
             tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
 
             let guild_settings_opt = guild_settings_map.get_mut(guild_id);
@@ -503,9 +503,9 @@ impl SerenityHandler {
             }
         }
 
-        for guild in guild_settings_list.clone() {
-            guild.save().await.expect("Error saving guild settings");
-        }
+        // for guild in guild_settings_list.clone() {
+        //     guild.save().await.expect("Guild saves correctly");
+        // }
 
         Ok(())
     }

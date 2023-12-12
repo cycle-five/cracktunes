@@ -1,4 +1,5 @@
 use self::serenity::{builder::CreateEmbed, futures::StreamExt};
+use crate::errors::CrackedError;
 use crate::{
     handlers::track_end::ModifyQueueHandler,
     messaging::messages::QUEUE_EXPIRED,
@@ -27,9 +28,11 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("queue called");
     let guild_id = ctx.guild_id().unwrap();
     tracing::info!("guild_id: {}", guild_id);
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NotConnected)?;
     tracing::info!("manager: {:?}", manager);
-    let call = manager.get(guild_id).unwrap();
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     tracing::info!("call: {:?}", call);
 
