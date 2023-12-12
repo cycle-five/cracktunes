@@ -4912,6 +4912,7 @@ name = "zerocopy"
 version = "0.7.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "306dca4455518f1f31635ec308b6b3e4eb1b11758cefafc782827d0aa7acb5c7"
+dependencies = [
  "zerocopy-derive",
 ]
 
@@ -4920,6 +4921,7 @@ name = "zerocopy-derive"
 version = "0.7.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be912bf68235a88fbefd1b73415cb218405958d1655b2ece9035a19920bdf6ba"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.40",
