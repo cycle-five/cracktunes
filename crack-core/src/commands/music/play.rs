@@ -1153,7 +1153,6 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
         ))),
         QueryType::VideoLink(url) => {
             tracing::warn!("Mode::Download, QueryType::VideoLink");
-            // ctx.defer().await?; // Why did I do this?
             let (output, metadata) = download_file_ytdlp(&url).await?;
             let status = output.status.success();
             let url = metadata.source_url.unwrap();
@@ -1245,14 +1244,6 @@ async fn get_track_source_and_metadata(
             }
             (ytdl.into(), res)
         }
-        // QueryType::YoutubeSearch(query) => {
-        //     tracing::error!("In YoutubeSearch");
-        //     let mut ytdl = YoutubeDl::new(client, query);
-        //     let asdf = ytdl.search_query().await.unwrap();
-        //     tracing::error!("asdf: {:?}", asdf);
-        //     let my_metadata = MyAuxMetadata::default();
-        //     (ytdl.into(), my_metadata)
-        // }
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
             let mut ytdl = YoutubeDl::new(client, query);
@@ -1351,6 +1342,7 @@ async fn insert_track(
     Ok(handler.queue().current_queue())
 }
 
+/// Rotates the queue by `n` tracks to the right.
 async fn rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,
