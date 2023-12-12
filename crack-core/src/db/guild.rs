@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 use crate::{
     guild::settings::{GuildSettings, WelcomeSettings},
-    Error,
+    Error as SerenityError,
 };
 
 // CREATE TABLE guild_settings (
@@ -52,6 +52,7 @@ pub struct WelcomeSettingsRead {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct GuildEntity {
     pub id: i64,
     pub name: String,
@@ -192,7 +193,7 @@ impl GuildEntity {
         .await?;
         Ok(settings_read.map(WelcomeSettings::from))
     }
-    pub async fn get_settings(&self, pool: &PgPool) -> Result<GuildSettings, Error> {
+    pub async fn get_settings(&self, pool: &PgPool) -> Result<GuildSettings, SerenityError> {
         let settings_opt = sqlx::query_as!(
             GuildSettingsRead,
             r#"
@@ -234,7 +235,7 @@ impl GuildEntity {
         }
     }
 
-    pub async fn get(pool: &PgPool, guild_id: i64) -> Result<Option<GuildEntity>, Error> {
+    pub async fn get(pool: &PgPool, guild_id: i64) -> Result<Option<GuildEntity>, SerenityError> {
         let guild = sqlx::query_as!(
             GuildEntity,
             r#"
@@ -253,7 +254,8 @@ impl GuildEntity {
         pool: &PgPool,
         guild_id: i64,
         name: String,
-    ) -> Result<GuildEntity, Error> {
+        prefix: String,
+    ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
         let guild_opt = match sqlx::query_as!(
             GuildEntity,
             r#"
@@ -270,8 +272,11 @@ impl GuildEntity {
             Err(e) => return Err(e.into()),
         };
 
-        let guild = match guild_opt {
-            Some(guild) => guild,
+        let (guild, settings) = match guild_opt {
+            Some(guild) => (
+                guild.clone(),
+                guild.clone().get_settings(pool).await.unwrap(),
+            ),
             None => {
                 let guild_entity = sqlx::query_as!(
                     GuildEntity,
@@ -288,27 +293,57 @@ impl GuildEntity {
                 .fetch_one(pool)
                 .await?;
 
-                let _guild_settings = sqlx::query_as!(
+                let guild_settings = sqlx::query_as!(
                     GuildSettingsRead,
                     r#"
-                    INSERT INTO guild_settings (guild_id, guild_name)
-                    VALUES ($1, $2)
+                    INSERT INTO guild_settings (guild_id, guild_name, prefix)
+                    VALUES ($1, $2, $3)
                     ON CONFLICT (guild_id)
                     DO UPDATE SET guild_name = $2
                     RETURNING *
                     "#,
                     guild_id,
-                    Some(name.clone())
+                    Some(name.clone()),
+                    prefix
                 )
                 .fetch_one(pool)
                 .await?;
 
-                // let guild_settings = GuildSettings::from(guild_settings);
-                guild_entity
+                let guild_settings = GuildSettings::from(guild_settings);
+                (guild_entity, guild_settings)
             }
         };
 
-        Ok(guild)
+        Ok((guild, settings))
+    }
+
+    pub async fn set_prefix(&mut self, pool: &PgPool, prefix: String) -> Result<(), SerenityError> {
+        self.updated_at = chrono::Utc::now().naive_utc();
+
+        let _ = sqlx::query!(
+            r#"
+            UPDATE guild_settings
+            SET prefix = $1
+            WHERE guild_id = $2
+            "#,
+            prefix,
+            self.id,
+        )
+        .execute(pool)
+        .await?;
+
+        sqlx::query!(
+            r#"
+            UPDATE guild
+            SET updated_at = now()
+            WHERE id = $1
+            "#,
+            self.id,
+        )
+        .execute(pool)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
     }
 }
 

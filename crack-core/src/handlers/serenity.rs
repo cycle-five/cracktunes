@@ -1,4 +1,5 @@
 use crate::{
+    db::GuildEntity,
     guild::settings::{GuildSettings, GuildSettingsMap},
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
@@ -410,7 +411,8 @@ impl SerenityHandler {
 
             let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name.clone()));
 
-            let _ = default.load_if_exists().map_err(|err| {
+            let pool = self.data.database_pool.clone().unwrap();
+            let _ = default.load_if_exists(&pool).await.map_err(|err| {
                 tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
             });
 
@@ -434,13 +436,16 @@ impl SerenityHandler {
         }
     }
 
-    async fn load_guilds_settings_cache_ready(&self, ctx: &SerenityContext, guilds: &Vec<GuildId>) {
+    async fn load_guilds_settings_cache_ready(
+        &self,
+        ctx: &SerenityContext,
+        guilds: &Vec<GuildId>,
+    ) -> Result<(), SerenityError> {
         let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
 
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
-            let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
             let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
                 Some(guild_match) => guild_match.name.clone(),
                 None => {
@@ -454,17 +459,29 @@ impl SerenityHandler {
                 guild_name.clone()
             );
 
-            let mut default = GuildSettings::new(
+            let default = GuildSettings::new(
                 *guild_id,
                 Some(&prefix),
                 Some(guild_name.to_ascii_lowercase().clone()),
             );
 
-            let _ = default.load_if_exists().map_err(|err| {
-                tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
-            });
+            // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.to_ascii_lowercase().clone());
+            let guild_id_int = guild_id.get() as i64;
+            let guild_name = guild_name.to_ascii_lowercase().clone();
+            let prefix = prefix.clone();
+            let pool = self.data.database_pool.clone().unwrap();
+            let (_guild, settings) =
+                GuildEntity::get_or_create(&pool, guild_id_int, guild_name, prefix)
+                    .await
+                    .unwrap();
+            // .map_err(Into::into)?;
+            let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
 
-            tracing::warn!("GuildSettings: {:?}", default);
+            // let _ = default..map_err(|err| {
+            //     tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
+            // });
+
+            tracing::warn!("GuildSettings: {:?}", settings);
 
             let _ = guild_settings_map.insert(*guild_id, default.clone());
             tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
@@ -489,6 +506,8 @@ impl SerenityHandler {
         for guild in guild_settings_list.clone() {
             guild.save().await.expect("Error saving guild settings");
         }
+
+        Ok(())
     }
 
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {

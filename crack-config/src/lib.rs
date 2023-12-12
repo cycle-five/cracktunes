@@ -135,11 +135,12 @@ pub async fn poise_framework(
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
-            stripped_dynamic_prefix: Some(|ctx, msg, _| {
+            stripped_dynamic_prefix: Some(|_ctx, msg, data| {
                 Box::pin(async move {
                     let guild_id = msg.guild_id.unwrap();
-                    let data_read = ctx.data.read().await;
-                    let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+                    // let data_read = data.read().await;
+                    // let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+                    let guild_settings_map = data.guild_settings_map.read().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefixes = &guild_settings.additional_prefixes;
@@ -389,7 +390,7 @@ pub async fn poise_framework(
 }
 
 fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
-    for prefix in prefixes.iter() {
+    for prefix in prefixes {
         if content.starts_with(prefix) {
             return Some(prefix.len());
         }

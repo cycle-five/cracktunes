@@ -12,8 +12,6 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fs::{create_dir_all, OpenOptions},
-    io::BufReader,
-    path::Path,
 };
 use typemap_rev::TypeMapKey;
 
@@ -283,14 +281,13 @@ impl GuildSettings {
         self.prefix.to_ascii_uppercase()
     }
 
-    pub async fn load_or_create(
-        &mut self,
-        pool: &PgPool,
-        guild_id: i64,
-        name: String,
-    ) -> Result<GuildSettings, CrackedError> {
-        let guild = crate::db::GuildEntity::get_or_create(pool, guild_id, name).await?;
-        let mut settings = guild.get_settings(pool).await?;
+    pub async fn load_or_create(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
+        let guild_id = self.guild_id.get() as i64;
+        let name = self.guild_name.clone();
+        let prefix = self.prefix.clone();
+        let (guild, mut settings) =
+            crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
+        // let mut settings = guild.get_settings(pool).await?;
         let welcome_settings = guild.get_welcome_settings(pool).await?;
         let log_settings = guild.get_log_settings(pool).await?;
         settings.welcome_settings = welcome_settings;
@@ -298,42 +295,60 @@ impl GuildSettings {
         Ok(settings)
     }
 
-    pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
-        let path = format!(
-            "{}/{}-{}.json",
-            SETTINGS_PATH.as_str(),
-            self.guild_name.to_ascii_lowercase(),
-            self.guild_id,
-        );
-        if !Path::new(&path).exists() {
-            return Ok(());
-        }
-        self.load()
+    pub async fn load_if_exists(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
+        let guild_id = self.guild_id.get() as i64;
+        let name = self.guild_name.clone();
+        let prefix = self.prefix.clone();
+        let (guild, _guild_settings) =
+            crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
+        let mut settings = guild.get_settings(pool).await?;
+        let welcome_settings = guild.get_welcome_settings(pool).await?;
+        let log_settings = guild.get_log_settings(pool).await?;
+        settings.welcome_settings = welcome_settings;
+        settings.log_settings = log_settings;
+        Ok(settings)
     }
+    // pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
+    //     let path = format!(
+    //         "{}/{}-{}.json",
+    //         SETTINGS_PATH.as_str(),
+    //         self.guild_name.to_ascii_lowercase(),
+    //         self.guild_id,
+    //     );
+    //     if !Path::new(&path).exists() {
+    //         return Ok(());
+    //     }
+    //     self.load()
+    // }
 
-    pub fn load(&mut self) -> Result<(), CrackedError> {
-        let path = format!(
-            "{}/{}-{}.json",
-            SETTINGS_PATH.as_str(),
-            self.get_guild_name(),
-            self.guild_id,
-        );
-        let file = OpenOptions::new().read(true).open(path)?;
-        let reader = BufReader::new(file);
-        let mut loaded_guild = serde_json::from_reader::<_, GuildSettings>(reader)?;
-        loaded_guild.guild_name = self.guild_name.clone();
-        *self = loaded_guild;
-        Ok(())
-    }
+    // pub fn load(&mut self) -> Result<(), CrackedError> {
+    //     let path = format!(
+    //         "{}/{}-{}.json",
+    //         SETTINGS_PATH.as_str(),
+    //         self.get_guild_name(),
+    //         self.guild_id,
+    //     );
+    //     let file = OpenOptions::new().read(true).open(path)?;
+    //     let reader = BufReader::new(file);
+    //     let mut loaded_guild = serde_json::from_reader::<_, GuildSettings>(reader)?;
+    //     loaded_guild.guild_name = self.guild_name.clone();
+    //     *self = loaded_guild;
+    //     Ok(())
+    // }
 
     pub async fn save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
         let pool = PgPool::connect(&env::var("DATABASE_URL").unwrap()).await?;
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
-        let guild = crate::db::GuildEntity::get_or_create(&pool, guild_id, guild_name.clone())
-            .await
-            .unwrap();
+        let prefix = self.prefix.clone();
+        let (guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
+            &pool,
+            guild_id,
+            guild_name.clone(),
+            prefix.clone(),
+        )
+        .await?;
         let _ = guild.write_settings(&pool, self).await;
         Ok(())
     }
