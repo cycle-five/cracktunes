@@ -1308,7 +1308,7 @@ async fn enqueue_track(
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(http, query_type.clone()).await;
-    let res = metadata.get(0).unwrap().clone();
+    let res = metadata.first().unwrap().clone();
     let track: Track = source.into();
 
     let mut handler = call.lock().await;
