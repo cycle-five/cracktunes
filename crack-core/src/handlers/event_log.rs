@@ -512,7 +512,18 @@ pub async fn handle_event(
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
         FullEvent::GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
-        FullEvent::GuildRoleCreate { new } => event_log.write_log_obj(event_name, new),
+        FullEvent::GuildRoleCreate { new } => {
+            log_event!(
+                log_guild_role_create,
+                guild_settings,
+                event_in,
+                &new,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         FullEvent::GuildRoleDelete {
             guild_id,
             removed_role_id,
@@ -520,7 +531,7 @@ pub async fn handle_event(
         } => {
             let log_data = (guild_id, removed_role_id, removed_role_data_if_available);
             log_event!(
-                log_unimplemented_event,
+                log_guild_role_delete,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -529,10 +540,6 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-            // event_log.write_log_obj(
-            //     event_name,
-            //     &(guild_id, removed_role_id, removed_role_data_if_available),
-            // )
         }
         #[cfg(feature = "cache")]
         FullEvent::GuildRoleUpdate {

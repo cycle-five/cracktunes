@@ -4,7 +4,7 @@ use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
     CurrentUser, GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent,
-    Presence,
+    Presence, Role, RoleId,
 };
 use std::sync::Arc;
 
@@ -21,6 +21,49 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
     );
     Ok(())
+}
+
+pub async fn log_guild_role_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &serenity::model::prelude::Role,
+) -> Result<(), Error> {
+    let title = format!("Role Created: {}", log_data.name);
+    let description = guild_role_to_string(log_data);
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &log_data.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_guild_role_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildId, &RoleId, &Option<Role>),
+) -> Result<(), Error> {
+    let (&_guild_id, &role_id, role) = log_data;
+    let default_role = Role::default();
+    let role = role.as_ref().unwrap_or(&default_role);
+    let title = format!("Role Deleted: {}", role.name);
+    let description = guild_role_to_string(&role);
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &channel_id,
+        http,
+        &role_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn log_automod_command_execution(
