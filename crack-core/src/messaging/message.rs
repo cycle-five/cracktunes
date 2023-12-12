@@ -41,6 +41,7 @@ pub enum CrackedMessage {
     },
     PlaylistCreated(String),
     PlaylistQueued,
+    Premium(bool),
     RemoveMultiple,
     Resume,
     RoleCreated {
@@ -161,6 +162,7 @@ impl Display for CrackedMessage {
             Self::PlayDomainBanned { domain } => {
                 f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
             }
+            Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::ScanResult { result } => f.write_str(result),
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),

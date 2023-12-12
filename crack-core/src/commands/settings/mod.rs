@@ -8,6 +8,7 @@ pub mod set_all_log_channel_old_data;
 pub mod set_auto_role;
 pub mod set_idle_timeout;
 pub mod set_prefix;
+pub mod set_premium;
 pub mod set_welcome_settings;
 
 pub use get_settings::*;
@@ -18,6 +19,7 @@ pub use set_all_log_channel_old_data::*;
 pub use set_auto_role::*;
 pub use set_idle_timeout::*;
 pub use set_prefix::*;
+pub use set_premium::*;
 pub use set_welcome_settings::*;
 
 /// Settings commands
@@ -31,6 +33,7 @@ pub use set_welcome_settings::*;
         "set_all_log_channel",
         "set_welcome_settings",
         "set_auto_role",
+        "set_premium",
     ),
     ephemeral,
     owners_only

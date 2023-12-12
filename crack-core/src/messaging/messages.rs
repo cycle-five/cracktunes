@@ -72,6 +72,7 @@ pub const REMOVED_QUEUE: &str = "❌ Removed from queue";
 pub const RESUMED: &str = "▶️ Resumed!";
 pub const ROLE_CREATED: &str = "📝 Created role!";
 pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
+pub const PREMIUM: &str = "👑 Premium status now";
 pub const SEARCHING: &str = "🔎 Searching...";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";

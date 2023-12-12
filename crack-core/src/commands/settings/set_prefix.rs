@@ -15,10 +15,6 @@ pub async fn add_prefix(
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
     let additional_prefixes = {
         let mut settings = ctx.data().guild_settings_map.write().unwrap();
-        // let additional_prefixes = settings
-        //     .get(&guild_id)
-        //     .map(|e| e.additional_prefixes.clone())
-        //     .expect("Guild seetings settings found");
         let new_settings = settings
             .entry(guild_id)
             .and_modify(|e| {
