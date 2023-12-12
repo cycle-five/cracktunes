@@ -38,8 +38,13 @@ use songbird::{
     Call,
 };
 use std::{
-    cmp::Ordering, collections::HashMap, error::Error as StdError, path::Path, process::Output,
-    sync::Arc, time::Duration,
+    cmp::{min, Ordering},
+    collections::HashMap,
+    error::Error as StdError,
+    path::Path,
+    process::Output,
+    sync::Arc,
+    time::Duration,
 };
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -422,7 +427,9 @@ async fn yt_search_select(
         let link = x.source_url.clone().unwrap_or_default();
         // let link = format!("https://www.youtube.com/watch?v={}", link);
         let duration = x.duration.unwrap_or_default();
-        let elem = format!("[{}]({})", title, duration_to_string(duration));
+        let elem = format!("{}: {}", duration_to_string(duration), title);
+        let len = min(elem.len(), 99);
+        let elem = elem[..len].to_string();
         tracing::warn!("elem: {}", elem);
         (elem, link)
     });
