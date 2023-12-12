@@ -561,6 +561,8 @@ pub async fn create_search_results_reply(
     //     .reply(true)
 }
 
+/// Created a paging embed for the lyrics of a song.
+#[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
     track: String,
@@ -577,6 +579,7 @@ pub async fn create_lyrics_embed(
     .await
 }
 
+/// Builds a single navigation button for the queue.
 fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
@@ -585,6 +588,7 @@ fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
         .to_owned()
 }
 
+/// Builds the four navigation buttons for the queue.
 pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(vec![
@@ -595,7 +599,8 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
-#[allow(dead_code)]
+/// Builds a page of the queue.
+#[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
@@ -1045,5 +1050,28 @@ mod tests {
         assert_eq!(btn.label, Some("<<".to_string()));
         // assert_eq!(btn.style, ButtonStyle::Primary);
         assert_eq!(btn.disabled, true);
+    }
+
+    #[test]
+    fn test_build_nav_btns() {
+        let nav_btns_vev = build_nav_btns(0, 1);
+        if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
+            let mut btns = Vec::new();
+            for btn in nav_btns {
+                let s = serde_json::to_string_pretty(&btn).unwrap();
+                println!("s: {}", s);
+                let btn = serde_json::from_str::<Button>(&s).unwrap();
+                btns.push(btn);
+            }
+            let s = serde_json::to_string_pretty(&nav_btns).unwrap();
+            println!("s: {}", s);
+            let btns = serde_json::from_str::<Vec<Button>>(&s).unwrap();
+
+            assert_eq!(btns.len(), 4);
+            let btn = &btns[0];
+            assert_eq!(btns[0], btn.clone());
+        } else {
+            assert!(false);
+        }
     }
 }
