@@ -328,7 +328,7 @@ impl GuildSettings {
 
     pub async fn save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
-        let pool = PgPool::connect_lazy(&env::var("DATABASE_URL").unwrap()).unwrap();
+        let pool = PgPool::connect(&env::var("DATABASE_URL").unwrap()).await?;
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
         let guild = crate::db::GuildEntity::get_or_create(&pool, guild_id, guild_name.clone())
