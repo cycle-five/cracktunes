@@ -1,5 +1,5 @@
 #!/bin/bash
-export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5433/cracked_music
+export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5433/postgres
 # cargo clean
 sqlx database drop
 sqlx database create
