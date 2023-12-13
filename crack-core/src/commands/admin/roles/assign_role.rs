@@ -1,15 +1,12 @@
 use crate::errors::CrackedError;
-use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 use serenity::all::{Member, Role};
-use serenity::builder::EditRole;
 
 /// Create role.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 #[cfg(not(tarpaulin_include))]
-pub async fn create_role(
+pub async fn assign_role(
     ctx: Context<'_>,
     #[description = "Role to assign"] role: Role,
     #[description = "Member to assign the role to"] member: Member,

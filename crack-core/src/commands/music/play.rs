@@ -592,7 +592,7 @@ async fn match_mode(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
 
-    let pool = ctx.data().database_pool.clone().unwrap();
+    let _pool = ctx.data().database_pool.clone().unwrap();
 
     tracing::info!("mode: {:?}", mode);
 
@@ -1292,6 +1292,9 @@ async fn get_track_source_and_metadata(
     }
 }
 
+/// Enqueues a track and adds metadata to the database.
+#[cfg(not(tarpaulin_include))]
+#[allow(dead_code)]
 async fn enqueue_track_pgwrite(
     database_pool: &PgPool,
     guild_id: GuildId,

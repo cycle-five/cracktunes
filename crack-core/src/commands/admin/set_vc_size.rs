@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::ChannelId;
 use serenity::all::EditChannel;
-use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 
 /// Set the size of a voice channel.
 #[poise::command(prefix_command, guild_only, owners_only)]
