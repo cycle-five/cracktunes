@@ -18,6 +18,7 @@ pub mod message_cache;
 pub mod move_users;
 pub mod mute;
 pub mod random_mute_lol;
+pub mod set_vc_size;
 pub mod unban;
 pub mod unmute;
 
@@ -45,6 +46,7 @@ pub use message_cache::*;
 pub use move_users::*;
 pub use mute::*;
 pub use random_mute_lol::*;
+pub use set_vc_size::*;
 pub use unban::*;
 pub use unmute::*;
 
@@ -75,6 +77,7 @@ pub use unmute::*;
         "unmute",
         "random_mute",
         "get_active_vcs",
+        "set_vc_size",
     ),
     ephemeral,
     owners_only

@@ -1,6 +1,6 @@
 use crate::{
     commands::MyAuxMetadata,
-    db::{self, Metadata, Playlist},
+    db::{self, metadata::Metadata, Playlist},
     utils::send_embed_response_str,
     Context, Error,
 };
@@ -83,11 +83,11 @@ pub async fn add_to_playlist(
     }
 }
 
-fn aux_metadata_to_db_structures(
+pub fn aux_metadata_to_db_structures(
     metadata: &AuxMetadata,
     guild_id: i64,
     channel_id: i64,
-) -> Result<(db::Metadata, db::PlaylistTrack), Error> {
+) -> Result<(Metadata, db::PlaylistTrack), Error> {
     let track = metadata.track.clone();
     let title = metadata.title.clone();
     let artist = metadata.artist.clone();
@@ -108,7 +108,7 @@ fn aux_metadata_to_db_structures(
     let thumbnail = metadata.thumbnail.clone();
     let source_url = metadata.source_url.clone();
 
-    let metadata = db::Metadata {
+    let metadata = Metadata {
         id: 0,
         track,
         title,

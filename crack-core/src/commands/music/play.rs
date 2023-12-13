@@ -1,6 +1,6 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
-    commands::skip::force_skip_top_track,
+    commands::{aux_metadata_to_db_structures, skip::force_skip_top_track},
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::settings::{GuildSettings, DEFAULT_PREMIUM},
@@ -37,6 +37,7 @@ use songbird::{
     tracks::{Track, TrackHandle},
     Call,
 };
+use sqlx::PgPool;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
@@ -590,6 +591,8 @@ async fn match_mode(
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
+
+    let pool = ctx.data().database_pool.clone().unwrap();
 
     tracing::info!("mode: {:?}", mode);
 
@@ -1289,6 +1292,35 @@ async fn get_track_source_and_metadata(
     }
 }
 
+async fn enqueue_track_pgwrite(
+    database_pool: &PgPool,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    http: &Http,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    tracing::info!("query_type: {:?}", query_type);
+    // is this comment still relevant to this section of code?
+    // safeguard against ytdl dying on a private/deleted video and killing the playlist
+    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
+        get_track_source_and_metadata(http, query_type.clone()).await;
+    let res = metadata.first().unwrap().clone();
+    let track: Track = source.into();
+
+    let MyAuxMetadata::Data(res2) = res.clone();
+    let (asdf, _qwer) =
+        aux_metadata_to_db_structures(&res2, guild_id.get() as i64, channel_id.get() as i64)?;
+    crate::db::metadata::Metadata::create(database_pool, asdf).await?;
+
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(res.clone());
+
+    Ok(handler.queue().current_queue())
+}
+
 async fn enqueue_track(
     http: &Http,
     call: &Arc<Mutex<Call>>,
@@ -1305,7 +1337,7 @@ async fn enqueue_track(
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(track).await;
     let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(res);
+    map.insert::<MyAuxMetadata>(res.clone());
 
     Ok(handler.queue().current_queue())
 }
