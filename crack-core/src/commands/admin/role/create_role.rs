@@ -7,7 +7,7 @@ use crate::Context;
 use crate::Error;
 /// Create role.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn create_role(
+pub async fn create(
     ctx: Context<'_>,
     #[description = "Name of the role to create"] role_name: String,
 ) -> Result<(), Error> {

@@ -75,6 +75,7 @@ pub use unmute::*;
         "random_mute",
         "get_active_vcs",
         "set_vc_size",
+        "role",
     ),
     ephemeral,
     owners_only
