@@ -428,7 +428,11 @@ pub async fn handle_event(
             new,
             event,
         } => {
-            let _event = event;
+            let guild_name = event
+                .guild_id
+                .to_guild_cached(&ctx.cache)
+                .map(|x| x.name.clone())
+                .unwrap_or_default();
             let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
@@ -496,6 +500,7 @@ pub async fn handle_event(
             match maybe_log_channel {
                 Some(channel_id) => {
                     send_log_embed_thumb(
+                        &guild_name,
                         &channel_id,
                         &ctx.http,
                         &id.to_string(),
