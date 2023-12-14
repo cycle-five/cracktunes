@@ -81,6 +81,11 @@ pub enum CrackedMessage {
         channel_id: serenity::ChannelId,
         channel_name: String,
     },
+    UserTimeout {
+        user: String,
+        user_id: String,
+        timeout_until: String,
+    },
     UserKicked {
         user_id: UserId,
     },
@@ -198,6 +203,14 @@ impl Display for CrackedMessage {
                 TEXT_CHANNEL_CREATED, channel_id, channel_name
             )),
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::UserTimeout {
+                user: _,
+                user_id,
+                timeout_until,
+            } => f.write_str(&format!(
+                "User timed out: {} for {}",
+                user_id, timeout_until
+            )),
             Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
             Self::UserBanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", BANNED, user, user_id))

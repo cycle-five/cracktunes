@@ -18,6 +18,7 @@ pub mod mute;
 pub mod random_mute_lol;
 pub mod role;
 pub mod set_vc_size;
+pub mod timeout;
 pub mod unban;
 pub mod unmute;
 
@@ -45,6 +46,7 @@ pub use mute::*;
 pub use random_mute_lol::*;
 pub use role::*;
 pub use set_vc_size::*;
+pub use timeout::*;
 pub use unban::*;
 pub use unmute::*;
 
