@@ -10,7 +10,7 @@ pub struct PlayLog {
 
 impl PlayLog {
     pub async fn create(
-        conn: &mut sqlx::PgConnection,
+        conn: &sqlx::PgPool,
         user_id: i64,
         guild_id: i64,
         metadata_id: i64,
