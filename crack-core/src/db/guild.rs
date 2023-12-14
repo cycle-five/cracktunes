@@ -121,7 +121,7 @@ impl GuildEntity {
     }
 
     pub async fn write_log_settings(
-        &self,
+        guild_id: i64,
         pool: &PgPool,
         settings: crate::guild::settings::LogSettings,
     ) -> Result<(), sqlx::Error> {
@@ -132,7 +132,7 @@ impl GuildEntity {
             ON CONFLICT (guild_id)
             DO UPDATE SET all_log_channel = $2, raw_event_log_channel = $3, server_log_channel = $4, member_log_channel = $5, join_leave_log_channel = $6, voice_log_channel = $7
             "#,
-            self.id,
+            guild_id,
             settings.all_log_channel.map(|x| x as i64),
             settings.raw_event_log_channel.map(|x| x as i64),
             settings.server_log_channel.map(|x| x as i64),
@@ -146,7 +146,7 @@ impl GuildEntity {
     }
 
     pub async fn write_welcome_settings(
-        &self,
+        guild_id: i64,
         pool: &PgPool,
         settings: crate::guild::settings::WelcomeSettings,
     ) -> Result<(), sqlx::Error> {
@@ -157,7 +157,7 @@ impl GuildEntity {
             ON CONFLICT (guild_id)
             DO UPDATE SET auto_role = $2, channel_id = $3, message = $4
             "#,
-            self.id,
+            guild_id,
             settings.auto_role.map(|x| x as i64),
             settings.channel_id.map(|x| x as i64),
             settings.message,
@@ -217,6 +217,20 @@ impl GuildEntity {
         )
         .execute(pool)
         .await?;
+
+        let guild_id = settings.guild_id.get() as i64;
+        if settings.welcome_settings.is_some() {
+            GuildEntity::write_welcome_settings(
+                guild_id,
+                pool,
+                settings.welcome_settings.clone().unwrap(),
+            )
+            .await?;
+        }
+        if settings.log_settings.is_some() {
+            GuildEntity::write_log_settings(guild_id, pool, settings.log_settings.clone().unwrap())
+                .await?;
+        }
         Ok(())
     }
 
