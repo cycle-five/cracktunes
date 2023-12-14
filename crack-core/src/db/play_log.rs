@@ -1,5 +1,6 @@
 use sqlx::types::chrono::NaiveDateTime;
 
+#[derive(Debug, Clone)]
 pub struct PlayLog {
     pub id: i64,
     pub user_id: i64,

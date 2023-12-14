@@ -1396,10 +1396,41 @@ async fn enqueue_track_pgwrite(
     let track: Track = source.into();
 
     let MyAuxMetadata::Data(res2) = res.clone();
-    let (asdf, _qwer) =
-        aux_metadata_to_db_structures(&res2, guild_id.get() as i64, channel_id.get() as i64)?;
-    let metadata = crate::db::metadata::Metadata::create(database_pool, asdf).await?;
-    PlayLog::create(database_pool, 1, guild_id.get() as i64, metadata.id as i64).await?;
+    let returned_metadata = {
+        let (asdf, _qwer) = match aux_metadata_to_db_structures(
+            &res2,
+            guild_id.get() as i64,
+            channel_id.get() as i64,
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("aux_metadata_to_db_structures error: {}", e);
+                return Err(CrackedError::Other("aux_metadata_to_db_structures error").into());
+            }
+        };
+        let metadata = match crate::db::metadata::Metadata::create(database_pool, &asdf).await {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
+                asdf.clone()
+                // return Err(
+                //     CrackedError::Other("crate::db::metadata::Metadata::create error").into(),
+                // );
+            }
+        };
+        match PlayLog::create(database_pool, 1, guild_id.get() as i64, metadata.id as i64).await {
+            Ok(x) => {
+                tracing::info!("PlayLog::create: {:?}", x);
+            }
+            Err(e) => {
+                tracing::error!("PlayLog::create error: {}", e);
+                // return Err(CrackedError::Other("PlayLog::create error").into());
+            }
+        };
+        metadata
+    };
+
+    tracing::info!("returned_metadata: {:?}", returned_metadata);
 
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(track).await;

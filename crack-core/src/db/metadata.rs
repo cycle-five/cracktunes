@@ -37,7 +37,7 @@ pub struct MetadataRead {
 }
 
 impl Metadata {
-    pub async fn create(pool: &PgPool, in_metadata: Metadata) -> Result<Metadata, CrackedError> {
+    pub async fn create(pool: &PgPool, in_metadata: &Metadata) -> Result<Metadata, CrackedError> {
         let r = sqlx::query_as!(
             MetadataRead,
             r#"INSERT INTO

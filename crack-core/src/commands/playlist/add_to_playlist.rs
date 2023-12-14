@@ -57,7 +57,7 @@ pub async fn add_to_playlist(
     let (in_metadata, _playlist_track) =
         aux_metadata_to_db_structures(metadata, guild_id, channel_id)?;
 
-    let metadata = Metadata::create(&db_pool, in_metadata).await?;
+    let metadata = Metadata::create(&db_pool, &in_metadata).await?;
 
     let res = Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id, channel_id).await?;
 
