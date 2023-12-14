@@ -80,6 +80,46 @@ pub struct LogSettingsRead {
 }
 
 impl GuildEntity {
+    /// Update the allowed domains for a guild.
+    pub async fn write_allowed_domains(
+        &self,
+        pool: &PgPool,
+        allowed_domains: Vec<String>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+            UPDATE guild_settings
+            SET allowed_domains = $2
+            WHERE guild_id = $1
+            "#,
+            self.id,
+            &allowed_domains,
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the banned domains for a guild.
+    pub async fn write_banned_domains(
+        &self,
+        pool: &PgPool,
+        banned_domains: Vec<String>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+            UPDATE guild_settings
+            set banned_domains = $2
+            WHERE guild_id = $1
+            "#,
+            self.id,
+            &banned_domains,
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn write_log_settings(
         &self,
         pool: &PgPool,
