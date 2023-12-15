@@ -13,15 +13,15 @@ crack-core = { path = "crack-core", default-features = true, version = "0.2" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-config = { path = "crack-config", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
-tungstenite = "^0.20.1"
-async-tungstenite = "^0.23.0"
+tungstenite = "0.21.0"
+async-tungstenite = "0.24.0"
 reqwest = { version = "0.11.22", features = ["blocking", "json"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 audiopus = "0.2"
 
 [workspace.dependencies.sqlx]
-version = "0.7.2"
+version = "0.7.3"
 default-features = false
 features = [
   "runtime-tokio",
@@ -31,6 +31,7 @@ features = [
   "chrono",
   "time",
   "migrate",
+  "json",
 ]
 
 [workspace.dependencies.serenity]
