@@ -8,7 +8,6 @@ CREATE TABLE guild_settings (
     allow_all_domains BOOLEAN NOT NULL DEFAULT FALSE,
     allowed_domains TEXT [] NOT NULL DEFAULT '{}',
     banned_domains TEXT [] NOT NULL DEFAULT '{}',
-    authorized_users BIGINT [] NOT NULL DEFAULT '{}',
     ignored_channels BIGINT [] NOT NULL DEFAULT '{}',
     old_volume FLOAT NOT NULL DEFAULT 1.0,
     volume FLOAT NOT NULL DEFAULT 1.0,
@@ -49,6 +48,7 @@ CREATE TABLE banned_domains (
 CREATE TABLE authorized_users (
     guild_id BIGINT,
     user_id BIGINT,
+    permissions BIGINT,
     PRIMARY KEY (guild_id, user_id),
     CONSTRAINT fk_authorized_users FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
 );

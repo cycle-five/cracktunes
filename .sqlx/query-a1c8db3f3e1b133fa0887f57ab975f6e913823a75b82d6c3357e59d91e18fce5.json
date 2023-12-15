@@ -45,36 +45,31 @@
       },
       {
         "ordinal": 8,
-        "name": "authorized_users",
-        "type_info": "Int8Array"
-      },
-      {
-        "ordinal": 9,
         "name": "ignored_channels",
         "type_info": "Int8Array"
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "old_volume",
         "type_info": "Float8"
       },
       {
-        "ordinal": 11,
+        "ordinal": 10,
         "name": "volume",
         "type_info": "Float8"
       },
       {
-        "ordinal": 12,
+        "ordinal": 11,
         "name": "self_deafen",
         "type_info": "Bool"
       },
       {
-        "ordinal": 13,
+        "ordinal": 12,
         "name": "timeout_seconds",
         "type_info": "Int4"
       },
       {
-        "ordinal": 14,
+        "ordinal": 13,
         "name": "additional_prefixes",
         "type_info": "TextArray"
       }
@@ -85,7 +80,6 @@
       ]
     },
     "nullable": [
-      false,
       false,
       false,
       false,
