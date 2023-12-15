@@ -67,6 +67,7 @@ pub use unmute::*;
         "delete_channel",
         "track_invites",
         "kick",
+        "rename_all",
         "mute",
         "message_cache",
         "move_users_to",
@@ -76,6 +77,7 @@ pub use unmute::*;
         "get_active_vcs",
         "set_vc_size",
         "role",
+        "timeout",
     ),
     ephemeral,
     owners_only

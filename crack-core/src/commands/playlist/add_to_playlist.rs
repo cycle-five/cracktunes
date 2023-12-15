@@ -96,14 +96,16 @@ pub fn aux_metadata_to_db_structures(
         .date
         .as_ref()
         .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
-    let duration = metadata
-        .duration
-        .map(|x| ::chrono::Duration::from_std(x).unwrap_or(chrono::Duration::zero()));
     let channel = metadata.channel.clone();
     let channels = metadata.channels.map(i16::from);
     let start_time = metadata
         .start_time
-        .map(|d| ::chrono::Duration::from_std(d).unwrap_or(chrono::Duration::zero()));
+        .map(|d| d.as_secs_f64() as i64)
+        .unwrap_or(0);
+    let duration = metadata
+        .duration
+        .map(|d| d.as_secs_f64() as i64)
+        .unwrap_or(0);
     let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
     let thumbnail = metadata.thumbnail.clone();
     let source_url = metadata.source_url.clone();
@@ -115,10 +117,10 @@ pub fn aux_metadata_to_db_structures(
         artist,
         album,
         date,
-        duration,
         channel,
         channels,
         start_time,
+        duration,
         sample_rate,
         source_url,
         thumbnail,

@@ -249,7 +249,7 @@ pub async fn poise_framework(
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
                             Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains(&user_id))
+                                || guild_settings.authorized_users.contains_key(&user_id))
                         },
                     )
             })

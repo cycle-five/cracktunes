@@ -20,7 +20,7 @@ pub async fn authorize(
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {
-            e.authorized_users.insert(id);
+            e.authorized_users.insert(id, 0);
         })
         .or_default()
         .clone();

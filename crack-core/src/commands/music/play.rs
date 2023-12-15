@@ -1405,7 +1405,7 @@ async fn enqueue_track_pgwrite(
             Ok(x) => x,
             Err(e) => {
                 tracing::error!("aux_metadata_to_db_structures error: {}", e);
-                return Err(CrackedError::Other("aux_metadata_to_db_structures error").into());
+                return Err(CrackedError::Other("aux_metadata_to_db_structures error"));
             }
         };
         let metadata = match crate::db::metadata::Metadata::create(database_pool, &asdf).await {

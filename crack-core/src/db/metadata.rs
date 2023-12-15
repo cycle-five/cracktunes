@@ -1,9 +1,10 @@
-use chrono::Duration;
-use sqlx::{postgres::types::PgInterval, PgPool};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 use crate::errors::CrackedError;
 
-#[derive(Debug, Default, Clone)]
+// #[serde_with::serde_as]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub id: i32,
     pub track: Option<String>,
@@ -12,14 +13,15 @@ pub struct Metadata {
     pub date: Option<chrono::NaiveDate>,
     pub channels: Option<i16>,
     pub channel: Option<String>,
-    pub start_time: Option<Duration>,
-    pub duration: Option<Duration>,
+    pub start_time: i64,
+    pub duration: i64,
     pub sample_rate: Option<i32>,
     pub source_url: Option<String>,
     pub title: Option<String>,
     pub thumbnail: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct MetadataRead {
     pub id: i32,
     pub track: Option<String>,
@@ -28,8 +30,8 @@ pub struct MetadataRead {
     pub date: Option<chrono::NaiveDate>,
     pub channels: Option<i16>,
     pub channel: Option<String>,
-    pub start_time: Option<PgInterval>,
-    pub duration: Option<PgInterval>,
+    pub start_time: i64,
+    pub duration: i64,
     pub sample_rate: Option<i32>,
     pub source_url: Option<String>,
     pub title: Option<String>,
@@ -51,8 +53,8 @@ impl Metadata {
             in_metadata.date,
             in_metadata.channels.map(|x| i16::try_from(x).unwrap()),
             in_metadata.channel,
-            in_metadata.start_time.map(|x| PgInterval::try_from(x.to_std().unwrap()).unwrap()),
-            in_metadata.duration.map(|x| PgInterval::try_from(x.to_std().unwrap()).unwrap()),
+            in_metadata.start_time, //.map(|x| PgInterval::try_from(x).unwrap()),
+            in_metadata.duration, //.map(|x| PgInterval::try_from(x).unwrap()),
             in_metadata.sample_rate,
             in_metadata.source_url,
             in_metadata.title,
@@ -69,18 +71,8 @@ impl Metadata {
             date: r.date,
             channels: r.channels,
             channel: r.channel,
-            start_time: r.start_time.map(|x| {
-                Duration::from_std(std::time::Duration::from_micros(
-                    x.microseconds.unsigned_abs(),
-                ))
-                .unwrap()
-            }),
-            duration: r.duration.map(|x| {
-                Duration::from_std(std::time::Duration::from_micros(
-                    x.microseconds.unsigned_abs(),
-                ))
-                .unwrap()
-            }),
+            start_time: r.start_time,
+            duration: r.duration,
             sample_rate: r.sample_rate,
             source_url: r.source_url,
             title: r.title,

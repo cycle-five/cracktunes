@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
 use crate::{
@@ -27,6 +28,8 @@ use crate::{
 //     CONSTRAINT fk_guild_setting FOREIGN KEY (welcome_settings_id) REFERENCES welcome_settings(id),
 //     FOREIGN KEY (log_settings_id) REFERENCES log_settings(id)
 // );
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct GuildSettingsRead {
     pub guild_id: i64,
     pub guild_name: String,
@@ -36,7 +39,8 @@ pub struct GuildSettingsRead {
     pub allow_all_domains: bool,
     pub allowed_domains: Vec<String>,
     pub banned_domains: Vec<String>,
-    pub authorized_users: Vec<i64>,
+    // pub authorized_users: Vec<i64>,
+    // pub authorized_users: Vec<(u64, u64)>,
     pub ignored_channels: Vec<i64>,
     pub old_volume: f64,
     pub volume: f64,
@@ -45,6 +49,7 @@ pub struct GuildSettingsRead {
     pub additional_prefixes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct WelcomeSettingsRead {
     pub guild_id: i64,
     pub auto_role: Option<i64>,
@@ -52,7 +57,7 @@ pub struct WelcomeSettingsRead {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct GuildEntity {
     pub id: i64,
     pub name: String,
@@ -69,6 +74,8 @@ pub struct GuildEntity {
 //     voice_log_channel BIGINT,
 //     CONSTRAINT fk_log_settings FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
 // );
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LogSettingsRead {
     pub guild_id: i64,
     pub all_log_channel: Option<i64>,
@@ -192,12 +199,18 @@ impl GuildEntity {
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), sqlx::Error> {
+        let ignored_channels = settings
+            .ignored_channels
+            .clone()
+            .into_iter()
+            .map(|x| x as i64)
+            .collect::<Vec<i64>>();
         sqlx::query!(
             r#"
-            INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, authorized_users, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::FLOAT, $12::FLOAT, $13, $14, $15)
+            INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT, $11::FLOAT, $12, $13, $14)
             ON CONFLICT (guild_id)
-            DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, authorized_users = $9, ignored_channels = $10, old_volume = $11::FLOAT, volume = $12::FLOAT, self_deafen = $13, timeout_seconds = $14, additional_prefixes = $15
+            DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, ignored_channels = $9, old_volume = $10::FLOAT, volume = $11::FLOAT, self_deafen = $12, timeout_seconds = $13, additional_prefixes = $14
             "#,
             settings.guild_id.get() as i64,
             settings.guild_name,
@@ -207,8 +220,7 @@ impl GuildEntity {
             settings.allow_all_domains,
             &settings.allowed_domains.clone().into_iter().collect::<Vec<String>>(),
             &settings.banned_domains.clone().into_iter().collect::<Vec<String>>(),
-            &settings.authorized_users.clone().into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
-            &settings.ignored_channels.clone().into_iter().map(|x| x as i64).collect::<Vec<i64>>(),
+            ignored_channels.as_slice(),
             settings.old_volume as i64,
             settings.volume as i64,
             settings.self_deafen,
@@ -219,6 +231,31 @@ impl GuildEntity {
         .await?;
 
         let guild_id = settings.guild_id.get() as i64;
+
+        let user_perm_arr = &settings
+            .authorized_users
+            .clone()
+            .into_iter()
+            .map(|(user, perm)| (user as i64, perm as i64))
+            .collect::<Vec<(i64, i64)>>()
+            .clone();
+
+        for (user, perm) in user_perm_arr {
+            sqlx::query!(
+                r#"
+                INSERT INTO authorized_users (guild_id, user_id, permissions)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (guild_id, user_id)
+                DO UPDATE SET permissions = $3
+                "#,
+                guild_id,
+                *user,
+                *perm,
+            )
+            .execute(pool)
+            .await?;
+        }
+
         if settings.welcome_settings.is_some() {
             GuildEntity::write_welcome_settings(
                 guild_id,

@@ -16,6 +16,19 @@ pub struct User {
 }
 
 impl User {
+    pub async fn insert_test_user(pool: &PgPool, user_id: Option<i64>, username: Option<String>) {
+        let user = username.unwrap_or("test".to_string());
+        let user_id = user_id.unwrap_or(1);
+        sqlx::query!(
+            r#"insert into public.user
+            (id, username, avatar_url, bot, created_at, updated_at, last_seen) values ($1, $2, '', false, now(), now(), now())"#,
+            user_id,
+            user,
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
     pub async fn get_user(pool: &PgPool, user_id: i64) -> Option<User> {
         sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
             .fetch_optional(pool)
@@ -23,13 +36,16 @@ impl User {
             .ok()?
     }
 
-    pub async fn insert_user(
+    pub async fn insert_or_update_user(
         pool: &PgPool,
         user_id: i64,
         username: String,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            r#"INSERT INTO "user" (id, username) VALUES ($1, $2)"#,
+            r#"INSERT INTO "user" (id, username)
+            VALUES ($1, $2)
+            ON CONFLICT (id) DO UPDATE SET last_seen = now(), username = $2
+            "#,
             user_id,
             username,
         )

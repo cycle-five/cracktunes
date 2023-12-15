@@ -1,4 +1,5 @@
 use sqlx::types::chrono::NaiveDateTime;
+use sqlx::{Error, PgPool};
 
 #[derive(Debug, Clone)]
 pub struct PlayLog {
@@ -11,11 +12,11 @@ pub struct PlayLog {
 
 impl PlayLog {
     pub async fn create(
-        conn: &sqlx::PgPool,
+        conn: &PgPool,
         user_id: i64,
         guild_id: i64,
         metadata_id: i64,
-    ) -> Result<Self, sqlx::Error> {
+    ) -> Result<Self, Error> {
         let play_log = sqlx::query_as!(
             PlayLog,
             r#"

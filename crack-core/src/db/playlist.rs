@@ -1,6 +1,6 @@
 use crate::db::user::User;
 use songbird::tracks::TrackHandle;
-use sqlx::{postgres::PgQueryResult, PgPool};
+use sqlx::{postgres::PgQueryResult, query, PgPool};
 
 use crate::CrackedError;
 
@@ -52,8 +52,8 @@ impl Playlist {
         metadata_id: i32,
         guild_id: i64,
         channel_id: i64,
-    ) -> sqlx::Result<PgQueryResult> {
-        sqlx::query!(
+    ) -> Result<PgQueryResult, sqlx::Error> {
+        query!(
             "INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id) VALUES ($1, $2, $3, $4)",
             playlist_id,
             metadata_id,

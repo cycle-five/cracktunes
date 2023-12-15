@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::sync::{atomic, Arc};
@@ -32,6 +33,8 @@ pub(crate) const DEFAULT_PREMIUM: bool = false;
 pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
     "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", "m/", "M/",
 ];
+pub(crate) const MOD_VAL: u64 = 1 << 1;
+pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -140,6 +143,80 @@ impl From<WelcomeSettingsRead> for WelcomeSettings {
     }
 }
 
+/// A struct that represents a user's permission level for a guild.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct UserPermission {
+    pub user_id: i64,
+    pub guild_id: i64,
+    pub permission: i64,
+}
+
+/// A struct that represents a user's permission level for a guild.
+impl UserPermission {
+    /// Creates a new UserPermission with default values.
+    pub fn new_default(user_id: i64, guild_id: i64) -> Self {
+        Self {
+            user_id,
+            guild_id,
+            permission: 0,
+        }
+    }
+
+    /// Creates a new UserPermission with the given values.
+    pub fn new(user_id: i64, guild_id: i64, permission: i64) -> Self {
+        Self {
+            user_id,
+            guild_id,
+            permission,
+        }
+    }
+
+    /// Get the user id.
+    pub fn get_user_id(&self) -> i64 {
+        self.user_id
+    }
+
+    /// Get the guild id.
+    pub fn get_guild_id(&self) -> i64 {
+        self.guild_id
+    }
+
+    /// Get the permission level.
+    pub fn get_permission(&self) -> i64 {
+        self.permission
+    }
+
+    /// Set the permission level, mutating
+    pub fn set_permission(&mut self, permission: i64) {
+        self.permission = permission;
+    }
+
+    /// Set the user id, mutating
+    pub fn set_user_id(&mut self, user_id: i64) {
+        self.user_id = user_id;
+    }
+
+    /// Set the guild id, mutating
+    pub fn set_guild_id(&mut self, guild_id: i64) {
+        self.guild_id = guild_id;
+    }
+
+    /// Set the permission level, returning a new UserPermission
+    pub fn with_permission(self, permission: i64) -> Self {
+        Self { permission, ..self }
+    }
+
+    /// Set the user id, returning a new UserPermission
+    pub fn with_user_id(self, user_id: i64) -> Self {
+        Self { user_id, ..self }
+    }
+
+    /// Set the guild id, returning a new UserPermission
+    pub fn with_guild_id(self, guild_id: i64) -> Self {
+        Self { guild_id, ..self }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
@@ -151,7 +228,8 @@ pub struct GuildSettings {
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    pub authorized_users: HashSet<u64>,
+    #[serde(default = "authorized_users_default")]
+    pub authorized_users: BTreeMap<u64, u64>,
     pub ignored_channels: HashSet<u64>,
     #[serde(default = "volume_default")]
     pub old_volume: f32,
@@ -163,6 +241,10 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
+}
+
+fn authorized_users_default() -> BTreeMap<u64, u64> {
+    BTreeMap::new()
 }
 
 fn additional_prefixes_default() -> Vec<String> {
@@ -217,11 +299,8 @@ impl From<crate::db::GuildSettingsRead> for GuildSettings {
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
-        settings.authorized_users = settings_db
-            .authorized_users
-            .into_iter()
-            .map(|x| x as u64)
-            .collect();
+        settings.authorized_users = BTreeMap::<u64, u64>::new(); // FIXME
+
         settings.ignored_channels = settings_db
             .ignored_channels
             .into_iter()
@@ -265,7 +344,7 @@ impl GuildSettings {
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
-            authorized_users: HashSet::new(),
+            authorized_users: BTreeMap::new(),
             ignored_channels: asdf.into_iter().collect(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
@@ -421,26 +500,39 @@ impl GuildSettings {
         }
     }
 
-    pub fn authorize_user(&mut self, user_id: u64) {
-        if !self.authorized_users.contains(&user_id) {
-            self.authorized_users.insert(user_id);
-        }
+    pub fn authorize_user(&mut self, user_id: i64) {
+        self.authorized_users.entry(user_id as u64).or_insert(0);
     }
 
-    pub fn deauthorize_user(&mut self, user_id: u64) {
-        if self.authorized_users.contains(&user_id) {
-            self.authorized_users.remove(&user_id);
+    pub fn deauthorize_user(&mut self, user_id: i64) {
+        if self.authorized_users.contains_key(&(user_id as u64)) {
+            self.authorized_users.remove(&(user_id as u64));
         }
     }
 
     pub fn check_authorized(&self, user_id: u64) -> bool {
-        self.authorized_users.contains(&user_id)
+        self.authorized_users.contains_key(&user_id)
     }
 
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains(&user_id.into())
+        self.authorized_users.contains_key(&user_id.into())
     }
 
+    pub fn check_mod(&self, user_id: u64) -> bool {
+        self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
+    }
+
+    pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
+    }
+
+    pub fn check_admin(&self, user_id: u64) -> bool {
+        self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
+    }
+
+    pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
+    }
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
         self.old_volume = self.volume;
         self.volume = volume;

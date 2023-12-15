@@ -3,7 +3,9 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use regex::Regex;
 use serenity::all::{User, UserId};
+use std::time::Duration;
 
 /// Timeout a user from the server.
 #[cfg(not(tarpaulin_include))]
@@ -25,26 +27,10 @@ pub async fn timeout(
             return Err(CrackedError::Other("No user or user_id provided").into());
         }
     };
-    let timeout_duration = {
-        let mut timeout_duration = 0;
-        let mut duration = duration.split(" ");
-        while let Some(d) = duration.next() {
-            let d = d
-                .parse::<u64>()
-                .map_err(|_| CrackedError::Other("Invalid duration."))?;
-            match duration.next() {
-                Some("d") => timeout_duration += d * 24 * 60 * 60,
-                Some("h") => timeout_duration += d * 60 * 60,
-                Some("m") => timeout_duration += d * 60,
-                Some("s") => timeout_duration += d,
-                _ => return Err(CrackedError::Other("Invalid duration.").into()),
-            }
-        }
-        timeout_duration
-    };
+    let timeout_duration = parse_duration(&duration)?;
 
     let now = chrono::Utc::now();
-    let timeout_until = now + chrono::Duration::seconds(timeout_duration as i64);
+    let timeout_until = now + timeout_duration;
     let timeout_until = timeout_until.to_rfc3339();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
@@ -75,4 +61,41 @@ pub async fn timeout(
         .await?;
     }
     Ok(())
+}
+
+fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
+    let re = Regex::new(r"(\d+)([smh])").unwrap();
+    if let Some(caps) = re.captures(input) {
+        let quantity = caps.get(1).unwrap().as_str().parse::<u64>().unwrap();
+        match caps.get(2).unwrap().as_str() {
+            "s" => Ok(Duration::from_secs(quantity)),
+            "m" => Ok(Duration::from_secs(quantity * 60)),
+            "h" => Ok(Duration::from_secs(quantity * 60 * 60)),
+            "d" => Ok(Duration::from_secs(quantity * 24 * 60 * 60)),
+            _ => Err(CrackedError::Other("Invalid time unit")),
+        }
+    } else {
+        Err(CrackedError::Other("Invalid format"))
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn test_parse_duration() {
+        assert_eq!(parse_duration("1s").unwrap(), Duration::from_secs(1));
+        assert_eq!(parse_duration("1m").unwrap(), Duration::from_secs(60));
+        assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(60 * 60));
+        assert_eq!(
+            parse_duration("1d").unwrap(),
+            Duration::from_secs(24 * 60 * 60)
+        );
+        assert_eq!(
+            parse_duration("1d1h1m1s").unwrap(),
+            Duration::from_secs(24 * 60 * 60 + 60 * 60 + 60 + 1)
+        );
+    }
 }

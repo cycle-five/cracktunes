@@ -619,8 +619,8 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
     for (i, &t) in queue.iter().enumerate() {
         let metadata = get_track_metadata(t).await;
-        let title = metadata.title.as_ref().unwrap();
-        let url = metadata.source_url.as_ref().unwrap();
+        let title = metadata.title.clone().unwrap_or_default();
+        let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
 
         let _ = writeln!(
