@@ -35,20 +35,14 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn send_now_playing(
     channel: ChannelId,
     http: Arc<Http>,
-    handler: Arc<Mutex<Call>>,
+    call: Arc<Mutex<Call>>,
 ) -> Result<Message, Error> {
-    let handler = handler.lock().await;
-    match handler.queue().current() {
+    let msg: CreateMessage = match call.lock().await.queue().current() {
         Some(track_handle) => {
             let embed = create_now_playing_embed(&track_handle).await;
-            channel
-                .send_message(http, CreateMessage::new().embed(embed))
-                .await
-                .map_err(|e| e.into())
+            CreateMessage::new().embed(embed)
         }
-        None => channel
-            .say(http, "Nothing playing!")
-            .await
-            .map_err(|e| e.into()),
-    }
+        None => CreateMessage::new().content("Nothing playing"),
+    };
+    channel.send_message(http, msg).await.map_err(|e| e.into())
 }

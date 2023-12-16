@@ -2,6 +2,7 @@ use self::serenity::model::{
     guild::Guild,
     id::{ChannelId, UserId},
 };
+use crate::{errors::CrackedError, Error};
 use poise::serenity_prelude as serenity;
 
 pub enum Connection {
@@ -13,8 +14,8 @@ pub enum Connection {
 }
 
 pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId) -> Connection {
-    let user_channel = get_voice_channel_for_user(guild, user_id);
-    let bot_channel = get_voice_channel_for_user(guild, bot_id);
+    let user_channel = get_voice_channel_for_user(guild, user_id).ok();
+    let bot_channel = get_voice_channel_for_user(guild, bot_id).ok();
 
     if let (Some(bot_id), Some(user_id)) = (bot_channel, user_channel) {
         if bot_id == user_id {
@@ -31,9 +32,10 @@ pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId)
     }
 }
 
-pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Option<ChannelId> {
+pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<ChannelId, Error> {
     guild
         .voice_states
         .get(user_id)
         .and_then(|voice_state| voice_state.channel_id)
+        .ok_or(CrackedError::NotConnected.into())
 }

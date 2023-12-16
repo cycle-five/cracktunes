@@ -7,7 +7,10 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::{
     clients::BaseClient,
-    model::{AlbumId, PlayableItem, PlaylistId, SimplifiedArtist, TrackId},
+    model::{
+        AlbumId, Country, Market, PlayableItem, PlaylistId, Recommendations, SearchResult,
+        SimplifiedArtist, TrackId,
+    },
     ClientCredsSpotify, Config, Credentials,
 };
 use std::{env, str::FromStr};
@@ -94,6 +97,88 @@ impl Spotify {
             MediaType::Track => Self::get_track_info(spotify, media_id).await,
             MediaType::Album => Self::get_album_info(spotify, media_id).await,
             MediaType::Playlist => Self::get_playlist_info(spotify, media_id).await,
+        }
+    }
+
+    pub async fn get_recommendations(
+        spotify: &ClientCredsSpotify,
+        tracks: Vec<String>,
+    ) -> Result<Vec<String>, CrackedError> {
+        let tracks = spotify
+            .search(
+                &tracks.join(" "),
+                rspotify::model::SearchType::Track,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await?;
+        let tracks = Self::search_result_to_track_id(tracks);
+        let recommendations: Recommendations = spotify
+            .recommendations(
+                Vec::new(),
+                None::<Vec<_>>,
+                None::<Vec<_>>,
+                Some(tracks),
+                Some(Market::Country(Country::UnitedStates)),
+                Some(1),
+            )
+            .await
+            .map_err(CrackedError::RSpotify)?;
+
+        let query_list: Vec<String> = recommendations
+            .tracks
+            .iter()
+            .map(|track| Self::build_query(&track.artists[0].name, &track.name))
+            .collect();
+
+        Ok(query_list)
+    }
+
+    fn search_result_to_track_id(search_result: SearchResult) -> Vec<TrackId<'static>> {
+        match search_result {
+            SearchResult::Tracks(tracks) => {
+                tracks.items.iter().flat_map(|x| x.id.clone()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn _extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
+        match search_result {
+            SearchResult::Albums(albums) => {
+                let album = albums.items[0].clone();
+                let artist_names = Self::join_artist_names(&album.artists);
+                let query = Self::build_query(&artist_names, &album.name);
+                Ok(QueryType::Keywords(query))
+            }
+            SearchResult::Artists(artists) => {
+                let artist = artists.items[0].clone();
+                let query = artist.name;
+                Ok(QueryType::Keywords(query))
+            }
+            SearchResult::Playlists(playlists) => {
+                let playlist = playlists.items[0].clone();
+                let query = playlist.name;
+                Ok(QueryType::Keywords(query))
+            }
+            SearchResult::Tracks(tracks) => {
+                let track = tracks.items[0].clone();
+                let artist_names = Self::join_artist_names(&track.artists);
+                let query = Self::build_query(&artist_names, &track.name);
+                Ok(QueryType::Keywords(query))
+            }
+            SearchResult::Shows(shows) => {
+                let show = shows.items[0].clone();
+                let query = show.name;
+                Ok(QueryType::Keywords(query))
+            }
+            SearchResult::Episodes(episodes) => {
+                let episode = episodes.items[0].clone();
+                let query = episode.name;
+                Ok(QueryType::Keywords(query))
+            }
         }
     }
 

@@ -4,7 +4,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::settings::{GuildSettings, DEFAULT_PREMIUM},
-    handlers::track_end::update_queue_messages,
+    handlers::{track_end::update_queue_messages, IdleHandler, TrackEndHandler},
     http_utils,
     messaging::message::CrackedMessage,
     messaging::messages::{
@@ -30,12 +30,15 @@ use ::serenity::{
         CreateSelectMenuOption, EditInteractionResponse, EditMessage,
     },
 };
-use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use poise::{
+    serenity_prelude::{self as serenity, Attachment, Http},
+    CreateReply,
+};
 use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::{Track, TrackHandle},
-    Call,
+    Call, Event, TrackEvent,
 };
 use sqlx::PgPool;
 use std::{
@@ -163,7 +166,6 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
 
 /// Get the call handle for songbird
 /// FIXME: Does this need to take the GuildId?
-#[inline]
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
     guild_id: serenity::GuildId,
@@ -175,9 +177,54 @@ pub async fn get_call_with_fail_msg(
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
             let channel_id =
-                get_voice_channel_for_user(&ctx.guild().unwrap().clone(), &ctx.author().id);
-            match manager.join(guild_id, channel_id.unwrap()).await {
-                Ok(_) => Ok(manager.get(guild_id).unwrap()),
+                get_voice_channel_for_user(&ctx.guild().unwrap().clone(), &ctx.author().id)?;
+            match manager.join(guild_id, channel_id).await {
+                Ok(call) => {
+                    {
+                        let mut handler = call.lock().await;
+                        // unregister existing events and register idle notifier
+                        handler.remove_all_global_events();
+
+                        let guild_settings_map =
+                            ctx.data().guild_settings_map.read().unwrap().clone();
+
+                        let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
+                            let timeout = guild_settings.timeout;
+                            if timeout > 0 {
+                                handler.add_global_event(
+                                    Event::Periodic(Duration::from_secs(1), None),
+                                    IdleHandler {
+                                        http: ctx.serenity_context().http.clone(),
+                                        manager: manager.clone(),
+                                        channel_id,
+                                        guild_id: Some(guild_id),
+                                        limit: timeout as usize,
+                                        count: Default::default(),
+                                    },
+                                );
+                            }
+                        });
+
+                        handler.add_global_event(
+                            Event::Track(TrackEvent::End),
+                            TrackEndHandler {
+                                guild_id: guild_id,
+                                http: ctx.serenity_context().http.clone(),
+                                call: call.clone(),
+                                data: ctx.data().clone(),
+                            },
+                        );
+
+                        let text = CrackedMessage::Summon {
+                            mention: channel_id.mention(),
+                        }
+                        .to_string();
+                        ctx.send(CreateReply::default().content(text).ephemeral(true))
+                            .await?;
+                    }
+                    Ok(call)
+                    // Ok(manager.get(guild_id).unwrap())
+                }
                 Err(_) => {
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));

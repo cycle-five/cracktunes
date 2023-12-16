@@ -147,8 +147,8 @@ async fn get_channel_id_for_summon(
             match id.parse::<u64>() {
                 Ok(id) => Ok(ChannelId::new(id)),
                 Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
-                    Some(channel_id) => Ok(channel_id),
-                    None => get_voice_channel_for_user_with_error(&guild, &user_id),
+                    Ok(channel_id) => Ok(channel_id),
+                    Err(_) => get_voice_channel_for_user_with_error(&guild, &user_id),
                 },
             }
         }
@@ -161,8 +161,8 @@ fn get_voice_channel_for_user_with_error(
     user_id: &UserId,
 ) -> Result<ChannelId, Error> {
     match get_voice_channel_for_user(guild, user_id) {
-        Some(channel_id) => Ok(channel_id),
-        None => {
+        Ok(channel_id) => Ok(channel_id),
+        Err(_) => {
             // ctx.say("You are not in a voice channel!").await?;
             tracing::warn!(
                 "User {} is not in a voice channel in guild {}",

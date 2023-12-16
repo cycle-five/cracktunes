@@ -1,7 +1,6 @@
 prefix = "rs!"
 video_status_poll_interval = 120
 sys_log_channel_id = 0
-authorized_users = {}
 self_deafen = true
 volume = 0.3
 database_url = "postgres://./data/crackedmusic.db"
@@ -25,7 +24,6 @@ send_msg_mute = false
 send_msg_dc = false
 
 [[guild_settings_map]]
-authorized_users = {}
 prefix = "m!"
 prefix_up = "M!"
 guild_id = 1

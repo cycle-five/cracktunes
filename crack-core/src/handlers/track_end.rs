@@ -39,34 +39,42 @@ impl EventHandler for TrackEndHandler {
             .map(|guild_settings| guild_settings.volume)
             .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
 
-        let handler = self.call.lock().await;
-        let queue = handler.queue();
-        queue.modify_queue(|v| {
+        self.call.lock().await.queue().modify_queue(|v| {
             if let Some(track) = v.front_mut() {
                 let _ = track.set_volume(volume);
             };
         });
+        //let handler = self.call.lock().await;
+        //let queue = handler.queue();
+        // queue.modify_queue(|v| {
+        //     if let Some(track) = v.front_mut() {
+        //         let _ = track.set_volume(volume);
+        //     };
+        // });
         if autopause {
-            queue.pause().ok();
+            self.call.lock().await.queue().pause().ok();
         }
 
         // FIXME
         match forget_skip_votes(&self.data, self.guild_id).await {
-            Ok(_) => (),
+            Ok(_) => tracing::warn!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
-        if let Some(channel) = handler.current_channel() {
+        if let Some(channel) = self.call.lock().await.current_channel() {
             tracing::warn!("Sending now playing message");
-            let chan_id = ChannelId::new(channel.0.into());
+            let chan_id = ChannelId::new(channel.0.get());
 
-            send_now_playing(chan_id, self.http.clone(), self.call.clone())
-                .await
-                .ok();
+            tracing::warn!("Channel id: {}", chan_id.name(&self.http).await.unwrap());
+
+            match send_now_playing(chan_id, self.http.clone(), self.call.clone()).await {
+                Ok(_) => tracing::warn!("Sent now playing message"),
+                Err(e) => tracing::warn!("Error sending now playing message: {}", e),
+            }
         } else {
             tracing::warn!("No channel to send now playing message");
         }
-        drop(handler);
+        // drop(handler);
         None
     }
 }

@@ -43,7 +43,6 @@ impl EventHandler for IdleHandler {
                 self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
             }
         }
-
         None
     }
 }
