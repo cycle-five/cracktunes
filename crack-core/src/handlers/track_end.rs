@@ -28,22 +28,26 @@ pub struct ModifyQueueHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::error!("TrackEndHandler");
         let settings = self.data.guild_settings_map.read().unwrap().clone();
 
         let autopause = settings
             .get(&self.guild_id)
             .map(|guild_settings| guild_settings.autopause)
             .unwrap_or_default();
+        tracing::error!("Autopause: {}", autopause);
         let volume = settings
             .get(&self.guild_id)
             .map(|guild_settings| guild_settings.volume)
             .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
+        tracing::error!("Volume: {}", volume);
 
         self.call.lock().await.queue().modify_queue(|v| {
             if let Some(track) = v.front_mut() {
                 let _ = track.set_volume(volume);
             };
         });
+        tracing::error!("Set volume");
         //let handler = self.call.lock().await;
         //let queue = handler.queue();
         // queue.modify_queue(|v| {
@@ -52,9 +56,13 @@ impl EventHandler for TrackEndHandler {
         //     };
         // });
         if autopause {
+            tracing::error!("Pausing");
             self.call.lock().await.queue().pause().ok();
+        } else {
+            tracing::error!("Not pausing");
         }
 
+        tracing::error!("Forgetting queue");
         // FIXME
         match forget_skip_votes(&self.data, self.guild_id).await {
             Ok(_) => tracing::warn!("Forgot skip votes"),

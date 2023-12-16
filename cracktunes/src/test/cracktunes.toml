@@ -44,7 +44,6 @@ guild_id = 2
 prefix = "m/"
 prefix_up = "M/"
 guild_name = "qwer"
-authorized_users = [0]
 allowed_domains = ["youtube.com"]
 banned_domains = []
 ignored_channels = []

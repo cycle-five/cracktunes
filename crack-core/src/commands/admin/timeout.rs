@@ -64,19 +64,58 @@ pub async fn timeout(
 }
 
 fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
-    let re = Regex::new(r"(\d+)([smhd])").unwrap();
-    if let Some(caps) = re.captures(input) {
-        let quantity = caps.get(1).unwrap().as_str().parse::<u64>().unwrap();
-        match caps.get(2).unwrap().as_str() {
-            "s" => Ok(Duration::from_secs(quantity)),
-            "m" => Ok(Duration::from_secs(quantity * 60)),
-            "h" => Ok(Duration::from_secs(quantity * 60 * 60)),
-            "d" => Ok(Duration::from_secs(quantity * 24 * 60 * 60)),
-            _ => Err(CrackedError::Other("Invalid time unit")),
-        }
-    } else {
-        Err(CrackedError::Other("Invalid format"))
+    let mut parts = Vec::new();
+    let re = Regex::new(r"((\d+)([smhd]))").unwrap();
+    for (_, [_, d, u]) in re.captures_iter(input).map(|c| c.extract()) {
+        parts.push((d, u));
     }
+
+    if parts.is_empty() {
+        return Err(CrackedError::Other("Invalid format"));
+    }
+    let mut total = Duration::from_secs(0);
+    // if let Some(caps) = re.captures(input) {
+    //     let n = caps.len();
+    //     let mut total = Duration::from_secs(0);
+    //     for i in (0..n).step_by(3) {
+    //         let str = caps.get(i + 1).unwrap().as_str().to_string();
+    //         let quantity = match str.parse::<u64>() {
+    //             Ok(n) => n,
+    //             Err(_) => {
+    //                 return Err(CrackedError::DurationParseError(str, i + 1));
+    //             }
+    //         };
+    //         match caps.get(i + 2).unwrap().as_str() {
+    //             "s" => total += Duration::from_secs(quantity),
+    //             "m" => total += Duration::from_secs(quantity * 60),
+    //             "h" => total += Duration::from_secs(quantity * 60 * 60),
+    //             "d" => total += Duration::from_secs(quantity * 24 * 60 * 60),
+    //             _ => return Err(CrackedError::Other("Invalid time unit")),
+    //         }
+    //     }
+    //     Ok(total)
+    for (d, u) in parts {
+        let d = match d.parse::<u64>() {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(CrackedError::DurationParseError(
+                    d.to_string(),
+                    u.to_string(),
+                ));
+            }
+        };
+        match u {
+            "s" => total += Duration::from_secs(d),
+            "m" => total += Duration::from_secs(d * 60),
+            "h" => total += Duration::from_secs(d * 60 * 60),
+            "d" => total += Duration::from_secs(d * 24 * 60 * 60),
+            _ => return Err(CrackedError::Other("Invalid time unit")),
+        }
+    }
+    Ok(total)
+    // } else {
+    //     Err(CrackedError::Other("Invalid format"))
+    // }
 }
 
 #[cfg(test)]
