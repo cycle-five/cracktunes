@@ -64,7 +64,7 @@ pub async fn timeout(
 }
 
 fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
-    let re = Regex::new(r"(\d+)([smh])").unwrap();
+    let re = Regex::new(r"(\d+)([smhd])").unwrap();
     if let Some(caps) = re.captures(input) {
         let quantity = caps.get(1).unwrap().as_str().parse::<u64>().unwrap();
         match caps.get(2).unwrap().as_str() {

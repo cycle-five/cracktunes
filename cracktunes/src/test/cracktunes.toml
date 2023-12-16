@@ -25,7 +25,7 @@ send_msg_mute = false
 send_msg_dc = false
 
 [[guild_settings_map]]
-authorized_users = { key = 1, value = 0 }
+authorized_users = {}
 prefix = "m!"
 prefix_up = "M!"
 guild_id = 1
