@@ -1,4 +1,4 @@
--- Add migration script here
+-- log of all songs played by the bot
 CREATE TABLE IF NOT EXISTS play_log (
     id SERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
