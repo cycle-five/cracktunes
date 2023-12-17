@@ -104,7 +104,7 @@ impl Spotify {
         spotify: &ClientCredsSpotify,
         tracks: Vec<String>,
     ) -> Result<Vec<String>, CrackedError> {
-        let tracks = spotify
+        let search_result = spotify
             .search(
                 &tracks.join(" "),
                 rspotify::model::SearchType::Track,
@@ -114,7 +114,9 @@ impl Spotify {
                 None,
             )
             .await?;
-        let tracks = Self::search_result_to_track_id(tracks);
+        tracing::warn!("search_result: {:?}", search_result);
+        let tracks = Self::search_result_to_track_id(search_result);
+        tracing::warn!("tracks: {:?}", tracks);
         let recommendations: Recommendations = spotify
             .recommendations(
                 Vec::new(),
@@ -122,7 +124,7 @@ impl Spotify {
                 None::<Vec<_>>,
                 Some(tracks),
                 Some(Market::Country(Country::UnitedStates)),
-                Some(1),
+                Some(5),
             )
             .await
             .map_err(CrackedError::RSpotify)?;
