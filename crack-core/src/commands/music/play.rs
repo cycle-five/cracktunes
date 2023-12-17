@@ -208,7 +208,7 @@ pub async fn get_call_with_fail_msg(
                         handler.add_global_event(
                             Event::Track(TrackEvent::End),
                             TrackEndHandler {
-                                guild_id: guild_id,
+                                guild_id,
                                 http: ctx.serenity_context().http.clone(),
                                 call: call.clone(),
                                 data: ctx.data().clone(),

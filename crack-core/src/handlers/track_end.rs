@@ -1,12 +1,15 @@
 use self::serenity::{async_trait, http::Http, model::id::GuildId};
 use ::serenity::{all::ChannelId, builder::EditMessage};
 use poise::serenity_prelude::{self as serenity};
-use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
-use std::sync::Arc;
+use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::{
     commands::{forget_skip_votes, send_now_playing, MyAuxMetadata},
+    errors::{verify, CrackedError},
+    messaging::messages::SPOTIFY_AUTH_FAILED,
+    sources::spotify::{Spotify, SPOTIFY},
     utils::{build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message},
     Data,
 };
@@ -76,16 +79,44 @@ impl EventHandler for TrackEndHandler {
                 let (channel, track) = {
                     let handler = self.call.lock().await;
                     let channel = handler.current_channel();
-                    let track = handler.queue().current().unwrap().clone();
+                    let track = handler.queue().current().clone();
                     (channel, track)
                 };
-                let pos = track.get_info().await.unwrap().position;
-                let mutex_guard = track.typemap().read().await;
-                let my_metadata = mutex_guard
-                    .get::<crate::commands::MyAuxMetadata>()
-                    .unwrap()
-                    .clone();
-                (channel, my_metadata, pos)
+                match track {
+                    None => {
+                        let spotify = SPOTIFY.lock().await;
+                        let spotify =
+                            verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
+                                .unwrap();
+                        let last_played = vec!["Hit That The Offspring".to_string()];
+                        let rec = Spotify::get_recommendations(spotify, last_played)
+                            .await
+                            .unwrap();
+                        let msg = format!("Rec: {:?}", rec);
+                        tracing::warn!("{}", msg);
+                        channel
+                            .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
+                            .unwrap()
+                            .await
+                            .unwrap();
+                        (
+                            channel,
+                            MyAuxMetadata::Data(AuxMetadata::default()),
+                            Duration::from_secs(0),
+                        )
+                    }
+
+                    Some(track) => {
+                        let pos = track.get_info().await.unwrap().position;
+                        let track_clone = track.clone();
+                        let mutex_guard = track_clone.typemap().read().await;
+                        let my_metadata = mutex_guard
+                            .get::<crate::commands::MyAuxMetadata>()
+                            .unwrap()
+                            .clone();
+                        (channel, my_metadata, pos)
+                    }
+                }
             };
             let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
             let chan_name = chan_id.name(&self.http).await.unwrap();

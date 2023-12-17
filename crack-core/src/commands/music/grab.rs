@@ -47,20 +47,15 @@ pub async fn send_now_playing(
 ) -> Result<Message, Error> {
     tracing::warn!("locking mutex");
     let mutex_guard = call.lock().await;
-    // .unwrap()
-    // .typemap()
-    // .read()
     tracing::warn!("mutex locked");
     let msg: CreateMessage = match mutex_guard.queue().current() {
         Some(track_handle) => {
             tracing::warn!("track handle found, dropping mutex guard");
             drop(mutex_guard);
-            let embed = if metadata.is_none() {
-                // let metadata = Metadata::from_track_handle(&track_handle);
-                // let _ = metadata.save().await;
-                create_now_playing_embed(&track_handle).await
+            let embed = if let Some(metadata2) = metadata {
+                create_now_playing_embed_metadata(cur_position, metadata2)
             } else {
-                create_now_playing_embed_metadata(cur_position, metadata.unwrap())
+                create_now_playing_embed(&track_handle).await
             };
             CreateMessage::new().embed(embed)
         }

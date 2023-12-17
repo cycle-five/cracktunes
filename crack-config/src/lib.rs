@@ -1,6 +1,7 @@
 use colored::Colorize;
 use crack_core::{
     commands,
+    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::handle_event,
     handlers::SerenityHandler,
@@ -11,7 +12,7 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::{Client, UserId};
+use poise::serenity_prelude::{model::permissions::Permissions, Client, UserId};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
@@ -185,21 +186,7 @@ pub async fn poise_framework(
         command_check: Some(|ctx| {
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
-                tracing::info!("Checking command {}...", command);
-                let user_id = ctx.author().id.get();
-                // ctx.author_member().await.map_or_else(
-                //     || {
-                //         tracing::info!("Author not found in guild");
-                //         Ok(false)
-                //     },
-                //     |member| {
-                //         tracing::info!("Author found in guild");
-                //         Ok(member
-                //             .permissions()
-                //             .contains(serenity::model::permissions::ADMINISTRATOR))
-                //     },
-                // )?;
-                // let asdf = vec![user_id];
+                let lit_command = command.trim().to_string();
                 let music_commands = vec![
                     "play",
                     "pause",
@@ -207,6 +194,9 @@ pub async fn poise_framework(
                     "stop",
                     "skip",
                     "seek",
+                    "summon",
+                    "leave",
+                    "lyrics",
                     "volume",
                     "now_playing",
                     "queue",
@@ -218,20 +208,58 @@ pub async fn poise_framework(
                     "create_playlist",
                     "delete_playlist",
                     "voteskip",
+                    "version",
+                    "help",
+                    "autopause",
                 ];
+                // let mod_commands = vec!["settings", "admin"];
+                tracing::info!("Checking command {}...", command);
+                let user_id = ctx.author().id.get();
+                let mod_command = command.eq("admin") && lit_command.contains("timeout");
+                // If the physically running bot's owner is running the command, allow it
+                if ctx
+                    .data()
+                    .bot_settings
+                    .owners
+                    .as_ref()
+                    .unwrap_or(&vec![])
+                    .contains(&user_id)
+                {
+                    return Ok(true);
+                }
+                // If the user is an admin on the server, allow the mod commands
+                let res = ctx.author_member().await.map_or_else(
+                    || {
+                        tracing::info!("Author not found in guild");
+                        Err(CrackedError::Other("Author not found in guild"))
+                    },
+                    |member| {
+                        tracing::info!("Author found in guild");
+                        let allow = member
+                            .permissions(ctx)?
+                            .contains(Permissions::ADMINISTRATOR)
+                            && mod_command;
+                        Ok(allow)
+                    },
+                );
+
+                match res {
+                    Ok(true) => {
+                        tracing::info!("Author is admin");
+                        return Ok(true);
+                    }
+                    Ok(false) => {
+                        tracing::info!("Author is not admin");
+                    }
+                    Err(e) => {
+                        tracing::error!("Error checking permissions: {}", e);
+                        return Ok(false);
+                    }
+                };
+
                 if music_commands.contains(&command.as_str()) {
                     return Ok(true);
                 }
-                // if ctx
-                //     .data()
-                //     .bot_settings
-                //     .authorized_users
-                //     .as_ref()
-                //     .unwrap_or(asdf.as_ref())
-                //     .contains(&user_id)
-                // {
-                //     return Ok(true);
-                // }
 
                 //let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();
