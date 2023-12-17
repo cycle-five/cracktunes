@@ -5,14 +5,14 @@ CREATE TABLE guild_settings (
     prefix TEXT NOT NULL DEFAULT 'r!',
     premium BOOLEAN NOT NULL DEFAULT FALSE,
     autopause BOOLEAN NOT NULL DEFAULT FALSE,
-    allow_all_domains BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_all_domains BOOLEAN NOT NULL DEFAULT TRUE,
     allowed_domains TEXT [] NOT NULL DEFAULT '{}',
     banned_domains TEXT [] NOT NULL DEFAULT '{}',
     ignored_channels BIGINT [] NOT NULL DEFAULT '{}',
     old_volume FLOAT NOT NULL DEFAULT 1.0,
     volume FLOAT NOT NULL DEFAULT 1.0,
-    self_deafen BOOLEAN NOT NULL DEFAULT FALSE,
-    timeout_seconds INT NOT NULL DEFAULT 0,
+    self_deafen BOOLEAN NOT NULL DEFAULT TRUE,
+    timeout_seconds INT NOT NULL DEFAULT 360,
     additional_prefixes TEXT [] NOT NULL DEFAULT '{}',
     PRIMARY KEY (guild_id)
 );

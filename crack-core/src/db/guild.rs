@@ -8,28 +8,6 @@ use crate::{
     Error as SerenityError,
 };
 
-// CREATE TABLE guild_settings (
-//     guild_id BIGINT NOT NULL,
-//     guild_name TEXT NOT NULL,
-//     prefix TEXT NOT NULL DEFAULT 'r!',
-//     premium BOOLEAN NOT NULL DEFAULT FALSE,
-//     autopause BOOLEAN NOT NULL DEFAULT FALSE,
-//     allow_all_domains BOOLEAN NOT NULL DEFAULT FALSE,
-//     allowed_domains TEXT [] NOT NULL DEFAULT '{}',
-//     banned_domains TEXT [] NOT NULL DEFAULT '{}',
-//     authorized_users BIGINT [] NOT NULL DEFAULT '{}',
-//     ignored_channels BIGINT [] NOT NULL DEFAULT '{}',
-//     old_volume FLOAT NOT NULL DEFAULT 1.0,
-//     volume FLOAT NOT NULL DEFAULT 1.0,
-//     self_deafen BOOLEAN NOT NULL DEFAULT FALSE,
-//     timeout_seconds INT,
-//     welcome_settings_id BIGINT,
-//     log_settings_id BIGINT,
-//     PRIMARY KEY (guild_id),
-//     CONSTRAINT fk_guild_setting FOREIGN KEY (welcome_settings_id) REFERENCES welcome_settings(id),
-//     FOREIGN KEY (log_settings_id) REFERENCES log_settings(id)
-// );
-
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct GuildSettingsRead {
     pub guild_id: i64,
@@ -40,8 +18,6 @@ pub struct GuildSettingsRead {
     pub allow_all_domains: bool,
     pub allowed_domains: Vec<String>,
     pub banned_domains: Vec<String>,
-    // pub authorized_users: Vec<i64>,
-    // pub authorized_users: Vec<(u64, u64)>,
     pub ignored_channels: Vec<i64>,
     pub old_volume: f64,
     pub volume: f64,

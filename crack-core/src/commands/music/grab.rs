@@ -22,6 +22,8 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         channel.id,
         ctx.serenity_context().http.clone(),
         call.clone(),
+        None,
+        None,
     )
     .await?;
 
@@ -30,19 +32,47 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+use crate::utils::create_now_playing_embed_metadata;
+use songbird::input::AuxMetadata;
+use std::time::Duration;
+
 /// Send the current track information as an ebmed to the given channel.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_now_playing(
     channel: ChannelId,
     http: Arc<Http>,
     call: Arc<Mutex<Call>>,
+    cur_position: Option<Duration>,
+    metadata: Option<AuxMetadata>,
 ) -> Result<Message, Error> {
-    let msg: CreateMessage = match call.lock().await.queue().current() {
+    tracing::warn!("locking mutex");
+    let mutex_guard = call.lock().await;
+    // .unwrap()
+    // .typemap()
+    // .read()
+    tracing::warn!("mutex locked");
+    let msg: CreateMessage = match mutex_guard.queue().current() {
         Some(track_handle) => {
-            let embed = create_now_playing_embed(&track_handle).await;
+            tracing::warn!("track handle found, dropping mutex guard");
+            drop(mutex_guard);
+            let embed = if metadata.is_none() {
+                // let metadata = Metadata::from_track_handle(&track_handle);
+                // let _ = metadata.save().await;
+                create_now_playing_embed(&track_handle).await
+            } else {
+                create_now_playing_embed_metadata(cur_position, metadata.unwrap())
+            };
             CreateMessage::new().embed(embed)
         }
-        None => CreateMessage::new().content("Nothing playing"),
+        None => {
+            tracing::warn!("track handle not found, dropping mutex guard");
+            drop(mutex_guard);
+            CreateMessage::new().content("Nothing playing")
+        }
     };
-    channel.send_message(http, msg).await.map_err(|e| e.into())
+    tracing::warn!("sending message: {:?}", msg);
+    channel
+        .send_message(Arc::clone(&http), msg)
+        .await
+        .map_err(|e| e.into())
 }

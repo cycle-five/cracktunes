@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::{
-    commands::{forget_skip_votes, send_now_playing},
+    commands::{forget_skip_votes, send_now_playing, MyAuxMetadata},
     utils::{build_nav_btns, calculate_num_pages, create_queue_embed, forget_queue_message},
     Data,
 };
@@ -29,18 +29,20 @@ pub struct ModifyQueueHandler {
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         tracing::error!("TrackEndHandler");
-        let settings = self.data.guild_settings_map.read().unwrap().clone();
-
-        let autopause = settings
-            .get(&self.guild_id)
-            .map(|guild_settings| guild_settings.autopause)
-            .unwrap_or_default();
-        tracing::error!("Autopause: {}", autopause);
-        let volume = settings
-            .get(&self.guild_id)
-            .map(|guild_settings| guild_settings.volume)
-            .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
-        tracing::error!("Volume: {}", volume);
+        let (autopause, volume) = {
+            let settings = self.data.guild_settings_map.read().unwrap().clone();
+            let autopause = settings
+                .get(&self.guild_id)
+                .map(|guild_settings| guild_settings.autopause)
+                .unwrap_or_default();
+            tracing::error!("Autopause: {}", autopause);
+            let volume = settings
+                .get(&self.guild_id)
+                .map(|guild_settings| guild_settings.volume)
+                .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
+            tracing::error!("Volume: {}", volume);
+            (autopause, volume)
+        };
 
         self.call.lock().await.queue().modify_queue(|v| {
             if let Some(track) = v.front_mut() {
@@ -62,27 +64,49 @@ impl EventHandler for TrackEndHandler {
             tracing::error!("Not pausing");
         }
 
-        tracing::error!("Forgetting queue");
+        tracing::error!("Forgetting skip votes");
         // FIXME
         match forget_skip_votes(&self.data, self.guild_id).await {
             Ok(_) => tracing::warn!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
-        if let Some(channel) = self.call.lock().await.current_channel() {
-            tracing::warn!("Sending now playing message");
-            let chan_id = ChannelId::new(channel.0.get());
+        let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
+            let (sb_chan_id, my_metadata, cur_pos) = {
+                let (channel, track) = {
+                    let handler = self.call.lock().await;
+                    let channel = handler.current_channel();
+                    let track = handler.queue().current().unwrap().clone();
+                    (channel, track)
+                };
+                let pos = track.get_info().await.unwrap().position;
+                let mutex_guard = track.typemap().read().await;
+                let my_metadata = mutex_guard
+                    .get::<crate::commands::MyAuxMetadata>()
+                    .unwrap()
+                    .clone();
+                (channel, my_metadata, pos)
+            };
+            let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
+            let chan_name = chan_id.name(&self.http).await.unwrap();
+            (chan_id, chan_name, my_metadata, cur_pos)
+        };
 
-            tracing::warn!("Channel id: {}", chan_id.name(&self.http).await.unwrap());
+        tracing::warn!("Sending now playing message");
 
-            match send_now_playing(chan_id, self.http.clone(), self.call.clone()).await {
-                Ok(_) => tracing::warn!("Sent now playing message"),
-                Err(e) => tracing::warn!("Error sending now playing message: {}", e),
-            }
-        } else {
-            tracing::warn!("No channel to send now playing message");
+        match send_now_playing(
+            chan_id,
+            self.http.clone(),
+            self.call.clone(),
+            Some(cur_position),
+            Some(metadata),
+        )
+        .await
+        {
+            Ok(_) => tracing::warn!("Sent now playing message"),
+            Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         }
-        // drop(handler);
+
         None
     }
 }

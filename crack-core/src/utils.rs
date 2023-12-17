@@ -456,8 +456,55 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
     metadata
 }
 
+/// Creates an embed from a CrackedMessage and sends it as an embed.
+pub fn create_now_playing_embed_metadata(
+    cur_position: Option<Duration>,
+    metadata: AuxMetadata,
+) -> CreateEmbed {
+    // TrackHandle::metadata(track);
+
+    tracing::warn!("metadata: {:?}", metadata);
+
+    let title = metadata.title.clone().unwrap_or_default();
+
+    let source_url = metadata.source_url.clone().unwrap_or_default();
+
+    let position = get_human_readable_timestamp(cur_position);
+    let duration = get_human_readable_timestamp(metadata.duration);
+
+    let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
+
+    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
+        Some(channel) => ("Channel", format!(">>> {}", channel), true),
+        None => ("Channel", ">>> N/A".to_string(), true),
+    };
+
+    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
+
+    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
+
+    CreateEmbed::new()
+        .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
+        .title(title.clone())
+        .url(source_url)
+        .field(progress_field.0, progress_field.1, progress_field.2)
+        .field(channel_field.0, channel_field.1, channel_field.2)
+        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
+        .thumbnail(
+            url::Url::parse(&thumbnail)
+                .map(|x| x.to_string())
+                .map_err(|e| {
+                    tracing::error!("error parsing url: {:?}", e);
+                    "".to_string()
+                })
+                .unwrap_or_default(),
+        )
+        .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
+}
+
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     // TrackHandle::metadata(track);
+    tracing::warn!("create_now_playing_embed");
     let metadata = get_track_metadata(track).await;
 
     tracing::warn!("metadata: {:?}", metadata);
