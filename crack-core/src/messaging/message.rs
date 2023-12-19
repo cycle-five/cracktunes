@@ -81,6 +81,10 @@ pub enum CrackedMessage {
         channel_id: serenity::ChannelId,
         channel_name: String,
     },
+    CategoryCreated {
+        channel_id: serenity::ChannelId,
+        channel_name: String,
+    },
     UserTimeout {
         user: String,
         user_id: String,
@@ -201,6 +205,13 @@ impl Display for CrackedMessage {
             } => f.write_str(&format!(
                 "{} {} {}",
                 TEXT_CHANNEL_CREATED, channel_id, channel_name
+            )),
+            Self::CategoryCreated {
+                channel_id,
+                channel_name,
+            } => f.write_str(&format!(
+                "{} {} {}",
+                CATEGORY_CREATED, channel_id, channel_name
             )),
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::UserTimeout {
