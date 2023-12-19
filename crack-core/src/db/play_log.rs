@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use poise::futures_util::StreamExt;
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::{Error, PgPool};
@@ -17,17 +19,20 @@ struct TitleArtist {
     artist: Option<String>,
 }
 
-impl TitleArtist {
-    pub fn to_string(&self) -> String {
+impl Display for TitleArtist {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let title = match self.title.as_ref() {
-            Some(title) => title.clone(),
-            None => "".to_string(),
+            Some(title) => title,
+            None => "",
         };
+        let _ = fmt.write_str(title);
+        let _ = fmt.write_str(" - ");
         let artist = match self.artist.as_ref() {
-            Some(artist) => artist.clone(),
-            None => "".to_string(),
+            Some(artist) => artist,
+            None => "",
         };
-        format!("{} - {}", title, artist).to_string()
+        let _ = fmt.write_str(artist);
+        Ok(())
     }
 }
 
@@ -60,9 +65,7 @@ impl PlayLog {
         user_id: Option<i64>,
         guild_id: Option<i64>,
     ) -> Result<Vec<String>, Error> {
-        if user_id.is_none() && guild_id.is_none() {
-            Ok(vec![])
-        } else if user_id.is_some() && guild_id.is_some() {
+        if user_id.is_none() && guild_id.is_none() || user_id.is_some() && guild_id.is_some() {
             Ok(vec![])
         } else if user_id.is_none() && guild_id.is_some() {
             Self::get_last_played_by_guild(conn, guild_id.unwrap()).await

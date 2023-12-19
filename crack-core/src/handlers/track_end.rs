@@ -98,10 +98,27 @@ impl EventHandler for TrackEndHandler {
                         )
                         .await
                         .unwrap_or_default();
-                        let rec = Spotify::get_recommendations(spotify, last_played)
+                        tracing::warn!("{}", last_played.join(", "));
+                        channel
+                            .map(|c| {
+                                ChannelId::new(c.0.get()).say(&self.http, last_played.join(", "))
+                            })
+                            .unwrap()
                             .await
                             .unwrap();
-                        let msg = format!("Rec: {:?}", rec);
+                        let res_rec = Spotify::get_recommendations(spotify, last_played).await;
+                        let (_rec, msg) = match res_rec {
+                            Ok(rec) => {
+                                let msg = format!("Rec: {:?}", rec);
+                                (rec, msg)
+                            }
+                            Err(e) => {
+                                let msg = format!("Error: {}", e);
+                                let rec = vec![];
+                                (rec, msg)
+                            }
+                        };
+                        // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
                         channel
                             .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))

@@ -104,25 +104,29 @@ impl Spotify {
         spotify: &ClientCredsSpotify,
         tracks: Vec<String>,
     ) -> Result<Vec<String>, CrackedError> {
-        let search_result = spotify
-            .search(
-                &tracks.join(" "),
-                rspotify::model::SearchType::Track,
-                None,
-                None,
-                None,
-                None,
-            )
-            .await?;
-        tracing::warn!("search_result: {:?}", search_result);
-        let tracks = Self::search_result_to_track_id(search_result);
-        tracing::warn!("tracks: {:?}", tracks);
+        let mut track_ids = Vec::new();
+        for track in &tracks {
+            let search_result = spotify
+                .search(
+                    track,
+                    rspotify::model::SearchType::Track,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .await?;
+            tracing::warn!("search_result: {:?}", search_result);
+            let tracks = Self::search_result_to_track_id(search_result);
+            tracing::warn!("tracks: {:?}", tracks);
+            track_ids.append(&mut tracks.clone());
+        }
         let recommendations: Recommendations = spotify
             .recommendations(
                 Vec::new(),
                 None::<Vec<_>>,
                 None::<Vec<_>>,
-                Some(tracks),
+                Some(track_ids),
                 Some(Market::Country(Country::UnitedStates)),
                 Some(5),
             )
@@ -138,11 +142,23 @@ impl Spotify {
         Ok(query_list)
     }
 
-    fn search_result_to_track_id(search_result: SearchResult) -> Vec<TrackId<'static>> {
+    fn _search_result_to_track_ids(search_result: SearchResult) -> Vec<TrackId<'static>> {
         match search_result {
             SearchResult::Tracks(tracks) => {
                 tracks.items.iter().flat_map(|x| x.id.clone()).collect()
             }
+            _ => Vec::new(),
+        }
+    }
+
+    fn search_result_to_track_id(search_result: SearchResult) -> Vec<TrackId<'static>> {
+        match search_result {
+            SearchResult::Tracks(tracks) => tracks
+                .items
+                .iter()
+                .flat_map(|x| x.id.clone())
+                .take(1)
+                .collect(),
             _ => Vec::new(),
         }
     }
