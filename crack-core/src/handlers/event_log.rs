@@ -225,7 +225,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
@@ -235,7 +235,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
@@ -245,7 +245,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
@@ -255,7 +255,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            category,
+            &(event_name, category),
             &category.guild_id,
             &ctx.http,
             event_log,
@@ -265,7 +265,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            category,
+            &(event_name, category),
             &category.guild_id,
             &ctx.http,
             event_log,
@@ -285,7 +285,7 @@ pub async fn handle_event(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            pin,
+            &(event_name, pin),
             &pin.guild_id.unwrap_or_default(),
             &ctx.http,
             event_log,
@@ -301,7 +301,7 @@ pub async fn handle_event(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &(old, new),
+                &(event_name, old, new),
                 &guild_id,
                 &ctx.http,
                 event_log,
@@ -312,7 +312,7 @@ pub async fn handle_event(
             guild_id,
             banned_user,
         } => {
-            let log_data = (guild_id, banned_user);
+            let log_data = (event_name, guild_id, banned_user);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -328,7 +328,7 @@ pub async fn handle_event(
             guild_id,
             unbanned_user,
         } => {
-            let log_data = (guild_id, unbanned_user);
+            let log_data = (event_name, guild_id, unbanned_user);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -346,7 +346,7 @@ pub async fn handle_event(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &guild,
+                &(event_name, guild),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -359,7 +359,7 @@ pub async fn handle_event(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &(guild, is_new),
+                &(event_name, guild, is_new),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -368,7 +368,7 @@ pub async fn handle_event(
         }
         #[cfg(feature = "cache")]
         FullEvent::GuildDelete { incomplete } => {
-            let log_data = (incomplete);
+            let log_data = (event_name, incomplete);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -382,7 +382,7 @@ pub async fn handle_event(
         }
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildDelete { incomplete, full } => {
-            let log_data = (incomplete, full);
+            let log_data = (event_name, incomplete, full);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -398,7 +398,7 @@ pub async fn handle_event(
             guild_id,
             current_state,
         } => {
-            let log_data = (guild_id, current_state);
+            let log_data = (event_name, guild_id, current_state);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -411,7 +411,7 @@ pub async fn handle_event(
             )
         }
         FullEvent::GuildIntegrationsUpdate { guild_id } => {
-            let log_data = guild_id;
+            let log_data = (event_name, guild_id);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
