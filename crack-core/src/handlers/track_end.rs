@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     commands::{forget_skip_votes, send_now_playing, MyAuxMetadata},
+    db::PlayLog,
     errors::{verify, CrackedError},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
@@ -88,7 +89,15 @@ impl EventHandler for TrackEndHandler {
                         let spotify =
                             verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
                                 .unwrap();
-                        let last_played = vec!["Hit That The Offspring".to_string()];
+                        // let last_played = vec!["Hit That The Offspring".to_string()];
+                        // Get last played tracks from the db
+                        let last_played = PlayLog::get_last_played(
+                            self.data.database_pool.as_ref().unwrap(),
+                            None,
+                            Some(self.guild_id.get() as i64),
+                        )
+                        .await
+                        .unwrap_or_default();
                         let rec = Spotify::get_recommendations(spotify, last_played)
                             .await
                             .unwrap();
