@@ -225,6 +225,7 @@ pub struct GuildSettings {
     #[serde(default = "premium_default")]
     pub premium: bool,
     pub autopause: bool,
+    pub autoplay: bool,
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
@@ -261,29 +262,11 @@ fn premium_default() -> bool {
 
 impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, premium: {}, 
-                autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, 
-                authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, 
-                self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
-            self.guild_id,
-            self.guild_name,
-            self.prefix,
-            self.premium,
-            self.autopause,
-            self.allow_all_domains.unwrap_or(true),
-            self.allowed_domains,
-            self.banned_domains,
-            self.authorized_users,
-            self.ignored_channels,
-            self.old_volume,
-            self.volume,
-            self.self_deafen,
-            self.timeout,
-            self.welcome_settings,
-            self.log_settings,
-        )
+        let res = match serde_json::to_string_pretty(self) {
+            Ok(s) => s,
+            Err(e) => format!("Error: {}", e),
+        };
+        write!(f, "{}", res)
     }
 }
 
@@ -296,6 +279,7 @@ impl From<crate::db::GuildSettingsRead> for GuildSettings {
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
+        settings.autoplay = true; //settings_db.autoplay;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
@@ -341,6 +325,7 @@ impl GuildSettings {
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
             autopause: false,
+            autoplay: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
@@ -387,33 +372,6 @@ impl GuildSettings {
         settings.log_settings = log_settings;
         Ok(settings)
     }
-    // pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
-    //     let path = format!(
-    //         "{}/{}-{}.json",
-    //         SETTINGS_PATH.as_str(),
-    //         self.guild_name.to_ascii_lowercase(),
-    //         self.guild_id,
-    //     );
-    //     if !Path::new(&path).exists() {
-    //         return Ok(());
-    //     }
-    //     self.load()
-    // }
-
-    // pub fn load(&mut self) -> Result<(), CrackedError> {
-    //     let path = format!(
-    //         "{}/{}-{}.json",
-    //         SETTINGS_PATH.as_str(),
-    //         self.get_guild_name(),
-    //         self.guild_id,
-    //     );
-    //     let file = OpenOptions::new().read(true).open(path)?;
-    //     let reader = BufReader::new(file);
-    //     let mut loaded_guild = serde_json::from_reader::<_, GuildSettings>(reader)?;
-    //     loaded_guild.guild_name = self.guild_name.clone();
-    //     *self = loaded_guild;
-    //     Ok(())
-    // }
 
     pub async fn save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
@@ -764,74 +722,6 @@ pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSett
         let _ = guild_settings.save().await;
     }
 }
-
-// use self::serenity::{Context as SerenityContext, EventHandler};
-// pub async fn load_guilds_settings(
-//     ctx: &SerenityContext,
-//     guilds: &[UnavailableGuild],
-//     data_new: &Data,
-// ) -> HashMap<GuildId, GuildSettings> {
-//     let prefix = data_new.bot_settings.get_prefix();
-//     tracing::info!("Loading guilds' settings");
-//     let mut data = ctx.data.write().await;
-//     let settings = match data.get_mut::<GuildSettingsMap>() {
-//         Some(settings) => settings,
-//         None => {
-//             tracing::error!("Guild settings not found");
-//             data.insert::<GuildSettingsMap>(HashMap::default());
-//             data.get_mut::<GuildSettingsMap>().unwrap()
-//         }
-//     };
-//     for guild in guilds {
-//         let guild_id = guild.id;
-//         let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
-//             Some(guild_match) => guild_match,
-//             None => {
-//                 tracing::error!("Guild not found in cache");
-//                 continue;
-//             }
-//         };
-//         tracing::info!(
-//             "Loading guild settings for {}, {}",
-//             guild_full.id,
-//             guild_full.name.clone()
-//         );
-
-//         let mut default =
-//             GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
-
-//         let _ = default.load_if_exists().map_err(|err| {
-//             tracing::error!(
-//                 "Failed to load guild {} settings due to {}",
-//                 default.guild_id,
-//                 err
-//             );
-//         });
-
-//         tracing::warn!("GuildSettings: {:?}", default);
-
-//         let _ = settings.insert(default.guild_id, default.clone());
-
-//         let guild_settings = settings.get(&default.guild_id);
-
-//         guild_settings
-//             .map(|x| {
-//                 tracing::info!("saving guild {}...", x);
-//                 x.save().expect("Error saving guild settings");
-//                 x
-//             })
-//             .or_else(|| {
-//                 tracing::error!("Guild not found in settings map");
-//                 None
-//             });
-//     }
-//     let data_read = ctx.data.read().await;
-//     let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
-//     guild_settings_map_read
-//     // .get::<GuildSettingsMap>()
-//     // .unwrap()
-//     // .clone()
-// }
 
 #[derive(Default)]
 pub struct GuildSettingsMap;

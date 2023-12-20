@@ -13,13 +13,13 @@ pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[description = "Track to add to playlist"] track: String,
 ) -> Result<(), Error> {
-    use crate::db::aux_metadata_to_db_structures;
+    use crate::{db::aux_metadata_to_db_structures, errors::CrackedError};
 
     let _ = track;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(ctx.guild_id().unwrap()).unwrap();
     let queue = call.lock().await.queue().clone();
-    let cur_track = queue.current().unwrap();
+    let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;
     let metadata = match typemap.get::<MyAuxMetadata>() {
         Some(MyAuxMetadata::Data(meta)) => meta,
