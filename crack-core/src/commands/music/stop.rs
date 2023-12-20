@@ -28,14 +28,16 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     // Do we want to return an error here or just pritn and return/?
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
+    queue.stop();
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
     drop(handler);
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
-    send_response_poise_text(ctx, CrackedMessage::Stop).await?;
-    Ok(())
+    send_response_poise_text(ctx, CrackedMessage::Stop)
+        .await
+        .map(|_| ())
 }
 
 /// Cancel autoplay

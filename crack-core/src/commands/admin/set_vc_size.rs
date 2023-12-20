@@ -10,7 +10,7 @@ use serenity::all::EditChannel;
 #[poise::command(prefix_command, guild_only, owners_only)]
 pub async fn set_vc_size(
     ctx: Context<'_>,
-    #[description = "VoiceChannel to eidt"] channel: ChannelId,
+    #[description = "VoiceChannel to edit"] channel: ChannelId,
     #[description = "New max size"] size: u32,
 ) -> Result<(), Error> {
     let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
