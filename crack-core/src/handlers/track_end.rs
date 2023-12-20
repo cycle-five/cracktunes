@@ -126,18 +126,24 @@ impl EventHandler for TrackEndHandler {
                         // tracing::warn!("{}", last_played.join(", "));
                         // channel
                         //     .map(|c| {
-                        //         ChannelId::new(c.0.get()).say(&self.http, last_played.join(", "))
+                        //         ChannelId::new(c.0.get()).say(&self.http, last_played.join("\n "))
                         //     })
                         //     .unwrap()
                         //     .await
                         //     .unwrap();
-                        let res_rec = Spotify::get_recommendations(spotify, last_played).await;
+                        let res_rec =
+                            Spotify::get_recommendations(spotify, last_played.clone()).await;
                         let (rec, msg) = match res_rec {
                             Ok(rec) => {
-                                let msg = format!(
-                                    "Recommendations (called stop to end autoplay): {:?}",
-                                    rec
+                                let msg0 = format!(
+                                    "Previously played: \n{}",
+                                    last_played.clone().join("\n")
                                 );
+                                let msg1 = format!(
+                                    "Recommendations (use /stop to end autoplay): \n{}",
+                                    rec.join("\n")
+                                );
+                                let msg = format!("{}\n{}", msg0, msg1);
                                 (rec, msg)
                             }
                             Err(e) => {
