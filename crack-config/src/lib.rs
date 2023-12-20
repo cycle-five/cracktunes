@@ -129,9 +129,7 @@ pub async fn poise_framework(
             #[cfg(feature = "osint")]
             crack_osint::osint(),
             // Playlist
-            commands::playlist::add_to_playlist(),
-            commands::playlist::create_playlist(),
-            commands::playlist::delete_playlist(),
+            commands::playlist(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),

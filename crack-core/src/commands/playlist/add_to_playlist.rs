@@ -10,7 +10,7 @@ use sqlx::PgPool;
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
-pub async fn add_to_playlist(
+pub async fn add(
     ctx: Context<'_>,
     #[description = "Track to add to playlist"] track: String,
 ) -> Result<(), Error> {

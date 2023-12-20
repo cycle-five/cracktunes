@@ -6,7 +6,7 @@ use crate::{
 /// Creates a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
-pub async fn create_playlist(ctx: Context<'_>, name: String) -> Result<(), Error> {
+pub async fn create(ctx: Context<'_>, name: String) -> Result<(), Error> {
     // Assuming you have a way to fetch the user_id of the command issuer
     let user_id = ctx.author().id.get() as i64;
 
