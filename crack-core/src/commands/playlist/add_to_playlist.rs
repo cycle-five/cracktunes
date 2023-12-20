@@ -1,19 +1,20 @@
 use crate::{
     commands::MyAuxMetadata,
-    db::{self, metadata::Metadata, Playlist},
+    db::{metadata::Metadata, Playlist},
     utils::send_embed_response_str,
     Context, Error,
 };
-use songbird::input::AuxMetadata;
 use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command)]
-pub async fn add(
+#[poise::command(prefix_command, slash_command, rename = "add")]
+pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[description = "Track to add to playlist"] track: String,
 ) -> Result<(), Error> {
+    use crate::db::aux_metadata_to_db_structures;
+
     let _ = track;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(ctx.guild_id().unwrap()).unwrap();
@@ -81,58 +82,4 @@ pub async fn add(
         .map(|_| ())
         .map_err(|e| e.into())
     }
-}
-
-pub fn aux_metadata_to_db_structures(
-    metadata: &AuxMetadata,
-    guild_id: i64,
-    channel_id: i64,
-) -> Result<(Metadata, db::PlaylistTrack), Error> {
-    let track = metadata.track.clone();
-    let title = metadata.title.clone();
-    let artist = metadata.artist.clone();
-    let album = metadata.album.clone();
-    let date = metadata
-        .date
-        .as_ref()
-        .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
-    let channel = metadata.channel.clone();
-    let channels = metadata.channels.map(i16::from);
-    let start_time = metadata
-        .start_time
-        .map(|d| d.as_secs_f64() as i64)
-        .unwrap_or(0);
-    let duration = metadata
-        .duration
-        .map(|d| d.as_secs_f64() as i64)
-        .unwrap_or(0);
-    let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
-    let thumbnail = metadata.thumbnail.clone();
-    let source_url = metadata.source_url.clone();
-
-    let metadata = Metadata {
-        id: 0,
-        track,
-        title,
-        artist,
-        album,
-        date,
-        channel,
-        channels,
-        start_time,
-        duration,
-        sample_rate,
-        source_url,
-        thumbnail,
-    };
-
-    let db_track = db::PlaylistTrack {
-        id: 0,
-        playlist_id: 0,
-        guild_id: Some(guild_id),
-        metadata_id: 0,
-        channel_id: Some(channel_id),
-    };
-
-    Ok((metadata, db_track))
 }

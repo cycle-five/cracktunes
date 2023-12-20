@@ -10,6 +10,6 @@ pub use admin::*;
 pub use chatgpt::*;
 pub use music::*;
 pub use ping::*;
-pub use playlist::*;
+pub use playlist::playlist;
 pub use settings::*;
 pub use version::*;
