@@ -4,7 +4,7 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 /// Toggle autoplay at the end of the queue.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
     let autoplay = {
@@ -16,14 +16,14 @@ pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
             .or_default()
             .autoplay
     };
-    if autoplay {
+    let msg = if autoplay {
         cancel_autoplay(ctx.data(), guild_id).await?;
         send_response_poise(ctx, CrackedMessage::AutoplayOff)
     } else {
         enable_autoplay(ctx.data(), guild_id).await?;
         send_response_poise(ctx, CrackedMessage::AutoplayOn)
     }
-    .await
-    .map(|_| ())
-    //  Ok(())
+    .await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
