@@ -846,12 +846,3 @@ pub struct AtomicU16Key;
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
-
-// impl GuildSettingsMap {
-//     pub fn save(self) {
-//         let data = self.0;
-//         for (_, guild_settings) in data {
-//             let _ = guild_settings.save();
-//         }
-//     }
-// }
