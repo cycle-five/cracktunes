@@ -48,25 +48,25 @@ fn read_lines(filename: &str) -> Vec<String> {
 #[poise::command(prefix_command, ephemeral, owners_only)]
 pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
     // load names from file
-    let names: Vec<String> = read_lines("names.txt")
+    let names: Vec<String> = read_lines("200_names_final.txt")
         .iter()
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
     let n = names.len();
-    ctx.say("Renamikng all users in 60 seconds").await?;
+    ctx.say("Kicking all users in 60 seconds").await?;
     match ctx.guild_id() {
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
             let members = guild.members(&ctx, None, None).await?;
             let mut backoff = Duration::from_secs(1);
             // Half a second
-            let backoff2 = Duration::from_millis(100);
+            let sleep = Duration::from_millis(100);
             for member in members {
                 let r = rand::random::<usize>() % n;
                 let _until =
                     DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
                         .unwrap();
-                if let Err(_e) = guild
+                if let Err(e) = guild
                     .edit_member(
                         &ctx,
                         member.user.id,
@@ -78,10 +78,14 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
                     tokio::time::sleep(backoff).await;
                     backoff *= 2;
                     // Handle error, send error message
-                    ctx.say(format!("Failed to rename user: {}", member.mention()))
-                        .await?;
+                    ctx.say(format!(
+                        "Failed to rename user: {}: {}",
+                        member.mention(),
+                        e
+                    ))
+                    .await?;
                 } else {
-                    tokio::time::sleep(backoff2).await;
+                    tokio::time::sleep(sleep).await;
                     // Send success message
                     ctx.say(format!("Renaming user: {}", member.mention()))
                         .await?;
