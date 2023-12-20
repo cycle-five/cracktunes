@@ -1423,8 +1423,7 @@ async fn get_track_source_and_metadata(
 
 /// Enqueues a track and adds metadata to the database.
 #[cfg(not(tarpaulin_include))]
-#[allow(dead_code)]
-async fn enqueue_track_pgwrite(
+pub async fn enqueue_track_pgwrite(
     database_pool: &PgPool,
     guild_id: GuildId,
     channel_id: ChannelId,

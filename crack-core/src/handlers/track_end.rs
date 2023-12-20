@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::{
-    commands::{forget_skip_votes, send_now_playing, MyAuxMetadata},
+    commands::{enqueue_track_pgwrite, forget_skip_votes, send_now_playing, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
     messaging::messages::SPOTIFY_AUTH_FAILED,
@@ -83,6 +83,7 @@ impl EventHandler for TrackEndHandler {
                     let track = handler.queue().current().clone();
                     (channel, track)
                 };
+                let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
                 match track {
                     None => {
                         let spotify = SPOTIFY.lock().await;
@@ -107,9 +108,10 @@ impl EventHandler for TrackEndHandler {
                             .await
                             .unwrap();
                         let res_rec = Spotify::get_recommendations(spotify, last_played).await;
-                        let (_rec, msg) = match res_rec {
+                        let (rec, msg) = match res_rec {
                             Ok(rec) => {
-                                let msg = format!("Rec: {:?}", rec);
+                                let msg =
+                                    format!("Recommendations (Soon I will autoplay): {:?}", rec);
                                 (rec, msg)
                             }
                             Err(e) => {
@@ -125,21 +127,48 @@ impl EventHandler for TrackEndHandler {
                             .unwrap()
                             .await
                             .unwrap();
-                        (
-                            channel,
-                            MyAuxMetadata::Data(AuxMetadata::default()),
-                            Duration::from_secs(0),
+                        let query = match Spotify::search(spotify, &rec[0]).await {
+                            Ok(query) => query,
+                            Err(e) => {
+                                let msg = format!("Error: {}", e);
+                                tracing::warn!("{}", msg);
+                                channel
+                                    .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
+                                    .unwrap()
+                                    .await
+                                    .unwrap();
+                                return None;
+                            }
+                        };
+                        let q = enqueue_track_pgwrite(
+                            self.data.database_pool.as_ref().unwrap(),
+                            self.guild_id,
+                            chan_id,
+                            &self.http,
+                            &self.call,
+                            &query,
                         )
-                    }
+                        .await;
+                        let (my_metadata, pos) = match q {
+                            Ok(tracks) => {
+                                let (my_metadata, pos) = extract_track_metadata(&tracks[0]).await;
+                                (my_metadata, pos)
+                            }
+                            Err(e) => {
+                                let msg = format!("Error: {}", e);
+                                tracing::warn!("{}", msg);
 
+                                (
+                                    MyAuxMetadata::Data(AuxMetadata::default()),
+                                    Duration::from_secs(0),
+                                )
+                            }
+                        };
+                        (channel, my_metadata, pos)
+                    }
                     Some(track) => {
-                        let pos = track.get_info().await.unwrap().position;
-                        let track_clone = track.clone();
-                        let mutex_guard = track_clone.typemap().read().await;
-                        let my_metadata = mutex_guard
-                            .get::<crate::commands::MyAuxMetadata>()
-                            .unwrap()
-                            .clone();
+                        let (my_metadata, pos) = extract_track_metadata(&track).await;
+
                         (channel, my_metadata, pos)
                     }
                 }
@@ -166,6 +195,17 @@ impl EventHandler for TrackEndHandler {
 
         None
     }
+}
+
+async fn extract_track_metadata(track: &TrackHandle) -> (MyAuxMetadata, Duration) {
+    let pos = track.get_info().await.unwrap().position;
+    let track_clone = track.clone();
+    let mutex_guard = track_clone.typemap().read().await;
+    let my_metadata = mutex_guard
+        .get::<crate::commands::MyAuxMetadata>()
+        .unwrap()
+        .clone();
+    (my_metadata, pos)
 }
 
 #[async_trait]

@@ -100,6 +100,24 @@ impl Spotify {
         }
     }
 
+    pub async fn search(
+        spotify: &ClientCredsSpotify,
+        query: &str,
+    ) -> Result<QueryType, CrackedError> {
+        let search_result = spotify
+            .search(
+                query,
+                rspotify::model::SearchType::Track,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        Self::extract_search_results(search_result)
+    }
+
     pub async fn get_recommendations(
         spotify: &ClientCredsSpotify,
         tracks: Vec<String>,
@@ -163,7 +181,7 @@ impl Spotify {
         }
     }
 
-    fn _extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
+    fn extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
         match search_result {
             SearchResult::Albums(albums) => {
                 let album = albums.items[0].clone();
