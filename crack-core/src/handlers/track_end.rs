@@ -32,18 +32,26 @@ pub struct ModifyQueueHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        tracing::error!("TrackEndHandler");
         let autoplay = {
-            let guild_cache_guard = self.data.guild_cache_map.lock().unwrap();
-            guild_cache_guard
-                .get(&self.guild_id)
-                .map(|guild_cache| guild_cache.autoplay)
-                .unwrap_or(false)
+            // let guild_cache_guard = self.data.guild_cache_map.lock().unwrap();
+            // guild_cache_guard
+            //     .get(&self.guild_id)
+            //     .map(|guild_cache| guild_cache.autoplay)
+            //     .unwrap_or(true)
+            self.data
+                .guild_cache_map
+                .lock()
+                .unwrap()
+                .entry(self.guild_id)
+                .or_default()
+                .autoplay
         };
+        tracing::error!("Autoplay: {}", autoplay);
         // if cancelled {
         //     tracing::warn!("TrackEndHandler cancelled");
         //     return Some(Event::Cancel);
         // }
-        tracing::error!("TrackEndHandler");
         let (autopause, volume) = {
             let settings = self.data.guild_settings_map.read().unwrap().clone();
             let autopause = settings
