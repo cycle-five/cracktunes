@@ -1,9 +1,11 @@
+use serenity::all::GuildId;
+
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     utils::send_response_poise_text,
-    Context, Error,
+    Context, Data, Error,
 };
 
 /// Stop the current track.
@@ -19,7 +21,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     // Do we want to return an error here or just pritn and return/?
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
-    queue.stop();
+    cancel_track_end_handler(ctx.data(), guild_id).await?;
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -27,5 +29,13 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     send_response_poise_text(ctx, CrackedMessage::Stop).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    Ok(())
+}
+
+/// Cancel the track end handler.
+pub async fn cancel_track_end_handler(data: &Data, guild_id: GuildId) -> Result<(), Error> {
+    let mut guild_cache_map = data.guild_cache_map.lock().unwrap();
+    let guild_cache = guild_cache_map.get_mut(&guild_id).unwrap();
+    guild_cache.autoplay = false;
     Ok(())
 }

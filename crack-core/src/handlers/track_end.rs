@@ -32,17 +32,17 @@ pub struct ModifyQueueHandler {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let cancelled = {
+        let autoplay = {
             let guild_cache_guard = self.data.guild_cache_map.lock().unwrap();
             guild_cache_guard
                 .get(&self.guild_id)
-                .map(|guild_cache| guild_cache.track_end_handler_cancelled)
+                .map(|guild_cache| guild_cache.autoplay)
                 .unwrap_or(false)
         };
-        if cancelled {
-            tracing::warn!("TrackEndHandler cancelled");
-            return Some(Event::Cancel);
-        }
+        // if cancelled {
+        //     tracing::warn!("TrackEndHandler cancelled");
+        //     return Some(Event::Cancel);
+        // }
         tracing::error!("TrackEndHandler");
         let (autopause, volume) = {
             let settings = self.data.guild_settings_map.read().unwrap().clone();
@@ -95,8 +95,13 @@ impl EventHandler for TrackEndHandler {
                     (channel, track)
                 };
                 let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
-                match track {
-                    None => {
+                match (track, autoplay) {
+                    (None, false) => (
+                        channel,
+                        MyAuxMetadata::Data(AuxMetadata::default()),
+                        Duration::from_secs(0),
+                    ),
+                    (None, true) => {
                         let spotify = SPOTIFY.lock().await;
                         let spotify =
                             verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
@@ -177,7 +182,7 @@ impl EventHandler for TrackEndHandler {
                         };
                         (channel, my_metadata, pos)
                     }
-                    Some(track) => {
+                    (Some(track), _) => {
                         let (my_metadata, pos) = extract_track_metadata(&track).await;
 
                         (channel, my_metadata, pos)

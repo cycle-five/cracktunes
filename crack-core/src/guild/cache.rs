@@ -16,7 +16,7 @@ type QueueMessage = (Message, Arc<RwLock<usize>>);
 
 #[derive(Default, Debug, Clone)]
 pub struct GuildCache {
-    pub track_end_handler_cancelled: bool,
+    pub autoplay: bool,
     pub time_ordered_messages: BTreeMap<DateTime<Utc>, Message>,
     pub queue_messages: Vec<QueueMessage>,
     pub current_skip_votes: HashSet<UserId>,
