@@ -133,6 +133,16 @@ pub struct WelcomeSettings {
     pub auto_role: Option<u64>,
 }
 
+impl Display for WelcomeSettings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let res = match serde_json::to_string_pretty(self) {
+            Ok(s) => s,
+            Err(e) => format!("Error: {}", e),
+        };
+        write!(f, "{}", res)
+    }
+}
+
 impl From<WelcomeSettingsRead> for WelcomeSettings {
     fn from(settings_db: WelcomeSettingsRead) -> Self {
         WelcomeSettings {
@@ -510,6 +520,13 @@ impl GuildSettings {
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
         self.welcome_settings = Some(welcome_settings);
         self
+    }
+
+    pub fn with_welcome_settings(self, welcome_settings: WelcomeSettings) -> Self {
+        Self {
+            welcome_settings: Some(welcome_settings),
+            ..self
+        }
     }
 
     pub fn set_welcome_settings2(

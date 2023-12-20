@@ -98,7 +98,7 @@ pub async fn poise_framework(
             commands::admin(),
             commands::settings(),
             commands::autopause(),
-            commands::autoplay(),
+            commands::toggle_autoplay(),
             // commands::boop(),
             commands::coinflip(),
             commands::rolldice(),
