@@ -1,6 +1,8 @@
 pub const ADDED_QUEUE: &str = "📃 Added to queue!";
 pub const AUTOPAUSE_OFF: &str = "🤖 Autopause OFF!";
 pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
+pub const AUTOPLAY_OFF: &str = "🤖 Autoplay OFF!";
+pub const AUTOPLAY_ON: &str = "🤖 Autoplay ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 

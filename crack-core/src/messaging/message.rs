@@ -12,6 +12,8 @@ const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
+    AutoplayOff,
+    AutoplayOn,
     CountryName(String),
     ChannelDeleted {
         channel_id: serenity::ChannelId,
@@ -135,6 +137,8 @@ pub enum CrackedMessage {
 impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
+            Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),

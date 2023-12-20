@@ -98,6 +98,7 @@ pub async fn poise_framework(
             commands::admin(),
             commands::settings(),
             commands::autopause(),
+            commands::autoplay(),
             // commands::boop(),
             commands::coinflip(),
             commands::rolldice(),
@@ -211,6 +212,7 @@ pub async fn poise_framework(
                     "version",
                     "help",
                     "autopause",
+                    "autoplay",
                 ];
                 // let mod_commands = vec!["settings", "admin"];
                 tracing::info!("Checking command {}...", command);
