@@ -115,19 +115,21 @@ impl EventHandler for TrackEndHandler {
                         )
                         .await
                         .unwrap_or_default();
-                        tracing::warn!("{}", last_played.join(", "));
-                        channel
-                            .map(|c| {
-                                ChannelId::new(c.0.get()).say(&self.http, last_played.join(", "))
-                            })
-                            .unwrap()
-                            .await
-                            .unwrap();
+                        // tracing::warn!("{}", last_played.join(", "));
+                        // channel
+                        //     .map(|c| {
+                        //         ChannelId::new(c.0.get()).say(&self.http, last_played.join(", "))
+                        //     })
+                        //     .unwrap()
+                        //     .await
+                        //     .unwrap();
                         let res_rec = Spotify::get_recommendations(spotify, last_played).await;
                         let (rec, msg) = match res_rec {
                             Ok(rec) => {
-                                let msg =
-                                    format!("Recommendations (Soon I will autoplay): {:?}", rec);
+                                let msg = format!(
+                                    "Recommendations (called stop to end autoplay): {:?}",
+                                    rec
+                                );
                                 (rec, msg)
                             }
                             Err(e) => {
@@ -138,21 +140,18 @@ impl EventHandler for TrackEndHandler {
                         };
                         // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
-                        channel
-                            .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
-                            .unwrap()
-                            .await
-                            .unwrap();
+                        chan_id.say(&self.http, msg).await.unwrap();
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
                             Err(e) => {
                                 let msg = format!("Error: {}", e);
                                 tracing::warn!("{}", msg);
-                                channel
-                                    .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
-                                    .unwrap()
-                                    .await
-                                    .unwrap();
+                                chan_id.say(&self.http, msg).await.unwrap();
+                                // channel
+                                //     .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
+                                //     .unwrap()
+                                //     .await
+                                //     .unwrap();
                                 return None;
                             }
                         };
