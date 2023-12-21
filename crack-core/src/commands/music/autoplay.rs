@@ -3,7 +3,7 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 
 /// Toggle autoplay at the end of the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("ap", "autoplay"))]
 pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
