@@ -43,7 +43,7 @@ pub async fn set_welcome_settings(
                 .welcome_settings
                 .clone()
         };
-        let msg = match res {
+        match res {
             Some(welcome_settings) => {
                 welcome_settings
                     .save(&ctx.data().database_pool.clone().unwrap(), guild_id.get())
@@ -51,8 +51,7 @@ pub async fn set_welcome_settings(
                 welcome_settings.to_string()
             }
             None => "Welcome settings failed to update?!?".to_string(),
-        };
-        msg
+        }
     };
     ctx.say(msg).await?;
     Ok(())

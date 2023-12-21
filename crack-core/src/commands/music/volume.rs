@@ -129,9 +129,7 @@ pub async fn volume(
                 "guild_settings: {}",
                 format!("{:?}", guild_settings).white(),
             );
-            let old_volume = guild_settings.old_volume;
-
-            old_volume
+            guild_settings.old_volume
         };
 
         let embed = create_volume_embed(old_vol, new_vol);
