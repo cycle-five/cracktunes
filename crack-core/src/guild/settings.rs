@@ -26,7 +26,8 @@ pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_DB_URL: &str = "postgres:///data/crackedmusic.db";
+pub(crate) const DEFAULT_DB_URL: &str =
+    "postgresql://postgres:mysecretpassword@localhost:5433/postgres";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
@@ -234,8 +235,11 @@ pub struct GuildSettings {
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
+    #[serde(default = "default_false")]
     pub autopause: bool,
+    #[serde(default = "default_true")]
     pub autoplay: bool,
+    #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
@@ -252,6 +256,18 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn allow_all_domains_default() -> Option<bool> {
+    Some(DEFAULT_ALLOW_ALL_DOMAINS)
 }
 
 fn authorized_users_default() -> BTreeMap<u64, u64> {
