@@ -582,14 +582,14 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
 
     for (user_id, voice_state) in voice_states {
         if let Some(channel_id) = voice_state.channel_id {
-            let user = match user_id.to_user(&ctx.http).await {
+            let user = match user_id.to_user(&ctx).await {
                 Ok(user) => user,
                 Err(err) => {
                     tracing::error!("Error getting user: {}", err);
                     continue;
                 }
             };
-            let channel_name = match channel_id.to_channel(&ctx.http).await {
+            let channel_name = match channel_id.to_channel(&ctx).await {
                 Ok(channel) => match channel {
                     Channel::Guild(channel) => channel.name,
                     Channel::Private(channel) => channel.name(),
