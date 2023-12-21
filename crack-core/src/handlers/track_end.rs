@@ -112,16 +112,13 @@ impl EventHandler for TrackEndHandler {
                             Spotify::get_recommendations(spotify, last_played.clone()).await;
                         let (rec, msg) = match res_rec {
                             Ok(rec) => {
-                                let msg0 = format!(
-                                    "Previously played: \n{}",
-                                    last_played.clone().join("\n")
-                                );
-                                let msg1 = format!(
-                                    "Recommendations (use /stop to end autoplay): \n{}",
-                                    rec.join("\n")
-                                );
-                                let msg = format!("{}\n{}", msg0, msg1);
-                                (rec, msg)
+                                // let msg0 = format!(
+                                //     "Previously played: \n{}",
+                                //     last_played.clone().join("\n")
+                                // );
+                                let msg1 =
+                                    format!("Autoplaying (/autoplay toggle autoplay): {}", rec[0]);
+                                (rec, msg1)
                             }
                             Err(e) => {
                                 let msg = format!("Error: {}", e);
