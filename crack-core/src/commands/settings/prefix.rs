@@ -5,8 +5,9 @@ use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
 
-/// Add an additional prefic to the bot.
-#[poise::command(prefix_command, owners_only)]
+/// Add an additional prefix to the bot for the current guild.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, guild_only, owners_only)]
 pub async fn add_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to add to the bot"] prefix: String,
@@ -42,8 +43,10 @@ pub async fn add_prefix(
     .await?;
     Ok(())
 }
-/// Add an additional prefic to the bot.
-#[poise::command(prefix_command, owners_only)]
+
+/// Clear all additional prefixes from the bot for the current guild.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, guild_only, owners_only)]
 pub async fn clear_prefixes(
     ctx: Context<'_>,
     #[description = "The prefix to add to the bot"] prefix: String,

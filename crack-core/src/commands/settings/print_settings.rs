@@ -1,18 +1,13 @@
-use serenity::all::Channel;
-use serenity::all::Message;
-use serenity::all::User;
-use serenity::http::MessagePagination;
+use crate::{
+    guild::settings::GuildSettingsMap, messaging::message::CrackedMessage,
+    utils::send_response_poise, Context, Error,
+};
+use serenity::{
+    all::{Channel, Message, User},
+    http::MessagePagination,
+};
 
-use crate::guild::settings::GuildSettingsMap;
-use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
-use crate::Context;
-use crate::Error;
-// pub fn get_reply_handle(ctx: Context) -> ReplyHandle {
-//     ctx.reply_handle()
-// }
-/// Get the current bot settings for this guild.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone(); //.unwrap().clone();
 
@@ -36,7 +31,9 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(prefix_command, owners_only, guild_only, ephemeral)]
+/// Get the messages from a channel wtih optional user filtering.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, owners_only, guild_only, ephemeral, hide_in_help)]
 pub async fn get_channel_messages(
     ctx: Context<'_>,
     #[description = "Channel to get messages from"] channel: Channel,
