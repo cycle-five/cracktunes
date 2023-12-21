@@ -125,6 +125,13 @@ impl LogSettings {
         self.voice_log_channel = Some(channel_id);
         self
     }
+
+    /// Write the log settings to the database.
+    pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
+        crate::db::GuildEntity::write_log_settings(pool, guild_id as i64, self)
+            .await
+            .map_err(|e| e.into())
+    }
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -151,6 +158,14 @@ impl From<WelcomeSettingsRead> for WelcomeSettings {
             message: settings_db.message,
             auto_role: settings_db.auto_role.map(|x| x as u64),
         }
+    }
+}
+
+impl WelcomeSettings {
+    pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
+        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
+            .await
+            .map_err(|e| e.into())
     }
 }
 

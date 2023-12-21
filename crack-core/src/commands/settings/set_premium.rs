@@ -32,7 +32,7 @@ pub async fn set_premium(
         settings.clone()
     };
     let pool = ctx.data().database_pool.clone().unwrap();
-    GuildEntity::set_premium(&pool, settings.guild_id.get() as i64, premium)
+    GuildEntity::update_premium(&pool, settings.guild_id.get() as i64, premium)
         .await
         .unwrap();
     send_response_poise(ctx, CrackedMessage::Premium(premium)).await?;

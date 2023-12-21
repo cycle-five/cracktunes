@@ -104,10 +104,11 @@ impl GuildEntity {
         Ok(())
     }
 
+    /// Create or update the log settings for a guild.
     pub async fn write_log_settings(
-        guild_id: i64,
         pool: &PgPool,
-        settings: crate::guild::settings::LogSettings,
+        guild_id: i64,
+        settings: &crate::guild::settings::LogSettings,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
@@ -129,10 +130,11 @@ impl GuildEntity {
         Ok(())
     }
 
+    /// Create or update the welcome settings for a guild.
     pub async fn write_welcome_settings(
-        guild_id: i64,
         pool: &PgPool,
-        settings: crate::guild::settings::WelcomeSettings,
+        guild_id: i64,
+        settings: &crate::guild::settings::WelcomeSettings,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
@@ -151,7 +153,8 @@ impl GuildEntity {
         Ok(())
     }
 
-    pub async fn set_premium(
+    /// Update the premium status for a guild.
+    pub async fn update_premium(
         pool: &PgPool,
         guild_id: i64,
         premium: bool,
@@ -172,6 +175,7 @@ impl GuildEntity {
         Ok(GuildSettings::from(settings))
     }
 
+    /// Write the settings for a guild to the database.
     pub async fn write_settings(
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
@@ -235,19 +239,24 @@ impl GuildEntity {
 
         if settings.welcome_settings.is_some() {
             GuildEntity::write_welcome_settings(
-                guild_id,
                 pool,
-                settings.welcome_settings.clone().unwrap(),
+                guild_id,
+                &settings.welcome_settings.clone().unwrap(),
             )
             .await?;
         }
         if settings.log_settings.is_some() {
-            GuildEntity::write_log_settings(guild_id, pool, settings.log_settings.clone().unwrap())
-                .await?;
+            GuildEntity::write_log_settings(
+                pool,
+                guild_id,
+                &settings.log_settings.clone().unwrap(),
+            )
+            .await?;
         }
         Ok(())
     }
 
+    /// Get the log settings for a guild from the database.
     pub async fn get_log_settings(
         &self,
         pool: &PgPool,
@@ -265,6 +274,7 @@ impl GuildEntity {
         Ok(settings_read.map(crate::guild::settings::LogSettings::from))
     }
 
+    /// Get the welcome settings for a guild from the database.
     pub async fn get_welcome_settings(
         &self,
         pool: &PgPool,
@@ -281,6 +291,8 @@ impl GuildEntity {
         .await?;
         Ok(settings_read.map(WelcomeSettings::from))
     }
+
+    /// Get the settings for a guild from the database.
     pub async fn get_settings(&self, pool: &PgPool) -> Result<GuildSettings, SerenityError> {
         let settings_opt = sqlx::query_as!(
             GuildSettingsRead,
@@ -314,6 +326,7 @@ impl GuildEntity {
         Ok(GuildSettings::from(settings))
     }
 
+    /// Create a new guild entity struct, which can be used to interact with the database.
     pub fn new_guild(id: i64, name: String) -> GuildEntity {
         GuildEntity {
             id,
@@ -323,6 +336,7 @@ impl GuildEntity {
         }
     }
 
+    /// Get a guild entity from the database if it exists.
     pub async fn get(pool: &PgPool, guild_id: i64) -> Result<Option<GuildEntity>, SerenityError> {
         let guild = sqlx::query_as!(
             GuildEntity,
@@ -338,6 +352,7 @@ impl GuildEntity {
         Ok(guild)
     }
 
+    /// Get a guild entity from the database if it exists, otherwise create it.
     pub async fn get_or_create(
         pool: &PgPool,
         guild_id: i64,
@@ -405,7 +420,12 @@ impl GuildEntity {
         Ok((guild, settings))
     }
 
-    pub async fn set_prefix(&mut self, pool: &PgPool, prefix: String) -> Result<(), SerenityError> {
+    /// Update the prefix for the guild.
+    pub async fn update_prefix(
+        &mut self,
+        pool: &PgPool,
+        prefix: String,
+    ) -> Result<(), SerenityError> {
         self.updated_at = chrono::Utc::now().naive_utc();
 
         let _ = sqlx::query!(
