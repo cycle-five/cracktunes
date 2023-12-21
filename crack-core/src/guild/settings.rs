@@ -587,6 +587,25 @@ impl GuildSettings {
         self
     }
 
+    pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
+        let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
+            WelcomeSettings {
+                auto_role,
+                ..welcome_settings
+            }
+        } else {
+            WelcomeSettings {
+                auto_role,
+                ..Default::default()
+            }
+        };
+
+        Self {
+            welcome_settings: Some(welcome_settings.clone()),
+            ..self
+        }
+    }
+
     pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;

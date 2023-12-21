@@ -1,7 +1,9 @@
-use crate::errors::CrackedError;
-use crate::guild::settings::WelcomeSettings;
-use crate::Context;
-use crate::Error;
+use crate::{
+    errors::CrackedError,
+    guild::settings::{GuildSettings, WelcomeSettings},
+    utils::get_guild_name,
+    Context, Error,
+};
 use serenity::all::Channel;
 
 /// Set the welcome settings for the server.
@@ -14,8 +16,6 @@ pub async fn set_welcome_settings(
     #[description = "Welcome message template use {user} for username"]
     message: String,
 ) -> Result<(), Error> {
-    use crate::{guild::settings::GuildSettings, utils::get_guild_name};
-
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let welcome_settings = WelcomeSettings {
@@ -24,24 +24,32 @@ pub async fn set_welcome_settings(
         auto_role: None,
     };
     let msg = {
-        let mut write_guard = ctx.data().guild_settings_map.write().unwrap();
-        let res = write_guard
-            .entry(guild_id)
-            .and_modify(|e| {
-                e.set_welcome_settings3(channel.id().get(), message.clone());
-            })
-            .or_insert_with(|| {
-                GuildSettings::new(
-                    guild_id,
-                    Some(&prefix),
-                    get_guild_name(ctx.serenity_context(), guild_id),
-                )
-                .with_welcome_settings(welcome_settings)
-            })
-            .welcome_settings
-            .as_ref();
+        let res = {
+            let mut write_guard = ctx.data().guild_settings_map.write().unwrap();
+            write_guard
+                .entry(guild_id)
+                .and_modify(|e| {
+                    e.set_welcome_settings3(channel.id().get(), message.clone());
+                })
+                .or_insert_with(|| {
+                    // GuildEntity::new_guild()
+                    GuildSettings::new(
+                        guild_id,
+                        Some(&prefix),
+                        get_guild_name(ctx.serenity_context(), guild_id),
+                    )
+                    .with_welcome_settings(welcome_settings)
+                })
+                .welcome_settings
+                .clone()
+        };
         let msg = match res {
-            Some(welcome_settings) => welcome_settings.to_string(),
+            Some(welcome_settings) => {
+                welcome_settings
+                    .save(&ctx.data().database_pool.clone().unwrap(), guild_id.get())
+                    .await?;
+                welcome_settings.to_string()
+            }
             None => "Welcome settings failed to update?!?".to_string(),
         };
         msg
