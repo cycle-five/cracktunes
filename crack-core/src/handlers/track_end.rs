@@ -34,11 +34,6 @@ impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         tracing::error!("TrackEndHandler");
         let autoplay = {
-            // let guild_cache_guard = self.data.guild_cache_map.lock().unwrap();
-            // guild_cache_guard
-            //     .get(&self.guild_id)
-            //     .map(|guild_cache| guild_cache.autoplay)
-            //     .unwrap_or(true)
             self.data
                 .guild_cache_map
                 .lock()
@@ -48,10 +43,7 @@ impl EventHandler for TrackEndHandler {
                 .autoplay
         };
         tracing::error!("Autoplay: {}", autoplay);
-        // if cancelled {
-        //     tracing::warn!("TrackEndHandler cancelled");
-        //     return Some(Event::Cancel);
-        // }
+
         let (autopause, volume) = {
             let settings = self.data.guild_settings_map.read().unwrap().clone();
             let autopause = settings
@@ -73,13 +65,7 @@ impl EventHandler for TrackEndHandler {
             };
         });
         tracing::error!("Set volume");
-        //let handler = self.call.lock().await;
-        //let queue = handler.queue();
-        // queue.modify_queue(|v| {
-        //     if let Some(track) = v.front_mut() {
-        //         let _ = track.set_volume(volume);
-        //     };
-        // });
+
         if autopause {
             tracing::error!("Pausing");
             self.call.lock().await.queue().pause().ok();
@@ -114,7 +100,6 @@ impl EventHandler for TrackEndHandler {
                         let spotify =
                             verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
                                 .unwrap();
-                        // let last_played = vec!["Hit That The Offspring".to_string()];
                         // Get last played tracks from the db
                         let last_played = PlayLog::get_last_played(
                             self.data.database_pool.as_ref().unwrap(),
@@ -123,14 +108,6 @@ impl EventHandler for TrackEndHandler {
                         )
                         .await
                         .unwrap_or_default();
-                        // tracing::warn!("{}", last_played.join(", "));
-                        // channel
-                        //     .map(|c| {
-                        //         ChannelId::new(c.0.get()).say(&self.http, last_played.join("\n "))
-                        //     })
-                        //     .unwrap()
-                        //     .await
-                        //     .unwrap();
                         let res_rec =
                             Spotify::get_recommendations(spotify, last_played.clone()).await;
                         let (rec, msg) = match res_rec {
@@ -160,12 +137,7 @@ impl EventHandler for TrackEndHandler {
                             Err(e) => {
                                 let msg = format!("Error: {}", e);
                                 tracing::warn!("{}", msg);
-                                chan_id.say(&self.http, msg).await.unwrap();
-                                // channel
-                                //     .map(|c| ChannelId::new(c.0.get()).say(&self.http, msg))
-                                //     .unwrap()
-                                //     .await
-                                //     .unwrap();
+                                // chan_id.say(&self.http, msg).await.unwrap();
                                 return None;
                             }
                         };
