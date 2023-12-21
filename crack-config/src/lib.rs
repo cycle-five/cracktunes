@@ -94,13 +94,9 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            // admin commands
-            commands::admin(),
-            commands::settings(),
             commands::autopause(),
             commands::toggle_autoplay(),
-            // commands::boop(),
-            commands::coinflip(),
+            // commands::coinflip(),
             commands::rolldice(),
             commands::chatgpt(),
             commands::clear(),
@@ -115,7 +111,6 @@ pub async fn poise_framework(
             commands::remove(),
             commands::repeat(),
             commands::resume(),
-            // commands::search(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -128,8 +123,13 @@ pub async fn poise_framework(
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
-            // Playlist
+            // all playlist commands
             commands::playlist(),
+            // all admin commands
+            commands::admin(),
+            // all settings commands
+            commands::settings(),
+            // commands::boop(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),

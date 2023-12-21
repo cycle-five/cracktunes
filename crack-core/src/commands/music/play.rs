@@ -475,7 +475,6 @@ async fn yt_search_select(
     let res = metadata.iter().map(|x| {
         let title = x.title.clone().unwrap_or_default();
         let link = x.source_url.clone().unwrap_or_default();
-        // let link = format!("https://www.youtube.com/watch?v={}", link);
         let duration = x.duration.unwrap_or_default();
         let elem = format!("{}: {}", duration_to_string(duration), title);
         let len = min(elem.len(), 99);
@@ -592,15 +591,17 @@ async fn create_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
     fields
 }
 
-fn duration_to_string(duration: Duration) -> String {
+/// Convert a duration to a string.
+pub fn duration_to_string(duration: Duration) -> String {
     let mut secs = duration.as_secs();
     let hours = secs / 3600;
     secs %= 3600;
     let minutes = secs / 60;
     secs %= 60;
-    format!("{}:{}:{}", hours, minutes, secs)
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
 }
 
+/// Send the search results to the user.
 async fn send_search_response(
     ctx: Context<'_>,
     guild_id: GuildId,
@@ -1133,28 +1134,6 @@ async fn get_query_type_from_url(
         Err(e) => {
             tracing::error!("Url::parse error: {}", e);
             Some(QueryType::Keywords(url.to_string()))
-            // if url.contains("ytsearch") {
-            //     let search_query = QueryType::YoutubeSearch(url.to_string());
-            //     tracing::error!("search_query: {:?}", search_query);
-            //     Some(search_query)
-            // } else {
-            // let settings = ctx.data().guild_settings_map.write().unwrap().clone();
-            // let guild_settings = settings.get(&guild_id).unwrap();
-            // if !guild_settings.allow_all_domains.unwrap_or(true)
-            //     && (guild_settings.banned_domains.contains("youtube.com")
-            //         || (guild_settings.banned_domains.is_empty()
-            //             && !guild_settings.allowed_domains.contains("youtube.com")))
-            // {
-            //     let message = CrackedMessage::PlayDomainBanned {
-            //         domain: "youtube.com".to_string(),
-            //     };
-
-            //     send_response_poise_text(ctx, message).await?;
-            // }
-
-            // Some(QueryType::Keywords(url.to_string()))
-            // None
-            // }
         }
     };
 
@@ -1428,6 +1407,7 @@ pub async fn enqueue_track_pgwrite(
     database_pool: &PgPool,
     guild_id: GuildId,
     channel_id: ChannelId,
+    //user_id: Option<UserId,
     http: &Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
@@ -1444,7 +1424,7 @@ pub async fn enqueue_track_pgwrite(
 
     let MyAuxMetadata::Data(res2) = res.clone();
     let returned_metadata = {
-        let (asdf, _qwer) = match aux_metadata_to_db_structures(
+        let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
             &res2,
             guild_id.get() as i64,
             channel_id.get() as i64,
@@ -1455,23 +1435,27 @@ pub async fn enqueue_track_pgwrite(
                 return Err(CrackedError::Other("aux_metadata_to_db_structures error"));
             }
         };
-        let metadata = match crate::db::metadata::Metadata::create(database_pool, &asdf).await {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
-                asdf.clone()
-                // return Err(
-                //     CrackedError::Other("crate::db::metadata::Metadata::create error").into(),
-                // );
-            }
-        };
-        match PlayLog::create(database_pool, 1, guild_id.get() as i64, metadata.id as i64).await {
+        let updated_metadata =
+            match crate::db::metadata::Metadata::create(database_pool, &metadata).await {
+                Ok(x) => x,
+                Err(e) => {
+                    tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
+                    metadata.clone()
+                }
+            };
+        match PlayLog::create(
+            database_pool,
+            1,
+            guild_id.get() as i64,
+            updated_metadata.id as i64,
+        )
+        .await
+        {
             Ok(x) => {
                 tracing::info!("PlayLog::create: {:?}", x);
             }
             Err(e) => {
                 tracing::error!("PlayLog::create error: {}", e);
-                // return Err(CrackedError::Other("PlayLog::create error").into());
             }
         };
         metadata
