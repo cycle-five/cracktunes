@@ -326,7 +326,11 @@ impl GuildEntity {
                 .await
             }
         }?;
-        Ok(GuildSettings::from(settings))
+        let welcome_settings = self.get_welcome_settings(pool).await?;
+        let log_settings = self.get_log_settings(pool).await?;
+        Ok(GuildSettings::from(settings)
+            .with_welcome_settings(welcome_settings)
+            .with_log_settings(log_settings))
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.

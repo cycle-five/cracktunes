@@ -128,9 +128,7 @@ impl LogSettings {
 
     /// Write the log settings to the database.
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
-        crate::db::GuildEntity::write_log_settings(pool, guild_id as i64, self)
-            .await
-            .map_err(|e| e.into())
+        crate::db::GuildEntity::write_log_settings(pool, guild_id as i64, self).await
     }
 }
 
@@ -165,7 +163,7 @@ impl WelcomeSettings {
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
         crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
             .await
-            .map_err(|e| CrackedError::SQLX(e))
+            .map_err(CrackedError::SQLX)
     }
 }
 
@@ -553,9 +551,9 @@ impl GuildSettings {
         self
     }
 
-    pub fn with_welcome_settings(self, welcome_settings: WelcomeSettings) -> Self {
+    pub fn with_welcome_settings(self, welcome_settings: Option<WelcomeSettings>) -> Self {
         Self {
-            welcome_settings: Some(welcome_settings),
+            welcome_settings,
             ..self
         }
     }
@@ -619,7 +617,12 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
+    /// Set the log settings, mutating.
+    pub fn set_log_settings(
+        &mut self,
+        all_log_channel: u64,
+        join_leave_log_channel: u64,
+    ) -> &mut Self {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
             raw_event_log_channel: None,
@@ -628,6 +631,15 @@ impl GuildSettings {
             join_leave_log_channel: Some(join_leave_log_channel),
             voice_log_channel: None,
         });
+        self
+    }
+
+    /// Return a copy of the settings with the given log settings.
+    pub fn with_log_settings(&self, log_settings: Option<LogSettings>) -> Self {
+        Self {
+            log_settings,
+            ..self.clone()
+        }
     }
 
     pub fn set_prefix(&mut self, prefix: &str) {

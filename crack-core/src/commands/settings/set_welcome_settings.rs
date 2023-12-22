@@ -38,7 +38,7 @@ pub async fn set_welcome_settings(
                         Some(&prefix),
                         get_guild_name(ctx.serenity_context(), guild_id),
                     )
-                    .with_welcome_settings(welcome_settings)
+                    .with_welcome_settings(Some(welcome_settings))
                 })
                 .welcome_settings
                 .clone()
