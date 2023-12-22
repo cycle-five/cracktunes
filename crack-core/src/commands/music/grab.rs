@@ -4,7 +4,7 @@ use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::{errors::CrackedError, utils::create_now_playing_embed, Context, Error};
+use crate::{errors::CrackedError, interface::create_now_playing_embed, Context, Error};
 
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]

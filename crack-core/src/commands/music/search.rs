@@ -1,4 +1,4 @@
-use crate::{errors::CrackedError, utils::create_search_results_reply, Context, Error};
+use crate::{errors::CrackedError, interface::create_search_results_reply, Context, Error};
 use poise::ReplyHandle;
 use reqwest::Client;
 use serenity::builder::CreateEmbed;
@@ -20,16 +20,11 @@ pub async fn search(
 }
 
 /// Perform a youtube search and send a list of results to discord
-/// FIXME: Think more about this, motherfucker
 #[cfg(not(tarpaulin_include))]
 async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHandle, CrackedError> {
     let mut ytdl = YoutubeDl::new(Client::new(), search_query);
     let results = ytdl.search(None).await?;
-    // CreateSelectMenuOption::new("url", "link").description("ASDF");
-    // CreateActionRow::SelectMenu(CreateSelectMenu::new(
-    //     "Search Results: {}",
-    //     CreateSelectMenuKind,
-    // ));
+
     let embeds = results
         .into_iter()
         .enumerate()
@@ -44,7 +39,6 @@ async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHan
                 None
             }
         })
-        // .map(|x| x)
         .collect::<Vec<CreateEmbed>>();
     for (i, embed) in embeds.iter().enumerate() {
         tracing::warn!("i: {}, embed: {:?}", i, embed);

@@ -1,6 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
-    guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
+    interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -12,11 +12,10 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{ButtonStyle, GuildId, Interaction},
+    all::{GuildId, Interaction},
     builder::{
-        CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter,
-        CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
-        EditMessage,
+        CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
 };
@@ -502,152 +501,6 @@ pub fn create_now_playing_embed_metadata(
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
-pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
-    // TrackHandle::metadata(track);
-    tracing::warn!("create_now_playing_embed");
-    let metadata = get_track_metadata(track).await;
-
-    tracing::warn!("metadata: {:?}", metadata);
-
-    let title = metadata.title.clone().unwrap_or_default();
-
-    let source_url = metadata.source_url.clone().unwrap_or_default();
-
-    let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
-    let duration = get_human_readable_timestamp(metadata.duration);
-
-    let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
-
-    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(channel) => ("Channel", format!(">>> {}", channel), true),
-        None => ("Channel", ">>> N/A".to_string(), true),
-    };
-
-    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
-
-    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-
-    CreateEmbed::new()
-        .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
-        .title(title.clone())
-        .url(source_url)
-        .field(progress_field.0, progress_field.1, progress_field.2)
-        .field(channel_field.0, channel_field.1, channel_field.2)
-        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
-        .thumbnail(
-            url::Url::parse(&thumbnail)
-                .map(|x| x.to_string())
-                .map_err(|e| {
-                    tracing::error!("error parsing url: {:?}", e);
-                    "".to_string()
-                })
-                .unwrap_or_default(),
-        )
-        .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
-}
-
-pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
-    // let metadata = track_handle.metadata().clone();
-
-    tracing::trace!("lyric: {}", lyric);
-    tracing::trace!("track: {}", track);
-    tracing::trace!("artists: {}", artists);
-
-    // embed.author(|author| author.name(artists));
-    // embed.title(track);
-    // embed.description(lyric);
-    CreateEmbed::default()
-        .author(CreateEmbedAuthor::new(artists))
-        .title(track)
-        .description(lyric)
-
-    // metadata
-    //     .source_url
-    //     .as_ref()
-    //     .map(|source_url| embed.url(source_url.clone()));
-
-    // metadata
-    //     .thumbnail
-    //     .as_ref()
-    //     .map(|thumbnail| embed.thumbnail(thumbnail));
-
-    // let source_url = metadata.source_url.unwrap_or_else(|| {
-    //     tracing::warn!("No source url found for track: {:?}", track);
-    //     "".to_string()
-    // });
-
-    // let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-    // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
-}
-
-pub async fn create_search_results_reply(
-    // ctx: CrackContext<'_>,
-    // results: Vec<String>,
-    results: Vec<CreateEmbed>,
-) -> CreateReply {
-    let mut reply = CreateReply::default()
-        .reply(true)
-        .content("Search results:");
-    for result in results {
-        reply.embeds.push(result);
-    }
-
-    reply.clone()
-
-    // let mut embed = CreateEmbed::default();
-    // for (i, result) in results.iter().enumerate() {
-    //     let _ = embed.field(
-    //         format!("{}. {}", i + 1, result),
-    //         format!("[{}]({})", result, result),
-    //         false,
-    //     );
-    // }
-
-    // CreateReply::default()
-    //     .
-    //     .embeds(embed.clone())
-    //     .content("Search results:")
-    //     .reply(true)
-}
-
-/// Created a paging embed for the lyrics of a song.
-#[cfg(not(tarpaulin_include))]
-pub async fn create_lyrics_embed(
-    ctx: CrackContext<'_>,
-    track: String,
-    artists: String,
-    lyric: String,
-) -> Result<(), Error> {
-    create_paged_embed(
-        ctx,
-        artists,
-        track,
-        lyric,
-        DEFAULT_LYRICS_PAGE_SIZE, //ctx.data().bot_settings.lyrics_page_size,
-    )
-    .await
-}
-
-/// Builds a single navigation button for the queue.
-fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
-    CreateButton::new(label.to_string().to_ascii_lowercase())
-        .label(label)
-        .style(ButtonStyle::Primary)
-        .disabled(is_disabled)
-        .to_owned()
-}
-
-/// Builds the four navigation buttons for the queue.
-pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
-    let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-    vec![CreateActionRow::Buttons(vec![
-        build_single_nav_btn("<<", cant_left),
-        build_single_nav_btn("<", cant_left),
-        build_single_nav_btn(">", cant_right),
-        build_single_nav_btn(">>", cant_right),
-    ])]
-}
-
 /// Builds a page of the queue.
 #[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
@@ -744,8 +597,7 @@ pub async fn create_paged_embed(
     title: String,
     content: String,
     page_size: usize,
-) -> Result<(), Error> {
-    // let mut embed = CreateEmbed::default();
+) -> Result<(), CrackedError> {
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
@@ -1060,7 +912,9 @@ pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Opt
 #[cfg(test)]
 mod tests {
 
-    use ::serenity::all::Button;
+    use ::serenity::{all::Button, builder::CreateActionRow};
+
+    use crate::interface::build_single_nav_btn;
 
     use super::*;
 

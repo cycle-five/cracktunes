@@ -6,6 +6,7 @@ use crate::{
     guild::settings::{GuildSettings, DEFAULT_PREMIUM},
     handlers::{track_end::update_queue_messages, IdleHandler, TrackEndHandler},
     http_utils,
+    interface::create_now_playing_embed,
     messaging::message::CrackedMessage,
     messaging::messages::{
         PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
@@ -13,9 +14,8 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
-        compare_domains, create_now_playing_embed, edit_response_poise, get_guild_name,
-        get_human_readable_timestamp, get_interaction, get_track_metadata,
-        send_embed_response_poise, send_response_poise_text,
+        compare_domains, edit_response_poise, get_guild_name, get_human_readable_timestamp,
+        get_interaction, get_track_metadata, send_embed_response_poise, send_response_poise_text,
     },
     Context, Error,
 };

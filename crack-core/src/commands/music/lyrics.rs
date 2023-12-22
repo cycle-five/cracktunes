@@ -2,7 +2,7 @@ use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
 
 use crate::{
-    commands::MyAuxMetadata, errors::CrackedError, utils::create_lyrics_embed, Context, Error,
+    commands::MyAuxMetadata, errors::CrackedError, interface::create_lyrics_embed, Context, Error,
 };
 
 #[async_trait]
@@ -34,7 +34,9 @@ pub async fn lyrics(
 
     let lyric_finder_client = lyric_finder::Client::new();
     let (track, artists, lyric) = do_lyric_query(lyric_finder_client, query).await?;
-    create_lyrics_embed(ctx, artists, track, lyric).await
+    create_lyrics_embed(ctx, artists, track, lyric)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
