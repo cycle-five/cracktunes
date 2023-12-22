@@ -746,7 +746,7 @@ pub async fn create_paged_embed(
     page_size: usize,
 ) -> Result<(), Error> {
     // let mut embed = CreateEmbed::default();
-    let page_getter = create_lyric_page_getter(&content, page_size);
+    let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
@@ -827,8 +827,8 @@ pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> 
         .collect()
 }
 
-/// Splits lyrics into chunks of a given size, but tries to split on a newline if possible.
-pub fn split_lyric_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
+/// Splits a String chunks of a given size, but tries to split on a newline if possible.
+pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let end = string.len();
     let mut cur: usize = 0;
@@ -858,8 +858,11 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
     }
 }
 
-pub fn create_lyric_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String + '_ {
-    let chunks = split_lyric_string_into_chunks(string, chunk_size);
+pub fn create_page_getter_newline(
+    string: &str,
+    chunk_size: usize,
+) -> impl Fn(usize) -> String + '_ {
+    let chunks = split_string_into_chunks_newline(string, chunk_size);
     move |page| {
         let page = page % chunks.len();
         chunks[page].clone()
