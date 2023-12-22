@@ -716,16 +716,18 @@ impl GuildSettings {
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            FullEvent::GuildBanRemoval { .. }
-            | FullEvent::GuildMemberAddition { .. }
-            | FullEvent::GuildMemberRemoval { .. }
+            FullEvent::GuildMemberAddition { .. }
+            | FullEvent::GuildMemberRemoval { .. } => {
+                log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
+            }
+            | FullEvent::GuildBanRemoval { .. }
+            | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildScheduledEventCreate { .. }
             | FullEvent::GuildScheduledEventUpdate { .. }
             | FullEvent::GuildScheduledEventDelete { .. }
             | FullEvent::GuildScheduledEventUserAdd { .. }
             | FullEvent::GuildScheduledEventUserRemove { .. }
             | FullEvent::GuildStickersUpdate { .. }
-            | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildCreate { .. }
             | FullEvent::GuildDelete { .. }
             | FullEvent::GuildEmojisUpdate { .. }
