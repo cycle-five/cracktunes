@@ -2,7 +2,7 @@ use crate::db::PlayLog;
 use crate::messaging::message::CrackedMessage;
 use crate::{Context, Error};
 
-/// Toggle autoplay at the end of the queue.
+/// Toggle music autoplay.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {

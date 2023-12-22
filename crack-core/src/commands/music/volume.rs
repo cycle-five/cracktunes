@@ -12,7 +12,7 @@ use songbird::tracks::TrackHandle;
 #[poise::command(slash_command, prefix_command, guild_only, aliases("vol"))]
 pub async fn volume(
     ctx: Context<'_>,
-    #[description = "The volume to set the player to"] level: Option<u32>,
+    #[description = "Set the volume of the bot"] level: Option<u32>,
 ) -> Result<(), Error> {
     tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();

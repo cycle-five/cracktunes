@@ -17,13 +17,13 @@ pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Roll N DM dice.
+/// Roll N D M dice.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn rolldice(
     ctx: Context<'_>,
-    #[description = "Number of dice to roll"] number_of_dice: u32,
-    #[description = "Number of sides per die"] sides_per_die: u32,
+    #[description = "Number of dice to roll."] number_of_dice: u32,
+    #[description = "Number of sides per die."] sides_per_die: u32,
 ) -> Result<(), Error> {
     let mut res: Vec<u32> = Vec::with_capacity(number_of_dice as usize);
     for _ in 0..number_of_dice {

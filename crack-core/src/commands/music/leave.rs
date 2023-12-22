@@ -3,8 +3,7 @@ use crate::{
     Error,
 };
 
-/// Leave the current voice channel.
-/// TODO: Make the aliases !fuck off, !dc, !leave, etc
+/// Leave the voice channel.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only, aliases("dc", "fuckoff"))]
 pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {

@@ -1,7 +1,7 @@
 use crate::commands::{cancel_autoplay, enable_autoplay};
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 
-/// Toggle autoplay at the end of the queue.
+/// Toggle music autoplay.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("ap", "autoplay"))]
 pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {

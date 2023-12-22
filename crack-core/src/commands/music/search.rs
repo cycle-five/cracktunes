@@ -10,7 +10,7 @@ use songbird::input::YoutubeDl;
 pub async fn search(
     ctx: Context<'_>,
     #[rest]
-    #[description = "The query to search for."]
+    #[description = "Search query."]
     search_query: String,
 ) -> Result<(), Error> {
     do_yt_search(ctx, search_query)

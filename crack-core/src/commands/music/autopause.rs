@@ -5,7 +5,7 @@ use crate::{
     Context, Error,
 };
 
-/// Toggle autopause at the end of everytrack.
+/// Toggle autopause.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {

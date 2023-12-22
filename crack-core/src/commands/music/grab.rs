@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::{errors::CrackedError, utils::create_now_playing_embed, Context, Error};
 
-/// Have the current song sent to your DMs.
+/// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("save"), guild_only)]
 pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
