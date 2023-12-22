@@ -96,9 +96,6 @@ pub async fn poise_framework(
         commands: vec![
             commands::autopause(),
             commands::toggle_autoplay(),
-            // commands::coinflip(),
-            commands::rolldice(),
-            commands::chatgpt(),
             commands::clear(),
             commands::help(),
             commands::leave(),
@@ -109,8 +106,8 @@ pub async fn poise_framework(
             commands::play(),
             commands::ping(),
             commands::remove(),
-            commands::repeat(),
             commands::resume(),
+            // commands::repeat(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -119,7 +116,7 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
-            commands::voteskip(),
+            // commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
@@ -129,7 +126,12 @@ pub async fn poise_framework(
             commands::admin(),
             // all settings commands
             commands::settings(),
+            // all gambling commands
+            // commands::coinflip(),
+            // commands::rolldice(),
             // commands::boop(),
+            // all ai commands
+            // commands::chatgpt(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
