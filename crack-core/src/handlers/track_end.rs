@@ -149,6 +149,7 @@ impl EventHandler for TrackEndHandler {
                         .await;
                         let (my_metadata, pos) = match q {
                             Ok(tracks) => {
+                                let _ = tracks[0].set_volume(volume);
                                 let (my_metadata, pos) = extract_track_metadata(&tracks[0]).await;
                                 (my_metadata, pos)
                             }
@@ -165,6 +166,7 @@ impl EventHandler for TrackEndHandler {
                         (channel, my_metadata, pos)
                     }
                     (Some(track), _) => {
+                        let _ = track.set_volume(volume);
                         let (my_metadata, pos) = extract_track_metadata(&track).await;
 
                         (channel, my_metadata, pos)
