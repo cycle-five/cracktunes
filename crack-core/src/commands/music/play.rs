@@ -78,7 +78,7 @@ pub enum QueryType {
     YoutubeSearch(String),
 }
 
-/// Get the guild name (guild-only)
+/// Get the guild name.
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!(
@@ -90,6 +90,7 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Get the play mode.
 fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
     let opt_mode = mode.clone();
     if is_prefix {
@@ -142,8 +143,8 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
     }
 }
 
-/// Parses the msg variable from the parameters to the play command which due
-/// to the way that the way the poise library works with auto filling them
+/// Parses the msg variable from the parameters to the play command.
+/// Due to the way that the way the poise library works with auto filling them
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
 fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
@@ -165,8 +166,8 @@ fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) 
     }
 }
 
-/// Get the call handle for songbird
-/// FIXME: Does this need to take the GuildId?
+/// Get the call handle for songbird.
+// FIXME: Does this need to take the GuildId?
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
     guild_id: serenity::GuildId,
