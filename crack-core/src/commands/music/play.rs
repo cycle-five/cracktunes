@@ -48,7 +48,7 @@ use std::{
     error::Error as StdError,
     path::Path,
     process::Output,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 use tokio::sync::Mutex;
@@ -192,6 +192,7 @@ pub async fn get_call_with_fail_msg(
                         let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
                             let timeout = guild_settings.timeout;
                             if timeout > 0 {
+                                let premium = guild_settings.premium;
                                 handler.add_global_event(
                                     Event::Periodic(Duration::from_secs(1), None),
                                     IdleHandler {
@@ -201,6 +202,7 @@ pub async fn get_call_with_fail_msg(
                                         guild_id: Some(guild_id),
                                         limit: timeout as usize,
                                         count: Default::default(),
+                                        no_timeout: Arc::new(AtomicBool::new(premium)),
                                     },
                                 );
                             }

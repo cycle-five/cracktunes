@@ -28,7 +28,7 @@ pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str =
     "postgresql://postgres:mysecretpassword@localhost:5433/postgres";
-pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
+pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
 pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [

@@ -2,7 +2,7 @@ use self::serenity::{async_trait, http::Http};
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::PlayMode, Event, EventContext, EventHandler, Songbird};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 
@@ -15,6 +15,7 @@ pub struct IdleHandler {
     pub guild_id: Option<serenity::GuildId>,
     pub limit: usize,
     pub count: Arc<AtomicUsize>,
+    pub no_timeout: Arc<AtomicBool>,
 }
 
 #[async_trait]
@@ -36,7 +37,10 @@ impl EventHandler for IdleHandler {
             return None;
         }
 
-        if self.limit > 0 && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
+        if !self.no_timeout.load(Ordering::Relaxed)
+            && self.limit > 0
+            && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit
+        {
             let guild_id = self.guild_id?;
 
             if self.manager.remove(guild_id).await.is_ok() {

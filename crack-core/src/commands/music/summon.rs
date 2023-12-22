@@ -80,6 +80,8 @@ pub async fn summon(
         data.clone()
     };
 
+    use std::sync::atomic::AtomicBool;
+
     use crate::handlers::voice::register_voice_handlers;
 
     // FIXME
@@ -96,6 +98,8 @@ pub async fn summon(
         let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
             let timeout = guild_settings.timeout;
             if timeout > 0 {
+                let premium = guild_settings.premium;
+
                 handler.add_global_event(
                     Event::Periodic(Duration::from_secs(1), None),
                     IdleHandler {
@@ -105,6 +109,7 @@ pub async fn summon(
                         guild_id: Some(guild_id),
                         limit: timeout as usize,
                         count: Default::default(),
+                        no_timeout: Arc::new(AtomicBool::new(premium)),
                     },
                 );
             }
