@@ -642,9 +642,9 @@ impl GuildSettings {
         }
     }
 
-    pub fn set_prefix(&mut self, prefix: &str) {
+    pub fn set_prefix(&mut self, prefix: &str) -> &mut Self {
         self.prefix = prefix.to_string();
-        // self.prefix_up = self.prefix.to_string().to_ascii_uppercase();
+        self
     }
 
     pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
@@ -684,7 +684,25 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) {
+    pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
+        let log_settings = if let Some(log_settings) = self.log_settings.clone() {
+            LogSettings {
+                join_leave_log_channel: Some(channel_id),
+                ..log_settings
+            }
+        } else {
+            LogSettings {
+                join_leave_log_channel: Some(channel_id),
+                ..Default::default()
+            }
+        };
+        Self {
+            log_settings: Some(log_settings),
+            ..self.clone()
+        }
+    }
+
+    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
         } else {
@@ -692,6 +710,7 @@ impl GuildSettings {
             log_settings.set_join_leave_log_channel(channel_id);
             self.log_settings = Some(log_settings);
         }
+        self
     }
 
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
