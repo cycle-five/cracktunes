@@ -165,7 +165,7 @@ impl WelcomeSettings {
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
         crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
             .await
-            .map_err(|e| e.into())
+            .map_err(|e| CrackedError::SQLX(e))
     }
 }
 

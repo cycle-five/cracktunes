@@ -4,6 +4,7 @@ use sqlx;
 use sqlx::PgPool;
 
 use crate::{
+    errors::CrackedError,
     guild::settings::{GuildSettings, WelcomeSettings},
     Error as SerenityError,
 };
@@ -109,7 +110,7 @@ impl GuildEntity {
         pool: &PgPool,
         guild_id: i64,
         settings: &crate::guild::settings::LogSettings,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), crate::CrackedError> {
         sqlx::query!(
             r#"
             INSERT INTO log_settings (guild_id, all_log_channel, raw_event_log_channel, server_log_channel, member_log_channel, join_leave_log_channel, voice_log_channel)
@@ -158,7 +159,7 @@ impl GuildEntity {
         pool: &PgPool,
         guild_id: i64,
         premium: bool,
-    ) -> Result<GuildSettings, sqlx::Error> {
+    ) -> Result<GuildSettings, CrackedError> {
         let settings = sqlx::query_as!(
             GuildSettingsRead,
             r#"
@@ -179,7 +180,7 @@ impl GuildEntity {
     pub async fn write_settings(
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), CrackedError> {
         let ignored_channels = settings
             .ignored_channels
             .clone()
@@ -237,21 +238,23 @@ impl GuildEntity {
             .await?;
         }
 
+        let guild_id = settings.guild_id.get();
+
         if settings.welcome_settings.is_some() {
-            GuildEntity::write_welcome_settings(
-                pool,
-                guild_id,
-                &settings.welcome_settings.clone().unwrap(),
-            )
-            .await?;
+            settings
+                .welcome_settings
+                .as_ref()
+                .unwrap()
+                .save(pool, guild_id)
+                .await?;
         }
         if settings.log_settings.is_some() {
-            GuildEntity::write_log_settings(
-                pool,
-                guild_id,
-                &settings.log_settings.clone().unwrap(),
-            )
-            .await?;
+            settings
+                .log_settings
+                .as_ref()
+                .unwrap()
+                .save(pool, guild_id)
+                .await?;
         }
         Ok(())
     }

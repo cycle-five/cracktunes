@@ -29,8 +29,9 @@ impl User {
         .await
         .unwrap();
     }
+
     pub async fn get_user(pool: &PgPool, user_id: i64) -> Option<User> {
-        sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
+        sqlx::query_as!(User, r#"SELECT * FROM public.user WHERE id = $1"#, user_id)
             .fetch_optional(pool)
             .await
             .ok()?
@@ -42,8 +43,8 @@ impl User {
         username: String,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            r#"INSERT INTO "user" (id, username)
-            VALUES ($1, $2)
+            r#"INSERT INTO public.user (id, username, bot, created_at, updated_at, last_seen)
+            VALUES ($1, $2, false, now(), now(), now())
             ON CONFLICT (id) DO UPDATE SET last_seen = now(), username = $2
             "#,
             user_id,

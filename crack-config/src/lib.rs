@@ -206,8 +206,7 @@ pub async fn poise_framework(
                     "clear",
                     "remove",
                     "grab",
-                    "create_playlist",
-                    "delete_playlist",
+                    "playlist",
                     "voteskip",
                     "version",
                     "help",
@@ -396,8 +395,8 @@ pub async fn poise_framework(
 
         tracing::warn!("Received Ctrl-C, shutting down...");
         {
-            let guilds_read_guard = save_data.guild_settings_map.read().unwrap().clone();
-            for (k, v) in guilds_read_guard.iter() {
+            let guilds = save_data.guild_settings_map.read().unwrap().clone();
+            for (k, v) in guilds {
                 tracing::warn!("Saving Guild: {}", k);
                 match v.save().await {
                     Ok(_) => {}
