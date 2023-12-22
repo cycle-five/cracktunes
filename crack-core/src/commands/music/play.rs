@@ -1,4 +1,3 @@
-use self::serenity::builder::CreateEmbed;
 use crate::{
     commands::skip::force_skip_top_track,
     connection::get_voice_channel_for_user,
@@ -26,9 +25,10 @@ use ::serenity::{
         Mentionable, Message, UserId,
     },
     builder::{
-        CreateAttachment, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage, CreateMessage, CreateSelectMenu, CreateSelectMenuKind,
-        CreateSelectMenuOption, EditInteractionResponse, EditMessage,
+        CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
+        CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+        CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, EditInteractionResponse,
+        EditMessage,
     },
 };
 use poise::{
@@ -42,6 +42,7 @@ use songbird::{
     Call, Event, TrackEvent,
 };
 use sqlx::PgPool;
+use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
@@ -51,6 +52,7 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
+use tokio::process::Command;
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
 use url::Url;
@@ -64,6 +66,7 @@ pub enum Mode {
     Shuffle,
     Jump,
     Download,
+    DownloadMP3,
     Search,
 }
 
@@ -136,6 +139,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
             "download" => Mode::Download,
+            "downloadmp3" => Mode::DownloadMP3,
             "search" => Mode::Search,
             _ => Mode::End,
         };
@@ -450,9 +454,39 @@ async fn print_queue(queue: Vec<TrackHandle>) {
     }
 }
 
-use std::process::Stdio;
-use tokio::process::Command;
-async fn download_file_ytdlp(url: &str) -> Result<(Output, AuxMetadata), Error> {
+/// Download a file and upload it as an mp3.
+async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
+    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
+        .aux_metadata()
+        .await?;
+
+    let args = [
+        "--extract-audio",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "0",
+        url,
+    ];
+    let child = Command::new("yt-dlp")
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    tracing::warn!("yt-dlp");
+
+    let output = child.wait_with_output().await?;
+    Ok((output, metadata))
+}
+
+/// Download a file and upload it as an attachment.
+async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadata), Error> {
+    if mp3 {
+        return download_file_ytdlp_mp3(url).await;
+    }
+
     let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
         .aux_metadata()
         .await?;
@@ -729,7 +763,22 @@ async fn match_mode(
             };
         }
         Mode::Download => {
-            let (status, file_name) = get_download_status_and_filename(query_type.clone()).await?;
+            let (status, file_name) =
+                get_download_status_and_filename(query_type.clone(), false).await?;
+            ctx.channel_id()
+                .send_message(
+                    ctx.http(),
+                    CreateMessage::new()
+                        .content(format!("Download status {}", status))
+                        .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
+                )
+                .await?;
+
+            return Ok(false);
+        }
+        Mode::DownloadMP3 => {
+            let (status, file_name) =
+                get_download_status_and_filename(query_type.clone(), true).await?;
             ctx.channel_id()
                 .send_message(
                     ctx.http(),
@@ -1259,7 +1308,11 @@ async fn build_queued_embed(
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 // FIXME: This is super expensive, literally we need to do this a lot better.
-async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool, String), Error> {
+async fn get_download_status_and_filename(
+    query_type: QueryType,
+    mp3: bool,
+) -> Result<(bool, String), Error> {
+    let extension = if mp3 { "mp3" } else { "webm" };
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
@@ -1268,13 +1321,14 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
         ))),
         QueryType::VideoLink(url) => {
             tracing::warn!("Mode::Download, QueryType::VideoLink");
-            let (output, metadata) = download_file_ytdlp(&url).await?;
+            let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
             let status = output.status.success();
             let url = metadata.source_url.unwrap();
             let file_name = format!(
-                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                "/data/downloads/{} [{}].{}",
                 metadata.title.unwrap(),
-                url.split('=').last().unwrap()
+                url.split('=').last().unwrap(),
+                extension,
             );
             Ok((status, file_name))
         }
@@ -1282,12 +1336,13 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
             tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
             let url = metadata.source_url.unwrap();
             let file_name = format!(
-                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                "/data/downloads/{} [{}].{}",
                 metadata.title.unwrap(),
-                url.split('=').last().unwrap()
+                url.split('=').last().unwrap(),
+                extension,
             );
             tracing::warn!("file_name: {}", file_name);
-            let (output, _metadata) = download_file_ytdlp(&url).await?;
+            let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
             let status = output.status.success();
             Ok((status, file_name))
         }
@@ -1296,12 +1351,13 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
             let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
             let metadata = ytdl.aux_metadata().await.unwrap();
             let url = metadata.source_url.unwrap();
-            let (output, metadata) = download_file_ytdlp(&url).await?;
+            let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
 
             let file_name = format!(
-                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                "/data/downloads/{} [{}].{}",
                 metadata.title.unwrap(),
-                url.split('=').last().unwrap()
+                url.split('=').last().unwrap(),
+                extension,
             );
             let status = output.status.success();
             Ok((status, file_name))
@@ -1312,11 +1368,12 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
         }
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
-            let (output, metadata) = download_file_ytdlp(&url).await?;
+            let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
             let file_name = format!(
-                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                "/data/downloads/{} [{}].{}",
                 metadata.title.unwrap(),
-                url.split('=').last().unwrap()
+                url.split('=').last().unwrap(),
+                extension,
             );
             let status = output.status.success();
             Ok((status, file_name))
@@ -1327,11 +1384,12 @@ async fn get_download_status_and_filename(query_type: QueryType) -> Result<(bool
             let mut ytdl = YoutubeDl::new(client, url.clone());
             tracing::warn!("ytdl: {:?}", ytdl);
             let metadata = ytdl.aux_metadata().await.unwrap();
-            let (output, _metadata) = download_file_ytdlp(&url).await?;
+            let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
             let file_name = format!(
-                "/home/lothrop/src/cracktunes/{} [{}].webm",
+                "/data/downloads/{} [{}].{}",
                 metadata.title.unwrap(),
-                url.split('=').last().unwrap()
+                url.split('=').last().unwrap(),
+                extension,
             );
             let status = output.status.success();
             Ok((status, file_name))
