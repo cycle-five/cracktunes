@@ -2359,7 +2359,7 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1-rc1"
-source = "git+https://github.com/serenity-rs/poise#6167311216065b953c6dc64406e56a31e52cd9a1"
+source = "git+https://github.com/cycle-five/poise?branch=current#84bbf1826e35724974681120a4d375b0aa3d2f98"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2375,7 +2375,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1-rc1"
-source = "git+https://github.com/serenity-rs/poise#6167311216065b953c6dc64406e56a31e52cd9a1"
+source = "git+https://github.com/cycle-five/poise?branch=current#84bbf1826e35724974681120a4d375b0aa3d2f98"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2",

@@ -75,8 +75,11 @@ features = ["all"]
 # version = "0.5.6"
 # version = "0.5.5"
 # path = "../poise"
-git = "https://github.com/serenity-rs/poise"
+git = "https://github.com/cycle-five/poise"
+branch = "current"
+# git = "https://github.com/serenity-rs/poise"
 # branch = "serenity-next"
+# path = "../../src/poise"
 default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
