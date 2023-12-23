@@ -1,5 +1,8 @@
 use self::serenity::{async_trait, http::Http, model::id::GuildId};
-use ::serenity::{all::ChannelId, builder::EditMessage};
+use ::serenity::{
+    all::{ChannelId, UserId},
+    builder::EditMessage,
+};
 use poise::serenity_prelude::{self as serenity};
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
@@ -143,6 +146,7 @@ impl EventHandler for TrackEndHandler {
                             self.data.database_pool.as_ref().unwrap(),
                             self.guild_id,
                             chan_id,
+                            UserId::new(1),
                             &self.http,
                             &self.call,
                             &query,

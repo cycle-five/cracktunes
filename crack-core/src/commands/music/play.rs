@@ -674,6 +674,8 @@ async fn match_mode(
     query_type: QueryType,
 ) -> Result<bool, Error> {
     // let is_prefix = ctx.prefix() != "/";
+    let user_id = ctx.author().id;
+    // let user_id_i64 = ctx.author().id.get() as i64;
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -703,6 +705,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &qt,
@@ -733,6 +736,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &qt,
@@ -805,6 +809,7 @@ async fn match_mode(
                     &pool,
                     guild_id,
                     ctx.channel_id(),
+                    user_id,
                     ctx.http(),
                     &call,
                     &query_type,
@@ -826,6 +831,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::VideoLink(url.to_string()),
@@ -847,6 +853,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::Keywords(keywords.to_string()),
@@ -859,7 +866,7 @@ async fn match_mode(
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
                 let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
-                        enqueue_track_pgwrite(&pool, guild_id, ctx.channel_id(), ctx.http(), &call, &QueryType::File(file)).await?;
+                        enqueue_track_pgwrite(&pool, guild_id, ctx.channel_id(), user_id, ctx.http(), &call, &QueryType::File(file)).await?;
                 update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
             }
         },
@@ -875,6 +882,7 @@ async fn match_mode(
                     &pool,
                     guild_id,
                     ctx.channel_id(),
+                    user_id,
                     ctx.http(),
                     &call,
                     &query_type,
@@ -897,6 +905,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::VideoLink(url),
@@ -924,6 +933,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::Keywords(keywords),
@@ -961,6 +971,7 @@ async fn match_mode(
                     &pool,
                     guild_id,
                     ctx.channel_id(),
+                    user_id,
                     ctx.http(),
                     &call,
                     &query_type,
@@ -995,6 +1006,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::VideoLink(url),
@@ -1026,6 +1038,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         ctx.http(),
                         &call,
                         &QueryType::Keywords(keywords),
@@ -1059,6 +1072,7 @@ async fn match_mode(
                     &pool,
                     guild_id,
                     ctx.channel_id(),
+                    user_id,
                     ctx.http(),
                     &call,
                     &QueryType::NewYoutubeDl((src, metadata)),
@@ -1081,6 +1095,7 @@ async fn match_mode(
                         &pool,
                         guild_id,
                         ctx.channel_id(),
+                        user_id,
                         &ctx.serenity_context().http,
                         &call,
                         &QueryType::Keywords(keywords),
@@ -1468,7 +1483,7 @@ pub async fn enqueue_track_pgwrite(
     database_pool: &PgPool,
     guild_id: GuildId,
     channel_id: ChannelId,
-    //user_id: Option<UserId,
+    user_id: UserId,
     http: &Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
@@ -1506,7 +1521,7 @@ pub async fn enqueue_track_pgwrite(
             };
         match PlayLog::create(
             database_pool,
-            1,
+            user_id.get() as i64,
             guild_id.get() as i64,
             updated_metadata.id as i64,
         )
@@ -1557,6 +1572,7 @@ async fn insert_track(
     pool: &PgPool,
     guild_id: GuildId,
     channel_id: ChannelId,
+    user_id: UserId,
     http: &Http,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
@@ -1569,7 +1585,8 @@ async fn insert_track(
 
     if queue_size <= 1 {
         let queue =
-            enqueue_track_pgwrite(pool, guild_id, channel_id, http, call, query_type).await?;
+            enqueue_track_pgwrite(pool, guild_id, channel_id, user_id, http, call, query_type)
+                .await?;
         return Ok(queue);
     }
 
@@ -1578,7 +1595,7 @@ async fn insert_track(
         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
-    enqueue_track_pgwrite(pool, guild_id, channel_id, http, call, query_type).await?;
+    enqueue_track_pgwrite(pool, guild_id, channel_id, user_id, http, call, query_type).await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {

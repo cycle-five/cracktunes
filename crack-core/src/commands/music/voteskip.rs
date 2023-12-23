@@ -15,6 +15,8 @@ use std::collections::HashSet;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
+    // use crate::db::TrackReaction;
+
     let guild_id = ctx.guild_id().unwrap();
     let bot_channel_id = get_voice_channel_for_user(
         &ctx.serenity_context().cache.guild(guild_id).unwrap(),
@@ -49,6 +51,16 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let skip_threshold = channel_guild_users.count() / 2;
 
     let msg = if cache.current_skip_votes.len() >= skip_threshold {
+        // // Write the skip votes to the db
+        // TrackReaction::insert(
+        //     &ctx.data().database_pool,
+        //     TrackReaction {
+        //         guild_id: guild_id.0 as i64,
+        //         track_id: queue.current().unwrap().metadata().await.unwrap().track_id,
+        //         reaction_type: "skip".to_string(),
+        //         user_id: user_id.0 as i64,
+        //     },
+        // );
         force_skip_top_track(&handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
