@@ -16,12 +16,13 @@ pub async fn skip(
     ctx: Context<'_>,
     #[description = "Number of tracks to skip"] tracks_to_skip: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
     let call = match manager.get(guild_id) {
         Some(call) => call,
         None => {
-            // send_response_poise_text(&ctx, CrackedMessage::NotInVoiceChannel).await?;
             tracing::warn!(
                 "Not in voice channel: manager.get({}) returned None",
                 guild_id

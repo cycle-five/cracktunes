@@ -3,6 +3,7 @@ use crate::messaging::messages::{
     FAIL_AUTHOR_DISCONNECTED,
     FAIL_AUTHOR_NOT_FOUND,
     FAIL_NOTHING_PLAYING,
+    FAIL_NO_SONGBIRD,
     FAIL_NO_VOICE_CONNECTION,
     FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH,
@@ -57,6 +58,7 @@ pub enum CrackedError {
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
     Songbird(Error),
+    NoSongbird,
     Serenity(SerenityError),
     Poise(Error),
     TrackFail(Error),
@@ -120,6 +122,7 @@ impl Display for CrackedError {
             Self::Serde(err) => f.write_str(&format!("{err}")),
             Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
+            Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
             Self::Poise(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
