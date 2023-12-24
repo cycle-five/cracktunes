@@ -1568,6 +1568,7 @@ pub async fn enqueue_track_pgwrite(
 //     Ok(handler.queue().current_queue())
 // }
 
+#[allow(clippy::too_many_arguments)]
 async fn insert_track(
     pool: &PgPool,
     guild_id: GuildId,
