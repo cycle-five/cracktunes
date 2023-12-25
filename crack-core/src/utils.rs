@@ -1,6 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
-    guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
+    interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -12,11 +12,10 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{ButtonStyle, GuildId, Interaction},
+    all::{GuildId, Interaction},
     builder::{
-        CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter,
-        CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse,
-        EditMessage,
+        CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
 };
@@ -26,7 +25,7 @@ use poise::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
         MessageInteraction,
     },
-    CommandOrAutocompleteInteraction, CreateReply, ReplyHandle,
+    CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::fmt::Write;
@@ -59,13 +58,14 @@ pub async fn build_log_embed(
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
 pub async fn build_log_embed_thumb(
+    guild_name: &str,
     title: &str,
     id: &str,
     description: &str,
     avatar_url: &str,
 ) -> Result<CreateEmbed, Error> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer_str = format!("{} | {}", id, now_time_str);
+    let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
     let footer = CreateEmbedFooter::new(footer_str);
     let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
     Ok(CreateEmbed::default()
@@ -77,6 +77,7 @@ pub async fn build_log_embed_thumb(
 }
 
 pub async fn send_log_embed_thumb(
+    guild_name: &str,
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
     id: &str,
@@ -84,7 +85,7 @@ pub async fn send_log_embed_thumb(
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = build_log_embed_thumb(title, id, description, avatar_url).await?;
+    let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
         .send_message(http, CreateMessage::new().embed(embed))
@@ -184,7 +185,7 @@ pub async fn send_embed_response_str(
     message_str: String,
 ) -> Result<Message, Error> {
     ctx.send(
-        CreateReply::new()
+        CreateReply::default()
             .embed(CreateEmbed::new().description(message_str))
             .reply(true),
     )
@@ -202,21 +203,26 @@ pub async fn send_embed_response_poise(
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
     tracing::warn!("create_embed_response_poise");
-    ctx.send(CreateReply::new().embed(embed).ephemeral(false).reply(true))
-        .await?
-        .into_message()
-        .await
-        .map_err(|e| {
-            tracing::error!("error: {:?}", e);
-            e.into()
-        })
+    ctx.send(
+        CreateReply::default()
+            .embed(embed)
+            .ephemeral(false)
+            .reply(true),
+    )
+    .await?
+    .into_message()
+    .await
+    .map_err(|e| {
+        tracing::error!("error: {:?}", e);
+        e.into()
+    })
 }
 
 pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, Error> {
-    ctx.send(CreateReply::new().embed(embed))
+    ctx.send(CreateReply::default().embed(embed))
         .await
         .unwrap()
         .into_message()
@@ -449,9 +455,12 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
     metadata
 }
 
-pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
+/// Creates an embed from a CrackedMessage and sends it as an embed.
+pub fn create_now_playing_embed_metadata(
+    cur_position: Option<Duration>,
+    metadata: AuxMetadata,
+) -> CreateEmbed {
     // TrackHandle::metadata(track);
-    let metadata = get_track_metadata(track).await;
 
     tracing::warn!("metadata: {:?}", metadata);
 
@@ -459,7 +468,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let source_url = metadata.source_url.clone().unwrap_or_default();
 
-    let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
+    let position = get_human_readable_timestamp(cur_position);
     let duration = get_human_readable_timestamp(metadata.duration);
 
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
@@ -492,105 +501,8 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
-pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
-    // let metadata = track_handle.metadata().clone();
-
-    tracing::trace!("lyric: {}", lyric);
-    tracing::trace!("track: {}", track);
-    tracing::trace!("artists: {}", artists);
-
-    // embed.author(|author| author.name(artists));
-    // embed.title(track);
-    // embed.description(lyric);
-    CreateEmbed::default()
-        .author(CreateEmbedAuthor::new(artists))
-        .title(track)
-        .description(lyric)
-
-    // metadata
-    //     .source_url
-    //     .as_ref()
-    //     .map(|source_url| embed.url(source_url.clone()));
-
-    // metadata
-    //     .thumbnail
-    //     .as_ref()
-    //     .map(|thumbnail| embed.thumbnail(thumbnail));
-
-    // let source_url = metadata.source_url.unwrap_or_else(|| {
-    //     tracing::warn!("No source url found for track: {:?}", track);
-    //     "".to_string()
-    // });
-
-    // let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-    // embed.footer(|f| f.text(footer_text).icon_url(footer_icon_url));
-}
-
-pub async fn create_search_results_reply(
-    // ctx: CrackContext<'_>,
-    // results: Vec<String>,
-    results: Vec<CreateEmbed>,
-) -> CreateReply {
-    let mut reply = CreateReply::default()
-        .reply(true)
-        .content("Search results:");
-    for result in results {
-        reply.embeds.push(result);
-    }
-
-    reply.clone()
-
-    // let mut embed = CreateEmbed::default();
-    // for (i, result) in results.iter().enumerate() {
-    //     let _ = embed.field(
-    //         format!("{}. {}", i + 1, result),
-    //         format!("[{}]({})", result, result),
-    //         false,
-    //     );
-    // }
-
-    // CreateReply::default()
-    //     .
-    //     .embeds(embed.clone())
-    //     .content("Search results:")
-    //     .reply(true)
-}
-
-pub async fn create_lyrics_embed(
-    ctx: CrackContext<'_>,
-    track: String,
-    artists: String,
-    lyric: String,
-) -> Result<(), Error> {
-    create_paged_embed(
-        ctx,
-        artists,
-        track,
-        lyric,
-        DEFAULT_LYRICS_PAGE_SIZE, //ctx.data().bot_settings.lyrics_page_size,
-    )
-    .await
-}
-
-fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
-    CreateButton::new(label.to_string().to_ascii_lowercase())
-        .label(label)
-        .style(ButtonStyle::Primary)
-        .disabled(is_disabled)
-        .to_owned()
-}
-
-pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
-    let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-    vec![CreateActionRow::Buttons(vec![
-        build_single_nav_btn("<<", cant_left),
-        build_single_nav_btn("<", cant_left),
-        build_single_nav_btn(">", cant_right),
-        build_single_nav_btn(">>", cant_right),
-    ])]
-}
-
-#[allow(dead_code)]
+/// Builds a page of the queue.
+#[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
@@ -607,8 +519,8 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
     for (i, &t) in queue.iter().enumerate() {
         let metadata = get_track_metadata(t).await;
-        let title = metadata.title.as_ref().unwrap();
-        let url = metadata.source_url.as_ref().unwrap();
+        let title = metadata.title.clone().unwrap_or_default();
+        let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
 
         let _ = writeln!(
@@ -685,16 +597,15 @@ pub async fn create_paged_embed(
     title: String,
     content: String,
     page_size: usize,
-) -> Result<(), Error> {
-    // let mut embed = CreateEmbed::default();
-    let page_getter = create_lyric_page_getter(&content, page_size);
+) -> Result<(), CrackedError> {
+    let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     let mut message = {
         let reply = ctx
             .send(
-                CreateReply::new()
+                CreateReply::default()
                     .embed(
                         CreateEmbed::new()
                             .title(title.clone())
@@ -768,8 +679,8 @@ pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> 
         .collect()
 }
 
-/// Splits lyrics into chunks of a given size, but tries to split on a newline if possible.
-pub fn split_lyric_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
+/// Splits a String chunks of a given size, but tries to split on a newline if possible.
+pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let end = string.len();
     let mut cur: usize = 0;
@@ -799,8 +710,11 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
     }
 }
 
-pub fn create_lyric_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String + '_ {
-    let chunks = split_lyric_string_into_chunks(string, chunk_size);
+pub fn create_page_getter_newline(
+    string: &str,
+    chunk_size: usize,
+) -> impl Fn(usize) -> String + '_ {
+    let chunks = split_string_into_chunks_newline(string, chunk_size);
     move |page| {
         let page = page % chunks.len();
         chunks[page].clone()
@@ -878,10 +792,11 @@ pub enum CommandOrMessageInteraction {
 
 pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
-            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        },
+        CrackContext::Application(app_ctx) => app_ctx.interaction.clone().into(),
+        // match app_ctx.interaction {
+        //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
+        //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        // },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         CrackContext::Prefix(_ctx) => None,
     }
@@ -889,12 +804,16 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => match app_ctx.interaction {
-            CommandOrAutocompleteInteraction::Command(x) => Some(
-                CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
-            ),
-            CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        },
+        CrackContext::Application(app_ctx) => {
+            Some(CommandOrMessageInteraction::Command(Interaction::Command(
+                app_ctx.interaction.clone(),
+            )))
+            // match app_ctx.interaction {
+            // CommandOrAutocompleteInteraction::Command(x) => Some(
+            //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
+            // ),
+            // CommandOrAutocompleteInteraction::Autocomplete(_) => None,
+        }
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
             ctx.msg.interaction.clone(),
@@ -914,14 +833,14 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
 
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.user().id,
+        CrackContext::Application(ctx) => ctx.interaction.user.id,
         CrackContext::Prefix(ctx) => ctx.msg.author.id,
     }
 }
 
 pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
     match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.channel_id(),
+        CrackContext::Application(ctx) => ctx.interaction.channel_id,
         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
     }
 }
@@ -993,7 +912,9 @@ pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Opt
 #[cfg(test)]
 mod tests {
 
-    use ::serenity::all::Button;
+    use ::serenity::{all::Button, builder::CreateActionRow};
+
+    use crate::interface::build_single_nav_btn;
 
     use super::*;
 
@@ -1035,5 +956,28 @@ mod tests {
         assert_eq!(btn.label, Some("<<".to_string()));
         // assert_eq!(btn.style, ButtonStyle::Primary);
         assert_eq!(btn.disabled, true);
+    }
+
+    #[test]
+    fn test_build_nav_btns() {
+        let nav_btns_vev = build_nav_btns(0, 1);
+        if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
+            let mut btns = Vec::new();
+            for btn in nav_btns {
+                let s = serde_json::to_string_pretty(&btn).unwrap();
+                println!("s: {}", s);
+                let btn = serde_json::from_str::<Button>(&s).unwrap();
+                btns.push(btn);
+            }
+            let s = serde_json::to_string_pretty(&nav_btns).unwrap();
+            println!("s: {}", s);
+            let btns = serde_json::from_str::<Vec<Button>>(&s).unwrap();
+
+            assert_eq!(btns.len(), 4);
+            let btn = &btns[0];
+            assert_eq!(btns[0], btn.clone());
+        } else {
+            assert!(false);
+        }
     }
 }

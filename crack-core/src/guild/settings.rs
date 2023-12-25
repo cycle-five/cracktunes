@@ -4,6 +4,8 @@ use self::serenity::model::prelude::UserId;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::sync::{atomic, Arc};
@@ -11,11 +13,10 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fs::{create_dir_all, OpenOptions},
-    io::BufReader,
-    path::Path,
 };
 use typemap_rev::TypeMapKey;
 
+use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
 //use crate::Data;
 
@@ -25,13 +26,16 @@ pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_DB_URL: &str = "postgres:///data/crackedmusic.db";
-pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 0; //5 * 60;
+pub(crate) const DEFAULT_DB_URL: &str =
+    "postgresql://postgres:mysecretpassword@localhost:5433/postgres";
+pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
 pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
     "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", "m/", "M/",
 ];
+pub(crate) const MOD_VAL: u64 = 1 << 1;
+pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -41,14 +45,27 @@ lazy_static! {
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
-    all_log_channel: Option<u64>,
-    raw_event_log_channel: Option<u64>,
+    pub all_log_channel: Option<u64>,
+    pub raw_event_log_channel: Option<u64>,
     // TODO: Decide on what level of granularity I want for logging options.
     // Also should they be able to overlap?
-    server_log_channel: Option<u64>,
-    member_log_channel: Option<u64>,
-    join_leave_log_channel: Option<u64>,
-    voice_log_channel: Option<u64>,
+    pub server_log_channel: Option<u64>,
+    pub member_log_channel: Option<u64>,
+    pub join_leave_log_channel: Option<u64>,
+    pub voice_log_channel: Option<u64>,
+}
+
+impl From<crate::db::LogSettingsRead> for LogSettings {
+    fn from(settings_db: crate::db::LogSettingsRead) -> Self {
+        LogSettings {
+            all_log_channel: settings_db.all_log_channel.map(|x| x as u64),
+            raw_event_log_channel: settings_db.raw_event_log_channel.map(|x| x as u64),
+            server_log_channel: settings_db.server_log_channel.map(|x| x as u64),
+            member_log_channel: settings_db.member_log_channel.map(|x| x as u64),
+            join_leave_log_channel: settings_db.join_leave_log_channel.map(|x| x as u64),
+            voice_log_channel: settings_db.voice_log_channel.map(|x| x as u64),
+        }
+    }
 }
 
 const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
@@ -108,6 +125,11 @@ impl LogSettings {
         self.voice_log_channel = Some(channel_id);
         self
     }
+
+    /// Write the log settings to the database.
+    pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
+        crate::db::GuildEntity::write_log_settings(pool, guild_id as i64, self).await
+    }
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
@@ -117,18 +139,125 @@ pub struct WelcomeSettings {
     pub auto_role: Option<u64>,
 }
 
+impl Display for WelcomeSettings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let res = match serde_json::to_string_pretty(self) {
+            Ok(s) => s,
+            Err(e) => format!("Error: {}", e),
+        };
+        write!(f, "{}", res)
+    }
+}
+
+impl From<WelcomeSettingsRead> for WelcomeSettings {
+    fn from(settings_db: WelcomeSettingsRead) -> Self {
+        WelcomeSettings {
+            channel_id: settings_db.channel_id.map(|x| x as u64),
+            message: settings_db.message,
+            auto_role: settings_db.auto_role.map(|x| x as u64),
+        }
+    }
+}
+
+impl WelcomeSettings {
+    pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
+        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
+            .await
+            .map_err(CrackedError::SQLX)
+    }
+}
+
+/// A struct that represents a user's permission level for a guild.
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct UserPermission {
+    pub user_id: i64,
+    pub guild_id: i64,
+    pub permission: i64,
+}
+
+/// A struct that represents a user's permission level for a guild.
+impl UserPermission {
+    /// Creates a new UserPermission with default values.
+    pub fn new_default(user_id: i64, guild_id: i64) -> Self {
+        Self {
+            user_id,
+            guild_id,
+            permission: 0,
+        }
+    }
+
+    /// Creates a new UserPermission with the given values.
+    pub fn new(user_id: i64, guild_id: i64, permission: i64) -> Self {
+        Self {
+            user_id,
+            guild_id,
+            permission,
+        }
+    }
+
+    /// Get the user id.
+    pub fn get_user_id(&self) -> i64 {
+        self.user_id
+    }
+
+    /// Get the guild id.
+    pub fn get_guild_id(&self) -> i64 {
+        self.guild_id
+    }
+
+    /// Get the permission level.
+    pub fn get_permission(&self) -> i64 {
+        self.permission
+    }
+
+    /// Set the permission level, mutating
+    pub fn set_permission(&mut self, permission: i64) {
+        self.permission = permission;
+    }
+
+    /// Set the user id, mutating
+    pub fn set_user_id(&mut self, user_id: i64) {
+        self.user_id = user_id;
+    }
+
+    /// Set the guild id, mutating
+    pub fn set_guild_id(&mut self, guild_id: i64) {
+        self.guild_id = guild_id;
+    }
+
+    /// Set the permission level, returning a new UserPermission
+    pub fn with_permission(self, permission: i64) -> Self {
+        Self { permission, ..self }
+    }
+
+    /// Set the user id, returning a new UserPermission
+    pub fn with_user_id(self, user_id: i64) -> Self {
+        Self { user_id, ..self }
+    }
+
+    /// Set the guild id, returning a new UserPermission
+    pub fn with_guild_id(self, guild_id: i64) -> Self {
+        Self { guild_id, ..self }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
+    #[serde(default = "default_false")]
     pub autopause: bool,
+    #[serde(default = "default_true")]
+    pub autoplay: bool,
+    #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    pub authorized_users: HashSet<u64>,
+    #[serde(default = "authorized_users_default")]
+    pub authorized_users: BTreeMap<u64, u64>,
     pub ignored_channels: HashSet<u64>,
     #[serde(default = "volume_default")]
     pub old_volume: f32,
@@ -140,6 +269,22 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn allow_all_domains_default() -> Option<bool> {
+    Some(DEFAULT_ALLOW_ALL_DOMAINS)
+}
+
+fn authorized_users_default() -> BTreeMap<u64, u64> {
+    BTreeMap::new()
 }
 
 fn additional_prefixes_default() -> Vec<String> {
@@ -156,29 +301,42 @@ fn premium_default() -> bool {
 
 impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "GuildSettings {{ guild_id: {}, guild_name: {}, prefix: {}, premium: {}, 
-                autopause: {}, allow_all_domains: {}, allowed_domains: {:?}, banned_domains: {:?}, 
-                authorized_users: {:?}, ignored_channels: {:?}, old_volume: {}, volume: {}, 
-                self_deafen: {}, timeout: {}, welcome_settings: {:?}, log_settings: {:?} }}",
-            self.guild_id,
-            self.guild_name,
-            self.prefix,
-            self.premium,
-            self.autopause,
-            self.allow_all_domains.unwrap_or(true),
-            self.allowed_domains,
-            self.banned_domains,
-            self.authorized_users,
-            self.ignored_channels,
-            self.old_volume,
-            self.volume,
-            self.self_deafen,
-            self.timeout,
-            self.welcome_settings,
-            self.log_settings,
-        )
+        let res = match serde_json::to_string_pretty(self) {
+            Ok(s) => s,
+            Err(e) => format!("Error: {}", e),
+        };
+        write!(f, "{}", res)
+    }
+}
+
+impl From<crate::db::GuildSettingsRead> for GuildSettings {
+    fn from(settings_db: crate::db::GuildSettingsRead) -> Self {
+        let mut settings = GuildSettings::new(
+            GuildId::new(settings_db.guild_id as u64),
+            Some(&settings_db.prefix),
+            Some(settings_db.guild_name),
+        );
+        settings.premium = settings_db.premium;
+        settings.autopause = settings_db.autopause;
+        settings.autoplay = true; //settings_db.autoplay;
+        settings.allow_all_domains = Some(settings_db.allow_all_domains);
+        settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
+        settings.banned_domains = settings_db.banned_domains.into_iter().collect();
+        settings.authorized_users = BTreeMap::<u64, u64>::new(); // FIXME
+
+        settings.ignored_channels = settings_db
+            .ignored_channels
+            .into_iter()
+            .map(|x| x as u64)
+            .collect();
+        settings.old_volume = settings_db.old_volume as f32;
+        settings.volume = settings_db.volume as f32;
+        settings.self_deafen = settings_db.self_deafen;
+        settings.timeout = settings_db.timeout_seconds.unwrap_or(0) as u32;
+        settings.welcome_settings = None; // FIXME
+        settings.log_settings = None; //FIXME
+        settings.additional_prefixes = settings_db.additional_prefixes;
+        settings
     }
 }
 
@@ -206,10 +364,11 @@ impl GuildSettings {
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
             autopause: false,
+            autoplay: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
-            authorized_users: HashSet::new(),
+            authorized_users: BTreeMap::new(),
             ignored_channels: asdf.into_iter().collect(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
@@ -225,35 +384,52 @@ impl GuildSettings {
         self.prefix.to_ascii_uppercase()
     }
 
-    pub fn load_if_exists(&mut self) -> Result<(), CrackedError> {
-        let path = format!(
-            "{}/{}-{}.json",
-            SETTINGS_PATH.as_str(),
-            self.guild_name.to_ascii_lowercase(),
-            self.guild_id,
-        );
-        if !Path::new(&path).exists() {
-            return Ok(());
-        }
-        self.load()
+    pub async fn load_or_create(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
+        let guild_id = self.guild_id.get() as i64;
+        let name = self.guild_name.clone();
+        let prefix = self.prefix.clone();
+        let (guild, mut settings) =
+            crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
+        // let mut settings = guild.get_settings(pool).await?;
+        let welcome_settings = guild.get_welcome_settings(pool).await?;
+        let log_settings = guild.get_log_settings(pool).await?;
+        settings.welcome_settings = welcome_settings;
+        settings.log_settings = log_settings;
+        Ok(settings)
     }
 
-    pub fn load(&mut self) -> Result<(), CrackedError> {
-        let path = format!(
-            "{}/{}-{}.json",
-            SETTINGS_PATH.as_str(),
-            self.get_guild_name(),
-            self.guild_id,
-        );
-        let file = OpenOptions::new().read(true).open(path)?;
-        let reader = BufReader::new(file);
-        let mut loaded_guild = serde_json::from_reader::<_, GuildSettings>(reader)?;
-        loaded_guild.guild_name = self.guild_name.clone();
-        *self = loaded_guild;
+    pub async fn load_if_exists(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
+        let guild_id = self.guild_id.get() as i64;
+        let name = self.guild_name.clone();
+        let prefix = self.prefix.clone();
+        let (guild, _guild_settings) =
+            crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
+        let mut settings = guild.get_settings(pool).await?;
+        let welcome_settings = guild.get_welcome_settings(pool).await?;
+        let log_settings = guild.get_log_settings(pool).await?;
+        settings.welcome_settings = welcome_settings;
+        settings.log_settings = log_settings;
+        Ok(settings)
+    }
+
+    pub async fn save(&self) -> Result<(), CrackedError> {
+        tracing::warn!("Saving guild settings: {:?}", self);
+        let pool = PgPool::connect(&env::var("DATABASE_URL").unwrap()).await?;
+        let guild_id = self.guild_id.get() as i64;
+        let guild_name = self.guild_name.clone();
+        let prefix = self.prefix.clone();
+        let (_guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
+            &pool,
+            guild_id,
+            guild_name.clone(),
+            prefix.clone(),
+        )
+        .await?;
+        let _ = GuildEntity::write_settings(&pool, self).await;
         Ok(())
     }
 
-    pub fn save(&self) -> Result<(), CrackedError> {
+    pub fn old_save(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!(
@@ -276,6 +452,10 @@ impl GuildSettings {
         file.write_all(pretty_data.as_bytes())?;
         file.flush()?;
         Ok(())
+    }
+
+    pub fn with_premium(self, premium: bool) -> Self {
+        Self { premium, ..self }
     }
 
     pub fn toggle_autopause(&mut self) {
@@ -317,26 +497,39 @@ impl GuildSettings {
         }
     }
 
-    pub fn authorize_user(&mut self, user_id: u64) {
-        if !self.authorized_users.contains(&user_id) {
-            self.authorized_users.insert(user_id);
-        }
+    pub fn authorize_user(&mut self, user_id: i64) {
+        self.authorized_users.entry(user_id as u64).or_insert(0);
     }
 
-    pub fn deauthorize_user(&mut self, user_id: u64) {
-        if self.authorized_users.contains(&user_id) {
-            self.authorized_users.remove(&user_id);
+    pub fn deauthorize_user(&mut self, user_id: i64) {
+        if self.authorized_users.contains_key(&(user_id as u64)) {
+            self.authorized_users.remove(&(user_id as u64));
         }
     }
 
     pub fn check_authorized(&self, user_id: u64) -> bool {
-        self.authorized_users.contains(&user_id)
+        self.authorized_users.contains_key(&user_id)
     }
 
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains(&user_id.into())
+        self.authorized_users.contains_key(&user_id.into())
     }
 
+    pub fn check_mod(&self, user_id: u64) -> bool {
+        self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
+    }
+
+    pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
+    }
+
+    pub fn check_admin(&self, user_id: u64) -> bool {
+        self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
+    }
+
+    pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
+        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
+    }
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
         self.old_volume = self.volume;
         self.volume = volume;
@@ -356,6 +549,13 @@ impl GuildSettings {
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
         self.welcome_settings = Some(welcome_settings);
         self
+    }
+
+    pub fn with_welcome_settings(self, welcome_settings: Option<WelcomeSettings>) -> Self {
+        Self {
+            welcome_settings,
+            ..self
+        }
     }
 
     pub fn set_welcome_settings2(
@@ -385,6 +585,25 @@ impl GuildSettings {
         self
     }
 
+    pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
+        let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
+            WelcomeSettings {
+                auto_role,
+                ..welcome_settings
+            }
+        } else {
+            WelcomeSettings {
+                auto_role,
+                ..Default::default()
+            }
+        };
+
+        Self {
+            welcome_settings: Some(welcome_settings.clone()),
+            ..self
+        }
+    }
+
     pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
@@ -398,7 +617,12 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_log_settings(&mut self, all_log_channel: u64, join_leave_log_channel: u64) {
+    /// Set the log settings, mutating.
+    pub fn set_log_settings(
+        &mut self,
+        all_log_channel: u64,
+        join_leave_log_channel: u64,
+    ) -> &mut Self {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
             raw_event_log_channel: None,
@@ -407,11 +631,20 @@ impl GuildSettings {
             join_leave_log_channel: Some(join_leave_log_channel),
             voice_log_channel: None,
         });
+        self
     }
 
-    pub fn set_prefix(&mut self, prefix: &str) {
+    /// Return a copy of the settings with the given log settings.
+    pub fn with_log_settings(&self, log_settings: Option<LogSettings>) -> Self {
+        Self {
+            log_settings,
+            ..self.clone()
+        }
+    }
+
+    pub fn set_prefix(&mut self, prefix: &str) -> &mut Self {
         self.prefix = prefix.to_string();
-        // self.prefix_up = self.prefix.to_string().to_ascii_uppercase();
+        self
     }
 
     pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
@@ -451,7 +684,25 @@ impl GuildSettings {
         self
     }
 
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) {
+    pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
+        let log_settings = if let Some(log_settings) = self.log_settings.clone() {
+            LogSettings {
+                join_leave_log_channel: Some(channel_id),
+                ..log_settings
+            }
+        } else {
+            LogSettings {
+                join_leave_log_channel: Some(channel_id),
+                ..Default::default()
+            }
+        };
+        Self {
+            log_settings: Some(log_settings),
+            ..self.clone()
+        }
+    }
+
+    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
         } else {
@@ -459,21 +710,24 @@ impl GuildSettings {
             log_settings.set_join_leave_log_channel(channel_id);
             self.log_settings = Some(log_settings);
         }
+        self
     }
 
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            FullEvent::GuildBanRemoval { .. }
-            | FullEvent::GuildMemberAddition { .. }
-            | FullEvent::GuildMemberRemoval { .. }
+            FullEvent::GuildMemberAddition { .. }
+            | FullEvent::GuildMemberRemoval { .. } => {
+                log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
+            }
+            | FullEvent::GuildBanRemoval { .. }
+            | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildScheduledEventCreate { .. }
             | FullEvent::GuildScheduledEventUpdate { .. }
             | FullEvent::GuildScheduledEventDelete { .. }
             | FullEvent::GuildScheduledEventUserAdd { .. }
             | FullEvent::GuildScheduledEventUserRemove { .. }
             | FullEvent::GuildStickersUpdate { .. }
-            | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildCreate { .. }
             | FullEvent::GuildDelete { .. }
             | FullEvent::GuildEmojisUpdate { .. }
@@ -565,77 +819,9 @@ impl GuildSettings {
 
 pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
     for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save();
+        let _ = guild_settings.save().await;
     }
 }
-
-// use self::serenity::{Context as SerenityContext, EventHandler};
-// pub async fn load_guilds_settings(
-//     ctx: &SerenityContext,
-//     guilds: &[UnavailableGuild],
-//     data_new: &Data,
-// ) -> HashMap<GuildId, GuildSettings> {
-//     let prefix = data_new.bot_settings.get_prefix();
-//     tracing::info!("Loading guilds' settings");
-//     let mut data = ctx.data.write().await;
-//     let settings = match data.get_mut::<GuildSettingsMap>() {
-//         Some(settings) => settings,
-//         None => {
-//             tracing::error!("Guild settings not found");
-//             data.insert::<GuildSettingsMap>(HashMap::default());
-//             data.get_mut::<GuildSettingsMap>().unwrap()
-//         }
-//     };
-//     for guild in guilds {
-//         let guild_id = guild.id;
-//         let guild_full = match guild_id.to_guild_cached(&ctx.cache) {
-//             Some(guild_match) => guild_match,
-//             None => {
-//                 tracing::error!("Guild not found in cache");
-//                 continue;
-//             }
-//         };
-//         tracing::info!(
-//             "Loading guild settings for {}, {}",
-//             guild_full.id,
-//             guild_full.name.clone()
-//         );
-
-//         let mut default =
-//             GuildSettings::new(guild_full.id, Some(&prefix), Some(guild_full.name.clone()));
-
-//         let _ = default.load_if_exists().map_err(|err| {
-//             tracing::error!(
-//                 "Failed to load guild {} settings due to {}",
-//                 default.guild_id,
-//                 err
-//             );
-//         });
-
-//         tracing::warn!("GuildSettings: {:?}", default);
-
-//         let _ = settings.insert(default.guild_id, default.clone());
-
-//         let guild_settings = settings.get(&default.guild_id);
-
-//         guild_settings
-//             .map(|x| {
-//                 tracing::info!("saving guild {}...", x);
-//                 x.save().expect("Error saving guild settings");
-//                 x
-//             })
-//             .or_else(|| {
-//                 tracing::error!("Guild not found in settings map");
-//                 None
-//             });
-//     }
-//     let data_read = ctx.data.read().await;
-//     let guild_settings_map_read = data_read.get::<GuildSettingsMap>().unwrap().clone();
-//     guild_settings_map_read
-//     // .get::<GuildSettingsMap>()
-//     // .unwrap()
-//     // .clone()
-// }
 
 #[derive(Default)]
 pub struct GuildSettingsMap;
@@ -650,12 +836,3 @@ pub struct AtomicU16Key;
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
-
-// impl GuildSettingsMap {
-//     pub fn save(self) {
-//         let data = self.0;
-//         for (_, guild_settings) in data {
-//             let _ = guild_settings.save();
-//         }
-//     }
-// }

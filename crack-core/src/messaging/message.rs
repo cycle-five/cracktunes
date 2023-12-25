@@ -12,6 +12,8 @@ const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
+    AutoplayOff,
+    AutoplayOn,
     CountryName(String),
     ChannelDeleted {
         channel_id: serenity::ChannelId,
@@ -41,6 +43,8 @@ pub enum CrackedMessage {
     },
     PlaylistCreated(String),
     PlaylistQueued,
+    PlayLog(Vec<String>),
+    Premium(bool),
     RemoveMultiple,
     Resume,
     RoleCreated {
@@ -69,12 +73,25 @@ pub enum CrackedMessage {
     SocialMediaResponse {
         response: String,
     },
+    SongQueued {
+        title: String,
+        url: String,
+    },
     Summon {
         mention: Mention,
     },
     TextChannelCreated {
         channel_id: serenity::ChannelId,
         channel_name: String,
+    },
+    CategoryCreated {
+        channel_id: serenity::ChannelId,
+        channel_name: String,
+    },
+    UserTimeout {
+        user: String,
+        user_id: String,
+        timeout_until: String,
     },
     UserKicked {
         user_id: UserId,
@@ -121,6 +138,8 @@ pub enum CrackedMessage {
 impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
+            Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
@@ -157,6 +176,8 @@ impl Display for CrackedMessage {
             Self::PlayDomainBanned { domain } => {
                 f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
             }
+            Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
+            Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::ScanResult { result } => f.write_str(result),
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
@@ -174,6 +195,9 @@ impl Display for CrackedMessage {
                 SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
+            Self::SongQueued { title, url } => {
+                f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
+            }
             Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
@@ -188,7 +212,22 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 TEXT_CHANNEL_CREATED, channel_id, channel_name
             )),
+            Self::CategoryCreated {
+                channel_id,
+                channel_name,
+            } => f.write_str(&format!(
+                "{} {} {}",
+                CATEGORY_CREATED, channel_id, channel_name
+            )),
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::UserTimeout {
+                user: _,
+                user_id,
+                timeout_until,
+            } => f.write_str(&format!(
+                "User timed out: {} for {}",
+                user_id, timeout_until
+            )),
             Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
             Self::UserBanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", BANNED, user, user_id))

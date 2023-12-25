@@ -13,15 +13,15 @@ crack-core = { path = "crack-core", default-features = true, version = "0.2" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-config = { path = "crack-config", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
-tungstenite = "^0.20.1"
-async-tungstenite = "^0.23.0"
-reqwest = { version = "0.11.22", features = ["blocking", "json"] }
+tungstenite = "0.21"
+async-tungstenite = "0.24"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 audiopus = "0.2"
 
 [workspace.dependencies.sqlx]
-version = "0.7.2"
+version = "0.7.3"
 default-features = false
 features = [
   "runtime-tokio",
@@ -31,24 +31,25 @@ features = [
   "chrono",
   "time",
   "migrate",
+  "json",
 ]
 
 [workspace.dependencies.serenity]
 #version = "0.12.0-rc2"
-version = "0.11.7"
-git = "https://github.com/serenity-rs/serenity"
-branch = "next"
+version = "0.12.0"
+# git = "https://github.com/serenity-rs/serenity"
+# branch = "next"
 default-features = false
 features = [
   "builder",
   "cache",
+  "temp_cache",
   "collector",
   "client",
   "framework",
   "http",
   "standard_framework",
   "gateway",
-  "temp_cache",
   "model",
   "utils",
   "rustls_backend",
@@ -57,11 +58,9 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-# git = "https://github.com/serenity-rs/songbird"
-git = "https://github.com/CycleFive/songbird"
-# path = "../songbird"
-branch = "my-next"
-# version = "0.3.2"
+git = "https://github.com/serenity-rs/songbird"
+branch = "current"
+version = "0.4.0"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
 
@@ -76,13 +75,16 @@ features = ["all"]
 # version = "0.5.6"
 # version = "0.5.5"
 # path = "../poise"
-git = "https://github.com/serenity-rs/poise"
-branch = "serenity-next"
+git = "https://github.com/cycle-five/poise"
+branch = "current"
+# git = "https://github.com/serenity-rs/poise"
+# branch = "serenity-next"
+# path = "../../src/poise"
 default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
 [workspace.dependencies.tokio]
-version = "1.34.0"
+version = "1.35"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [profile.release-with-debug]

@@ -27,6 +27,7 @@ pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
+pub mod interface;
 pub mod messaging;
 pub mod metrics;
 pub mod sources;
@@ -180,6 +181,7 @@ impl BotConfig {
     }
 }
 
+/// Phone code data for the osint commands
 #[derive(Default, Debug, Clone)]
 pub struct PhoneCodeData {
     #[allow(dead_code)]
@@ -189,7 +191,9 @@ pub struct PhoneCodeData {
     country_by_phone_code: HashMap<String, Vec<String>>,
 }
 
+/// impl of PhoneCodeData
 impl PhoneCodeData {
+    /// Load the phone code data from the local file, or download it if it doesn't exist
     pub fn load() -> Result<Self, CrackedError> {
         let phone_codes = Self::load_data("./data/phone.json", "http://country.io/phone.json")?;
         let country_names = Self::load_data("./data/names.json", "http://country.io/names.json")?;
@@ -210,6 +214,7 @@ impl PhoneCodeData {
         })
     }
 
+    /// Load the data from the local file, or download it if it doesn't exist
     fn load_data(file_name: &str, url: &str) -> Result<HashMap<String, String>, CrackedError> {
         match fs::read_to_string(file_name) {
             Ok(contents) => serde_json::from_str(&contents).map_err(CrackedError::Json),
@@ -217,6 +222,7 @@ impl PhoneCodeData {
         }
     }
 
+    /// Download the data from the url and parse it. Internally used.
     fn download_and_parse(
         url: &str,
         file_name: &str,
@@ -233,6 +239,8 @@ impl PhoneCodeData {
         serde_json::from_str(&content).map_err(CrackedError::Json)
     }
 
+    /// Get names of countries that match the given phone code.
+    /// Due to edge cases, there may be multiples.
     pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
         self.country_by_phone_code.get(phone_code).cloned()
     }
@@ -260,6 +268,7 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
 }
 
+/// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
 pub struct EventLog(pub Arc<Mutex<File>>);
 
@@ -285,15 +294,19 @@ impl Default for EventLog {
     }
 }
 
+/// impl of EventLog
 impl EventLog {
+    /// Create a new EventLog, calls default
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Write an object to the log file without a note.
     pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
         self.write_log_obj_note(name, None, obj)
     }
 
+    /// Write an object to the log file with a note.
     pub fn write_log_obj_note<T: serde::Serialize>(
         &self,
         name: &str,
@@ -308,28 +321,25 @@ impl EventLog {
         let mut buf = serde_json::to_vec(&entry).unwrap();
         let _ = buf.write(&[b'\n']);
         let buf: &[u8] = buf.as_slice();
-        //println!("...{:?}...", buf);
         self.lock()
             .unwrap()
             .write_all(buf)
             .map_err(|e| CrackedError::IO(e).into())
     }
 
+    /// Write an object to the log file.
     pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
         let mut buf = serde_json::to_vec(obj).unwrap();
         let _ = buf.write(&[b'\n']);
         let buf: &[u8] = buf.as_slice();
-        //println!("...{:?}...", buf);
         self.lock()
             .unwrap()
             .write_all(buf)
             .map_err(|e| CrackedError::IO(e).into())
     }
 
+    /// Write a buffer to the log file.
     pub fn write(self, buf: &[u8]) -> Result<(), Error> {
-        // let buf = &mut buf.to_owned();
-        // let _ = buf.write(&[b'\n']);
-        // let buf: &[u8] = buf.as_slice();
         self.lock()
             .unwrap()
             .write_all(buf)

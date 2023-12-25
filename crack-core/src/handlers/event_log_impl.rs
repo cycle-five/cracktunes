@@ -1,9 +1,10 @@
-use crate::{utils::send_log_embed_thumb, Error};
+use crate::{http_utils::get_guild_name, utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ChannelId, ClientStatus, Context as SerenityContext, GuildId, Http, Member, MessageUpdateEvent,
-    Presence,
+    ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
+    CurrentUser, GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent,
+    Presence, Role, RoleId,
 };
 use std::sync::Arc;
 
@@ -12,14 +13,273 @@ use super::serenity::voice_state_diff_str;
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
-    _http: &Arc<Http>,
+    http: &Arc<Http>,
     log_data: T,
 ) -> Result<(), Error> {
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
     tracing::info!(
         "{}",
-        format!("Unimplemented Event: {}, {:?}", channel_id, log_data).blue()
+        format!(
+            "Unimplemented Event: {}, {}, {:?}",
+            guild_name, channel_id, log_data
+        )
+        .blue()
     );
     Ok(())
+}
+
+pub async fn log_guild_role_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &serenity::model::prelude::Role,
+) -> Result<(), Error> {
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let title = format!("Role Created: {}", log_data.name);
+    let description = guild_role_to_string(log_data);
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &log_data.id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_guild_role_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildId, &RoleId, &Option<Role>),
+) -> Result<(), Error> {
+    let (&_guild_id, &role_id, role) = log_data;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let default_role = Role::default();
+    let role = role.as_ref().unwrap_or(&default_role);
+    let title = format!("Role Deleted: {}", role.name);
+    let description = guild_role_to_string(role);
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &role_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_automod_command_execution(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ActionExecution,
+) -> Result<(), Error> {
+    let title = format!("Automod Action Executed: {}", log_data.rule_id);
+    let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .user_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &log_data.user_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_command_permissions_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &CommandPermissions,
+) -> Result<(), Error> {
+    let permissions = log_data;
+
+    let title = format!("Command Permissions Updated: {}", permissions.id);
+    let description = format!("Permissions: {:?}", permissions.permissions);
+    let avatar_url = "";
+
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &permissions.id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_channel_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildChannel, &Option<Vec<Message>>),
+) -> Result<(), Error> {
+    let &(guild_channel, messages) = log_data;
+    let del_channel_id = guild_channel.id;
+    let title = format!("Channel Deleted: {}", del_channel_id);
+    let description = format!(
+        "messages deleted: {}",
+        messages.as_ref().map(|x| x.len()).unwrap_or_default()
+    );
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &channel_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_message_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
+) -> Result<(), Error> {
+    let &(del_channel_id, message_id, guild_id) = log_data;
+    let id = message_id.to_string();
+    let title = format!("Message Deleted: {}", id);
+    let description = format!(
+        "ChannelId: {}\nGuildId: {}",
+        del_channel_id,
+        guild_id.unwrap_or_default()
+    );
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &id,
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_user_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&Option<CurrentUser>, &CurrentUser),
+) -> Result<Message, Error> {
+    let &(old, new) = log_data;
+    let title = format!("User Updated: {}", new.name);
+    let description = format!(
+        "Old User: {}\nNew User: {}",
+        old.as_ref()
+            .map(|x| x.name.clone())
+            .unwrap_or_else(|| "None".to_string()),
+        new.name
+    );
+
+    let name = new.name.clone();
+    let avatar_url = new.avatar_url().unwrap_or_default();
+    let old_avatar_url = old
+        .as_ref()
+        .and_then(|x| x.avatar_url())
+        .unwrap_or_default();
+
+    let description = if avatar_url != old_avatar_url {
+        format!("Avatar Updated: {}", name)
+    } else {
+        description
+    };
+    let guild_name = get_guild_name(http, channel_id).await?;
+
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &new.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+}
+
+pub async fn log_reaction_remove(
+    channel_id_first: ChannelId,
+    http: &Arc<Http>,
+    log_data: &serenity::model::prelude::Reaction,
+) -> Result<(), Error> {
+    let reaction = log_data;
+    let member = reaction.member.clone().unwrap_or_default();
+    let message_id = reaction.message_id;
+    let channel_id = reaction.channel_id;
+    let title = format!("Reaction Removed: {}", reaction.emoji);
+    let description = format!(
+        "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
+        channel_id, message_id, reaction.emoji, member.user.name
+    );
+    let avatar_url = member.avatar_url().unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id_first,
+        http,
+        &member.user.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn log_reaction_add(
+    channel_id_first: ChannelId,
+    http: &Arc<Http>,
+    log_data: &serenity::model::prelude::Reaction,
+) -> Result<(), Error> {
+    let reaction = log_data;
+    let member = reaction.member.clone().unwrap_or_default();
+    let message_id = reaction.message_id;
+    let channel_id = reaction.channel_id;
+    let title = format!("Reaction Added: {}", reaction.emoji);
+    let description = format!(
+        "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
+        channel_id, message_id, reaction.emoji, member.user.name
+    );
+    let avatar_url = member.avatar_url().unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id_first,
+        http,
+        &member.user.id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Log a message update event.
@@ -32,6 +292,12 @@ pub async fn log_message_update(
         &MessageUpdateEvent,
     ),
 ) -> Result<(), Error> {
+    // Don't log message updates from bots
+    // TODO: Make this configurable
+    if log_data.2.author.as_ref().map(|x| x.bot).unwrap_or(false) {
+        return Ok(());
+    }
+
     let (id, title, description, avatar_url) = if let &(Some(old), Some(new), _msg) = log_data {
         let title = format!("Message Updated: {}", new.author.name);
         let description = format!(
@@ -74,9 +340,18 @@ pub async fn log_message_update(
             default_msg_string(msg)
         }
     };
-    send_log_embed_thumb(&channel_id, http, &id, &title, &description, &avatar_url)
-        .await
-        .map(|_| ())
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &id,
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
@@ -99,7 +374,9 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();
 
+    let guild_name = get_guild_name(http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &user.id.to_string(),
@@ -175,7 +452,9 @@ pub async fn log_guild_role_update(
         .unwrap_or_else(|| guild_role_to_string(new));
     // FIXME: Use icon or emoji
     let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &new.id.to_string(),
@@ -200,7 +479,9 @@ pub async fn log_guild_member_removal(
         member_data_if_available.clone().and_then(|m| m.joined_at)
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &user.id.to_string(),
@@ -224,7 +505,9 @@ pub async fn log_guild_member_addition(
         new_member.user.created_at(),
         new_member.joined_at
     );
+    let guild_name = get_guild_name(http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &new_member.user.id.to_string(),
@@ -371,6 +654,7 @@ pub async fn log_presence_update(
     }
     .to_string();
 
+    let guild_name = get_guild_name(http, channel_id).await?;
     let title = format!(
         "Presence Update: {}",
         new_data.user.name.clone().unwrap_or_default()
@@ -387,6 +671,7 @@ pub async fn log_presence_update(
             .unwrap_or_default(),
     );
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &user_id.to_string(),
@@ -417,7 +702,9 @@ pub async fn log_voice_state_update(
         .clone()
         .and_then(|x| x.user.avatar_url())
         .unwrap_or_default();
+    let guild_name = get_guild_name(&ctx.http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         &ctx.http,
         &new.user_id.to_string(),
@@ -471,7 +758,9 @@ pub async fn log_typing_start(
         name, event.user_id, event.channel_id
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &user.id.to_string(),
@@ -487,6 +776,7 @@ pub async fn log_message(
     http: &Arc<Http>,
     new_message: &serenity::model::prelude::Message,
 ) -> Result<serenity::model::prelude::Message, Error> {
+    let guild_name = get_guild_name(http, channel_id).await?;
     let title = format!("Message: {}", new_message.author.name);
     let id = new_message.author.id;
     let description = format!(
@@ -495,6 +785,7 @@ pub async fn log_message(
     );
     let avatar_url = new_message.author.avatar_url().unwrap_or_default();
     send_log_embed_thumb(
+        &guild_name,
         &channel_id,
         http,
         &id.to_string(),

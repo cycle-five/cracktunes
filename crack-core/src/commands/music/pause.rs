@@ -10,7 +10,7 @@ use crate::{
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn pause(
     ctx: Context<'_>,
-    #[description = "Pause the currently playing track"] send_reply: Option<bool>,
+    #[description = "Pause the current track"] send_reply: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();

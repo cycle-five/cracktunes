@@ -27,8 +27,12 @@ pub async fn deauthorize(
 
     //if res {
     check_reply(
-        ctx.send(CreateReply::new().content("User deauthorized.").reply(true))
-            .await,
+        ctx.send(
+            CreateReply::default()
+                .content("User deauthorized.")
+                .reply(true),
+        )
+        .await,
     );
     Ok(())
     // } else {

@@ -1,24 +1,25 @@
 use crate::{
     commands::MyAuxMetadata,
-    db::{self, Metadata, Playlist},
+    db::{metadata::Metadata, Playlist},
     utils::send_embed_response_str,
     Context, Error,
 };
-use songbird::input::AuxMetadata;
 use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, rename = "add")]
 pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[description = "Track to add to playlist"] track: String,
 ) -> Result<(), Error> {
+    use crate::{db::aux_metadata_to_db_structures, errors::CrackedError};
+
     let _ = track;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(ctx.guild_id().unwrap()).unwrap();
     let queue = call.lock().await.queue().clone();
-    let cur_track = queue.current().unwrap();
+    let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;
     let metadata = match typemap.get::<MyAuxMetadata>() {
         Some(MyAuxMetadata::Data(meta)) => meta,
@@ -57,7 +58,7 @@ pub async fn add_to_playlist(
     let (in_metadata, _playlist_track) =
         aux_metadata_to_db_structures(metadata, guild_id, channel_id)?;
 
-    let metadata = Metadata::create(&db_pool, in_metadata).await?;
+    let metadata = Metadata::create(&db_pool, &in_metadata).await?;
 
     let res = Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id, channel_id).await?;
 
@@ -81,56 +82,4 @@ pub async fn add_to_playlist(
         .map(|_| ())
         .map_err(|e| e.into())
     }
-}
-
-fn aux_metadata_to_db_structures(
-    metadata: &AuxMetadata,
-    guild_id: i64,
-    channel_id: i64,
-) -> Result<(db::Metadata, db::PlaylistTrack), Error> {
-    let track = metadata.track.clone();
-    let title = metadata.title.clone();
-    let artist = metadata.artist.clone();
-    let album = metadata.album.clone();
-    let date = metadata
-        .date
-        .as_ref()
-        .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
-    let duration = metadata
-        .duration
-        .map(|x| ::chrono::Duration::from_std(x).unwrap_or(chrono::Duration::zero()));
-    let channel = metadata.channel.clone();
-    let channels = metadata.channels.map(i16::from);
-    let start_time = metadata
-        .start_time
-        .map(|d| ::chrono::Duration::from_std(d).unwrap_or(chrono::Duration::zero()));
-    let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
-    let thumbnail = metadata.thumbnail.clone();
-    let source_url = metadata.source_url.clone();
-
-    let metadata = db::Metadata {
-        id: 0,
-        track,
-        title,
-        artist,
-        album,
-        date,
-        duration,
-        channel,
-        channels,
-        start_time,
-        sample_rate,
-        source_url,
-        thumbnail,
-    };
-
-    let db_track = db::PlaylistTrack {
-        id: 0,
-        playlist_id: 0,
-        guild_id: Some(guild_id),
-        metadata_id: 0,
-        channel_id: Some(channel_id),
-    };
-
-    Ok((metadata, db_track))
 }

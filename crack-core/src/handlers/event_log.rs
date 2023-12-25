@@ -87,6 +87,7 @@ pub async fn get_channel_id(
 }
 
 pub async fn handle_event(
+    ctx: &serenity::all::Context,
     event_in: &FullEvent,
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
@@ -97,7 +98,7 @@ pub async fn handle_event(
 
     match event_in {
         #[cfg(feature = "log_all")]
-        FullEvent::PresenceUpdate { ctx, new_data } => {
+        FullEvent::PresenceUpdate { new_data } => {
             log_event!(
                 log_presence_update,
                 guild_settings,
@@ -110,11 +111,11 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "log_all"))]
-        FullEvent::PresenceUpdate { ctx: _, new_data } => {
+        FullEvent::PresenceUpdate { new_data } => {
             let _ = new_data;
             Ok(())
         }
-        FullEvent::GuildMemberAddition { ctx, new_member } => {
+        FullEvent::GuildMemberAddition { new_member } => {
             log_event!(
                 log_guild_member_addition,
                 guild_settings,
@@ -127,7 +128,6 @@ pub async fn handle_event(
             )
         }
         FullEvent::GuildMemberRemoval {
-            ctx,
             member_data_if_available,
             guild_id,
             user,
@@ -144,7 +144,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::VoiceStateUpdate { ctx, old, new } => {
+        FullEvent::VoiceStateUpdate { old, new } => {
             let log_data = &(old, new);
             log_event2!(
                 log_voice_state_update,
@@ -157,7 +157,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::Message { ctx, new_message } => {
+        FullEvent::Message { new_message } => {
             let guild_id = new_message.guild_id.unwrap();
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();
@@ -184,7 +184,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::TypingStart { ctx, event } => {
+        FullEvent::TypingStart { event } => {
             // let cache_http = ctx.http.clone()
             log_event!(
                 log_typing_start_noop,
@@ -197,9 +197,9 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::CommandPermissionsUpdate { ctx, permission } => {
+        FullEvent::CommandPermissionsUpdate { permission } => {
             log_event!(
-                log_unimplemented_event,
+                log_command_permissions_update,
                 guild_settings,
                 event_in,
                 permission,
@@ -209,9 +209,9 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::AutoModActionExecution { ctx, execution } => {
+        FullEvent::AutoModActionExecution { execution } => {
             log_event!(
-                log_unimplemented_event,
+                log_automod_command_execution,
                 guild_settings,
                 event_in,
                 execution,
@@ -221,62 +221,58 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::AutoModRuleCreate { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleCreate { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::AutoModRuleUpdate { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleUpdate { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::AutoModRuleDelete { ctx, rule } => log_event!(
+        FullEvent::AutoModRuleDelete { rule } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            rule,
+            &(event_name, rule),
             &rule.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::CategoryCreate { ctx, category } => log_event!(
+        FullEvent::CategoryCreate { category } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            category,
+            &(event_name, category),
             &category.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::CategoryDelete { ctx, category } => log_event!(
+        FullEvent::CategoryDelete { category } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            category,
+            &(event_name, category),
             &category.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::ChannelDelete {
-            ctx,
-            channel,
-            messages,
-        } => log_event!(
-            log_unimplemented_event,
+        FullEvent::ChannelDelete { channel, messages } => log_event!(
+            log_channel_delete,
             guild_settings,
             event_in,
             &(channel, messages),
@@ -285,17 +281,17 @@ pub async fn handle_event(
             event_log,
             event_name
         ),
-        FullEvent::ChannelPinsUpdate { ctx, pin } => log_event!(
+        FullEvent::ChannelPinsUpdate { pin } => log_event!(
             log_unimplemented_event,
             guild_settings,
             event_in,
-            pin,
+            &(event_name, pin),
             &pin.guild_id.unwrap_or_default(),
             &ctx.http,
             event_log,
             event_name
         ),
-        FullEvent::ChannelUpdate { ctx, old, new } => {
+        FullEvent::ChannelUpdate { old, new } => {
             let guild_id = new
                 .clone()
                 .guild(&ctx.cache)
@@ -305,7 +301,7 @@ pub async fn handle_event(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &(old, new),
+                &(event_name, old, new),
                 &guild_id,
                 &ctx.http,
                 event_log,
@@ -315,9 +311,8 @@ pub async fn handle_event(
         FullEvent::GuildBanAddition {
             guild_id,
             banned_user,
-            ctx,
         } => {
-            let log_data = (guild_id, banned_user);
+            let log_data = (event_name, guild_id, banned_user);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -332,9 +327,8 @@ pub async fn handle_event(
         FullEvent::GuildBanRemoval {
             guild_id,
             unbanned_user,
-            ctx,
         } => {
-            let log_data = (guild_id, unbanned_user);
+            let log_data = (event_name, guild_id, unbanned_user);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -347,12 +341,12 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        FullEvent::GuildCreate { ctx, guild } => {
+        FullEvent::GuildCreate { guild } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &guild,
+                &(event_name, guild),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -360,12 +354,12 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "cache"))]
-        FullEvent::GuildCreate { ctx, guild, is_new } => {
+        FullEvent::GuildCreate { guild, is_new } => {
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
-                &(guild, is_new),
+                &(event_name, guild, is_new),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -373,8 +367,8 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        FullEvent::GuildDelete { ctx, incomplete } => {
-            let log_data = (incomplete);
+        FullEvent::GuildDelete { incomplete } => {
+            let log_data = (event_name, incomplete);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -387,12 +381,8 @@ pub async fn handle_event(
             )
         }
         #[cfg(not(feature = "cache"))]
-        FullEvent::GuildDelete {
-            ctx,
-            incomplete,
-            full,
-        } => {
-            let log_data = (incomplete, full);
+        FullEvent::GuildDelete { incomplete, full } => {
+            let log_data = (event_name, incomplete, full);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -407,9 +397,8 @@ pub async fn handle_event(
         FullEvent::GuildEmojisUpdate {
             guild_id,
             current_state,
-            ctx,
         } => {
-            let log_data = (guild_id, current_state);
+            let log_data = (event_name, guild_id, current_state);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -421,8 +410,8 @@ pub async fn handle_event(
                 event_name
             )
         }
-        FullEvent::GuildIntegrationsUpdate { ctx, guild_id } => {
-            let log_data = guild_id;
+        FullEvent::GuildIntegrationsUpdate { guild_id } => {
+            let log_data = (event_name, guild_id);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -435,12 +424,15 @@ pub async fn handle_event(
             )
         }
         FullEvent::GuildMemberUpdate {
-            ctx,
             old_if_available,
             new,
             event,
         } => {
-            let _event = event;
+            let guild_name = event
+                .guild_id
+                .to_guild_cached(&ctx.cache)
+                .map(|x| x.name.clone())
+                .unwrap_or_default();
             let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
@@ -508,6 +500,7 @@ pub async fn handle_event(
             match maybe_log_channel {
                 Some(channel_id) => {
                     send_log_embed_thumb(
+                        &guild_name,
                         &channel_id,
                         &ctx.http,
                         &id.to_string(),
@@ -523,19 +516,27 @@ pub async fn handle_event(
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
         }
-        FullEvent::GuildMembersChunk { chunk, ctx: _ } => {
-            event_log.write_log_obj(event_name, chunk)
+        FullEvent::GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
+        FullEvent::GuildRoleCreate { new } => {
+            log_event!(
+                log_guild_role_create,
+                guild_settings,
+                event_in,
+                &new,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
-        FullEvent::GuildRoleCreate { new, ctx: _ } => event_log.write_log_obj(event_name, new),
         FullEvent::GuildRoleDelete {
             guild_id,
             removed_role_id,
             removed_role_data_if_available,
-            ctx,
         } => {
             let log_data = (guild_id, removed_role_id, removed_role_data_if_available);
             log_event!(
-                log_unimplemented_event,
+                log_guild_role_delete,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -544,10 +545,6 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-            // event_log.write_log_obj(
-            //     event_name,
-            //     &(guild_id, removed_role_id, removed_role_data_if_available),
-            // )
         }
         #[cfg(feature = "cache")]
         FullEvent::GuildRoleUpdate {
@@ -558,7 +555,6 @@ pub async fn handle_event(
         FullEvent::GuildRoleUpdate {
             new,
             old_data_if_available,
-            ctx,
         } => {
             let log_data = (old_data_if_available, new);
             log_event!(
@@ -573,32 +569,28 @@ pub async fn handle_event(
             )
         }
         // event_log.write_log_obj(event_name, &(new, old_data_if_available)),
-        FullEvent::GuildScheduledEventCreate { event, ctx: _ } => {
+        FullEvent::GuildScheduledEventCreate { event } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventUpdate { event, ctx: _ } => {
+        FullEvent::GuildScheduledEventUpdate { event } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventDelete { event, ctx: _ } => {
+        FullEvent::GuildScheduledEventDelete { event } => {
             event_log.write_log_obj(event_name, event)
         }
-        FullEvent::GuildScheduledEventUserAdd { subscribed, ctx: _ } => {
+        FullEvent::GuildScheduledEventUserAdd { subscribed } => {
             event_log.write_log_obj(event_name, subscribed)
         }
-        FullEvent::GuildScheduledEventUserRemove {
-            unsubscribed,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, unsubscribed),
+        FullEvent::GuildScheduledEventUserRemove { unsubscribed } => {
+            event_log.write_log_obj(event_name, unsubscribed)
+        }
         FullEvent::GuildStickersUpdate {
-            ctx: _,
             guild_id,
             current_state,
         } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
-        FullEvent::GuildAuditLogEntryCreate {
-            ctx: _,
-            entry,
-            guild_id,
-        } => event_log.write_log_obj(event_name, &(entry, guild_id)),
+        FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+            event_log.write_log_obj(event_name, &(entry, guild_id))
+        }
         #[cfg(feature = "cache")]
         FullEvent::GuildUpdate {
             old_data_global_if_available,
@@ -610,40 +602,46 @@ pub async fn handle_event(
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
-            ctx: _,
+
             new_data,
         } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
-        FullEvent::IntegrationCreate {
-            integration,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, integration),
-        FullEvent::IntegrationUpdate {
-            integration,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, integration),
+        FullEvent::IntegrationCreate { integration } => {
+            event_log.write_log_obj(event_name, integration)
+        }
+        FullEvent::IntegrationUpdate { integration } => {
+            event_log.write_log_obj(event_name, integration)
+        }
         FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
-            ctx: _,
         } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        FullEvent::InteractionCreate {
-            interaction,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, interaction),
-        FullEvent::InviteCreate { data, ctx: _ } => event_log.write_log_obj(event_name, data),
-        FullEvent::InviteDelete { data, ctx: _ } => event_log.write_log_obj(event_name, data),
+        FullEvent::InteractionCreate { interaction } => {
+            event_log.write_log_obj(event_name, interaction)
+        }
+        FullEvent::InviteCreate { data } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteDelete { data } => event_log.write_log_obj(event_name, data),
         FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,
             guild_id,
-            ctx: _,
-        } => event_log.write_obj(&(channel_id, deleted_message_id, guild_id)),
+        } => {
+            let log_data = (channel_id, deleted_message_id, guild_id);
+            log_event!(
+                log_message_delete,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         FullEvent::MessageDeleteBulk {
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
-            ctx: _,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
@@ -656,9 +654,13 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-            ctx,
         } => {
-            if new.as_ref().map(|x| x.author.bot).unwrap_or(false) {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+                || old_if_available
+                    .as_ref()
+                    .map(|x| x.author.bot)
+                    .unwrap_or(false)
+            {
                 return Ok(());
             }
             let log_data: (
@@ -678,86 +680,88 @@ pub async fn handle_event(
             )
             // event_log.write_log_obj(event_name, &(old_if_available, new, event))
         }
-        FullEvent::ReactionAdd {
-            add_reaction,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, add_reaction),
-        FullEvent::ReactionRemove {
-            removed_reaction,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, removed_reaction),
+        FullEvent::ReactionAdd { add_reaction } => {
+            log_event!(
+                log_reaction_add,
+                guild_settings,
+                event_in,
+                add_reaction,
+                &add_reaction.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
+        FullEvent::ReactionRemove { removed_reaction } => {
+            log_event!(
+                log_reaction_remove,
+                guild_settings,
+                event_in,
+                removed_reaction,
+                &removed_reaction.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
-            ctx: _,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
-        FullEvent::PresenceReplace { ctx: _, presences } => {
-            event_log.write_log_obj(event_name, presences)
-        }
-        FullEvent::Ready {
-            data_about_bot,
-            ctx: _,
-        } => {
+        FullEvent::PresenceReplace { presences } => event_log.write_log_obj(event_name, presences),
+        FullEvent::Ready { data_about_bot } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
             event_log.write_log_obj(event_name, data_about_bot)
         }
-        FullEvent::Resume { ctx: _, event } => event_log.write_log_obj(event_name, event),
-        FullEvent::StageInstanceCreate {
-            stage_instance,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, stage_instance),
-        FullEvent::StageInstanceDelete {
-            stage_instance,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, stage_instance),
-        FullEvent::StageInstanceUpdate {
-            stage_instance,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, stage_instance),
-        FullEvent::ThreadCreate { thread, ctx: _ } => event_log.write_log_obj(event_name, thread),
+        FullEvent::Resume { event } => event_log.write_log_obj(event_name, event),
+        FullEvent::StageInstanceCreate { stage_instance } => {
+            event_log.write_log_obj(event_name, stage_instance)
+        }
+        FullEvent::StageInstanceDelete { stage_instance } => {
+            event_log.write_log_obj(event_name, stage_instance)
+        }
+        FullEvent::StageInstanceUpdate { stage_instance } => {
+            event_log.write_log_obj(event_name, stage_instance)
+        }
+        FullEvent::ThreadCreate { thread } => event_log.write_log_obj(event_name, thread),
         FullEvent::ThreadDelete {
             thread,
-            ctx: _,
+
             full_thread_data: _,
         } => event_log.write_log_obj(event_name, thread),
-        FullEvent::ThreadListSync {
-            thread_list_sync,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, thread_list_sync),
-        FullEvent::ThreadMemberUpdate {
-            thread_member,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, thread_member),
+        FullEvent::ThreadListSync { thread_list_sync } => {
+            event_log.write_log_obj(event_name, thread_list_sync)
+        }
+        FullEvent::ThreadMemberUpdate { thread_member } => {
+            event_log.write_log_obj(event_name, thread_member)
+        }
         FullEvent::ThreadMembersUpdate {
             thread_members_update,
-            ctx: _,
         } => event_log.write_log_obj(event_name, thread_members_update),
-        FullEvent::ThreadUpdate { ctx: _, old, new } => {
-            event_log.write_log_obj(event_name, &(old, new))
-        }
+        FullEvent::ThreadUpdate { old, new } => event_log.write_log_obj(event_name, &(old, new)),
         // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
-        #[cfg(feature = "cache")]
-        UserUpdate {
-            old_data_global,
-            new,
-        } => event_log.write_log_obj(&(old_data_global, new)),
-        #[cfg(not(feature = "cache"))]
-        FullEvent::UserUpdate {
-            old_data,
-            new,
-            ctx: _,
-        } => event_log.write_log_obj(event_name, &(old_data, new)),
-        FullEvent::VoiceServerUpdate { ctx: _, event } => {
-            event_log.write_log_obj(event_name, event)
+        FullEvent::UserUpdate { old_data, new } => {
+            let log_data = (old_data, new);
+            let guild_id = new.member.as_ref().unwrap().guild_id.unwrap();
+            log_event!(
+                log_user_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         }
+        FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]
         VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
-            ctx: _,
         } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
-        FullEvent::CacheReady { guilds, ctx: _ } => {
+        FullEvent::CacheReady { guilds } => {
             tracing::info!(
                 "{}: {}",
                 event_in.snake_case_name().bright_green(),

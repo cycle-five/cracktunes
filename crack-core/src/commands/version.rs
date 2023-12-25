@@ -5,12 +5,13 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 #[poise::command(slash_command, prefix_command)]
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| "Unknown");
-    let _msg = send_response_poise(
+    let msg = send_response_poise(
         ctx,
         CrackedMessage::Version {
             current: current.to_owned(),
         },
     )
     .await?;
+    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
     Ok(())
 }

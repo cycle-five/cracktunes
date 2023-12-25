@@ -11,23 +11,37 @@ pub async fn authorize(
 ) -> Result<(), Error> {
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
+    // let data = ctx.data();
 
-    let _res = data
+    let asdf = ctx
+        .data()
         .guild_settings_map
         .write()
         .unwrap()
         .entry(guild_id)
         .and_modify(|e| {
-            e.authorized_users.insert(id);
-            e.save().unwrap();
+            e.authorized_users.insert(id, 0);
         })
-        .key();
+        .or_default()
+        .clone();
+    asdf.save().await?;
+    // ctx.data()
+    //     .guild_settings_map
+    //     .read()
+    //     .unwrap()
+    //     .clone()
+    //     .get(&guild_id)
+    //     .unwrap()
+    //     .await?;
 
     //ctx.send("User authorized").await;
     check_reply(
-        ctx.send(CreateReply::new().content("User authorized.").reply(true))
-            .await,
+        ctx.send(
+            CreateReply::default()
+                .content("User authorized.")
+                .reply(true),
+        )
+        .await,
     );
 
     Ok(())

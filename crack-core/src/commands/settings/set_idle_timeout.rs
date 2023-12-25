@@ -22,7 +22,7 @@ pub async fn set_idle_timeout(
 
     check_reply(
         ctx.send(
-            CreateReply::new()
+            CreateReply::default()
                 .content(format!("timeout set to {} seconds", timeout))
                 .reply(true),
         )

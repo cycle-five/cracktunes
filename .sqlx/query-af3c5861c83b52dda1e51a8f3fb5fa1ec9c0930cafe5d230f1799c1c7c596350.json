@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE\n                track_reaction\n            SET\n                dislikes = dislikes + 1\n            WHERE \n                play_log_id = $1\n            RETURNING \n                play_log_id, likes, dislikes, skip_votes, created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "play_log_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "likes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "dislikes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "skip_votes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "af3c5861c83b52dda1e51a8f3fb5fa1ec9c0930cafe5d230f1799c1c7c596350"
+}

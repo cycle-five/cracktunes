@@ -7,12 +7,12 @@ use crate::{
 };
 use std::time::Duration;
 
-/// Seek to a specific timestamp in the current track.
+/// Seek to timestamp, in format `mm:ss`.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn seek(
     ctx: Context<'_>,
-    #[description = "The timestamp to seek to in the format `mm:ss`"] seek_time: String,
+    #[description = "Seek to timestamp, in format `mm:ss`."] seek_time: String,
 ) -> Result<(), Error> {
     // let mut interaction = get_interaction(ctx).unwrap();
     let guild_id = ctx.guild_id().unwrap();

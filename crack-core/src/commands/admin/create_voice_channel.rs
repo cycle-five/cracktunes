@@ -14,39 +14,31 @@ pub async fn create_voice_channel(
     #[description = "Name of channel to create"]
     channel_name: String,
 ) -> Result<(), Error> {
-    match ctx.guild_id() {
-        Some(guild) => {
-            let guild = guild.to_partial_guild(&ctx).await?;
-            if let Err(e) = guild
-                .create_channel(
-                    &ctx,
-                    CreateChannel::new(channel_name.clone())
-                        .kind(serenity::model::channel::ChannelType::Voice),
-                )
-                .await
-            {
-                // Handle error, send error message
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other(format!("Failed to create channel: {}", e)),
-                )
-                .await?;
-            } else {
-                // Send success message
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::VoiceChannelCreated {
-                        channel_name: channel_name.clone(),
-                    },
-                )
-                .await?;
-            }
-        }
-        None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
-        }
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild = guild_id.to_partial_guild(&ctx).await?;
+    if let Err(e) = guild
+        .create_channel(
+            &ctx,
+            CreateChannel::new(channel_name.clone())
+                .kind(serenity::model::channel::ChannelType::Voice),
+        )
+        .await
+    {
+        // Handle error, send error message
+        send_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+        )
+        .await?;
+    } else {
+        // Send success message
+        send_response_poise(
+            ctx,
+            CrackedMessage::VoiceChannelCreated {
+                channel_name: channel_name.clone(),
+            },
+        )
+        .await?;
     }
     Ok(())
 }

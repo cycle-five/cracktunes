@@ -15,7 +15,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     let id_str = format!("{}", uuid_boop);
 
     ctx.send(
-        CreateReply::new()
+        CreateReply::default()
             .content("I want some boops!")
             .components(vec![CreateActionRow::Buttons(vec![CreateButton::new(
                 id_str,

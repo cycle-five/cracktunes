@@ -61,6 +61,6 @@ mod test {
         let query = "Hello".to_string();
         let response = get_chatgpt_response(query).await;
         println!("{:?}", response);
-        assert!(response.is_err() || response.unwrap().contains("API key is not allowed"));
+        assert!(response.is_err() || response.unwrap().contains("Invalid API key"));
     }
 }

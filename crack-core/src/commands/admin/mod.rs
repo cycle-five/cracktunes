@@ -2,7 +2,6 @@ pub mod audit_logs;
 pub mod authorize;
 pub mod ban;
 pub mod broadcast_voice;
-pub mod create_role;
 pub mod create_text_channel;
 pub mod create_voice_channel;
 pub mod deafen;
@@ -10,12 +9,16 @@ pub mod deauthorize;
 pub mod debug;
 pub mod defend;
 pub mod delete_channel;
-pub mod delete_role;
+pub mod get_active;
 pub mod invite_tracker;
 pub mod kick;
 pub mod message_cache;
 pub mod move_users;
 pub mod mute;
+pub mod random_mute_lol;
+pub mod role;
+pub mod set_vc_size;
+pub mod timeout;
 pub mod unban;
 pub mod unmute;
 
@@ -27,7 +30,6 @@ pub use audit_logs::*;
 pub use authorize::*;
 pub use ban::*;
 pub use broadcast_voice::*;
-pub use create_role::*;
 pub use create_text_channel::*;
 pub use create_voice_channel::*;
 pub use deafen::*;
@@ -35,12 +37,16 @@ pub use deauthorize::*;
 pub use debug::*;
 pub use defend::*;
 pub use delete_channel::*;
-pub use delete_role::*;
+pub use get_active::*;
 pub use invite_tracker::track_invites;
 pub use kick::*;
 pub use message_cache::*;
 pub use move_users::*;
 pub use mute::*;
+pub use random_mute_lol::*;
+pub use role::*;
+pub use set_vc_size::*;
+pub use timeout::*;
 pub use unban::*;
 pub use unmute::*;
 
@@ -53,22 +59,25 @@ pub use unmute::*;
         "authorize",
         "ban",
         "broadcast_voice",
-        "create_role",
         "create_text_channel",
         "create_voice_channel",
         "deafen",
         "defend",
         "deauthorize",
         "delete_channel",
-        "delete_role",
-        "delete_role_by_id",
-        "track_invites",
+        // "track_invites",
         "kick",
+        "rename_all",
         "mute",
         "message_cache",
         "move_users_to",
         "unban",
         "unmute",
+        "random_mute",
+        "get_active_vcs",
+        "set_vc_size",
+        "role",
+        "timeout",
     ),
     ephemeral,
     owners_only

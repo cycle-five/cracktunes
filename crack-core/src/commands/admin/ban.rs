@@ -26,33 +26,25 @@ pub async fn ban(
 ) -> Result<(), Error> {
     let dmd = dmd.unwrap_or(0);
     let reason = reason.unwrap_or("No reason provided".to_string());
-    match ctx.guild_id() {
-        Some(guild) => {
-            let guild = guild.to_partial_guild(&ctx).await?;
-            if let Err(e) = guild.ban_with_reason(&ctx, user.clone(), dmd, reason).await {
-                // Handle error, send error message
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other(format!("Failed to ban user: {}", e)),
-                )
-                .await?;
-            } else {
-                // Send success message
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::UserBanned {
-                        user: user.name.clone(),
-                        user_id: user.clone().id,
-                    },
-                )
-                .await?;
-            }
-        }
-        None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
-        }
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild = guild_id.to_partial_guild(&ctx).await?;
+    if let Err(e) = guild.ban_with_reason(&ctx, user.clone(), dmd, reason).await {
+        // Handle error, send error message
+        send_response_poise(
+            ctx,
+            CrackedMessage::Other(format!("Failed to ban user: {}", e)),
+        )
+        .await?;
+    } else {
+        // Send success message
+        send_response_poise(
+            ctx,
+            CrackedMessage::UserBanned {
+                user: user.name.clone(),
+                user_id: user.clone().id,
+            },
+        )
+        .await?;
     }
     Ok(())
 }

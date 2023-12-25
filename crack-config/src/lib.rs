@@ -1,6 +1,7 @@
 use colored::Colorize;
 use crack_core::{
     commands,
+    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::handle_event,
     handlers::SerenityHandler,
@@ -11,7 +12,7 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::{Client, UserId};
+use poise::serenity_prelude::{model::permissions::Permissions, Client, UserId};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
@@ -55,7 +56,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 }
                 None => {
                     check_reply(
-                        ctx.send(CreateReply::new().content(&format!("{error}")))
+                        ctx.send(CreateReply::default().content(&format!("{error}")))
                             .await,
                     );
                 }
@@ -93,13 +94,8 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         commands: vec![
-            // admin commands
-            commands::admin(),
-            commands::settings(),
             commands::autopause(),
-            // commands::boop(),
-            commands::coinflip(),
-            commands::chatgpt(),
+            commands::toggle_autoplay(),
             commands::clear(),
             commands::help(),
             commands::leave(),
@@ -110,9 +106,8 @@ pub async fn poise_framework(
             commands::play(),
             commands::ping(),
             commands::remove(),
-            commands::repeat(),
             commands::resume(),
-            // commands::search(),
+            // commands::repeat(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -121,24 +116,33 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
-            commands::voteskip(),
+            // commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "osint")]
             crack_osint::osint(),
-            // Playlist
-            commands::playlist::add_to_playlist(),
-            commands::playlist::create_playlist(),
-            commands::playlist::delete_playlist(),
+            // all playlist commands
+            commands::playlist(),
+            // all admin commands
+            commands::admin(),
+            // all settings commands
+            commands::settings(),
+            // all gambling commands
+            // commands::coinflip(),
+            // commands::rolldice(),
+            // commands::boop(),
+            // all ai commands
+            // commands::chatgpt(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
-            edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
+            edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
-            stripped_dynamic_prefix: Some(|ctx, msg, _| {
+            stripped_dynamic_prefix: Some(|_ctx, msg, data| {
                 Box::pin(async move {
                     let guild_id = msg.guild_id.unwrap();
-                    let data_read = ctx.data.read().await;
-                    let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+                    // let data_read = data.read().await;
+                    // let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
+                    let guild_settings_map = data.guild_settings_map.read().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefixes = &guild_settings.additional_prefixes;
@@ -183,21 +187,7 @@ pub async fn poise_framework(
         command_check: Some(|ctx| {
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
-                tracing::info!("Checking command {}...", command);
-                let user_id = ctx.author().id.get();
-                // ctx.author_member().await.map_or_else(
-                //     || {
-                //         tracing::info!("Author not found in guild");
-                //         Ok(false)
-                //     },
-                //     |member| {
-                //         tracing::info!("Author found in guild");
-                //         Ok(member
-                //             .permissions()
-                //             .contains(serenity::model::permissions::ADMINISTRATOR))
-                //     },
-                // )?;
-                // let asdf = vec![user_id];
+                let lit_command = command.trim().to_string();
                 let music_commands = vec![
                     "play",
                     "pause",
@@ -205,6 +195,9 @@ pub async fn poise_framework(
                     "stop",
                     "skip",
                     "seek",
+                    "summon",
+                    "leave",
+                    "lyrics",
                     "volume",
                     "now_playing",
                     "queue",
@@ -213,23 +206,61 @@ pub async fn poise_framework(
                     "clear",
                     "remove",
                     "grab",
-                    "create_playlist",
-                    "delete_playlist",
+                    "playlist",
                     "voteskip",
+                    "version",
+                    "help",
+                    "autopause",
+                    "autoplay",
                 ];
+                // let mod_commands = vec!["settings", "admin"];
+                tracing::info!("Checking command {}...", command);
+                let user_id = ctx.author().id.get();
+                let mod_command = command.eq("admin") && lit_command.contains("timeout");
+                // If the physically running bot's owner is running the command, allow it
+                if ctx
+                    .data()
+                    .bot_settings
+                    .owners
+                    .as_ref()
+                    .unwrap_or(&vec![])
+                    .contains(&user_id)
+                {
+                    return Ok(true);
+                }
+                // If the user is an admin on the server, allow the mod commands
+                let res = ctx.author_member().await.map_or_else(
+                    || {
+                        tracing::info!("Author not found in guild");
+                        Err(CrackedError::Other("Author not found in guild"))
+                    },
+                    |member| {
+                        tracing::info!("Author found in guild");
+                        let allow = member
+                            .permissions(ctx)?
+                            .contains(Permissions::ADMINISTRATOR)
+                            && mod_command;
+                        Ok(allow)
+                    },
+                );
+
+                match res {
+                    Ok(true) => {
+                        tracing::info!("Author is admin");
+                        return Ok(true);
+                    }
+                    Ok(false) => {
+                        tracing::info!("Author is not admin");
+                    }
+                    Err(e) => {
+                        tracing::error!("Error checking permissions: {}", e);
+                        return Ok(false);
+                    }
+                };
+
                 if music_commands.contains(&command.as_str()) {
                     return Ok(true);
                 }
-                // if ctx
-                //     .data()
-                //     .bot_settings
-                //     .authorized_users
-                //     .as_ref()
-                //     .unwrap_or(asdf.as_ref())
-                //     .contains(&user_id)
-                // {
-                //     return Ok(true);
-                // }
 
                 //let user_id = ctx.author().id.as_u64();
                 let guild_id = ctx.guild_id().unwrap_or_default();
@@ -247,7 +278,7 @@ pub async fn poise_framework(
                         |guild_settings| {
                             tracing::info!("Guild found in guild settings map");
                             Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains(&user_id))
+                                || guild_settings.authorized_users.contains_key(&user_id))
                         },
                     )
             })
@@ -255,8 +286,8 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: true,
-        event_handler: |event, framework, data_global| {
-            Box::pin(async move { handle_event(event, framework, data_global).await })
+        event_handler: |ctx, event, framework, data_global| {
+            Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
         ..Default::default()
     };
@@ -363,15 +394,22 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
-        save_data
-            .guild_settings_map
-            .read()
-            .unwrap()
-            .iter()
-            .for_each(|(k, v)| {
+        {
+            let guilds = save_data.guild_settings_map.read().unwrap().clone();
+            for (k, v) in guilds {
                 tracing::warn!("Saving Guild: {}", k);
-                v.save().expect("Error saving guild settings");
-            });
+                match v.save().await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::error!("Error saving guild settings: {}", e);
+                    }
+                }
+            }
+        }
+        // .for_each(|(k, v)| {
+        //     tracing::warn!("Saving Guild: {}", k);
+        //     v.save().expect("Error saving guild settings");
+        // });
         shard_manager.shutdown_all().await;
 
         exit(0);
@@ -381,7 +419,7 @@ pub async fn poise_framework(
 }
 
 fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
-    for prefix in prefixes.iter() {
+    for prefix in prefixes {
         if content.starts_with(prefix) {
             return Some(prefix.len());
         }
