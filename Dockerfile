@@ -1,6 +1,7 @@
 # Build image
 # Necessary dependencies to build CrackTunes
 FROM debian:bookworm-slim as build
+ARG SQLX_OFFLINE=true
 
 #build-essential \
 RUN apt-get update -y && apt-get install -y \
@@ -21,11 +22,9 @@ RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
 WORKDIR "/app"
 
 COPY . .
-#RUN ls -al . && ls -al data
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
-RUN . "$HOME/.cargo/env"
-RUN scripts/reset_db.sh 
-RUN cargo build --release --locked
+# RUN ls -al . && ls -al data
+# ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
+RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes
