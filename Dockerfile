@@ -23,7 +23,7 @@ WORKDIR "/app"
 
 COPY . .
 # RUN ls -al . && ls -al data
-# ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
+ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
@@ -43,9 +43,9 @@ RUN yt-dlp -v -h
 
 COPY --from=build /app/target/release/cracktunes .
 COPY --from=build /app/data  /data
-RUN ls -al / && ls -al /data
+# RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
+ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
 ENV RUST_BACKTRACE 1
 CMD ["/app/cracktunes"]
