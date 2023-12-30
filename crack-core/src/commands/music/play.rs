@@ -1488,7 +1488,7 @@ pub async fn enqueue_track_pgwrite(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::db::PlayLog;
+    use crate::db::{PlayLog, User};
 
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
@@ -1519,6 +1519,24 @@ pub async fn enqueue_track_pgwrite(
                     metadata.clone()
                 }
             };
+
+        // Get the username (string) of the user.
+        let username = match http.get_user(user_id).await {
+            Ok(x) => x.name,
+            Err(e) => {
+                tracing::error!("http.get_user error: {}", e);
+                "Unknown".to_string()
+            }
+        };
+
+        match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
+            Ok(x) => {
+                tracing::info!("Users::insert_or_update: {:?}", x);
+            }
+            Err(e) => {
+                tracing::error!("Users::insert_or_update error: {}", e);
+            }
+        };
         match PlayLog::create(
             database_pool,
             user_id.get() as i64,

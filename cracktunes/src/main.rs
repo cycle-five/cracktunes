@@ -21,6 +21,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
     let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(16)
         .enable_all()
         .build()
         .unwrap();

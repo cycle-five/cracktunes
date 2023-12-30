@@ -410,9 +410,19 @@ pub async fn poise_framework(
         //     tracing::warn!("Saving Guild: {}", k);
         //     v.save().expect("Error saving guild settings");
         // });
-        shard_manager.shutdown_all().await;
+        shard_manager.clone().shutdown_all().await;
 
         exit(0);
+    });
+
+    let shard_manager_2 = client.shard_manager.clone();
+    tokio::spawn(async move {
+        loop {
+            let count = shard_manager_2.shards_instantiated().await.len();
+            println!("Shard count instantiated: {}", count);
+
+            tokio::time::sleep(Duration::from_millis(5000)).await;
+        }
     });
 
     Ok(client)

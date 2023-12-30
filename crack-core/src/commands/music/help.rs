@@ -56,8 +56,8 @@ pub async fn help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
-            show_subcommands: true,
-            show_context_menu_commands: true,
+            show_subcommands: false,
+            show_context_menu_commands: false,
             extra_text_at_bottom: "This is a friendly crack smoking parrot that plays music.",
             ..Default::default()
         },
