@@ -234,10 +234,7 @@ pub fn aux_metadata_to_db_structures(
 }
 
 /// Convert an `AuxMetadata` structure to the database structures.
-pub fn aux_metadata_from_db(
-    metadata: &Metadata,
-    metadata_id: i64,
-) -> Result<AuxMetadata, CrackedError> {
+pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedError> {
     let track = metadata.track.clone();
     let title = metadata.title.clone();
     let artist = metadata.artist.clone();

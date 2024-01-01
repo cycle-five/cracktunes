@@ -1,7 +1,4 @@
-use crate::{
-    db::playlist::Playlist, messaging::message::CrackedMessage, utils::send_response_poise,
-    Context, Error,
-};
+use crate::{db::playlist::Playlist, Context, Error};
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
@@ -10,10 +7,7 @@ pub async fn get_playlist(ctx: Context<'_>, playlist: String) -> Result<(), Erro
     let pool = ctx.data().database_pool.as_ref().unwrap();
     let metadata: Vec<crate::db::Metadata> = match playlist.parse::<i32>() {
         // Try to parse the playlist as an ID
-        Ok(playlist_id) => {
-            let user_id = ctx.author().id.get() as i64;
-            Playlist::get_track_metadata_for_playlist(pool, playlist_id).await?
-        }
+        Ok(playlist_id) => Playlist::get_track_metadata_for_playlist(pool, playlist_id).await?,
         Err(_) => {
             let user_id = ctx.author().id.get() as i64;
 
@@ -21,12 +15,21 @@ pub async fn get_playlist(ctx: Context<'_>, playlist: String) -> Result<(), Erro
         }
     };
     // Assuming you have a way to fetch the user_id of the command issuer
-    let my_aux_metadata = metadata
+    let aux_metadata = metadata
         .iter()
-        .map(|m| crate::utils::aux_metadata_from_db(m))
+        .flat_map(|m| match crate::db::metadata::aux_metadata_from_db(m) {
+            Ok(aux) => Some(aux),
+            Err(e) => {
+                tracing::error!("Error converting metadata to aux metadata: {}", e);
+                None
+            }
+        })
         .collect::<Vec<_>>();
     // playlist.print_playlist(ctx).await?;
-    let _ = crate::utils::build_tracks_embed_metadata(metadata, page);
+    let embed = crate::utils::build_tracks_embed_metadata(&aux_metadata, 1).await;
+
+    // Send the embed
+    crate::utils::send_embed_response_poise(ctx, embed).await?;
 
     Ok(())
 }

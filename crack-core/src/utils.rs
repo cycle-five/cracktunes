@@ -1,7 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
     commands::MyAuxMetadata,
-    db::PlaylistTrack,
     interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
@@ -41,12 +40,12 @@ use tokio::sync::RwLock;
 use url::Url;
 const EMBED_PAGE_SIZE: usize = 6;
 
-pub async fn aux_metadata_from_db(metadata: &crate::db::Metadata) -> MyAuxMetadata {
-    let mut metadata = metadata.clone();
-    metadata.duration = metadata.duration / 1000;
-    let metadata = MyAuxMetadata::Data(metadata);
-    metadata
-}
+// pub fn aux_metadata_from_db(metadata: &crate::db::Metadata) -> MyAuxMetadata {
+//     let mut metadata = metadata.clone();
+//     metadata.duration = metadata.duration / 1000;
+//     let metadata = MyAuxMetadata::Data(metadata.into());
+//     metadata
+// }
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
@@ -512,9 +511,9 @@ pub fn create_now_playing_embed_metadata(
 }
 
 /// Creates an embed for the first N metadata in the queue.
-async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
+async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&MyAuxMetadata> = metadata
+    let queue: Vec<&AuxMetadata> = metadata
         .iter()
         .skip(start_idx + 1)
         .take(EMBED_PAGE_SIZE)
@@ -527,7 +526,7 @@ async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> S
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let MyAuxMetadata::Data(t) = t;
+        //let MyAuxMetadata::Data(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);
@@ -600,13 +599,10 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_tracks_embed_metadata(
-    metadata_arr: &[MyAuxMetadata],
-    page: usize,
-) -> CreateEmbed {
+pub async fn build_tracks_embed_metadata(metadata_arr: &[AuxMetadata], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !metadata_arr.is_empty() {
         // let metadata = get_track_metadata(&tracks[0]).await;
-        let MyAuxMetadata::Data(metadata) = metadata_arr[0].clone();
+        let metadata: AuxMetadata = metadata_arr[0].clone();
 
         let thumbnail = metadata.thumbnail.unwrap_or_default();
 

@@ -176,23 +176,12 @@ impl Playlist {
         sqlx::query_as!(
             crate::db::MetadataRead,
             r#"
-            SELECT (metadata.id,
-                track,
-                artist,
-                album,
-                date,
-                channels,
-                channel,
-                start_time,
-                duration,
-                sample_rate,
-                source_url,
-                title,
-                thumbnail)
-                 FROM metadata
-                INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id
-                WHERE playlist_track.playlist_id = $1
-            "#,
+                SELECT
+                    metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+                FROM
+                    (metadata INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id)
+                WHERE
+                    playlist_track.playlist_id = $1"#,
             playlist_id,
         )
         .fetch_all(pool)
@@ -208,25 +197,11 @@ impl Playlist {
         sqlx::query_as!(
             crate::db::MetadataRead,
             r#"
-            SELECT
-                (playlist_track.metadata_id,
-                track,
-                artist,
-                album,
-                date,
-                channels,
-                channel,
-                start_time,
-                duration,
-                sample_rate,
-                source_url,
-                title,
-                thumbnail)
-                FROM metadata
-                INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id
-                INNER JOIN playlist ON playlist_track.playlist_id = playlist.id
-                WHERE playlist.name = $1 AND playlist.user_id = $2
-            "#,
+                SELECT
+                    metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+                FROM
+                    (metadata INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id INNER JOIN playlist ON playlist_track.playlist_id = playlist.id)
+                WHERE playlist.name = $1 AND playlist.user_id = $2"#,
             playlist_name,
             user_id,
         )
