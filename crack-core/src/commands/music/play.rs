@@ -1,7 +1,7 @@
 use crate::{
     commands::skip::force_skip_top_track,
     connection::get_voice_channel_for_user,
-    db::aux_metadata_to_db_structures,
+    db::{aux_metadata_to_db_structures, PlaylistTrack},
     errors::{verify, CrackedError},
     guild::settings::{GuildSettings, DEFAULT_PREMIUM},
     handlers::{track_end::update_queue_messages, IdleHandler, TrackEndHandler},

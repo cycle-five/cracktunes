@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT (metadata.id,\n                track,\n                artist,\n                album,\n                date,\n                channels,\n                channel,\n                start_time,\n                duration,\n                sample_rate,\n                source_url,\n                title,\n                thumbnail)\n                 FROM metadata\n                INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id\n                WHERE playlist_track.playlist_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "row",
+        "type_info": "Record"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8501406f51d774ae1037cbb69a67da27866650a404840ac66b7f532cd644dc0e"
+}

@@ -542,6 +542,7 @@ dependencies = [
  "chrono",
  "colored",
  "crack-gpt",
+ "either",
  "ffprobe",
  "lazy_static",
  "lyric_finder",

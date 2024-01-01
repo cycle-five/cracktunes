@@ -1,5 +1,7 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
 use crate::{
+    commands::MyAuxMetadata,
+    db::PlaylistTrack,
     interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
@@ -38,6 +40,13 @@ use std::{
 use tokio::sync::RwLock;
 use url::Url;
 const EMBED_PAGE_SIZE: usize = 6;
+
+pub async fn aux_metadata_from_db(metadata: &crate::db::Metadata) -> MyAuxMetadata {
+    let mut metadata = metadata.clone();
+    metadata.duration = metadata.duration / 1000;
+    let metadata = MyAuxMetadata::Data(metadata);
+    metadata
+}
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
@@ -458,10 +467,11 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 pub fn create_now_playing_embed_metadata(
     cur_position: Option<Duration>,
-    metadata: AuxMetadata,
+    metadata: MyAuxMetadata,
 ) -> CreateEmbed {
     // TrackHandle::metadata(track);
 
+    let MyAuxMetadata::Data(metadata) = metadata;
     tracing::warn!("metadata: {:?}", metadata);
 
     let title = metadata.title.clone().unwrap_or_default();
@@ -501,6 +511,40 @@ pub fn create_now_playing_embed_metadata(
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
+/// Creates an embed for the first N metadata in the queue.
+async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
+    let start_idx = EMBED_PAGE_SIZE * page;
+    let queue: Vec<&MyAuxMetadata> = metadata
+        .iter()
+        .skip(start_idx + 1)
+        .take(EMBED_PAGE_SIZE)
+        .collect();
+
+    if queue.is_empty() {
+        return String::from(QUEUE_NO_SONGS);
+    }
+
+    let mut description = String::new();
+
+    for (i, &t) in queue.iter().enumerate() {
+        let MyAuxMetadata::Data(t) = t;
+        let title = t.title.clone().unwrap_or_default();
+        let url = t.source_url.clone().unwrap_or_default();
+        let duration = get_human_readable_timestamp(t.duration);
+
+        let _ = writeln!(
+            description,
+            "`{}.` [{}]({}) • `{}`",
+            i + start_idx + 1,
+            title,
+            url,
+            duration
+        );
+    }
+
+    description
+}
+
 /// Builds a page of the queue.
 #[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
@@ -536,7 +580,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     description
 }
 
-pub fn calculate_num_pages(tracks: &[TrackHandle]) -> usize {
+pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     let num_pages = ((tracks.len() as f64 - 1.0) / EMBED_PAGE_SIZE as f64).ceil() as usize;
     max(1, num_pages)
 }
@@ -556,13 +600,57 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
+pub async fn build_tracks_embed_metadata(
+    metadata_arr: &[MyAuxMetadata],
+    page: usize,
+) -> CreateEmbed {
+    let (description, thumbnail) = if !metadata_arr.is_empty() {
+        // let metadata = get_track_metadata(&tracks[0]).await;
+        let MyAuxMetadata::Data(metadata) = metadata_arr[0].clone();
+
+        let thumbnail = metadata.thumbnail.unwrap_or_default();
+
+        let description = format!(
+            "[{}]({}) • `{}`",
+            metadata
+                .title
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
+            metadata
+                .source_url
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_SRC)),
+            get_human_readable_timestamp(metadata.duration)
+        );
+        (description, thumbnail)
+    } else {
+        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
+    };
+
+    CreateEmbed::default()
+        .thumbnail(thumbnail)
+        .field(QUEUE_NOW_PLAYING, &description, false)
+        .field(
+            QUEUE_UP_NEXT,
+            build_queue_page_metadata(metadata_arr, page).await,
+            false,
+        )
+        .footer(CreateEmbedFooter::new(format!(
+            "{} {} {} {}",
+            QUEUE_PAGE,
+            page + 1,
+            QUEUE_PAGE_OF,
+            calculate_num_pages(metadata_arr),
+        )))
+}
+
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !tracks.is_empty() {
         let metadata = get_track_metadata(&tracks[0]).await;
         let thumbnail = metadata.thumbnail.unwrap_or_default();
 
         let description = format!(
-            "[{}]({}) • `{}`",
+            "`[{}]({})` • `{}`",
             metadata
                 .title
                 .as_ref()
