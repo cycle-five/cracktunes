@@ -102,7 +102,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
-    let openai_key = load_key("OPENAI_KEY".to_string()).ok();
+    let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -117,7 +117,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         discord_app_id,
         spotify_client_id,
         spotify_client_secret,
-        openai_key,
+        openai_api_key,
     });
 
     Ok(config_with_creds.clone())
