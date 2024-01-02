@@ -6,7 +6,6 @@ use sqlx::PgPool;
 
 use crate::errors::CrackedError;
 
-// #[serde_with::serde_as]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub id: i32,
