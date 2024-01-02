@@ -419,9 +419,11 @@ pub async fn poise_framework(
     tokio::spawn(async move {
         loop {
             let count = shard_manager_2.shards_instantiated().await.len();
-            println!("Shard count instantiated: {}", count);
+            let intents = shard_manager_2.intents();
 
-            tokio::time::sleep(Duration::from_millis(5000)).await;
+            tracing::warn!("Shards: {}, Intents: {:?}", count, intents);
+
+            tokio::time::sleep(Duration::from_secs(10)).await;
         }
     });
 
