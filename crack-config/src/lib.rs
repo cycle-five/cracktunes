@@ -223,17 +223,21 @@ pub async fn poise_framework(
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
                 let first = command.split_whitespace().next().unwrap_or_default();
+                let second = command.split_whitespace().nth(1);
                 let mut mod_command = false;
                 for cmd in mod_commands.keys() {
-                    if command.starts_with(cmd) {
+                    if command.starts_with(cmd)
+                        && second.is_some()
+                        && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
+                    {
                         mod_command = true;
                         break;
                     }
                 }
-                let mod_command = mod_commands
-                    .get(first)
-                    .unwrap()
-                    .contains(&lit_command.as_str());
+                // let mod_command = mod_commands
+                //     .get(first)
+                //     .unwrap()
+                //     .contains(&lit_command.as_str());
                 //lit_command.eq("settings") && mod_commands.contains_key(&lit_command.as_str());
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
