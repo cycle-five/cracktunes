@@ -118,14 +118,14 @@ pub async fn poise_framework(
             commands::volume(),
             // commands::voteskip(),
             commands::queue(),
-            #[cfg(feature = "osint")]
-            crack_osint::osint(),
+            // #[cfg(feature = "osint")]
+            // crack_osint::osint(),
             // all playlist commands
             commands::playlist(),
             // all admin commands
-            commands::admin(),
+            // commands::admin(),
             // all settings commands
-            commands::settings(),
+            // commands::settings(),
             // all gambling commands
             // commands::coinflip(),
             // commands::rolldice(),
@@ -213,10 +213,28 @@ pub async fn poise_framework(
                     "autopause",
                     "autoplay",
                 ];
-                // let mod_commands = vec!["settings", "admin"];
+                let mod_commands = HashMap::from([
+                    (
+                        "admin",
+                        vec!["set_vc_size", "role", "timeout", "mute", "unmute"],
+                    ),
+                    ("settings", vec!["prefix", "add_prefix", "remove_prefix"]),
+                ]);
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
-                let mod_command = command.eq("admin") && lit_command.contains("timeout");
+                let first = command.split_whitespace().next().unwrap_or_default();
+                let mut mod_command = false;
+                for cmd in mod_commands.keys() {
+                    if command.starts_with(cmd) {
+                        mod_command = true;
+                        break;
+                    }
+                }
+                let mod_command = mod_commands
+                    .get(first)
+                    .unwrap()
+                    .contains(&lit_command.as_str());
+                //lit_command.eq("settings") && mod_commands.contains_key(&lit_command.as_str());
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
                     .data()
@@ -262,30 +280,32 @@ pub async fn poise_framework(
                     return Ok(true);
                 }
 
-                //let user_id = ctx.author().id.as_u64();
-                let guild_id = ctx.guild_id().unwrap_or_default();
+                return Ok(false);
 
-                ctx.data()
-                    .guild_settings_map
-                    .read()
-                    .unwrap()
-                    .get(&guild_id)
-                    .map_or_else(
-                        || {
-                            tracing::info!("Guild not found in guild settings map");
-                            Ok(false)
-                        },
-                        |guild_settings| {
-                            tracing::info!("Guild found in guild settings map");
-                            Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains_key(&user_id))
-                        },
-                    )
+                // //let user_id = ctx.author().id.as_u64();
+                // let guild_id = ctx.guild_id().unwrap_or_default();
+
+                // ctx.data()
+                //     .guild_settings_map
+                //     .read()
+                //     .unwrap()
+                //     .get(&guild_id)
+                //     .map_or_else(
+                //         || {
+                //             tracing::info!("Guild not found in guild settings map");
+                //             Ok(false)
+                //         },
+                //         |guild_settings| {
+                //             tracing::info!("Guild found in guild settings map");
+                //             Ok(guild_settings.authorized_users.is_empty()
+                //                 || guild_settings.authorized_users.contains_key(&user_id))
+                //         },
+                //     )
             })
         }),
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
-        skip_checks_for_owners: true,
+        skip_checks_for_owners: false,
         event_handler: |ctx, event, framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
