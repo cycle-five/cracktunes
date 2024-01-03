@@ -107,7 +107,7 @@ pub async fn poise_framework(
             commands::ping(),
             commands::remove(),
             commands::resume(),
-            // commands::repeat(),
+            commands::repeat(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -125,7 +125,7 @@ pub async fn poise_framework(
             // all admin commands
             // commands::admin(),
             // all settings commands
-            // commands::settings(),
+            commands::settings(),
             // all gambling commands
             // commands::coinflip(),
             // commands::rolldice(),
@@ -222,11 +222,11 @@ pub async fn poise_framework(
                 ]);
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
-                let first = command.split_whitespace().next().unwrap_or_default();
-                let second = command.split_whitespace().nth(1);
+                let first = lit_command.split_whitespace().next().unwrap_or_default();
+                let second = lit_command.split_whitespace().nth(1);
                 let mut mod_command = false;
                 for cmd in mod_commands.keys() {
-                    if command.starts_with(cmd)
+                    if cmd.eq(&first)
                         && second.is_some()
                         && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
                     {
