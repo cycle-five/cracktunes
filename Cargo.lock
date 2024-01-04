@@ -516,21 +516,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crack-config"
-version = "0.1.1"
-dependencies = [
- "colored",
- "crack-core",
- "crack-osint",
- "poise",
- "reqwest",
- "songbird",
- "sqlx",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "crack-core"
 version = "0.2.15"
 dependencies = [
@@ -600,8 +585,8 @@ version = "0.2.15"
 dependencies = [
  "async-trait",
  "async-tungstenite",
+ "colored",
  "config-file",
- "crack-config",
  "crack-core",
  "crack-gpt",
  "crack-osint",

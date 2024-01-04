@@ -47,8 +47,8 @@ mod test {
 
     #[test]
     fn test_fisher_yates() {
-        let mut values = [1, 2, 3, 4, 5];
+        let mut values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         fisher_yates(&mut values, &mut rand::thread_rng());
-        assert_ne!(values, [1, 2, 3, 4, 5]);
+        assert_ne!(values, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 }

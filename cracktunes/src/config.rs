@@ -218,7 +218,10 @@ pub async fn poise_framework(
                         "admin",
                         vec!["set_vc_size", "role", "timeout", "mute", "unmute"],
                     ),
-                    ("settings", vec!["prefix", "add_prefix", "remove_prefix"]),
+                    (
+                        "settings",
+                        vec!["get_settings", "prefix", "add_prefix", "remove_prefix"],
+                    ),
                 ]);
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
@@ -284,7 +287,7 @@ pub async fn poise_framework(
                     return Ok(true);
                 }
 
-                return Ok(false);
+                Ok(false)
 
                 // //let user_id = ctx.author().id.as_u64();
                 // let guild_id = ctx.guild_id().unwrap_or_default();
@@ -439,17 +442,17 @@ pub async fn poise_framework(
         exit(0);
     });
 
-    let shard_manager_2 = client.shard_manager.clone();
-    tokio::spawn(async move {
-        loop {
-            let count = shard_manager_2.shards_instantiated().await.len();
-            let intents = shard_manager_2.intents();
+    // let shard_manager_2 = client.shard_manager.clone();
+    // tokio::spawn(async move {
+    //     loop {
+    //         let count = shard_manager_2.shards_instantiated().await.len();
+    //         let intents = shard_manager_2.intents();
 
-            tracing::warn!("Shards: {}, Intents: {:?}", count, intents);
+    //         tracing::warn!("Shards: {}, Intents: {:?}", count, intents);
 
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        }
-    });
+    //         tokio::time::sleep(Duration::from_secs(10)).await;
+    //     }
+    // });
 
     Ok(client)
 }
