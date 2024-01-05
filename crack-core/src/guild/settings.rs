@@ -418,13 +418,13 @@ impl GuildSettings {
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
         let (_guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
-            &pool,
+            pool,
             guild_id,
             guild_name.clone(),
             prefix.clone(),
         )
         .await?;
-        let _ = GuildEntity::write_settings(&pool, self).await;
+        let _ = GuildEntity::write_settings(pool, self).await;
         Ok(())
     }
 
