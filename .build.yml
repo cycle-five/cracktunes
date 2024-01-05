@@ -18,8 +18,14 @@ tasks:
   - install-rust: |
       curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       . "$HOME/.cargo/env"
-      rustup default stable
+      rustup install nightly
+      rustup default nightly
+  - lint: |
+      . "$HOME/.cargo/env"
+      cargo +nightly fmt --all -- --check
+      cargo +nightly clippy --all -- -D warnings
   - test: |
       . "$HOME/.cargo/env"
       cd cracktunes
+      # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
       cargo test
