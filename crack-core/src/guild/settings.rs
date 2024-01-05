@@ -412,9 +412,8 @@ impl GuildSettings {
         Ok(settings)
     }
 
-    pub async fn save(&self) -> Result<(), CrackedError> {
+    pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
-        let pool = PgPool::connect(&env::var("DATABASE_URL").unwrap()).await?;
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
@@ -817,9 +816,12 @@ impl GuildSettings {
     }
 }
 
-pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
+pub async fn save_guild_settings(
+    guild_settings_map: &HashMap<GuildId, GuildSettings>,
+    pool: &PgPool,
+) {
     for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save().await;
+        let _ = guild_settings.save(pool).await;
     }
 }
 

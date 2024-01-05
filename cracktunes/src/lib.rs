@@ -50,20 +50,22 @@ pub fn get_admin_commands() -> Vec<&'static str> {
 
 /// Settings commands list
 pub fn get_settings_commands() -> Vec<&'static str> {
-    vec![
-        "get_settings",
-        "set_premium",
-        "prefix",
-        "add_prefix",
-        "remove_prefix",
-    ]
+    vec!["get_settings", "prefix", "add_prefix", "clear_prefixes"]
 }
 
+/// Commands only available to the bot owner
+pub fn get_owner_commands() -> Vec<&'static str> {
+    vec!["set_premium", "get_active_vcs"]
+    //vec!["shutdown", "eval", "reload", "update"]
+}
+
+/// All commands list
 pub fn get_commands() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("music", get_music_commands()),
         ("admin", get_admin_commands()),
         ("settings", get_settings_commands()),
+        ("owner", get_owner_commands()),
     ]
 }
 

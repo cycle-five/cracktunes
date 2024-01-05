@@ -424,15 +424,11 @@ impl SerenityHandler {
                 .unwrap()
                 .insert(guild_id, default.clone());
 
-            // match guild_settings {
-            //     Some(guild_settings) => {
-            default.save().await.expect("Error saving guild settings");
+            default
+                .save(&pool)
+                .await
+                .expect("Error saving guild settings");
             tracing::info!("saving guild {}...", default);
-            //     }
-            //     None => {
-            //         tracing::error!("Guild not found in settings map");
-            //     }
-            // }
         }
     }
 
