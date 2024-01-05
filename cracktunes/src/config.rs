@@ -12,7 +12,7 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::{model::permissions::Permissions, Client, UserId};
+use poise::serenity_prelude::{model::permissions::Permissions, Client};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
