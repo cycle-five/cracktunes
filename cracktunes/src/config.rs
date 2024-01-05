@@ -21,6 +21,8 @@ use songbird::serenity::SerenityInit;
 use std::sync::RwLock;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 
+use crate::{get_mod_commands, get_music_commands};
+
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
@@ -188,41 +190,9 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
                 let lit_command = command.trim().to_string();
-                let music_commands = vec![
-                    "play",
-                    "pause",
-                    "resume",
-                    "stop",
-                    "skip",
-                    "seek",
-                    "summon",
-                    "leave",
-                    "lyrics",
-                    "volume",
-                    "now_playing",
-                    "queue",
-                    "repeat",
-                    "shuffle",
-                    "clear",
-                    "remove",
-                    "grab",
-                    "playlist",
-                    "voteskip",
-                    "version",
-                    "help",
-                    "autopause",
-                    "autoplay",
-                ];
-                let mod_commands = HashMap::from([
-                    (
-                        "admin",
-                        vec!["set_vc_size", "role", "timeout", "mute", "unmute"],
-                    ),
-                    (
-                        "settings",
-                        vec!["get_settings", "prefix", "add_prefix", "remove_prefix"],
-                    ),
-                ]);
+                let music_commands = get_music_commands();
+                let mod_commands: HashMap<&str, Vec<&str>> =
+                    get_mod_commands().into_iter().collect();
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
                 let first = lit_command.split_whitespace().next().unwrap_or_default();
