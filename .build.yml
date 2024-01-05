@@ -20,9 +20,13 @@ tasks:
       . "$HOME/.cargo/env"
       rustup install nightly
       rustup default nightly
+  - fmt: |
+      . "$HOME/.cargo/env"
+      cd cracktunes
+      cargo +nightly fmt --all -- --check
   - lint: |
       . "$HOME/.cargo/env"
-      cargo +nightly fmt --all -- --check
+      cd cracktunes
       cargo +nightly clippy --all -- -D warnings
   - test: |
       . "$HOME/.cargo/env"
