@@ -1,7 +1,6 @@
 use super::serenity::voice_state_diff_str;
 use crate::{http_utils::get_guild_name, utils::send_log_embed_thumb, Error};
 use colored::Colorize;
-use poise::serenity_prelude::Event::AutoModRuleCreate;
 use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
@@ -83,7 +82,7 @@ pub async fn log_automod_rule_update(
     http: &Arc<Http>,
     log_data: &(String, Rule),
 ) -> Result<(), Error> {
-    let (event_name, log_data) = log_data.clone();
+    let (_event_name, log_data) = log_data.clone();
     let title = format!("Automod Rule Update: {}", log_data.creator_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = log_data

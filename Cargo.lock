@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "async-trait",
  "async-tungstenite",
