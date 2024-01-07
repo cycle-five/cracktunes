@@ -1,5 +1,7 @@
+use super::serenity::voice_state_diff_str;
 use crate::{http_utils::get_guild_name, utils::send_log_embed_thumb, Error};
 use colored::Colorize;
+use poise::serenity_prelude::Event::AutoModRuleCreate;
 use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
@@ -7,8 +9,6 @@ use serenity::all::{
     Presence, Role, RoleId,
 };
 use std::sync::Arc;
-
-use super::serenity::voice_state_diff_str;
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
@@ -28,6 +28,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+/// Logs a guild role cteate event.
 pub async fn log_guild_role_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -50,6 +51,7 @@ pub async fn log_guild_role_create(
     .map(|_| ())
 }
 
+/// Logs a guild role delete.
 pub async fn log_guild_role_delete(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -75,6 +77,67 @@ pub async fn log_guild_role_delete(
     .map(|_| ())
 }
 
+/// Log an automod rule update event
+pub async fn log_automod_rule_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(String, Rule),
+) -> Result<(), Error> {
+    let (event_name, log_data) = log_data.clone();
+    let title = format!("Automod Rule Update: {}", log_data.creator_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &log_data.creator_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+use serenity::model::guild::automod::Rule;
+/// Log a automod rule create event
+pub async fn log_automod_rule_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &Rule,
+) -> Result<(), Error> {
+    let title = format!("Automod Rule Create: {}", log_data.creator_id);
+    let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &log_data.creator_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a automod command exec
 pub async fn log_automod_command_execution(
     channel_id: ChannelId,
     http: &Arc<Http>,
