@@ -1,10 +1,11 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use songbird::input::AuxMetadata;
 use sqlx::PgPool;
 
 use crate::errors::CrackedError;
 
-// #[serde_with::serde_as]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub id: i32,
@@ -22,7 +23,44 @@ pub struct Metadata {
     pub thumbnail: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+impl Display for Metadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        if let Some(artist) = &self.artist {
+            s.push_str(&format!("{} - ", artist));
+        }
+        if let Some(title) = &self.title {
+            s.push_str(&format!("{} - ", title));
+        }
+        if let Some(album) = &self.album {
+            s.push_str(&format!("{} - ", album));
+        }
+        if let Some(track) = &self.track {
+            s.push_str(&format!("{} - ", track));
+        }
+        if let Some(date) = &self.date {
+            s.push_str(&format!("{} - ", date));
+        }
+        if let Some(channel) = &self.channel {
+            s.push_str(&format!("{} - ", channel));
+        }
+        if let Some(channels) = &self.channels {
+            s.push_str(&format!("{} - ", channels));
+        }
+        if let Some(sample_rate) = &self.sample_rate {
+            s.push_str(&format!("{} - ", sample_rate));
+        }
+        if let Some(source_url) = &self.source_url {
+            s.push_str(&format!("{} - ", source_url));
+        }
+        if let Some(thumbnail) = &self.thumbnail {
+            s.push_str(&format!("{} - ", thumbnail));
+        }
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, sqlx::FromRow)]
 pub struct MetadataRead {
     pub id: i32,
     pub track: Option<String>,
@@ -82,7 +120,63 @@ impl Metadata {
     }
 }
 
+impl From<MetadataRead> for Metadata {
+    fn from(r: MetadataRead) -> Self {
+        Metadata {
+            id: r.id,
+            track: r.track,
+            artist: r.artist,
+            album: r.album,
+            date: r.date,
+            channels: r.channels,
+            channel: r.channel,
+            start_time: r.start_time,
+            duration: r.duration,
+            sample_rate: r.sample_rate,
+            source_url: r.source_url,
+            title: r.title,
+            thumbnail: r.thumbnail,
+        }
+    }
+}
+
+pub async fn playlist_track_to_metadata(
+    pool: &PgPool,
+    playlist_track: &PlaylistTrack,
+) -> Result<Metadata, CrackedError> {
+    let r: MetadataRead = sqlx::query_as!(
+        MetadataRead,
+        r#"SELECT
+            metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail
+            FROM metadata
+            INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id
+            WHERE playlist_track.id = $1
+        "#,
+        playlist_track.id as i32
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(CrackedError::SQLX)?;
+    Ok(Metadata {
+        id: r.id,
+        track: r.track,
+        artist: r.artist,
+        album: r.album,
+        date: r.date,
+        channels: r.channels,
+        channel: r.channel,
+        start_time: r.start_time,
+        duration: r.duration,
+        sample_rate: r.sample_rate,
+        source_url: r.source_url,
+        title: r.title,
+        thumbnail: r.thumbnail,
+    })
+}
+
 use crate::db;
+
+use super::PlaylistTrack;
 /// Convert an `AuxMetadata` structure to the database structures.
 pub fn aux_metadata_to_db_structures(
     metadata: &AuxMetadata,
@@ -136,4 +230,53 @@ pub fn aux_metadata_to_db_structures(
     };
 
     Ok((metadata, db_track))
+}
+
+/// Convert an `AuxMetadata` structure to the database structures.
+pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedError> {
+    let track = metadata.track.clone();
+    let title = metadata.title.clone();
+    let artist = metadata.artist.clone();
+    let album = metadata.album.clone();
+    let date = metadata.date;
+    let channel = metadata.channel.clone();
+    let channels = metadata.channels.map(i16::from);
+    let start_time = metadata.start_time;
+    let duration = metadata.duration;
+    let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
+    let thumbnail = metadata.thumbnail.clone();
+    let source_url = metadata.source_url.clone();
+
+    let aux_metadata = AuxMetadata {
+        track,
+        title,
+        artist,
+        album,
+        date: date.map(|x| x.format("%Y-%m-%d").to_string()),
+        channel,
+        channels: channels.map(|x| x as u8),
+        start_time: Some(std::time::Duration::from_secs_f64(start_time as f64)),
+        duration: Some(std::time::Duration::from_secs_f64(duration as f64)),
+        sample_rate: sample_rate.map(|x| x as u32),
+        source_url,
+        thumbnail,
+    };
+
+    // let aux_metadata = Metadata {
+    //     id: 0,
+    //     track,
+    //     title,
+    //     artist,
+    //     album,
+    //     date,
+    //     channel,
+    //     channels,
+    //     start_time,
+    //     duration,
+    //     sample_rate,
+    //     source_url,
+    //     thumbnail,
+    // };
+
+    Ok(aux_metadata)
 }

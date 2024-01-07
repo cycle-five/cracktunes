@@ -53,7 +53,10 @@ pub async fn send_now_playing(
             tracing::warn!("track handle found, dropping mutex guard");
             drop(mutex_guard);
             let embed = if let Some(metadata2) = metadata {
-                create_now_playing_embed_metadata(cur_position, metadata2)
+                create_now_playing_embed_metadata(
+                    cur_position,
+                    crate::commands::MyAuxMetadata::Data(metadata2),
+                )
             } else {
                 create_now_playing_embed(&track_handle).await
             };

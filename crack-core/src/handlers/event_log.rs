@@ -222,20 +222,20 @@ pub async fn handle_event(
             )
         }
         FullEvent::AutoModRuleCreate { rule } => log_event!(
-            log_unimplemented_event,
+            log_automod_rule_create,
             guild_settings,
             event_in,
-            &(event_name, rule),
+            &rule,
             &rule.guild_id,
             &ctx.http,
             event_log,
             event_name
         ),
         FullEvent::AutoModRuleUpdate { rule } => log_event!(
-            log_unimplemented_event,
+            log_automod_rule_update,
             guild_settings,
             event_in,
-            &(event_name, rule),
+            &(event_name.to_string(), rule.clone()),
             &rule.guild_id,
             &ctx.http,
             event_log,

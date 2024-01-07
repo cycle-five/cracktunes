@@ -153,6 +153,64 @@ impl Playlist {
         .await
     }
 
+    /// Get all tracks in a playlist
+    pub async fn get_tracks_in_playlist(
+        pool: &PgPool,
+        playlist_id: i32,
+    ) -> Result<Vec<PlaylistTrack>, sqlx::Error> {
+        sqlx::query_as!(
+            PlaylistTrack,
+            r#"
+                SELECT * FROM playlist_track
+                WHERE playlist_id = $1"#,
+            playlist_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn get_track_metadata_for_playlist(
+        pool: &PgPool,
+        playlist_id: i32,
+    ) -> Result<Vec<crate::db::Metadata>, sqlx::Error> {
+        sqlx::query_as!(
+            crate::db::MetadataRead,
+            r#"
+                SELECT
+                    metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+                FROM
+                    (metadata INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id)
+                WHERE
+                    playlist_track.playlist_id = $1"#,
+            playlist_id,
+        )
+        .fetch_all(pool)
+        .await
+        .map(|r| r.into_iter().map(|r| r.into()).collect())
+    }
+
+    pub async fn get_track_metadata_for_playlist_name(
+        pool: &PgPool,
+        playlist_name: String,
+        user_id: i64,
+    ) -> Result<Vec<crate::db::Metadata>, sqlx::Error> {
+        sqlx::query_as!(
+            crate::db::MetadataRead,
+            r#"
+                SELECT
+                    metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+                FROM
+                    (metadata INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id INNER JOIN playlist ON playlist_track.playlist_id = playlist.id)
+                WHERE playlist.name = $1 AND playlist.user_id = $2"#,
+            playlist_name,
+            user_id,
+        )
+        .fetch_all(pool)
+        .await
+        .map(|r| r.into_iter().map(|r| r.into()).collect())
+    }
+
+    /// Delete a playlist by playlist name and user ID
     pub async fn delete_playlist_by_name(
         pool: &PgPool,
         playlist_name: String,

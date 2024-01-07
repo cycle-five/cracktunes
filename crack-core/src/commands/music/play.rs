@@ -1282,6 +1282,7 @@ impl Default for MyAuxMetadata {
     }
 }
 
+/// Build an embed for the curre
 async fn build_queued_embed(
     title: &str,
     track: &TrackHandle,

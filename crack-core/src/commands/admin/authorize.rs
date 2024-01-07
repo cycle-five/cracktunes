@@ -1,3 +1,4 @@
+use crate::errors::CrackedError;
 use crate::utils::check_reply;
 use crate::Context;
 use crate::Error;
@@ -13,7 +14,7 @@ pub async fn authorize(
     let guild_id = ctx.guild_id().unwrap();
     // let data = ctx.data();
 
-    let asdf = ctx
+    let guild_settings = ctx
         .data()
         .guild_settings_map
         .write()
@@ -24,17 +25,12 @@ pub async fn authorize(
         })
         .or_default()
         .clone();
-    asdf.save().await?;
-    // ctx.data()
-    //     .guild_settings_map
-    //     .read()
-    //     .unwrap()
-    //     .clone()
-    //     .get(&guild_id)
-    //     .unwrap()
-    //     .await?;
+    let pool = ctx.data().database_pool.clone().ok_or({
+        tracing::error!("No database pool");
+        CrackedError::Other("No database pool")
+    })?;
+    guild_settings.save(&pool).await?;
 
-    //ctx.send("User authorized").await;
     check_reply(
         ctx.send(
             CreateReply::default()

@@ -5,6 +5,7 @@ use self::serenity::{
     model::prelude::{ActionRowComponent, InputTextStyle},
 };
 use crate::{
+    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     messaging::messages::{
         DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
@@ -117,7 +118,16 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
             }
 
             guild_settings.update_domains();
-            guild_settings.save().await.unwrap();
+            let pool = ctx
+                .data()
+                .database_pool
+                .clone()
+                .ok_or_else(|| {
+                    tracing::error!("No database pool");
+                    CrackedError::Other("No database pool")
+                })
+                .unwrap();
+            guild_settings.save(&pool).await.unwrap();
 
             // it's now safe to close the modal, so send a response to it
             int.create_response(
