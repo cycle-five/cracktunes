@@ -25,7 +25,6 @@ services:
     depends_on:
       - postgres
     network_mode: "host"
-    command: [""]
     # links:
     #   - postgres
     # restart: always
