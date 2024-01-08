@@ -23,7 +23,7 @@ WORKDIR "/app"
 
 COPY . .
 # RUN ls -al . && ls -al data
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
+ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
@@ -37,16 +37,20 @@ RUN apt-get update -y \
        && apt-get clean -y \
        && rm -rf /var/lib/apt/lists/*
 
-RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.12.20/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
+RUN curl -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.12.30/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
 
 RUN yt-dlp -v -h
 
-COPY --from=build /app/target/release/cracktunes .
-COPY --from=build /app/data  /data
+WORKDIR "/app"
+
+COPY --from=build /app/target/release/cracktunes /app/cracktunes
+COPY --from=build /app/data  /app/data
+COPY --from=build /app/.env /app/.env
+COPY --from=build /app/cracktunes.toml /app/cracktunes.toml
 # RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
 RUN . "/app/.env"
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
+ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
 ENV RUST_BACKTRACE 1
 CMD ["/app/cracktunes"]

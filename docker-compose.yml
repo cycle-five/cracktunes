@@ -1,8 +1,28 @@
 # docker-compose.yml
 version: '2'
 services:
-
-  service-name:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    ports:
+      - ${PGPORT}:${PGPORT}
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - PGPORT=${PGPORT}
+    restart: always
+    network_mode: "host"
+  cracktunes:
+    container_name: cracktunes
     image: cyclefive/cracktunes:latest
+    volumes:
+      - /data/:/data
     env_file:
-    - .env
+      - .env
+    depends_on:
+      - postgres
+    network_mode: "host"
+    # links:
+    #   - postgres
+    # restart: always
