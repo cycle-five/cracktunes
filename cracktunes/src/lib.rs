@@ -22,12 +22,29 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "clear",
         "remove",
         "grab",
-        "playlist",
         "voteskip",
         "version",
         "help",
         "autopause",
         "autoplay",
+    ]
+}
+
+/// Playlist related commands
+pub fn get_playlist_commands() -> Vec<&'static str> {
+    vec![
+        "playlist",
+        "playlist_create",
+        "playlist_delete",
+        "playlist_add",
+        "playlist_remove",
+        "playlist_list",
+        "playlist_play",
+        "playlist_queue",
+        "playlist_clear",
+        "playlist_rename",
+        "playlist_import",
+        "playlist_export",
     ]
 }
 
@@ -45,7 +62,29 @@ pub fn get_mod_commands() -> Vec<(&'static str, Vec<&'static str>)> {
 
 /// Admin commands list
 pub fn get_admin_commands() -> Vec<&'static str> {
-    vec!["set_vc_size", "role", "timeout", "mute", "unmute"]
+    vec![
+        "audit_logs",
+        "authorize",
+        "ban",
+        "unban",
+        "create_text_channel",
+        "create_voice_chaneel",
+        "defean",
+        "deauthorize",
+        "delete_channel",
+        "get_active",
+        "kick",
+        "move_users",
+        "set_vc_size",
+        "role",
+        "timeout",
+        "mute",
+        "unmute",
+        "role",
+        "create_role",
+        "assign_role",
+        "delete_role",
+    ]
 }
 
 /// Settings commands list
@@ -55,7 +94,16 @@ pub fn get_settings_commands() -> Vec<&'static str> {
 
 /// Commands only available to the bot owner
 pub fn get_owner_commands() -> Vec<&'static str> {
-    vec!["set_premium", "get_active_vcs"]
+    vec![
+        "set_premium",
+        "get_active_vcs",
+        "broadcast_voice",
+        "debug",
+        "defend",
+        "invite_tracker",
+        "random_mute_lol",
+        "message_cache",
+    ]
     //vec!["shutdown", "eval", "reload", "update"]
 }
 

@@ -125,7 +125,7 @@ pub async fn poise_framework(
             // all playlist commands
             commands::playlist(),
             // all admin commands
-            // commands::admin(),
+            commands::admin(),
             // all settings commands
             commands::settings(),
             // all gambling commands

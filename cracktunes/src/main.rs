@@ -133,7 +133,7 @@ fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     // A layer that logs up to debug events.
-    let debug_file = std::fs::File::create("debug.log");
+    let debug_file = std::fs::File::create("/data/debug.log");
     let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
