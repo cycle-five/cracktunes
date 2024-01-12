@@ -3,6 +3,7 @@ use crate::{Context, Error};
 pub mod get_settings;
 pub mod prefix;
 pub mod print_settings;
+pub mod self_deafen;
 pub mod set_all_log_channel;
 pub mod set_all_log_channel_data;
 pub mod set_all_log_channel_old_data;
@@ -14,6 +15,7 @@ pub mod set_welcome_settings;
 pub use get_settings::*;
 pub use prefix::*;
 pub use print_settings::*;
+pub use self_deafen::*;
 pub use set_all_log_channel::*;
 pub use set_all_log_channel_data::*;
 pub use set_all_log_channel_old_data::*;
@@ -36,6 +38,7 @@ pub use set_welcome_settings::*;
         "set_welcome_settings",
         "set_auto_role",
         "set_premium",
+        "toggle_self_deafen",
     ),
     ephemeral,
     owners_only

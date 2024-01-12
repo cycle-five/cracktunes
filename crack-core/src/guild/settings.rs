@@ -457,12 +457,14 @@ impl GuildSettings {
         Self { premium, ..self }
     }
 
-    pub fn toggle_autopause(&mut self) {
+    pub fn toggle_autopause(&mut self) -> &mut Self {
         self.autopause = !self.autopause;
+        self
     }
 
-    pub fn toggle_self_deafen(&mut self) {
+    pub fn toggle_self_deafen(&mut self) -> &mut Self {
         self.self_deafen = !self.self_deafen;
+        self
     }
 
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {

@@ -134,9 +134,9 @@ impl Spotify {
                     None,
                 )
                 .await?;
-            tracing::warn!("search_result: {:?}", search_result);
+            tracing::trace!("search_result: {:?}", search_result);
             let tracks = Self::search_result_to_track_id(search_result);
-            tracing::warn!("tracks: {:?}", tracks);
+            tracing::warn!("tracks len: {:?}", tracks.len());
             track_ids.append(&mut tracks.clone());
         }
         let recommendations: Recommendations = spotify
