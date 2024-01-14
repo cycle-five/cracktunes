@@ -20,6 +20,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "repeat",
         "shuffle",
         "clear",
+        "clean",
         "remove",
         "grab",
         "voteskip",
