@@ -176,7 +176,7 @@ fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-const SERVICE_NAME: &'static str = "crack-tunes-opentelemetry";
+const SERVICE_NAME: &str = "crack-tunes-opentelemetry";
 
 pub fn init_telemetry(exporter_endpoint: &str) {
     // Create a gRPC exporter
