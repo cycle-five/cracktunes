@@ -1,5 +1,7 @@
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 
+const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
+
 /// Clean up old messages from the bot.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
@@ -14,7 +16,7 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     {
         let now = chrono::Utc::now();
         let diff = now - msg.0;
-        if diff > chrono::Duration::seconds(10 * 60) {
+        if diff > chrono::Duration::seconds(CHAT_CLEANUP_SECONDS as i64) {
             msg.1.delete(&ctx.serenity_context()).await?;
         } else {
             message_cache

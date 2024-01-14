@@ -99,6 +99,7 @@ pub async fn poise_framework(
             commands::autopause(),
             commands::toggle_autoplay(),
             commands::clear(),
+            commands::clean(),
             commands::help(),
             commands::leave(),
             commands::lyrics(),
