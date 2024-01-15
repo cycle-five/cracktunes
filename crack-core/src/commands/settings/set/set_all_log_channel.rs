@@ -1,13 +1,12 @@
-use crate::{
-    commands::set_all_log_channel_data, messaging::message::CrackedMessage,
-    utils::send_response_poise, Context, Error,
-};
+use crate::guild::settings::{GuildSettings, DEFAULT_PREFIX};
+use crate::Data;
+use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 use serenity::all::{Channel, GuildId};
 use serenity::model::id::ChannelId;
 
 /// Set a log channel for a specific guild.
 #[poise::command(prefix_command, owners_only)]
-pub async fn set_log_channel_for_guild(
+pub async fn log_channel_for_guild(
     ctx: Context<'_>,
     #[description = "GuildId to set logging for"] guild_id: GuildId,
     #[description = "ChannelId to sendlogs"] channel_id: ChannelId,
@@ -27,7 +26,7 @@ pub async fn set_log_channel_for_guild(
 
 /// Set a channel to send all logs.
 #[poise::command(prefix_command, owners_only)]
-pub async fn set_all_log_channel(
+pub async fn all_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send all logs"] channel: Option<Channel>,
     #[description = "ChannelId to send all logs"] channel_id: Option<
@@ -51,4 +50,26 @@ pub async fn set_all_log_channel(
     .await?;
 
     Ok(())
+}
+
+/// Internal function to set a log channel for a specific guild.
+pub async fn set_all_log_channel_data(
+    data: &Data,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<GuildSettings, Error> {
+    Ok(data
+        .guild_settings_map
+        .write()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.set_all_log_channel(channel_id.into());
+        })
+        .or_insert({
+            GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None)
+                .set_all_log_channel(channel_id.into())
+                .to_owned()
+        })
+        .to_owned())
 }
