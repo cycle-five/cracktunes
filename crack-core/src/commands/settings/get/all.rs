@@ -7,7 +7,12 @@ use crate::Error;
 
 /// Get the current bot settings for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, owners_only, ephemeral, aliases("settings"))]
+pub async fn all(ctx: Context<'_>) -> Result<(), Error> {
+    get_settings(ctx).await
+}
+
+/// Get the current bot settings for this guild.
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     {

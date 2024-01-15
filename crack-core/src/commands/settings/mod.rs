@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 
-pub mod get_settings;
+pub mod get;
 pub mod prefix;
 pub mod print_settings;
 pub mod self_deafen;
@@ -12,7 +12,7 @@ pub mod set_idle_timeout;
 pub mod set_premium;
 pub mod set_welcome_settings;
 
-pub use get_settings::*;
+pub use get::*;
 pub use prefix::*;
 pub use print_settings::*;
 pub use self_deafen::*;
@@ -28,9 +28,9 @@ pub use set_welcome_settings::*;
 #[poise::command(
     prefix_command,
     subcommands(
+        "get",
         "add_prefix",
         "clear_prefixes",
-        "get_settings",
         "print_settings",
         "set_idle_timeout",
         "set_all_log_channel",
