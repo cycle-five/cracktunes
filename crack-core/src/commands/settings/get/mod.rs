@@ -1,27 +1,32 @@
 use crate::{Context, Error};
 
 pub mod all;
+pub mod get_all_log_channel;
+pub mod get_auto_role;
+pub mod get_idle_timeout;
+pub mod get_premium;
+pub mod get_welcome_settings;
 
 pub use all::*;
+pub use get_auto_role::*;
+pub use get_idle_timeout::*;
+pub use get_premium::*;
+pub use get_welcome_settings::*;
 // pub use prefix::*;
 // pub use print_settings::*;
 // pub use self_deafen::*;
 // pub use set_all_log_channel::*;
-// pub use set_all_log_channel_data::*;
-// pub use set_all_log_channel_old_data::*;
-// pub use set_auto_role::*;
 // pub use set_idle_timeout::*;
-// pub use set_premium::*;
-// pub use set_welcome_settings::*;
 
 /// Settings-get commands
 #[poise::command(
     prefix_command,
     subcommands(
         "all",
-        // "premium",
-        // "auto_role",
-        // "welcome",
+        "premium",
+        "auto_role",
+        "welcome_settings",
+        "idle_timeout",
         // "self_deafen",
         // "log_all",
         // "log_guild"

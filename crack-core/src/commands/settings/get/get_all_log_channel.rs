@@ -4,18 +4,12 @@ use crate::utils::get_guild_name;
 use crate::utils::send_response_poise;
 use crate::{Context, Error};
 
-/// Get the current bot settings for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_all_settings"))]
-pub async fn all(ctx: Context<'_>) -> Result<(), Error> {
-    get_settings(ctx).await
-}
-
-/// Get the current bot settings for this guild.
-pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
+#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_all_log_channel"))]
+pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     {
-        let settings_ro = {
+        let all_log_channel = {
             let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
             let settings = guild_settings_map
                 .entry(guild_id)
@@ -24,12 +18,15 @@ pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
                     Some(ctx.prefix()),
                     get_guild_name(ctx.serenity_context(), guild_id),
                 ));
-            settings.clone()
+            settings.get_all_log_channel()
         };
 
         send_response_poise(
             ctx,
-            CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
+            CrackedMessage::Other(format!(
+                "All Log Channel: {:?}",
+                all_log_channel.unwrap_or_default()
+            )),
         )
         .await?;
     }

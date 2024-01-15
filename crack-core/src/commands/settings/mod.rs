@@ -5,17 +5,13 @@ pub mod prefix;
 pub mod print_settings;
 pub mod self_deafen;
 pub mod set;
-pub mod set_auto_role;
-pub mod set_idle_timeout;
 pub mod set_welcome_settings;
 
-pub use get::*;
+pub use get::get;
 pub use prefix::*;
 pub use print_settings::*;
 pub use self_deafen::*;
-pub use set::*;
-pub use set_auto_role::*;
-pub use set_idle_timeout::*;
+pub use set::set;
 pub use set_welcome_settings::*;
 
 /// Settings commands
@@ -27,10 +23,7 @@ pub use set_welcome_settings::*;
         "add_prefix",
         "clear_prefixes",
         "print_settings",
-        "set_idle_timeout",
         "set_welcome_settings",
-        "set_auto_role",
-        "set_premium",
         "toggle_self_deafen",
     ),
     ephemeral,
