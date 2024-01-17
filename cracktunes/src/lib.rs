@@ -90,7 +90,14 @@ pub fn get_admin_commands() -> Vec<&'static str> {
 
 /// Settings commands list
 pub fn get_settings_commands() -> Vec<&'static str> {
-    vec!["get_settings", "prefix", "add_prefix", "clear_prefixes"]
+    vec![
+        "get",
+        "set",
+        "get_settings",
+        "prefix",
+        "add_prefix",
+        "clear_prefixes",
+    ]
 }
 
 /// Commands only available to the bot owner

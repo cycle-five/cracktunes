@@ -87,33 +87,46 @@ pub async fn summon(
     // FIXME
     // use crate::handlers::voice::register_voice_handlers;
 
-    let _ = register_voice_handlers(buffer, call.clone()).await;
     {
         let mut handler = call.lock().await;
         // unregister existing events and register idle notifier
         handler.remove_all_global_events();
+    }
+    {
+        let _ = register_voice_handlers(buffer, call.clone()).await;
+        let mut handler = call.lock().await;
+        {
+            let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
 
-        let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone();
+            guild_settings_map
+                .entry(guild_id)
+                .and_modify(|guild_settings| {
+                    // guild_settings.channel_id = Some(channel_id);
+                    if guild_settings.volume <= 10.0 {
+                        guild_settings.volume = 70.0;
+                        guild_settings.old_volume = 70.0;
+                    }
+                });
+            let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
+                let timeout = guild_settings.timeout;
+                if timeout > 0 {
+                    let premium = guild_settings.premium;
 
-        let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
-            let timeout = guild_settings.timeout;
-            if timeout > 0 {
-                let premium = guild_settings.premium;
-
-                handler.add_global_event(
-                    Event::Periodic(Duration::from_secs(1), None),
-                    IdleHandler {
-                        http: ctx.serenity_context().http.clone(),
-                        manager: manager.clone(),
-                        channel_id,
-                        guild_id: Some(guild_id),
-                        limit: timeout as usize,
-                        count: Default::default(),
-                        no_timeout: Arc::new(AtomicBool::new(premium)),
-                    },
-                );
-            }
-        });
+                    handler.add_global_event(
+                        Event::Periodic(Duration::from_secs(1), None),
+                        IdleHandler {
+                            http: ctx.serenity_context().http.clone(),
+                            manager: manager.clone(),
+                            channel_id,
+                            guild_id: Some(guild_id),
+                            limit: timeout as usize,
+                            count: Default::default(),
+                            no_timeout: Arc::new(AtomicBool::new(premium)),
+                        },
+                    );
+                }
+            });
+        }
 
         handler.add_global_event(
             Event::Track(TrackEvent::End),
