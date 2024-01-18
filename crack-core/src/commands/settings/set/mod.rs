@@ -6,11 +6,13 @@ pub mod set_auto_role;
 pub mod set_idle_timeout;
 pub mod set_premium;
 // pub mod welcome;
+pub mod set_volume;
 
 pub use set_all_log_channel::*;
 pub use set_auto_role::*;
 pub use set_idle_timeout::*;
 pub use set_premium::*;
+pub use set_volume::*;
 // pub use welcome::*;
 // pub use prefix::*;
 // pub use print_settings::*;
@@ -25,7 +27,8 @@ pub use set_premium::*;
     subcommands(
         "log_channel_for_guild",
         "all_log_channel",
-        "set_premium",
+        "premium",
+        "volume",
         "auto_role",
         "idle_timeout"
         // "welcome",

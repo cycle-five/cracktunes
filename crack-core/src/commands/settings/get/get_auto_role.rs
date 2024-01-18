@@ -15,7 +15,7 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
             || {
                 send_response_poise(
                     ctx,
-                    CrackedMessage::Other(format!("No auto role set for this server.")),
+                    CrackedMessage::Other("No auto role set for this server.".to_string()),
                 )
             },
             |role_id| {
@@ -26,7 +26,7 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
             },
         )
         .await
-        .map_err(|e| e.into())
+        .map_err(|e| e)
         .map(|_| ())
 }
 

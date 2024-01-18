@@ -7,9 +7,9 @@ use crate::Context;
 use crate::Error;
 
 /// Set the premium status of the guild.
-#[poise::command(prefix_command, owners_only, aliases("premium"))]
+#[poise::command(prefix_command, owners_only)]
 #[cfg(not(tarpaulin_include))]
-pub async fn set_premium(
+pub async fn premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] set_premium: String,
 ) -> Result<(), Error> {
