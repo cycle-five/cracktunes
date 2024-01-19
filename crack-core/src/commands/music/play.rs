@@ -1317,7 +1317,7 @@ async fn build_queued_embed(
     CreateEmbed::new()
         .title(title)
         .thumbnail(thumbnail)
-        .field(title_text, "", false)
+        .field("title_text", title_text, false)
         .footer(CreateEmbedFooter::new(footer_text))
 }
 

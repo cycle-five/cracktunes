@@ -195,7 +195,7 @@ impl EventHandler for TrackEndHandler {
         .await
         {
             Ok(message) => {
-                ctx.data().add_msg_to_cache(self.guild_id, message).await;
+                self.data.add_msg_to_cache(self.guild_id, message);
                 tracing::warn!("Sent now playing message");
             }
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
