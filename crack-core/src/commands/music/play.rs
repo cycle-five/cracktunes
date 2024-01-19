@@ -824,7 +824,7 @@ async fn match_mode(
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
                 //     .ok_or(CrackedError::PlayListFail)?;
-                let urls = vec!["".to_string()];
+                let urls = ["".to_string()];
 
                 for url in urls.iter() {
                     let queue = enqueue_track_pgwrite(

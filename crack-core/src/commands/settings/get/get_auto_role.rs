@@ -26,7 +26,6 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
             },
         )
         .await
-        .map_err(|e| e)
         .map(|_| ())
 }
 

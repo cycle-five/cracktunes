@@ -254,7 +254,7 @@ pub async fn log_user_update(
     let title = format!("User Updated: {}", new.name);
     let description = format!(
         "Old User: {}\nNew User: {}",
-        old.as_ref()
+        old.clone()
             .map(|x| x.name.clone())
             .unwrap_or_else(|| "None".to_string()),
         new.name
