@@ -1,16 +1,18 @@
 use crate::{Context, Error};
 
 // pub mod auto_role;
+// pub mod welcome;
 pub mod set_all_log_channel;
 pub mod set_auto_role;
 pub mod set_idle_timeout;
+pub mod set_join_leave_log_channel;
 pub mod set_premium;
-// pub mod welcome;
 pub mod set_volume;
 
 pub use set_all_log_channel::*;
 pub use set_auto_role::*;
 pub use set_idle_timeout::*;
+pub use set_join_leave_log_channel::*;
 pub use set_premium::*;
 pub use set_volume::*;
 // pub use welcome::*;
@@ -26,6 +28,7 @@ pub use set_volume::*;
     prefix_command,
     subcommands(
         "log_channel_for_guild",
+        "join_leave_log_channel",
         "all_log_channel",
         "premium",
         "volume",

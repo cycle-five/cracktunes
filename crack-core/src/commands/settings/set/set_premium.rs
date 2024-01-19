@@ -13,13 +13,13 @@ pub async fn premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] set_premium: String,
 ) -> Result<(), Error> {
-    set_premium_int(ctx, set_premium).await?;
+    set_premium_internal(ctx, set_premium).await?;
 
     Ok(())
 }
 
 /// Set the premium status of the guild.
-pub async fn set_premium_int(
+pub async fn set_premium_internal(
     ctx: Context<'_>,
     set_premium: String,
 ) -> Result<GuildSettings, Error> {
