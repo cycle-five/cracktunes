@@ -5,7 +5,7 @@ use crate::{
 /// Toggle the self deafen for the bot.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 #[cfg(not(tarpaulin_include))]
-pub async fn toggle_self_deafen(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn self_deafen(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let res = ctx

@@ -3,16 +3,16 @@ use crate::{Context, Error};
 pub mod get;
 pub mod prefix;
 pub mod print_settings;
-pub mod self_deafen;
 pub mod set;
 pub mod set_welcome_settings;
+pub mod toggle;
 
 pub use get::get;
 pub use prefix::*;
 pub use print_settings::*;
-pub use self_deafen::*;
 pub use set::set;
 pub use set_welcome_settings::*;
+pub use toggle::*;
 
 /// Settings commands
 #[poise::command(
@@ -20,11 +20,11 @@ pub use set_welcome_settings::*;
     subcommands(
         "set",
         "get",
+        "toggle",
         "add_prefix",
         "clear_prefixes",
         "print_settings",
         "set_welcome_settings",
-        "toggle_self_deafen",
     ),
     ephemeral,
     owners_only

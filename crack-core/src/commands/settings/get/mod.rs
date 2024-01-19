@@ -31,8 +31,6 @@ pub use log_channels::*;
         "welcome_settings",
         "idle_timeout",
         // "self_deafen",
-        // "log_all",
-        // "log_guild"
     ),
     ephemeral,
     owners_only
