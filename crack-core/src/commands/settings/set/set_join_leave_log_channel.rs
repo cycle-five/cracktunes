@@ -1,12 +1,9 @@
-use serenity::all::Channel;
-use serenity::builder::CreateChannel;
-
 use crate::errors::CrackedError;
-use crate::guild::settings::GuildSettingsMap;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::Channel;
 
 /// Set the join-leave log channel.
 #[poise::command(prefix_command, owners_only, ephemeral)]

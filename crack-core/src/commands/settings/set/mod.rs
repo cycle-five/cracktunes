@@ -1,6 +1,5 @@
 use crate::{Context, Error};
 
-// pub mod auto_role;
 // pub mod welcome;
 pub mod set_all_log_channel;
 pub mod set_auto_role;
@@ -19,8 +18,6 @@ pub use set_volume::*;
 // pub use prefix::*;
 // pub use print_settings::*;
 // pub use self_deafen::*;
-// pub use set_all_log_channel::*;
-// pub use set_auto_role::*;
 // pub use set_welcome_settings::*;
 
 /// Settings-get commands
