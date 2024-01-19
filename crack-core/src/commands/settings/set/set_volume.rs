@@ -1,17 +1,25 @@
+use crate::{
+    guild::settings::GuildSettingsMapParam,
+    guild::settings::{GuildSettings, DEFAULT_PREFIX},
+    Context, Error,
+};
 use serenity::all::GuildId;
 
-use crate::{Context, Data, Error};
-
 /// Get the current `volume` and `old_volume` setting for the guild.
-pub fn set_volume(data: &Data, guild_id: GuildId, vol: f32) -> (f32, f32) {
+pub fn set_volume(
+    guild_settings_map: GuildSettingsMapParam,
+    guild_id: GuildId,
+    vol: f32,
+) -> (f32, f32) {
     let guild_settings = {
-        let mut asdf = data.guild_settings_map.write().unwrap();
-        asdf.entry(guild_id)
+        let mut guild_settings_mut = guild_settings_map.write().unwrap();
+        guild_settings_mut
+            .entry(guild_id)
             .and_modify(|e| {
                 e.volume = vol;
                 e.old_volume = e.volume;
             })
-            .or_default()
+            .or_insert(GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None))
             .clone()
     };
     (guild_settings.volume, guild_settings.old_volume)
@@ -25,8 +33,11 @@ pub async fn volume(
     #[description = "Volume to set the bot settings to"] volume: f32,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
-    let (vol, old_vol) = set_volume(data, guild_id, volume);
+
+    let (vol, old_vol) = {
+        let guild_settings_map = ctx.data().guild_settings_map.clone();
+        set_volume(guild_settings_map, guild_id, volume)
+    };
 
     ctx.say(format!("vol: {}, old_vol: {}", vol, old_vol))
         .await

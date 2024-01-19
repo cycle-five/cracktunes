@@ -25,3 +25,15 @@ pub async fn get_guild_name(
         .map(|x| x.name)
         .map_err(|e| e.into())
 }
+
+// Get the guild name from the guild id and an http client.
+pub async fn get_guild_name_from_guild_id(
+    http: &serenity::http::Http,
+    guild_id: serenity::model::id::GuildId,
+) -> Result<String, CrackedError> {
+    guild_id
+        .to_partial_guild(http)
+        .await
+        .map(|x| x.name)
+        .map_err(|e| e.into())
+}

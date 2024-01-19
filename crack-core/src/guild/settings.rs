@@ -241,7 +241,7 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
@@ -270,7 +270,6 @@ pub struct GuildSettings {
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
 }
-
 fn default_false() -> bool {
     false
 }
@@ -498,8 +497,9 @@ impl GuildSettings {
         }
     }
 
-    pub fn authorize_user(&mut self, user_id: i64) {
+    pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
         self.authorized_users.entry(user_id as u64).or_insert(0);
+        self
     }
 
     pub fn deauthorize_user(&mut self, user_id: i64) {
@@ -840,3 +840,6 @@ pub struct AtomicU16Key;
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
+
+pub type GuildSettingsMapParam =
+    std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
