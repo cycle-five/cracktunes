@@ -41,17 +41,18 @@ impl User {
         pool: &PgPool,
         user_id: i64,
         username: String,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"INSERT INTO public.user (id, username, bot, created_at, updated_at, last_seen)
-            VALUES ($1, $2, false, now(), now(), now())
+    ) -> Result<User, sqlx::Error> {
+        sqlx::query_as!(
+            User,
+            r#"INSERT INTO public.user (id, username, discriminator, avatar_url, bot, created_at, updated_at, last_seen)
+            VALUES ($1, $2, 0, '', false, now(), now(), now())
             ON CONFLICT (id) DO UPDATE SET last_seen = now(), username = $2
+            RETURNING id, username, discriminator, avatar_url, bot, created_at, updated_at, last_seen
             "#,
             user_id,
             username,
         )
-        .execute(pool)
-        .await?;
-        Ok(())
+        .fetch_one(pool)
+        .await
     }
 }
