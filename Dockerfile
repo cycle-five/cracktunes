@@ -23,7 +23,7 @@ WORKDIR "/app"
 
 COPY . .
 # RUN ls -al . && ls -al data
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
+# ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
