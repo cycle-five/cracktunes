@@ -49,12 +49,12 @@ fn read_lines(filename: &str) -> Vec<String> {
 pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
     // load names from file
     // let names: Vec<String> = read_lines("200_names_final.txt")
-    let mut names: Vec<String> = read_lines("bolsheviks.txt")
+    let mut names: Vec<String> = read_lines("bell_labs_final.txt")
         .iter()
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
     // let n = names.len();
-    ctx.say("The Bolshevicks are arriving...").await?;
+    ctx.say("Welcome to Bell Labs...").await?;
     match ctx.guild_id() {
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
@@ -62,7 +62,14 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             let mut backoff = Duration::from_secs(1);
             // Half a second
             let sleep = Duration::from_millis(100);
+            let to_skip = vec![
+                UserId::new(981535296669765652),
+                UserId::new(491560191624740865),
+            ];
             for member in members {
+                if to_skip.contains(&member.user.id) {
+                    continue;
+                }
                 let r = rand::random::<usize>() % names.len();
                 let _until =
                     DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
@@ -71,7 +78,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
                     .edit_member(
                         &ctx,
                         member.user.id,
-                        EditMember::new().nickname(names.swap_remove(r).clone()),
+                        EditMember::new().nickname(names.remove(r).clone()),
                     )
                     .await
                 {
@@ -80,7 +87,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
                     backoff *= 2;
                     // Handle error, send error message
                     ctx.say(format!(
-                        "Party member not in compliance with the revolution! {}: {}",
+                        "No cocaine in the lab! {}: {}",
                         member.mention(),
                         e
                     ))
@@ -92,7 +99,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
                     tokio::time::sleep(sleep).await;
                     // Send success message
                     ctx.say(format!(
-                        "Welcome to the Revolution Comrade {}!",
+                        "Welcome to computer revolution {}!",
                         member.mention()
                     ))
                     .await?;
