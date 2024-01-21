@@ -8,14 +8,14 @@ use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "add")]
+#[poise::command(prefix_command, slash_command, rename = "add_to")]
 pub async fn add_to_playlist(
     ctx: Context<'_>,
-    #[description = "Track to add to playlist"] track: String,
+    #[description = "Playlist to add current track to"] playlist: String,
 ) -> Result<(), Error> {
     use crate::{db::aux_metadata_to_db_structures, errors::CrackedError};
 
-    let _ = track;
+    let _ = playlist;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(ctx.guild_id().unwrap()).unwrap();
     let queue = call.lock().await.queue().clone();
@@ -38,7 +38,7 @@ pub async fn add_to_playlist(
     let channel_id = ctx.channel_id().get() as i64;
     let _track = metadata.track.clone().unwrap();
     let user_id = ctx.author().id.get() as i64;
-    let playlist_name = format!("{}-0", user_id);
+    let playlist_name = format!("{}-{}", user_id, playlist);
     // Database pool to execute queries
     let db_pool: PgPool = ctx.data().database_pool.clone().unwrap();
 
