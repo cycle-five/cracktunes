@@ -1284,7 +1284,7 @@ impl Default for MyAuxMetadata {
 
 /// Build an embed for the curre
 async fn build_queued_embed(
-    title: &str,
+    author_title: &str,
     track: &TrackHandle,
     estimated_time: Duration,
 ) -> CreateEmbed {
@@ -1304,7 +1304,7 @@ async fn build_queued_embed(
         .clone()
         .unwrap_or(QUEUE_NO_SRC.to_string());
 
-    let title_text = &format!("[**{}**]({})", meta_title, source_url);
+    // let title_text = &format!("[**{}**]({})", meta_title, source_url);
 
     let footer_text = format!(
         "{}{}\n{}{}",
@@ -1314,10 +1314,13 @@ async fn build_queued_embed(
         get_human_readable_timestamp(Some(estimated_time))
     );
 
+    let author = CreateEmbedAuthor::new(author_title);
+
     CreateEmbed::new()
-        .title(title)
+        .author(author)
+        .title(meta_title)
+        .url(source_url)
         .thumbnail(thumbnail)
-        .field("title_text", title_text, false)
         .footer(CreateEmbedFooter::new(footer_text))
 }
 
@@ -1531,8 +1534,8 @@ pub async fn enqueue_track_pgwrite(
         };
 
         match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
-            Ok(x) => {
-                tracing::info!("Users::insert_or_update: {:?}", x);
+            Ok(_) => {
+                tracing::info!("Users::insert_or_update");
             }
             Err(e) => {
                 tracing::error!("Users::insert_or_update error: {}", e);

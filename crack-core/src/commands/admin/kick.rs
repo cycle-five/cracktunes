@@ -62,7 +62,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             let mut backoff = Duration::from_secs(1);
             // Half a second
             let sleep = Duration::from_millis(100);
-            let to_skip = vec![
+            let to_skip = [
                 UserId::new(981535296669765652),
                 UserId::new(491560191624740865),
             ];
