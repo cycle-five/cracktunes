@@ -4,8 +4,8 @@ use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
-    CurrentUser, GuildChannel, GuildId, Http, Member, Message, MessageId, MessageUpdateEvent,
-    Presence, Role, RoleId,
+    CurrentUser, Guild, GuildChannel, GuildId, Http, Member, Message, MessageId,
+    MessageUpdateEvent, Presence, Role, RoleId,
 };
 use std::sync::Arc;
 
@@ -25,6 +25,36 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         .blue()
     );
     Ok(())
+}
+
+/// Logs a guild create event.
+pub async fn log_guild_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&Guild, &Option<bool>),
+) -> Result<(), Error> {
+    let &(guild, is_new) = log_data;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let title = format!("Guild Create: {}", guild.name);
+    let is_new_str = if !is_new.is_some() || !is_new.unwrap() {
+        "not "
+    } else {
+        ""
+    };
+    let description = format!("Guild is {}new", is_new_str);
+    let id = guild.id.to_string();
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &id,
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Logs a guild role cteate event.
