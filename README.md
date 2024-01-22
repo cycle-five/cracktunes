@@ -15,7 +15,7 @@
 * Create a bot account
 * Copy the **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively.
 * *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
-* *Optional* define `OPENAI_KEY` for chatgpt support.
+* *Optional* define `OPENAI_API_KEY` for chatgpt support.
 * Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
 
 ### Docker

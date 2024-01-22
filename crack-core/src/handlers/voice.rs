@@ -117,13 +117,15 @@ impl VoiceEventHandler for Receiver {
                 // SSRCs and map the SSRC to the User ID and maintain this state.
                 // Using this map, you can map the `ssrc` in `voice_packet`
                 // to the user ID and handle their audio packets separately.
-                println!(
+                tracing::warn!(
                     "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
-                    user_id, ssrc, speaking,
+                    user_id,
+                    ssrc,
+                    speaking,
                 );
                 // You can implement logic here which reacts to a user starting
                 // or stopping speaking, and to map their SSRC to User ID.
-                println!(
+                tracing::warn!(
                     "Source {} has {} speaking.",
                     ssrc,
                     if speaking.microphone() || speaking.soundshare() || speaking.priority() {
@@ -162,11 +164,12 @@ impl VoiceEventHandler for Receiver {
                 // } else {
                 //     println!("RTP packet, but no audio. Driver may not be configured to decode.");
                 // }
+                tracing::trace!("RTP packet received: {:?}", data.packet);
             }
             Ctx::RtcpPacket(data) => {
                 // An event which fires for every received rtcp packet,
                 // containing the call statistics and reporting information.
-                println!("RTCP packet received: {:?}", data.packet);
+                tracing::trace!("RTCP packet received: {:?}", data.packet);
             }
             Ctx::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
                 // You can implement your own logic here to handle a user who has left the
@@ -174,7 +177,7 @@ impl VoiceEventHandler for Receiver {
                 // You will typically need to map the User ID to their SSRC; observed when
                 // first speaking.
 
-                println!("Client disconnected: user {:?}", user_id);
+                tracing::warn!("Client disconnected: user {:?}", user_id);
             }
             _ => {
                 // We won't be registering this struct for any more event classes.

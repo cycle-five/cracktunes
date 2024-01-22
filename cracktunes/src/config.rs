@@ -12,7 +12,7 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::{model::permissions::Permissions, Client, UserId};
+use poise::serenity_prelude::{model::permissions::Permissions, Client};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
@@ -20,6 +20,8 @@ use poise::{
 use songbird::serenity::SerenityInit;
 use std::sync::RwLock;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+
+use crate::{get_mod_commands, get_music_commands};
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -97,6 +99,7 @@ pub async fn poise_framework(
             commands::autopause(),
             commands::toggle_autoplay(),
             commands::clear(),
+            commands::clean(),
             commands::help(),
             commands::leave(),
             commands::lyrics(),
@@ -107,7 +110,7 @@ pub async fn poise_framework(
             commands::ping(),
             commands::remove(),
             commands::resume(),
-            // commands::repeat(),
+            commands::repeat(),
             commands::servers(),
             commands::seek(),
             commands::skip(),
@@ -118,8 +121,8 @@ pub async fn poise_framework(
             commands::volume(),
             // commands::voteskip(),
             commands::queue(),
-            #[cfg(feature = "osint")]
-            crack_osint::osint(),
+            // #[cfg(feature = "osint")]
+            // crack_osint::osint(),
             // all playlist commands
             commands::playlist(),
             // all admin commands
@@ -188,35 +191,28 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = ctx.command().qualified_name.clone();
                 let lit_command = command.trim().to_string();
-                let music_commands = vec![
-                    "play",
-                    "pause",
-                    "resume",
-                    "stop",
-                    "skip",
-                    "seek",
-                    "summon",
-                    "leave",
-                    "lyrics",
-                    "volume",
-                    "now_playing",
-                    "queue",
-                    "repeat",
-                    "shuffle",
-                    "clear",
-                    "remove",
-                    "grab",
-                    "playlist",
-                    "voteskip",
-                    "version",
-                    "help",
-                    "autopause",
-                    "autoplay",
-                ];
-                // let mod_commands = vec!["settings", "admin"];
+                let music_commands = get_music_commands();
+                let mod_commands: HashMap<&str, Vec<&str>> =
+                    get_mod_commands().into_iter().collect();
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
-                let mod_command = command.eq("admin") && lit_command.contains("timeout");
+                let first = lit_command.split_whitespace().next().unwrap_or_default();
+                let second = lit_command.split_whitespace().nth(1);
+                let mut mod_command = false;
+                for cmd in mod_commands.keys() {
+                    if cmd.eq(&first)
+                        && second.is_some()
+                        && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
+                    {
+                        mod_command = true;
+                        break;
+                    }
+                }
+                // let mod_command = mod_commands
+                //     .get(first)
+                //     .unwrap()
+                //     .contains(&lit_command.as_str());
+                //lit_command.eq("settings") && mod_commands.contains_key(&lit_command.as_str());
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
                     .data()
@@ -262,30 +258,32 @@ pub async fn poise_framework(
                     return Ok(true);
                 }
 
-                //let user_id = ctx.author().id.as_u64();
-                let guild_id = ctx.guild_id().unwrap_or_default();
+                Ok(false)
 
-                ctx.data()
-                    .guild_settings_map
-                    .read()
-                    .unwrap()
-                    .get(&guild_id)
-                    .map_or_else(
-                        || {
-                            tracing::info!("Guild not found in guild settings map");
-                            Ok(false)
-                        },
-                        |guild_settings| {
-                            tracing::info!("Guild found in guild settings map");
-                            Ok(guild_settings.authorized_users.is_empty()
-                                || guild_settings.authorized_users.contains_key(&user_id))
-                        },
-                    )
+                // //let user_id = ctx.author().id.as_u64();
+                // let guild_id = ctx.guild_id().unwrap_or_default();
+
+                // ctx.data()
+                //     .guild_settings_map
+                //     .read()
+                //     .unwrap()
+                //     .get(&guild_id)
+                //     .map_or_else(
+                //         || {
+                //             tracing::info!("Guild not found in guild settings map");
+                //             Ok(false)
+                //         },
+                //         |guild_settings| {
+                //             tracing::info!("Guild found in guild settings map");
+                //             Ok(guild_settings.authorized_users.is_empty()
+                //                 || guild_settings.authorized_users.contains_key(&user_id))
+                //         },
+                //     )
             })
         }),
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
-        skip_checks_for_owners: true,
+        skip_checks_for_owners: false,
         event_handler: |ctx, event, framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
@@ -396,9 +394,17 @@ pub async fn poise_framework(
         tracing::warn!("Received Ctrl-C, shutting down...");
         {
             let guilds = save_data.guild_settings_map.read().unwrap().clone();
+            let pool = save_data
+                .database_pool
+                .clone()
+                .ok_or({
+                    tracing::error!("No database pool");
+                    CrackedError::Other("No database pool")
+                })
+                .unwrap();
             for (k, v) in guilds {
                 tracing::warn!("Saving Guild: {}", k);
-                match v.save().await {
+                match v.save(&pool).await {
                     Ok(_) => {}
                     Err(e) => {
                         tracing::error!("Error saving guild settings: {}", e);
@@ -406,24 +412,23 @@ pub async fn poise_framework(
                 }
             }
         }
-        // .for_each(|(k, v)| {
-        //     tracing::warn!("Saving Guild: {}", k);
-        //     v.save().expect("Error saving guild settings");
-        // });
+
         shard_manager.clone().shutdown_all().await;
 
         exit(0);
     });
 
-    let shard_manager_2 = client.shard_manager.clone();
-    tokio::spawn(async move {
-        loop {
-            let count = shard_manager_2.shards_instantiated().await.len();
-            println!("Shard count instantiated: {}", count);
+    // let shard_manager_2 = client.shard_manager.clone();
+    // tokio::spawn(async move {
+    //     loop {
+    //         let count = shard_manager_2.shards_instantiated().await.len();
+    //         let intents = shard_manager_2.intents();
 
-            tokio::time::sleep(Duration::from_millis(5000)).await;
-        }
-    });
+    //         tracing::warn!("Shards: {}, Intents: {:?}", count, intents);
+
+    //         tokio::time::sleep(Duration::from_secs(10)).await;
+    //     }
+    // });
 
     Ok(client)
 }

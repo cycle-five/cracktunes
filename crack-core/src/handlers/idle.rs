@@ -45,6 +45,7 @@ impl EventHandler for IdleHandler {
 
             if self.manager.remove(guild_id).await.is_ok() {
                 self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
+                return Some(Event::Cancel);
             }
         }
         None

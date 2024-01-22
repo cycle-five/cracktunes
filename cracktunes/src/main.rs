@@ -1,19 +1,24 @@
 use config_file::FromConfigFile;
-use crack_config::poise_framework;
+use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
 use crack_core::metrics::REGISTRY;
 use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
+use cracktunes::poise_framework;
+use opentelemetry::global::set_text_map_propagator;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::{trace, Resource};
 use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
 use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
+use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 
-use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
-
-use tracing_subscriber::{filter, prelude::*};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Main function, get everything kicked off.
@@ -102,7 +107,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
-    let openai_key = load_key("OPENAI_KEY".to_string()).ok();
+    let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -117,7 +122,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         discord_app_id,
         spotify_client_id,
         spotify_client_secret,
-        openai_key,
+        openai_api_key,
     });
 
     Ok(config_with_creds.clone())
@@ -134,7 +139,7 @@ fn init_logging() {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
     // A layer that logs up to debug events.
-    let debug_file = std::fs::File::create("debug.log");
+    let debug_file = std::fs::File::create("/data/debug.log");
     let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
@@ -169,4 +174,45 @@ fn init_logging() {
         .init();
 
     tracing::warn!("Hello, world!");
+}
+
+const SERVICE_NAME: &str = "crack-tunes-opentelemetry";
+
+pub fn init_telemetry(exporter_endpoint: &str) {
+    // Create a gRPC exporter
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(exporter_endpoint);
+
+    // Define a tracer
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(exporter)
+        .with_trace_config(
+            trace::config().with_resource(Resource::new(vec![KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                SERVICE_NAME.to_string(),
+            )])),
+        )
+        .install_batch(opentelemetry_sdk::runtime::Tokio)
+        .expect("Error: Failed to initialize the tracer.");
+
+    // Define a subscriber.
+    let subscriber = Registry::default();
+    // Level filter layer to filter traces based on level (trace, debug, info, warn, error).
+    let level_filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO"));
+    // Layer for adding our configured tracer.
+    let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    // Layer for printing spans to stdout
+    let formatting_layer = BunyanFormattingLayer::new(SERVICE_NAME.to_string(), std::io::stdout);
+
+    // global::set_text_map_propagator(TraceContextPropagator::new());
+    set_text_map_propagator(TraceContextPropagator::new());
+
+    subscriber
+        .with(level_filter_layer)
+        .with(tracing_layer)
+        .with(JsonStorageLayer)
+        .with(formatting_layer)
+        .init()
 }

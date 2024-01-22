@@ -6,7 +6,7 @@ use chatgpt::{
 use url::Url;
 
 pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
-    let key = std::env::var("OPENAI_KEY")?;
+    let key = std::env::var("OPENAI_API_KEY")?;
 
     let content = query;
     tracing::info!("{:?}", content);

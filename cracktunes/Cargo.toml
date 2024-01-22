@@ -1,18 +1,17 @@
 [package]
 name = "cracktunes"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-default = ["playlist", "crack-config", "crack-gpt"]
+default = ["playlist", "crack-gpt"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 
 
 [dependencies]
 crack-core = { workspace = true }
-crack-config = { workspace = true, optional = true }
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
@@ -21,16 +20,25 @@ tokio = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
 tracing = { workspace = true }
+tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-futures = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+tracing-bunyan-formatter = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
 tungstenite = { workspace = true }
 async-tungstenite = { workspace = true }
 async-trait = { version = "0.1" }
-mockall = { version = "0.12.0" }
+mockall = { version = "0.12" }
 prometheus = { version = "0.13", features = ["process"] }
 warp = "0.3"
 config-file = { version = "0.2", features = ["json"] }
 dotenv = "0.15"
+colored = "2.1"
 
 [dev-dependencies]
 async-tungstenite = "^0.24.0"
-tungstenite = "0.21.0"
+tungstenite = "0.21"

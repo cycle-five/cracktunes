@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.2.15"
+version = "0.2.16"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "A Discord music bot built on Rust and Crack."
@@ -34,6 +34,7 @@ anyhow = "1.0"
 proc-macro2 = "1.0"
 typemap_rev = "0.3"
 chatgpt_rs = "1.2"
+either = "1.9"
 chrono = { version = "0.4", features = ["serde"] }
 crack-gpt = { path = "../crack-gpt" }
 tracing = { workspace = true }

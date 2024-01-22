@@ -4,8 +4,8 @@ use crate::Error;
 use poise::CreateReply;
 
 /// Set the idle timeout for the bot in vc.
-#[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn set_idle_timeout(
+#[poise::command(prefix_command, owners_only, ephemeral, aliases("set_idle_timeout"))]
+pub async fn idle_timeout(
     ctx: Context<'_>,
     #[description = "Idle timeout for the bot in minutes."] timeout: u32,
 ) -> Result<(), Error> {

@@ -241,7 +241,7 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Default, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
@@ -270,7 +270,6 @@ pub struct GuildSettings {
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
 }
-
 fn default_false() -> bool {
     false
 }
@@ -412,20 +411,19 @@ impl GuildSettings {
         Ok(settings)
     }
 
-    pub async fn save(&self) -> Result<(), CrackedError> {
+    pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
-        let pool = PgPool::connect(&env::var("DATABASE_URL").unwrap()).await?;
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
         let (_guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
-            &pool,
+            pool,
             guild_id,
             guild_name.clone(),
             prefix.clone(),
         )
         .await?;
-        let _ = GuildEntity::write_settings(&pool, self).await;
+        let _ = GuildEntity::write_settings(pool, self).await;
         Ok(())
     }
 
@@ -458,12 +456,14 @@ impl GuildSettings {
         Self { premium, ..self }
     }
 
-    pub fn toggle_autopause(&mut self) {
+    pub fn toggle_autopause(&mut self) -> &mut Self {
         self.autopause = !self.autopause;
+        self
     }
 
-    pub fn toggle_self_deafen(&mut self) {
+    pub fn toggle_self_deafen(&mut self) -> &mut Self {
         self.self_deafen = !self.self_deafen;
+        self
     }
 
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {
@@ -497,8 +497,9 @@ impl GuildSettings {
         }
     }
 
-    pub fn authorize_user(&mut self, user_id: i64) {
+    pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
         self.authorized_users.entry(user_id as u64).or_insert(0);
+        self
     }
 
     pub fn deauthorize_user(&mut self, user_id: i64) {
@@ -817,9 +818,12 @@ impl GuildSettings {
     }
 }
 
-pub async fn save_guild_settings(guild_settings_map: &HashMap<GuildId, GuildSettings>) {
+pub async fn save_guild_settings(
+    guild_settings_map: &HashMap<GuildId, GuildSettings>,
+    pool: &PgPool,
+) {
     for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save().await;
+        let _ = guild_settings.save(pool).await;
     }
 }
 
@@ -836,3 +840,6 @@ pub struct AtomicU16Key;
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
+
+pub type GuildSettingsMapParam =
+    std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;

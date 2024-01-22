@@ -1,8 +1,31 @@
 # docker-compose.yml
 version: '2'
 services:
-
-  service-name:
+  crack_postgres:
+    container_name: crack_postgres
+    image: postgres:latest
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+        #ports:
+        # - ${PGPORT}:127.0.0.1:${PGPORT}
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - PGPORT=${PGPORT}
+    restart: always
+      #expose:
+      #- ${PGPORT}
+  cracktunes:
+    container_name: cracktunes
     image: cyclefive/cracktunes:latest
+    volumes:
+      - /data/:/data
     env_file:
-    - .env
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:${PGPORT}/postgres
+    links:
+      - crack_postgres
+    ports:
+      - "127.0.0.1:8000:8000"

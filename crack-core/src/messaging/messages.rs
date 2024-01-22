@@ -4,6 +4,7 @@ pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const AUTOPLAY_OFF: &str = "🤖 Autoplay OFF!";
 pub const AUTOPLAY_ON: &str = "🤖 Autoplay ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
+pub const CLEANED: &str = "🗑️ Old messages cleaned!";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
 pub const BANNED: &str = "Banned";

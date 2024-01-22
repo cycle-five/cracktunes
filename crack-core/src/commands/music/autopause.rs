@@ -1,4 +1,5 @@
 use crate::{
+    errors::CrackedError,
     guild::settings::GuildSettings,
     messaging::message::CrackedMessage,
     utils::{get_guild_name, send_response_poise},
@@ -13,6 +14,10 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
     let autopause = {
+        let pool = ctx.data().database_pool.clone().ok_or_else(|| {
+            tracing::error!("No database pool");
+            CrackedError::Other("No database pool")
+        })?;
         let mut guild_settings = {
             let mut settings = ctx.data().guild_settings_map.write().unwrap();
             settings
@@ -27,7 +32,7 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
                 .clone()
         };
         guild_settings.toggle_autopause();
-        guild_settings.save().await?;
+        guild_settings.save(&pool).await?;
         guild_settings.autopause
     };
     let msg = if autopause {
