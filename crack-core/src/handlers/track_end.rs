@@ -120,8 +120,10 @@ impl EventHandler for TrackEndHandler {
                                 //     "Previously played: \n{}",
                                 //     last_played.clone().join("\n")
                                 // );
-                                let msg1 =
-                                    format!("Autoplaying (/autoplay toggle autoplay): {}", rec[0]);
+                                let msg1 = format!(
+                                    "Autoplaying (/toggle_autoplay or /stop to stop): {}",
+                                    rec[0]
+                                );
                                 (rec, msg1)
                             }
                             Err(e) => {

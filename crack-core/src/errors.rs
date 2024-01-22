@@ -41,6 +41,7 @@ pub enum CrackedError {
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NoGuildId,
+    NoGuildForChannelId(ChannelId),
     NoGuildSettings,
     NoLogChannel,
     NothingPlaying,
@@ -100,6 +101,9 @@ impl Display for CrackedError {
             )),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
+            Self::NoGuildForChannelId(channel_id) => {
+                f.write_fmt(format_args!("No guild for channel id {}", channel_id))
+            }
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
             Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),

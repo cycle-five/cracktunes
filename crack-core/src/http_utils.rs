@@ -19,7 +19,7 @@ pub async fn get_guild_name(
         .await?
         .guild()
         .map(|x| x.guild_id)
-        .ok_or(CrackedError::Other("No guild found for channel"))?
+        .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
         .to_partial_guild(http)
         .await
         .map(|x| x.name)
