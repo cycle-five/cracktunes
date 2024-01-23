@@ -35,11 +35,11 @@ use crate::{Context, Error};
 
 /// Show the help menu.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, track_edits, slash_command)]
+#[poise::command(prefix_command, track_edits, slash_command, category = "Utility")]
 pub async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]
-    #[autocomplete = "poise::builtins::autocomplete_command"]
+    //#[autocomplete = "poise::builtins::autocomplete_command"]
     #[rest]
     mut command: Option<String>,
 ) -> Result<(), Error> {

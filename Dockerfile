@@ -45,7 +45,7 @@ WORKDIR "/app"
 
 COPY --from=build /app/target/release/cracktunes /app/cracktunes
 COPY --from=build /app/data  /app/data
-COPY --from=build /app/.env /app/.env
+COPY --from=build /app/.env.example /app/.env
 COPY --from=build /app/cracktunes.toml /app/cracktunes.toml
 # RUN ls -al / && ls -al /data
 
