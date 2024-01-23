@@ -1,3 +1,13 @@
+///! Contains functions for creating embeds and other messages which are used
+/// to communicate with the user.
+use crate::errors::CrackedError;
+use crate::messaging::messages::{
+    QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
+    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+};
+use crate::utils::calculate_num_pages;
+use crate::utils::EMBED_PAGE_SIZE;
+use crate::Context as CrackContext;
 use crate::{
     messaging::message::CrackedMessage,
     utils::{get_footer_info, get_human_readable_timestamp, get_track_metadata},
@@ -8,7 +18,80 @@ use serenity::{
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
 use songbird::tracks::TrackHandle;
+use std::fmt::Write;
 
+/// Builds a page of the queue.
+#[cfg(not(tarpaulin_include))]
+async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
+    let start_idx = EMBED_PAGE_SIZE * page;
+    let queue: Vec<&TrackHandle> = tracks
+        .iter()
+        .skip(start_idx + 1)
+        .take(EMBED_PAGE_SIZE)
+        .collect();
+
+    if queue.is_empty() {
+        return String::from(QUEUE_NO_SONGS);
+    }
+
+    let mut description = String::new();
+
+    for (i, &t) in queue.iter().enumerate() {
+        let metadata = get_track_metadata(t).await;
+        let title = metadata.title.clone().unwrap_or_default();
+        let url = metadata.source_url.clone().unwrap_or_default();
+        let duration = get_human_readable_timestamp(metadata.duration);
+
+        let _ = writeln!(
+            description,
+            "`{}.` [{}]({}) • `{}`",
+            i + start_idx + 1,
+            title,
+            url,
+            duration
+        );
+    }
+
+    description
+}
+
+/// Builds the queue embed.
+pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
+    let (description, thumbnail) = if !tracks.is_empty() {
+        let metadata = get_track_metadata(&tracks[0]).await;
+        let thumbnail = metadata.thumbnail.unwrap_or_default();
+
+        let description = format!(
+            "`[{}]({})` • `{}`",
+            metadata
+                .title
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
+            metadata
+                .source_url
+                .as_ref()
+                .unwrap_or(&String::from(QUEUE_NO_SRC)),
+            get_human_readable_timestamp(metadata.duration)
+        );
+        (description, thumbnail)
+    } else {
+        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
+    };
+
+    CreateEmbed::default()
+        .thumbnail(thumbnail)
+        .field(QUEUE_NOW_PLAYING, &description, false)
+        .field(QUEUE_UP_NEXT, build_queue_page(tracks, page).await, false)
+        .footer(CreateEmbedFooter::new(format!(
+            "{} {} {} {}",
+            QUEUE_PAGE,
+            page + 1,
+            QUEUE_PAGE_OF,
+            calculate_num_pages(tracks),
+        )))
+}
+
+/// Creates a now playing embed for the given track.
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_metadata(track).await;
     let title = metadata.title.clone().unwrap_or_default();
@@ -47,6 +130,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
+/// Creates a lyrics embed for the given track.
 pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
     CreateEmbed::default()
         .author(CreateEmbedAuthor::new(artists))
@@ -54,6 +138,7 @@ pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: Stri
         .description(lyric)
 }
 
+/// Creates a search results reply.
 pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateReply {
     let mut reply = CreateReply::default()
         .reply(true)
@@ -65,9 +150,7 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
     reply.clone()
 }
 
-use crate::errors::CrackedError;
-use crate::Context as CrackContext;
-/// Created a paging embed for the lyrics of a song.
+/// Creates a paging embed for the lyrics of a song.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,

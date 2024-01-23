@@ -2,9 +2,9 @@ use self::serenity::{builder::CreateEmbed, futures::StreamExt};
 use crate::errors::CrackedError;
 use crate::{
     handlers::track_end::ModifyQueueHandler,
-    interface::build_nav_btns,
+    interface::{build_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
-    utils::{calculate_num_pages, create_queue_embed, forget_queue_message, get_interaction},
+    utils::{calculate_num_pages, forget_queue_message, get_interaction},
     Context, Error,
 };
 use ::serenity::builder::{

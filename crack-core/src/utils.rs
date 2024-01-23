@@ -38,7 +38,8 @@ use std::{
 };
 use tokio::sync::RwLock;
 use url::Url;
-const EMBED_PAGE_SIZE: usize = 6;
+
+pub const EMBED_PAGE_SIZE: usize = 6;
 
 // pub fn aux_metadata_from_db(metadata: &crate::db::Metadata) -> MyAuxMetadata {
 //     let mut metadata = metadata.clone();
@@ -544,41 +545,6 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     description
 }
 
-/// Builds a page of the queue.
-#[cfg(not(tarpaulin_include))]
-async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
-    let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&TrackHandle> = tracks
-        .iter()
-        .skip(start_idx + 1)
-        .take(EMBED_PAGE_SIZE)
-        .collect();
-
-    if queue.is_empty() {
-        return String::from(QUEUE_NO_SONGS);
-    }
-
-    let mut description = String::new();
-
-    for (i, &t) in queue.iter().enumerate() {
-        let metadata = get_track_metadata(t).await;
-        let title = metadata.title.clone().unwrap_or_default();
-        let url = metadata.source_url.clone().unwrap_or_default();
-        let duration = get_human_readable_timestamp(metadata.duration);
-
-        let _ = writeln!(
-            description,
-            "`{}.` [{}]({}) • `{}`",
-            i + start_idx + 1,
-            title,
-            url,
-            duration
-        );
-    }
-
-    description
-}
-
 pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     let num_pages = ((tracks.len() as f64 - 1.0) / EMBED_PAGE_SIZE as f64).ceil() as usize;
     max(1, num_pages)
@@ -640,41 +606,7 @@ pub async fn build_tracks_embed_metadata(metadata_arr: &[AuxMetadata], page: usi
         )))
 }
 
-pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
-    let (description, thumbnail) = if !tracks.is_empty() {
-        let metadata = get_track_metadata(&tracks[0]).await;
-        let thumbnail = metadata.thumbnail.unwrap_or_default();
-
-        let description = format!(
-            "`[{}]({})` • `{}`",
-            metadata
-                .title
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
-            metadata
-                .source_url
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_SRC)),
-            get_human_readable_timestamp(metadata.duration)
-        );
-        (description, thumbnail)
-    } else {
-        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
-    };
-
-    CreateEmbed::default()
-        .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, &description, false)
-        .field(QUEUE_UP_NEXT, build_queue_page(tracks, page).await, false)
-        .footer(CreateEmbedFooter::new(format!(
-            "{} {} {} {}",
-            QUEUE_PAGE,
-            page + 1,
-            QUEUE_PAGE_OF,
-            calculate_num_pages(tracks),
-        )))
-}
-
+/// Creates and sends a paged embed.
 pub async fn create_paged_embed(
     ctx: CrackContext<'_>,
     author: String,

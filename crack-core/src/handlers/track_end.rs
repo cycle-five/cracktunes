@@ -12,10 +12,10 @@ use crate::{
     commands::{enqueue_track_pgwrite, forget_skip_votes, send_now_playing, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
-    interface::build_nav_btns,
+    interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, create_queue_embed, forget_queue_message},
+    utils::{calculate_num_pages, forget_queue_message},
     Data,
 };
 
