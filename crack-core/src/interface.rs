@@ -1,4 +1,4 @@
-///! Contains functions for creating embeds and other messages which are used
+/// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use crate::errors::CrackedError;
 use crate::messaging::messages::{
