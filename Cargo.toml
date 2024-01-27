@@ -24,7 +24,7 @@ tracing-futures = "0.2"
 tracing-opentelemetry = "0.22"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-bunyan-formatter = "0.3"
-uuid = "1.6"
+uuid = "1.7"
 
 
 [workspace.dependencies.sqlx]
