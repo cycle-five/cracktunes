@@ -16,11 +16,6 @@ pub use set_join_leave_log_channel::*;
 pub use set_premium::*;
 pub use set_volume::*;
 pub use set_welcome_settings::*;
-// pub use welcome::*;
-// pub use prefix::*;
-// pub use print_settings::*;
-// pub use self_deafen::*;
-// pub use set_welcome_settings::*;
 
 /// Settings-get commands
 #[poise::command(

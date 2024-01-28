@@ -44,7 +44,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
         let _ = writeln!(
             description,
-            "`{}.` [{}]({}) • `{}`",
+            "{}. [{}]({}) • {}",
             i + start_idx + 1,
             title,
             url,
@@ -62,7 +62,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
         let thumbnail = metadata.thumbnail.unwrap_or_default();
 
         let description = format!(
-            "`[{}]({})` • `{}`",
+            "[{}]({}) • {}",
             metadata
                 .title
                 .as_ref()
