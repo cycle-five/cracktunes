@@ -1,5 +1,10 @@
 use super::serenity::voice_state_diff_str;
-use crate::{http_utils::get_guild_name, utils::send_log_embed_thumb, Error};
+use crate::{
+    guild::settings::{GuildSettings, DEFAULT_PREFIX},
+    http_utils::get_guild_name,
+    utils::send_log_embed_thumb,
+    Error,
+};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
@@ -7,7 +12,10 @@ use serenity::all::{
     CurrentUser, Guild, GuildChannel, GuildId, Http, Member, Message, MessageId,
     MessageUpdateEvent, Presence, Role, RoleId,
 };
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
@@ -31,10 +39,33 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 pub async fn log_guild_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
-    log_data: &(&Guild, &Option<bool>),
+    log_data: &(
+        &Guild,
+        &Option<bool>,
+        &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+    ),
 ) -> Result<(), Error> {
-    let &(guild, is_new) = log_data;
+    let &(guild, is_new, guild_settings_map) = log_data;
+    let guild_id = guild.id;
     let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+
+    // make sure we have the guild stored or store it
+    let _guild_settings = {
+        let map = guild_settings_map.read().unwrap().clone();
+        let opt = map.get(&guild_id).or(None);
+        if opt.is_none() {
+            let new_settings =
+                GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
+            guild_settings_map
+                .write()
+                .unwrap()
+                .insert(guild_id, new_settings.clone());
+            new_settings.clone()
+        } else {
+            opt.unwrap().clone()
+        }
+    };
+
     let title = format!("Guild Create: {}", guild.name);
     let is_new_str = if !is_new.is_some() || !is_new.unwrap() {
         "not "
