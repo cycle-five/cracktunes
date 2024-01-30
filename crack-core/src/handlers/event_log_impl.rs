@@ -35,15 +35,13 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+type RwGuildSettingsMap = RwLock<HashMap<GuildId, GuildSettings>>;
+
 /// Logs a guild create event.
 pub async fn log_guild_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
-    log_data: &(
-        &Guild,
-        &Option<bool>,
-        &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
-    ),
+    log_data: &(&Guild, &Option<bool>, &Arc<RwGuildSettingsMap>),
 ) -> Result<(), Error> {
     let &(guild, is_new, guild_settings_map) = log_data;
     let guild_id = guild.id;
@@ -53,7 +51,9 @@ pub async fn log_guild_create(
     let _guild_settings = {
         let map = guild_settings_map.read().unwrap().clone();
         let opt = map.get(&guild_id).or(None);
-        if opt.is_none() {
+        if let Some(guild_setting) = opt {
+            guild_setting.clone()
+        } else {
             let new_settings =
                 GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
             guild_settings_map
@@ -61,8 +61,6 @@ pub async fn log_guild_create(
                 .unwrap()
                 .insert(guild_id, new_settings.clone());
             new_settings.clone()
-        } else {
-            opt.unwrap().clone()
         }
     };
 
