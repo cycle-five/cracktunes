@@ -120,10 +120,8 @@ impl EventHandler for TrackEndHandler {
                                 //     "Previously played: \n{}",
                                 //     last_played.clone().join("\n")
                                 // );
-                                let msg1 = format!(
-                                    "Autoplaying (/toggle_autoplay or /stop to stop): {}",
-                                    rec[0]
-                                );
+                                let msg1 =
+                                    format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
                                 (rec, msg1)
                             }
                             Err(e) => {
@@ -134,7 +132,8 @@ impl EventHandler for TrackEndHandler {
                         };
                         // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
-                        chan_id.say(&self.http, msg).await.unwrap();
+                        let msg = chan_id.say(&self.http, msg).await.unwrap();
+                        self.data.add_msg_to_cache(self.guild_id, msg);
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
                             Err(e) => {
