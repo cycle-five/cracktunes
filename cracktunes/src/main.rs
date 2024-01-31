@@ -173,6 +173,8 @@ fn init_logging() {
         )
         .init();
 
+    init_telemetry("localhost");
+
     tracing::warn!("Hello, world!");
 }
 

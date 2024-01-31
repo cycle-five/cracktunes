@@ -20,6 +20,7 @@ pub use toggle::*;
         "get",
         "toggle",
         "add_prefix",
+        "get_prefixes",
         "clear_prefixes",
         "print_settings",
     ),
