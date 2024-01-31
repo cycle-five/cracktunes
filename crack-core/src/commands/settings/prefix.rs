@@ -88,7 +88,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
         settings
             .get(&guild_id)
             .map(|e| e.additional_prefixes.clone())
-            .unwrap_or(Vec::new())
+            .unwrap_or_default()
     };
     let msg = send_response_poise(
         ctx,

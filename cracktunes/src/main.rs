@@ -14,8 +14,7 @@ use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
 use std::{collections::HashMap, sync::Arc};
-use tracing::instrument;
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
+use tracing_bunyan_formatter::JsonStorageLayer;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 
@@ -23,22 +22,28 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let event_log = EventLog::default();
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(16)
-        .enable_all()
-        .build()
-        .unwrap();
+    // let rt = tokio::runtime::Builder::new_multi_thread()
+    //     //.worker_threads(16)
+    //     .enable_all()
+    //     .build()
+    //     .unwrap();
 
     dotenv::dotenv().ok();
-    rt.block_on(async { main_async(event_log).await })
+    // rt.block_on(async {
+    //     init_telemetry("").await;
+    //     main_async(event_log).await
+    // })
+
+    init_telemetry("").await;
+    main_async(event_log).await
 }
 
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
 async fn main_async(event_log: EventLog) -> Result<(), Error> {
-    init_logging();
     init_metrics();
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
@@ -77,6 +82,7 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     Ok(())
 }
 
+/// Prometheus handler
 async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
     let mut metric_families = prometheus::gather();
@@ -92,6 +98,7 @@ async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     ))
 }
 
+/// Load an environment variable
 fn load_key(k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
@@ -102,6 +109,7 @@ fn load_key(k: String) -> Result<String, Error> {
     }
 }
 
+/// Load the bot's config
 async fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN".to_string())?;
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
@@ -128,59 +136,79 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     Ok(config_with_creds.clone())
 }
 
-#[instrument]
-fn init_metrics() {
-    tracing::info!("Initializing metrics");
-    crack_core::metrics::register_custom_metrics();
+fn combine_log_layers(
+    stdout_log: impl tracing_subscriber::Layer<Registry>,
+    debug_log: impl tracing_subscriber::Layer<Registry>,
+) -> impl tracing_subscriber::Layer<Registry> {
+    // A layer that logs events to a file
+    stdout_log
+        // Add an `INFO` filter to the stdout logging layer
+        .with_filter(filter::LevelFilter::INFO)
+        // Combine the filtered `stdout_log` layer with the
+        // `debug_log` layer, producing a new `Layered` layer.
+        .and_then(debug_log)
+        .with_filter(filter::LevelFilter::DEBUG)
+        // Combine with trace layer
+        // .and_then(trace_log)
+        // Add a filter to *both* layers that rejects spans and
+        // events whose targets start with `metrics`.
+        .with_filter(filter::filter_fn(|metadata_global| {
+            !metadata_global.target().starts_with("metrics")
+        }))
 }
 
-#[instrument]
-fn init_logging() {
-    let stdout_log = tracing_subscriber::fmt::layer().pretty();
-
-    // A layer that logs up to debug events.
+fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let debug_file = std::fs::File::create("/data/debug.log");
     let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
     };
     let debug_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file));
+    debug_log
+}
 
-    //oauth2_callback=debug,tower_http=debug
-    // A layer that logs events to a file.
-    // let trace_file = std::fs::File::create("trace.log");
-    // let trace_file = match trace_file {
-    //     Ok(file) => file,
-    //     Err(error) => panic!("Error: {:?}", error),
-    // };
-    //let trace_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(trace_file));
-    tracing_subscriber::registry()
-        .with(
-            stdout_log
-                // Add an `INFO` filter to the stdout logging layer
-                .with_filter(filter::LevelFilter::INFO)
-                // Combine the filtered `stdout_log` layer with the
-                // `debug_log` layer, producing a new `Layered` layer.
-                .and_then(debug_log)
-                .with_filter(filter::LevelFilter::DEBUG)
-                // Combine with trace layer
-                // .and_then(trace_log)
-                // Add a filter to *both* layers that rejects spans and
-                // events whose targets start with `metrics`.
-                .with_filter(filter::filter_fn(|metadata_global| {
-                    !metadata_global.target().starts_with("metrics")
-                })),
-        )
-        .init();
+#[allow(dead_code)]
+fn get_bunyan_writer() -> Arc<std::fs::File> {
+    let debug_file = std::fs::File::create("/data/bunyan.log");
+    let debug_file = match debug_file {
+        Ok(file) => file,
+        Err(error) => panic!("Error: {:?}", error),
+    };
+    Arc::new(debug_file)
+}
 
-    init_telemetry("localhost");
+fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
+    let stdout_log = tracing_subscriber::fmt::layer().pretty();
+
+    // A layer that logs up to debug events.
+    let debug_log = get_debug_log();
+
+    // Get the debug layer.
+    let final_log = combine_log_layers(stdout_log, debug_log);
+
+    final_log
+}
+
+#[tracing::instrument]
+fn init_metrics() {
+    tracing::info!("Initializing metrics");
+    crack_core::metrics::register_custom_metrics();
+}
+
+#[tracing::instrument]
+fn init_logging() {
+    let final_log = get_current_log_layer();
+    tracing_subscriber::registry().with(final_log).init();
+
+    // init_telemetry("");
 
     tracing::warn!("Hello, world!");
 }
 
-const SERVICE_NAME: &str = "crack-tunes-opentelemetry";
+const SERVICE_NAME: &str = "cracktunes-opentelemetry";
 
-pub fn init_telemetry(exporter_endpoint: &str) {
+/// Initialize logging and tracing.
+pub async fn init_telemetry(exporter_endpoint: &str) {
     // Create a gRPC exporter
     let exporter = opentelemetry_otlp::new_exporter()
         .tonic()
@@ -206,15 +234,18 @@ pub fn init_telemetry(exporter_endpoint: &str) {
     // Layer for adding our configured tracer.
     let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to stdout
-    let formatting_layer = BunyanFormattingLayer::new(SERVICE_NAME.to_string(), std::io::stdout);
+    // let formatting_layer =
+    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+
+    let formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
     set_text_map_propagator(TraceContextPropagator::new());
 
     subscriber
+        .with(formatting_layer)
         .with(level_filter_layer)
         .with(tracing_layer)
         .with(JsonStorageLayer)
-        .with(formatting_layer)
         .init()
 }
