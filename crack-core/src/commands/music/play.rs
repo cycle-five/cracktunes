@@ -322,6 +322,8 @@ pub async fn play(
     // needed because interactions must be replied within 3s and queueing takes longer
     let msg = send_search_message(ctx).await?;
 
+    ctx.data().add_msg_to_cache(guild_id, msg.clone());
+
     tracing::warn!("search response msg: {:?}", msg);
     // FIXME: Super hacky, fix this shit.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
@@ -330,23 +332,24 @@ pub async fn play(
         return Ok(());
     }
 
-    let handler = call.lock().await;
+    let volume = {
+        let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
+        let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+            GuildSettings::new(
+                guild_id,
+                Some(prefix),
+                get_guild_name(ctx.serenity_context(), guild_id),
+            )
+        });
+        guild_settings.volume
+    };
 
-    let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
-    let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-        GuildSettings::new(
-            guild_id,
-            Some(prefix),
-            get_guild_name(ctx.serenity_context(), guild_id),
-        )
-    });
-
-    tracing::warn!("guild_settings: {:?}", guild_settings);
+    // tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
+    // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
+    let handler = call.lock().await;
     let queue = handler.queue().current_queue();
-    queue
-        .iter()
-        .for_each(|t| t.set_volume(guild_settings.volume).unwrap());
+    queue.iter().for_each(|t| t.set_volume(volume).unwrap());
     drop(handler);
 
     let embed = match queue.len().cmp(&1) {
@@ -398,10 +401,8 @@ pub async fn play(
         Ordering::Equal => {
             tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
-            let embed = create_now_playing_embed(track).await;
-            print_queue(queue).await;
-
-            embed
+            create_now_playing_embed(track).await
+            // print_queue(queue).await;
         }
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
@@ -440,6 +441,8 @@ async fn edit_embed_response(
     }
 }
 
+#[allow(dead_code)]
+/// Print the current queue to the logs
 async fn print_queue(queue: Vec<TrackHandle>) {
     for track in queue.iter() {
         let metadata = get_track_metadata(track).await;
