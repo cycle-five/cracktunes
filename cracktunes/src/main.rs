@@ -173,12 +173,12 @@ fn init_logging() {
         )
         .init();
 
-    init_telemetry("localhost");
+    init_telemetry("");
 
     tracing::warn!("Hello, world!");
 }
 
-const SERVICE_NAME: &str = "crack-tunes-opentelemetry";
+const SERVICE_NAME: &str = "cracktunes-opentelemetry";
 
 pub fn init_telemetry(exporter_endpoint: &str) {
     // Create a gRPC exporter

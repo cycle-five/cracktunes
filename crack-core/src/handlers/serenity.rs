@@ -21,7 +21,7 @@ use serenity::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
+    // fmt,
     sync::{atomic::Ordering, Arc, Mutex},
     time::SystemTime,
 };
@@ -151,6 +151,7 @@ impl EventHandler for SerenityHandler {
         }
     }
 
+    /*
     async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
         struct MyMessage(serenity::Message);
         impl fmt::Display for MyMessage {
@@ -207,6 +208,7 @@ impl EventHandler for SerenityHandler {
         );
         let _mm = MyMessage(msg);
     }
+    */
 
     async fn voice_state_update(
         &self,
