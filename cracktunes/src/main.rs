@@ -14,7 +14,7 @@ use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
 use std::{collections::HashMap, sync::Arc};
-use tracing_bunyan_formatter::JsonStorageLayer;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 
@@ -163,8 +163,7 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
     };
-    let debug_log = tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file));
-    debug_log
+    tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file))
 }
 
 #[allow(dead_code)]
@@ -184,18 +183,18 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let debug_log = get_debug_log();
 
     // Get the debug layer.
-    let final_log = combine_log_layers(stdout_log, debug_log);
-
-    final_log
+    combine_log_layers(stdout_log, debug_log)
 }
 
 #[tracing::instrument]
+/// Initialize metrics.
 fn init_metrics() {
     tracing::info!("Initializing metrics");
     crack_core::metrics::register_custom_metrics();
 }
 
 #[tracing::instrument]
+/// Initialize logging and tracing.
 fn init_logging() {
     let final_log = get_current_log_layer();
     tracing_subscriber::registry().with(final_log).init();
@@ -207,6 +206,7 @@ fn init_logging() {
 
 const SERVICE_NAME: &str = "cracktunes-opentelemetry";
 
+#[tracing::instrument]
 /// Initialize logging and tracing.
 pub async fn init_telemetry(exporter_endpoint: &str) {
     // Create a gRPC exporter
@@ -233,19 +233,21 @@ pub async fn init_telemetry(exporter_endpoint: &str) {
     let level_filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO"));
     // Layer for adding our configured tracer.
     let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-    // Layer for printing spans to stdout
-    // let formatting_layer =
-    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    // Layer for printing spans to a file.
+    let formatting_layer =
+        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
-    let formatting_layer = get_current_log_layer();
+    // Layer for printing to stdout.
+    let stdout_formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
     set_text_map_propagator(TraceContextPropagator::new());
 
     subscriber
-        .with(formatting_layer)
+        .with(stdout_formatting_layer)
         .with(level_filter_layer)
         .with(tracing_layer)
         .with(JsonStorageLayer)
+        .with(formatting_layer)
         .init()
 }
