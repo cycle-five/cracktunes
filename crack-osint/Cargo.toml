@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-whois-rust = "1.5"
+whois-rust = "1.6"
 sha1 = "0.10"
 ipinfo = "3.0"
 serde = { version = "1.0", features = ["derive"] }
