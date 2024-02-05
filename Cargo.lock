@@ -83,9 +83,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2faccea4cc4ab4a667ce676a30e8ec13922a692c99bb8f5b11f1502c72e04220"
+checksum = "8901269c6307e8d93993578286ac0edf7f195079ffff5ebdeea6a59ffb7e36bc"
 
 [[package]]
 name = "anyhow"
@@ -1402,9 +1402,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d3d0e0f38255e7fa3cf31335b3a56f05febd18025f4db5ef7a0cfb4f8da651f"
+checksum = "d0c62115964e08cb8039170eb33c1d0e2388a256930279edca206fff675f82c3"
 
 [[package]]
 name = "hex"
@@ -2513,8 +2513,8 @@ dependencies = [
 
 [[package]]
 name = "poise"
-version = "0.6.1-rc1"
-source = "git+https://github.com/cycle-five/poise?branch=current#e1ce1300a8c52b021a29e635749d55ebf6663152"
+version = "0.6.1"
+source = "git+https://github.com/cycle-five/poise?branch=current#e7a19ae18aae59d28db3186a29bd40e6a0de7cf8"
 dependencies = [
  "async-trait",
  "derivative",
@@ -2529,8 +2529,8 @@ dependencies = [
 
 [[package]]
 name = "poise_macros"
-version = "0.6.1-rc1"
-source = "git+https://github.com/cycle-five/poise?branch=current#e1ce1300a8c52b021a29e635749d55ebf6663152"
+version = "0.6.1"
+source = "git+https://github.com/cycle-five/poise?branch=current#e7a19ae18aae59d28db3186a29bd40e6a0de7cf8"
 dependencies = [
  "darling 0.20.5",
  "proc-macro2",
@@ -3019,7 +3019,7 @@ dependencies = [
 [[package]]
 name = "rspotify"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#6a8b3bfa2b75959c756fb7fce12f6fc885a43dd7"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3042,7 +3042,7 @@ dependencies = [
 [[package]]
 name = "rspotify-http"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#6a8b3bfa2b75959c756fb7fce12f6fc885a43dd7"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
 dependencies = [
  "async-trait",
  "log",
@@ -3055,12 +3055,12 @@ dependencies = [
 [[package]]
 name = "rspotify-macros"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#6a8b3bfa2b75959c756fb7fce12f6fc885a43dd7"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
 
 [[package]]
 name = "rspotify-model"
 version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#6a8b3bfa2b75959c756fb7fce12f6fc885a43dd7"
+source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
 dependencies = [
  "chrono",
  "enum_dispatch",
@@ -3948,18 +3948,18 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strum"
-version = "0.25.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+checksum = "723b93e8addf9aa965ebe2d11da6d7540fa2283fcea14b3371ff055f7ba13f5f"
 dependencies = [
  "strum_macros",
 ]
 
 [[package]]
 name = "strum_macros"
-version = "0.25.3"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
+checksum = "7a3417fc93d76740d974a01654a09777cb500428cc874ca9f45edfe0c4d4cd18"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -4242,13 +4242,12 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tempfile"
-version = "3.9.0"
+version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01ce4141aa927a6d1bd34a041795abd0db1cccba5d5f24b009f694bdf3a1f3fa"
+checksum = "a365e8cd18e44762ef95d87f284f4b5cd04107fec2ff3052bd6a3e6069669e67"
 dependencies = [
  "cfg-if",
  "fastrand",
- "redox_syscall",
  "rustix 0.38.31",
  "windows-sys 0.52.0",
 ]
