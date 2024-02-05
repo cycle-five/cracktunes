@@ -237,6 +237,8 @@ impl EventHandler for ModifyQueueHandler {
     }
 }
 
+/// This function goes through all the active "queue" messages that are still
+/// being updated and updates them with the current.
 pub async fn update_queue_messages(
     http: &Http,
     data: &Data,
