@@ -23,6 +23,7 @@ use songbird::error::JoinError;
 use songbird::input::AudioStreamError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
+use std::process::ExitStatus;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub enum CrackedError {
     Anyhow(anyhow::Error),
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
+    CommandFailed(String, ExitStatus, String),
     DurationParseError(String, String),
     JoinChannelError(JoinError),
     Json(serde_json::Error),
@@ -90,6 +92,9 @@ impl Display for CrackedError {
             }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
+            Self::CommandFailed(program, status, output) => f.write_str(&format!(
+                "Command `{program}` failed with status `{status}` and output `{output}`"
+            )),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             }
