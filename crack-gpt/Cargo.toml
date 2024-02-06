@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 chatgpt_rs = "1.2"
-url = "2.4"
+url = "2.5"
 tracing = "0.1"
-tokio = { version = "1.35.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "macros"] }

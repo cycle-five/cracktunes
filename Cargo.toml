@@ -3,7 +3,7 @@ members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt"]
 resolver = "2"
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.2.16" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3.0-rc.0" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 tungstenite = "0.21"
@@ -24,7 +24,7 @@ tracing-futures = "0.2"
 tracing-opentelemetry = "0.22"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-bunyan-formatter = "0.3"
-uuid = "1.6"
+uuid = "1.7"
 
 
 [workspace.dependencies.sqlx]
@@ -91,7 +91,7 @@ default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
 [workspace.dependencies.tokio]
-version = "1.35"
+version = "1.36.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [profile.release-with-debug]

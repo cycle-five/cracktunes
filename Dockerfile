@@ -4,7 +4,7 @@ FROM debian:bookworm-slim as build
 ARG SQLX_OFFLINE=true
 
 #build-essential \
-RUN apt-get update -y && apt-get install -y \
+RUN apt-get update -y && apt-get upgrade && apt-get install -y \
        autoconf \
        automake \
        cmake \
@@ -30,7 +30,8 @@ RUN . "$HOME/.cargo/env" && cargo build --release --locked
 # Necessary dependencies to run CrackTunes
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update -y \
+RUN apt-get update \
+       && apt-get upgrade -y \
        && apt-get install -y ffmpeg curl \
        # Clean up
        && apt-get autoremove -y \
@@ -45,7 +46,7 @@ WORKDIR "/app"
 
 COPY --from=build /app/target/release/cracktunes /app/cracktunes
 COPY --from=build /app/data  /app/data
-COPY --from=build /app/.env /app/.env
+COPY --from=build /app/.env.example /app/.env
 COPY --from=build /app/cracktunes.toml /app/cracktunes.toml
 # RUN ls -al / && ls -al /data
 

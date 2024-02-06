@@ -77,3 +77,27 @@ pub async fn clear_prefixes(
     .await?;
     Ok(())
 }
+
+/// Get the current prefix settings.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, guild_only, owners_only)]
+pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let additional_prefixes = {
+        let settings = ctx.data().guild_settings_map.read().unwrap();
+        settings
+            .get(&guild_id)
+            .map(|e| e.additional_prefixes.clone())
+            .unwrap_or_default()
+    };
+    let msg = send_response_poise(
+        ctx,
+        CrackedMessage::Other(format!(
+            "Current additional prefixes {}",
+            additional_prefixes.join(", ")
+        )),
+    )
+    .await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
+}

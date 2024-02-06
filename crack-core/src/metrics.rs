@@ -20,6 +20,7 @@ lazy_static! {
     .expect("metric can be created");
 }
 
+/// Register custom metrics with the prometheus registry
 pub fn register_custom_metrics() {
     REGISTRY
         .register(Box::new(COMMAND_EXECUTIONS.clone()))
@@ -36,4 +37,22 @@ pub fn register_custom_metrics() {
     REGISTRY
         .register(Box::new(RESPONSE_TIME_COLLECTOR.clone()))
         .expect("collector can be registered");
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn metrics_test() {
+        register_custom_metrics();
+        COMMAND_EXECUTIONS
+            .with_label_values(&["test", "test"])
+            .inc();
+        CONNECTED_CLIENTS.inc();
+        COMMAND_ERRORS.with_label_values(&["test"]).inc();
+        RESPONSE_TIME_COLLECTOR
+            .with_label_values(&["test"])
+            .observe(1.0);
+    }
 }

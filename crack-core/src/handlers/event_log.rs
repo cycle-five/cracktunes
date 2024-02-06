@@ -343,10 +343,10 @@ pub async fn handle_event(
         #[cfg(feature = "cache")]
         FullEvent::GuildCreate { guild } => {
             log_event!(
-                log_unimplemented_event,
+                log_guild_create,
                 guild_settings,
                 event_in,
-                &(event_name, guild),
+                &(guild),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -356,10 +356,10 @@ pub async fn handle_event(
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildCreate { guild, is_new } => {
             log_event!(
-                log_unimplemented_event,
+                log_guild_create,
                 guild_settings,
                 event_in,
-                &(event_name, guild, is_new),
+                &(guild, is_new, guild_settings),
                 &guild.id,
                 &ctx.http,
                 event_log,

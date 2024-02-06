@@ -14,9 +14,6 @@ README.md
 /target/
 /*/target/
 
-# Submodules
-/dep-installer-hack/
-
 # data
 /logs/
 # /data/

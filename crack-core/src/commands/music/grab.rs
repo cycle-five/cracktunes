@@ -18,7 +18,7 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         .create_dm_channel(&ctx.serenity_context().http)
         .await?;
 
-    let _ = send_now_playing(
+    let msg = send_now_playing(
         channel.id,
         ctx.serenity_context().http.clone(),
         call.clone(),
@@ -27,7 +27,13 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    ctx.say("Sent you a DM with the current track").await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+
+    let reply_handle = ctx.say("Sent you a DM with the current track").await?;
+
+    let msg = reply_handle.into_message().await?;
+
+    ctx.data().add_msg_to_cache(guild_id, msg);
 
     Ok(())
 }

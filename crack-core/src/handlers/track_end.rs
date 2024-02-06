@@ -12,10 +12,10 @@ use crate::{
     commands::{enqueue_track_pgwrite, forget_skip_votes, send_now_playing, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
-    interface::build_nav_btns,
+    interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, create_queue_embed, forget_queue_message},
+    utils::{calculate_num_pages, forget_queue_message},
     Data,
 };
 
@@ -121,7 +121,7 @@ impl EventHandler for TrackEndHandler {
                                 //     last_played.clone().join("\n")
                                 // );
                                 let msg1 =
-                                    format!("Autoplaying (/autoplay toggle autoplay): {}", rec[0]);
+                                    format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
                                 (rec, msg1)
                             }
                             Err(e) => {
@@ -132,7 +132,8 @@ impl EventHandler for TrackEndHandler {
                         };
                         // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
-                        chan_id.say(&self.http, msg).await.unwrap();
+                        let msg = chan_id.say(&self.http, msg).await.unwrap();
+                        self.data.add_msg_to_cache(self.guild_id, msg);
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
                             Err(e) => {
@@ -236,6 +237,8 @@ impl EventHandler for ModifyQueueHandler {
     }
 }
 
+/// This function goes through all the active "queue" messages that are still
+/// being updated and updates them with the current.
 pub async fn update_queue_messages(
     http: &Http,
     data: &Data,

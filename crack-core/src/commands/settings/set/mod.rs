@@ -7,6 +7,7 @@ pub mod set_idle_timeout;
 pub mod set_join_leave_log_channel;
 pub mod set_premium;
 pub mod set_volume;
+pub mod set_welcome_settings;
 
 pub use set_all_log_channel::*;
 pub use set_auto_role::*;
@@ -14,11 +15,7 @@ pub use set_idle_timeout::*;
 pub use set_join_leave_log_channel::*;
 pub use set_premium::*;
 pub use set_volume::*;
-// pub use welcome::*;
-// pub use prefix::*;
-// pub use print_settings::*;
-// pub use self_deafen::*;
-// pub use set_welcome_settings::*;
+pub use set_welcome_settings::*;
 
 /// Settings-get commands
 #[poise::command(

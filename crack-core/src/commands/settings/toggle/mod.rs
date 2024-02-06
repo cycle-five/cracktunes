@@ -10,7 +10,7 @@ pub use self_deafen::*;
 pub async fn toggle(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("");
 
-    ctx.say("You found the settings-set command").await?;
+    ctx.say("You found the settings-toggle command").await?;
 
     Ok(())
 }
