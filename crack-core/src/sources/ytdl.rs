@@ -1,6 +1,4 @@
 use crate::errors::CrackedError;
-use reqwest::Client;
-use songbird::input::AuxMetadata;
 use std::fmt::Display;
 use tokio::process::Command;
 
@@ -9,14 +7,14 @@ const YOUTUBE_DL_COMMAND: &str = "yt-dlp";
 #[derive(Clone, Debug)]
 enum QueryType {
     Url(String),
-    Search(String),
+    //Search(String),
 }
 
 impl Display for QueryType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             QueryType::Url(url) => write!(f, "{}", url),
-            QueryType::Search(query) => write!(f, "ytsearch5:{}", query),
+            //QueryType::Search(query) => write!(f, "ytsearch5:{}", query),
         }
     }
 }
@@ -31,8 +29,6 @@ impl Display for QueryType {
 #[derive(Clone, Debug)]
 pub struct MyYoutubeDl {
     program: &'static str,
-    client: Client,
-    metadata: Option<AuxMetadata>,
     query: QueryType,
 }
 
@@ -42,36 +38,30 @@ impl MyYoutubeDl {
     /// This requires a reqwest client: ideally, one should be created and shared between
     /// all requests.
     #[must_use]
-    pub fn new(client: Client, url: String) -> Self {
-        Self::new_ytdl_like(YOUTUBE_DL_COMMAND, client, url)
+    pub fn new(url: String) -> Self {
+        Self::new_ytdl_like(YOUTUBE_DL_COMMAND, url)
     }
 
     /// Creates a lazy request to select an audio stream from `url` as in [`new`], using `program`.
     ///
     /// [`new`]: Self::new
     #[must_use]
-    pub fn new_ytdl_like(program: &'static str, client: Client, url: String) -> Self {
+    pub fn new_ytdl_like(program: &'static str, url: String) -> Self {
         Self {
             program,
-            client,
-            metadata: None,
             query: QueryType::Url(url),
         }
     }
 
-    async fn get_playlist(&mut self) -> Result<Vec<String>, CrackedError> {
+    pub async fn get_playlist(&mut self) -> Result<Vec<String>, CrackedError> {
         let ytdl_args = [
-            "-j",
+            // "-j",
             "--flat-playlist",
-            "--get-title",
+            //"--get-title",
             "--get-id",
             &self.query.to_string(),
         ];
-        let output = Command::new(self.program)
-            .args(ytdl_args)
-            .output()
-            .await
-            .map_err(|e| CrackedError::IO(e.into()))?;
+        let output = Command::new(self.program).args(ytdl_args).output().await?;
 
         if !output.status.success() {
             return Err(CrackedError::CommandFailed(
@@ -83,28 +73,28 @@ impl MyYoutubeDl {
         Ok(output
             .stdout
             .split(|&b| b == b'\n')
-            .filter_map(|x| {
-                serde_json::from_slice(x)
-                    .ok()
-                    .map(|x: serde_json::Value| x.as_str().unwrap().to_string())
+            .map(|x| {
+                let res = String::from_utf8_lossy(x);
+                let asdf = format!("{}{}", "https://www.youtube.com/watch?v=", &res);
+                drop(res);
+                asdf
             })
+            // .filter_map(|x| {
+            //     serde_json::from_slice(x)
+            //         .ok()
+            //         .map(|x: serde_json::Value| x.as_str().unwrap().to_string())
+            // })
             .collect::<Vec<String>>())
     }
 }
 
 mod test {
-    use super::*;
-    use crate::sources::ytdl::MyYoutubeDl;
-    use reqwest::Client;
-    use songbird::input::Input;
-    use tokio::runtime::Runtime;
 
     #[tokio::test]
     async fn test_ytdl() {
-        let client = Client::new();
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let mut ytdl = MyYoutubeDl::new(client, url);
-        let playlist = ytdl.get_playlist().await?;
+        let mut ytdl = crate::sources::ytdl::MyYoutubeDl::new(url);
+        let playlist = ytdl.get_playlist().await.unwrap();
         println!("{:?}", playlist);
     }
 }
