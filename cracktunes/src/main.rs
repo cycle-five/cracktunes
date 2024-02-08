@@ -37,7 +37,7 @@ async fn main() -> Result<(), Error> {
     //     main_async(event_log).await
     // })
 
-    init_telemetry("").await;
+    init_telemetry("http://localhost:4317").await;
     main_async(event_log).await
 }
 

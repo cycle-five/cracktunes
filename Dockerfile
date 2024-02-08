@@ -3,8 +3,7 @@
 FROM debian:bookworm-slim as build
 ARG SQLX_OFFLINE=true
 
-#build-essential \
-RUN apt-get update -y && apt-get upgrade && apt-get install -y \
+RUN apt-get update && apt-get install -y \
        autoconf \
        automake \
        cmake \
@@ -31,7 +30,7 @@ RUN . "$HOME/.cargo/env" && cargo build --release --locked
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
-       && apt-get upgrade -y \
+       # && apt-get upgrade -y \
        && apt-get install -y ffmpeg curl \
        # Clean up
        && apt-get autoremove -y \
@@ -42,6 +41,7 @@ RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/re
 
 RUN yt-dlp -v -h
 
+# USER 1000
 WORKDIR "/app"
 
 COPY --from=build /app/target/release/cracktunes /app/cracktunes
