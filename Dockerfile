@@ -21,8 +21,6 @@ RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
 WORKDIR "/app"
 
 COPY . .
-# RUN ls -al . && ls -al data
-# ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
@@ -52,6 +50,5 @@ COPY --from=build /app/cracktunes.toml /app/cracktunes.toml
 
 ENV APP_ENVIRONMENT production
 RUN . "/app/.env"
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
-ENV RUST_BACKTRACE 1
+ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
 CMD ["/app/cracktunes"]

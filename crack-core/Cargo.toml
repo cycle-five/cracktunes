@@ -1,9 +1,9 @@
 [package]
 name = "crack-core"
-version = "0.3.0-rc.0"
+version = "0.3.0-rc.1"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
-description = "A Discord music bot built on Rust and Crack."
+description = "A Discord music bot built on Rust and Crack coding."
 repository = "https://github.com/cycle-five/cracktunes"
 license = "MIT"
 keywords = ["discord", "music-bot", "rust"]
