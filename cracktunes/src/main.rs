@@ -37,7 +37,9 @@ async fn main() -> Result<(), Error> {
     //     main_async(event_log).await
     // })
 
-    init_telemetry("http://127.0.0.1:4318").await;
+    let url = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp";
+
+    init_telemetry(url).await;
     main_async(event_log).await
 }
 
@@ -204,7 +206,7 @@ fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-const SERVICE_NAME: &str = "cracktunes-opentelemetry";
+const SERVICE_NAME: &str = "crack-tunes";
 
 #[tracing::instrument]
 /// Initialize logging and tracing.
