@@ -23,11 +23,11 @@ use crate::errors::CrackedError;
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
+pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 100.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str =
-    "postgresql://postgres:mysecretpassword@localhost:5433/postgres";
+    "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
