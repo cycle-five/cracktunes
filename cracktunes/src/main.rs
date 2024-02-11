@@ -6,15 +6,15 @@ pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
 use opentelemetry::global::set_text_map_propagator;
-use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
+// use opentelemetry::KeyValue;
+// use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::{trace, Resource};
+// use opentelemetry_sdk::{trace, Resource};
 use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
 use std::{collections::HashMap, sync::Arc};
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
+// use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 
@@ -206,38 +206,38 @@ fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-const SERVICE_NAME: &str = "crack-tunes";
+// const SERVICE_NAME: &str = "crack-tunes";
 
-#[tracing::instrument]
+// #[tracing::instrument]
 /// Initialize logging and tracing.
-pub async fn init_telemetry(exporter_endpoint: &str) {
+pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Create a gRPC exporter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint(exporter_endpoint);
+    // let exporter = opentelemetry_otlp::new_exporter()
+    //     .tonic()
+    //     .with_endpoint(exporter_endpoint);
 
     // Define a tracer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            trace::config().with_resource(Resource::new(vec![KeyValue::new(
-                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                SERVICE_NAME.to_string(),
-            )])),
-        )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .expect("Error: Failed to initialize the tracer.");
+    // let tracer = opentelemetry_otlp::new_pipeline()
+    //     .tracing()
+    //     .with_exporter(exporter)
+    //     .with_trace_config(
+    //         trace::config().with_resource(Resource::new(vec![KeyValue::new(
+    //             opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+    //             SERVICE_NAME.to_string(),
+    //         )])),
+    //     )
+    //     .install_batch(opentelemetry_sdk::runtime::Tokio)
+    //     .expect("Error: Failed to initialize the tracer.");
 
     // Define a subscriber.
     let subscriber = Registry::default();
     // Level filter layer to filter traces based on level (trace, debug, info, warn, error).
     let level_filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO"));
     // Layer for adding our configured tracer.
-    let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
-    let formatting_layer =
-        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    // let formatting_layer =
+    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
     // Layer for printing to stdout.
     let stdout_formatting_layer = get_current_log_layer();
@@ -248,8 +248,8 @@ pub async fn init_telemetry(exporter_endpoint: &str) {
     subscriber
         .with(stdout_formatting_layer)
         .with(level_filter_layer)
-        .with(tracing_layer)
-        .with(JsonStorageLayer)
-        .with(formatting_layer)
+        // .with(tracing_layer)
+        // .with(JsonStorageLayer)
+        // .with(formatting_layer)
         .init()
 }
