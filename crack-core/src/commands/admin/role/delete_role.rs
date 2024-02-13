@@ -41,6 +41,7 @@ pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<
                     send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to delete role: {}", e)),
+                        true,
                     )
                     .await?;
                 } else {
@@ -51,12 +52,17 @@ pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<
                             role_name: role.1.name.clone(),
                             role_id,
                         },
+                        true,
                     )
                     .await?;
                 }
             } else {
-                send_response_poise(ctx, CrackedMessage::Other("Role not found.".to_string()))
-                    .await?;
+                send_response_poise(
+                    ctx,
+                    CrackedMessage::Other("Role not found.".to_string()),
+                    true,
+                )
+                .await?;
             }
         }
         None => {

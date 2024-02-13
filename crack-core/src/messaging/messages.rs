@@ -39,6 +39,7 @@ pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice chan
 pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
+pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while, pay for premium if you want me to idle indefinitely plus better audio and more!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";

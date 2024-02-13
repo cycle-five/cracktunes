@@ -252,6 +252,8 @@ pub struct GuildSettings {
     pub autopause: bool,
     #[serde(default = "default_true")]
     pub autoplay: bool,
+    #[serde(default = "default_true")]
+    pub reply_with_embed: bool,
     #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -364,6 +366,7 @@ impl GuildSettings {
             premium: DEFAULT_PREMIUM,
             autopause: false,
             autoplay: true,
+            reply_with_embed: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),

@@ -23,6 +23,7 @@ pub async fn deafen(
                 send_response_poise(
                     ctx,
                     CrackedMessage::Other(format!("Failed to deafen user: {}", e)),
+                    true,
                 )
                 .await?;
             } else {
@@ -33,6 +34,7 @@ pub async fn deafen(
                         user: user.name.clone(),
                         user_id: user.clone().id,
                     },
+                    true,
                 )
                 .await?;
             }

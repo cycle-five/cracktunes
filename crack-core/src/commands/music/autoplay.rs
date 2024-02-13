@@ -18,10 +18,10 @@ pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
     };
     let msg = if autoplay {
         cancel_autoplay(ctx.data(), guild_id).await?;
-        send_response_poise(ctx, CrackedMessage::AutoplayOff)
+        send_response_poise(ctx, CrackedMessage::AutoplayOff, true)
     } else {
         enable_autoplay(ctx.data(), guild_id).await?;
-        send_response_poise(ctx, CrackedMessage::AutoplayOn)
+        send_response_poise(ctx, CrackedMessage::AutoplayOn, true)
     }
     .await?;
     ctx.data().add_msg_to_cache(guild_id, msg);

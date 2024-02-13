@@ -46,6 +46,6 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     status_msg.delete(&ctx.serenity_context()).await?;
-    send_response_poise(ctx, CrackedMessage::Clean(deleted)).await?;
+    send_response_poise(ctx, CrackedMessage::Clean(deleted), true).await?;
     Ok(())
 }

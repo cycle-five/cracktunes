@@ -94,43 +94,44 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 /// Delete category.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
-    match ctx.guild_id() {
-        Some(guild) => {
-            let guild = guild.to_partial_guild(&ctx).await?;
-            let category = guild
-                .channels(&ctx)
-                .await?
-                .into_iter()
-                .find(|c| c.1.name == category_name);
-            if let Some(category) = category {
-                if let Err(e) = category.1.delete(&ctx).await {
-                    // Handle error, send error message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::Other(format!("Failed to delete category: {}", e)),
-                    )
-                    .await?;
-                } else {
-                    // Send success message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::Other(format!("Category deleted: {}", category_name)),
-                    )
-                    .await?;
-                }
-            } else {
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other("Category not found.".to_string()),
-                )
-                .await?;
-            }
+    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
+    let reply_with_embed = ctx
+        .data()
+        .get_guild_settings(guild_id)
+        .map(|x| x.reply_with_embed)
+        .unwrap_or(true);
+    let guild = guild_id.to_partial_guild(&ctx).await?;
+    let category = guild
+        .channels(&ctx)
+        .await?
+        .into_iter()
+        .find(|c| c.1.name == category_name);
+    if let Some(category) = category {
+        if let Err(e) = category.1.delete(&ctx).await {
+            // Handle error, send error message
+            send_response_poise(
+                ctx,
+                CrackedMessage::Other(format!("Failed to delete category: {}", e)),
+                reply_with_embed,
+            )
+            .await?;
+        } else {
+            // Send success message
+            send_response_poise(
+                ctx,
+                CrackedMessage::Other(format!("Category deleted: {}", category_name)),
+                reply_with_embed,
+            )
+            .await?;
         }
-        None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
-        }
+    } else {
+        send_response_poise(
+            ctx,
+            CrackedMessage::Other("Category not found.".to_string()),
+            reply_with_embed,
+        )
+        .await?;
     }
+
     Ok(())
 }

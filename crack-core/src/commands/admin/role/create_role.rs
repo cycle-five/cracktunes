@@ -32,6 +32,7 @@ pub async fn create(
             send_response_poise(
                 ctx,
                 CrackedMessage::Other(format!("Failed to create role: {}", e)),
+                true,
             )
             .await
             .map(|_| ())
@@ -44,6 +45,7 @@ pub async fn create(
                     role_name: role.name.clone(),
                     role_id: role.id,
                 },
+                true,
             )
             .await
             .map(|_| ())
