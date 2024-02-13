@@ -11,6 +11,8 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     let reply_handle = ctx.say("Cleaning up old messages...").await?;
     let mut status_msg = reply_handle.into_message().await?;
     let mut deleted = 0;
+    let message_ttl = chrono::Duration::seconds(CHAT_CLEANUP_SECONDS as i64);
+    tracing::warn!("message_ttl: {:?}", message_ttl);
     while let Some(msg) = message_cache
         .entry(guild_id)
         .or_default()
@@ -19,7 +21,8 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     {
         let now = chrono::Utc::now();
         let diff = now - msg.0;
-        if diff > chrono::Duration::seconds(CHAT_CLEANUP_SECONDS as i64) {
+        tracing::warn!("diff {}", msg.1.id);
+        if diff > message_ttl {
             deleted += 1;
             status_msg
                 .edit(
@@ -30,6 +33,7 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
                     )),
                 )
                 .await?;
+            tracing::warn!("Deleting message {}", msg.1.id);
             msg.1.delete(&ctx.serenity_context()).await?;
         } else {
             message_cache
