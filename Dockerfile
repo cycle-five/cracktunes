@@ -36,7 +36,10 @@ RUN apt-get update \
        && apt-get clean -y \
        && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2023.12.30/yt-dlp_linux && chmod +x /usr/local/bin/yt-dlp
+RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux \ 
+       && chmod +x /usr/local/bin/yt-dlp
+
+
 
 RUN yt-dlp -v -h
 
