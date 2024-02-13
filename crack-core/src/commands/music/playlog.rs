@@ -1,13 +1,12 @@
 use crate::db::PlayLog;
 use crate::messaging::message::CrackedMessage;
+use crate::utils::send_response_poise;
 use crate::{Context, Error};
 
-/// Toggle music autoplay.
+/// Get recently played tracks.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::utils::send_response_poise;
-
     let guild_id = ctx.guild_id().unwrap();
 
     let last_played = PlayLog::get_last_played(
