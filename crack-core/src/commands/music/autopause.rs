@@ -43,5 +43,4 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     .await?;
     ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
-    //  Ok(())
 }

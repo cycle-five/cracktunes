@@ -142,8 +142,12 @@ pub async fn summon(
             mention: channel_id.mention(),
         }
         .to_string();
-        ctx.send(CreateReply::default().content(text).ephemeral(true))
+        let msg = ctx
+            .send(CreateReply::default().content(text).ephemeral(true))
+            .await?
+            .into_message()
             .await?;
+        ctx.data().add_msg_to_cache(guild_id, msg);
     }
 
     Ok(())

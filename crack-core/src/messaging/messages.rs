@@ -4,7 +4,7 @@ pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const AUTOPLAY_OFF: &str = "🤖 Autoplay OFF!";
 pub const AUTOPLAY_ON: &str = "🤖 Autoplay ON!";
 pub const CLEARED: &str = "🗑️ Cleared!";
-pub const CLEANED: &str = "🗑️ Old messages cleaned!";
+pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
 pub const BANNED: &str = "Banned";
@@ -39,7 +39,7 @@ pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice chan
 pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
-pub const IDLE_ALERT: &str = "I've been idle for a while, so I'll leave to annoy you.\nPay for my premium if you want me to idle indefinitely!\n[CrackTunes Partreon](https://patreon.com/CrackTunes)";
+pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while, pay for premium if you want me to idle indefinitely plus better audio and more!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";
 pub const LEAVING: &str = "👋 See you soon!";

@@ -230,8 +230,12 @@ pub async fn get_call_with_fail_msg(
                             mention: channel_id.mention(),
                         }
                         .to_string();
-                        ctx.send(CreateReply::default().content(text).ephemeral(true))
+                        let msg = ctx
+                            .send(CreateReply::default().content(text).ephemeral(true))
+                            .await?
+                            .into_message()
                             .await?;
+                        ctx.data().add_msg_to_cache(guild_id, msg);
                     }
                     Ok(call)
                     // Ok(manager.get(guild_id).unwrap())

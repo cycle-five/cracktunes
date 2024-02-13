@@ -20,7 +20,7 @@ pub enum CrackedMessage {
         channel_name: String,
     },
     Clear,
-    Clean,
+    Clean(i32),
     DomainInfo(String),
     Error,
     ErrorHttp(serenity::http::HttpError),
@@ -148,7 +148,7 @@ impl Display for CrackedMessage {
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
             Self::CountryName(name) => f.write_str(name),
             Self::Clear => f.write_str(CLEARED),
-            Self::Clean => f.write_str(CLEANED),
+            Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
