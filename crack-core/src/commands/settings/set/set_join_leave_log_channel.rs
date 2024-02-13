@@ -57,6 +57,7 @@ pub async fn join_leave_log_channel(
     send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
+        true,
     )
     .await?;
 

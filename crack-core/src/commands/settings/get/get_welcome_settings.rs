@@ -32,6 +32,7 @@ pub async fn welcome_settings(ctx: Context<'_>) -> Result<(), Error> {
                 "Welcome settings: {:?}",
                 welcome_settings.unwrap_or_default()
             )),
+            true,
         )
         .await?;
     }

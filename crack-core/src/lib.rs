@@ -422,8 +422,8 @@ impl Data {
             .cloned()
     }
 
-    /// Get the guild settings for a guild (mutable)
-    pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-        self.guild_settings_map.write().unwrap().get_mut(&guild_id)
-    }
+    // /// Get the guild settings for a guild (mutable)
+    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+    //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
+    // }
 }

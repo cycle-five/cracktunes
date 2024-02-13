@@ -19,6 +19,7 @@ pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i32) -> Result<(), E
             "Successfully deleted playlist with ID: {}",
             playlist_id
         )),
+        true,
     )
     .await?;
 

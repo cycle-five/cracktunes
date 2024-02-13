@@ -13,7 +13,7 @@ pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NotConnected)?;
     manager.remove(guild_id).await?;
 
-    let msg = send_response_poise(ctx, CrackedMessage::Leaving).await?;
+    let msg = send_response_poise(ctx, CrackedMessage::Leaving, true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

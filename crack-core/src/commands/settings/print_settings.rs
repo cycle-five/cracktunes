@@ -15,6 +15,7 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+            true,
         )
         .await?;
     }
@@ -25,6 +26,7 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+            true,
         )
         .await?;
     }

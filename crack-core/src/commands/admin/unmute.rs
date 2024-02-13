@@ -31,6 +31,7 @@ pub async fn unmute_impl(
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+            true,
         )
         .await
     } else {
@@ -41,6 +42,7 @@ pub async fn unmute_impl(
                 user: user.name.clone(),
                 user_id: user.clone().id,
             },
+            true,
         )
         .await
     }

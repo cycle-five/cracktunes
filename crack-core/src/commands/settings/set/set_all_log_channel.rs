@@ -18,6 +18,7 @@ pub async fn log_channel_for_guild(
     send_response_poise(
         ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
+        true,
     )
     .await?;
 
@@ -46,6 +47,7 @@ pub async fn all_log_channel(
     send_response_poise(
         ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
+        true,
     )
     .await?;
 

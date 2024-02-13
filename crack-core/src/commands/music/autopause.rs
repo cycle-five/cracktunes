@@ -36,9 +36,9 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
         guild_settings.autopause
     };
     let msg = if autopause {
-        send_response_poise(ctx, CrackedMessage::AutopauseOn)
+        send_response_poise(ctx, CrackedMessage::AutopauseOn, true)
     } else {
-        send_response_poise(ctx, CrackedMessage::AutopauseOff)
+        send_response_poise(ctx, CrackedMessage::AutopauseOff, true)
     }
     .await?;
     ctx.data().add_msg_to_cache(guild_id, msg);

@@ -45,6 +45,6 @@ pub async fn set_premium_internal(
     GuildEntity::update_premium(&pool, settings.guild_id.get() as i64, premium)
         .await
         .unwrap();
-    send_response_poise(ctx, CrackedMessage::Premium(premium)).await?;
+    send_response_poise(ctx, CrackedMessage::Premium(premium), true).await?;
     Ok(settings)
 }

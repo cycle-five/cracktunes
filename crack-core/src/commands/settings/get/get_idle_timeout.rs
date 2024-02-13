@@ -23,6 +23,7 @@ pub async fn idle_timeout(ctx: Context<'_>) -> Result<(), Error> {
     send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Idle timeout: {:?}s", idle_timeout)),
+        true,
     )
     .await?;
 

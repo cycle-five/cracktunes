@@ -16,7 +16,7 @@ pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played)).await?;
+    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg);
 
     Ok(())
