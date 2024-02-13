@@ -1,35 +1,43 @@
 image: debian/bookworm
 tasks:
-  - install-dependencies: |
-      sudo apt-get update -y
-      sudo apt-get install -y \
-        autoconf \
-        automake \
-        cmake \
-        libtool \
-        libssl-dev \
-        pkg-config \
-        gcc g++ \
-        curl \
-        libopus-dev
-      sudo apt-get autoremove -y
-      sudo apt-get clean -y
-      sudo rm -rf /var/lib/apt/lists/*
-  - install-rust: |
-      curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      . "$HOME/.cargo/env"
-      rustup install nightly
-      rustup default nightly
-  - fmt: |
-      . "$HOME/.cargo/env"
-      cd cracktunes
-      cargo +nightly fmt --all -- --check
-  - lint: |
-      . "$HOME/.cargo/env"
-      cd cracktunes
-      cargo +nightly clippy --all -- -D warnings
-  - test: |
-      . "$HOME/.cargo/env"
-      cd cracktunes
-      # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
-      cargo test
+    - install-dependencies: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            cmake \
+            libtool \
+            libssl-dev \
+            pkg-config \
+            gcc g++ \
+            curl \
+            libopus-dev \
+            git
+          sudo apt-get autoremove -y
+          sudo apt-get clean -y
+          sudo rm -rf /var/lib/apt/lists/*
+    - install-rust: |
+          curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          . "$HOME/.cargo/env"
+          rustup install nightly
+          rustup default nightly
+    #   - install-tarpaulin: |
+    #       . "$HOME/.cargo/env"
+    #       cargo install cargo-tarpaulin
+    - install-yt-dlp: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+
+    - fmt: |
+          . "$HOME/.cargo/env"
+          cd cracktunes
+          cargo +nightly fmt --all -- --check
+    - lint: |
+          . "$HOME/.cargo/env"
+          cd cracktunes
+          cargo +nightly clippy --all -- -D warnings
+    - test: |
+          . "$HOME/.cargo/env"
+          cd cracktunes
+          # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+          cargo +nightly test
