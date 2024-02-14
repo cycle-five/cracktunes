@@ -6,7 +6,8 @@
 [![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
 [![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
-[![Rust Version](https://img.shields.io/badge/rustc-1.74-blue.svg)](https://github.com/cycle-five/cracktunes/)
+[![Rust Version](https://img.shields.io/badge/rustc-1.76-blue.svg)](https://github.com/cycle-five/cracktunes/)
+[![Rust Version](https://img.shields.io/badge/rustc-1.78-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Deployment
 
@@ -14,11 +15,12 @@
 
 * Create a bot account
 * Copy the **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively.
+* Define `DATABASE_URL`, `PG_USER`, `PG_PASSWORD` for the Postgres database.
 * *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
 * *Optional* define `OPENAI_API_KEY` for chatgpt support.
 * Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
 
-### Docker
+### Docker **FIXME**
 
 ```shell
 docker run -d --env-file .env --restart unless-stopped --name cracktunes ghcr.io/cycle-five/cracktunes:latest
@@ -29,25 +31,25 @@ docker run -d --env-file .env --restart unless-stopped --name cracktunes ghcr.io
 Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on https://rustup.rs/.
 After installing the requirements below, simply run `cargo run`.
 
-### Linux/MacOS
+### Linux/MacOS **FIXME**
 
 The commands below install a C compiler, GNU autotools and FFmpeg, as well as [yt-dlp](https://github.com/yt-dlp/yt-dlp) through Python's package manager, pip.
 
-#### Linux
+#### Linux **FIXME**
 
 ```shell
 apt install build-essential autoconf automake libtool ffmpeg
 pip install -U yt-dlp
 ```
 
-#### MacOS
+#### MacOS **FIXME**
 
 ```shell
 brew install autoconf automake libtool ffmpeg
 pip install -U yt-dlp
 ```
 
-### Windows
+### Windows **FIXME**
 
 If you are using the MSVC toolchain, a prebuilt DLL for Opus is already provided for you.  
 You will only need to download [FFmpeg](https://ffmpeg.org/download.html), and install [yt-dlp](https://github.com/yt-dlp/yt-dlp) which can be done through Python's package manager, pip.
@@ -62,12 +64,12 @@ If you are using Windows Subsystem for Linux (WSL), you should follow the [Linux
 apt install pkg-config
 ```
 
-## Testing
+## Testing **FIXME**
 
 Tests are available inside the `src/tests` folder. They can be run via `cargo test`. It's recommended that you run the tests before submitting your Pull Request.
 Increasing the test coverage is also welcome.
 
-### Docker
+### Docker **FIXME**
 
 Within the project folder, simply run the following:
 
