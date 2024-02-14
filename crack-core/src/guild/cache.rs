@@ -12,7 +12,6 @@ use std::{
 use typemap_rev::TypeMapKey;
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
-//type TimeOrderedMessage = (DateTime<Utc>, QueueMessage);
 
 #[derive(Debug, Clone)]
 pub struct GuildCache {

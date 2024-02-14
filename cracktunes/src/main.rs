@@ -40,7 +40,8 @@ async fn main() -> Result<(), Error> {
     let url = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp";
 
     init_telemetry(url).await;
-    main_async(event_log).await
+    let _ = main_async(event_log).await?;
+    Ok(())
 }
 
 /// Main async function, needed so we can  initialize everything.
@@ -85,6 +86,7 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 }
 
 /// Prometheus handler
+#[cfg(not(tarpaulin_include))]
 async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
     let mut metric_families = prometheus::gather();
