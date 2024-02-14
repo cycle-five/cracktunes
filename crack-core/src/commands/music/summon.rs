@@ -1,26 +1,16 @@
-use std::sync::Arc;
-use std::time::Duration;
-
 use self::serenity::{model::id::ChannelId, Mentionable};
 use crate::handlers::IdleHandler;
 use crate::{
-    connection::get_voice_channel_for_user,
-    errors::CrackedError,
-    handlers::TrackEndHandler,
-    messaging::message::CrackedMessage,
-    // handlers::{IdleHandler, TrackEndHandler},
-    // handlers::TrackEndHandler,
-    // messaging::message::CrackedMessage,
-    utils::get_user_id,
-    Context,
-    Error,
+    connection::get_voice_channel_for_user, errors::CrackedError, handlers::TrackEndHandler,
+    messaging::message::CrackedMessage, utils::get_user_id, Context, Error,
 };
 use ::serenity::all::{Channel, Guild, UserId};
 use poise::{serenity_prelude as serenity, CreateReply};
 use songbird::Call;
 use songbird::{Event, TrackEvent};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
-// use std::{sync::Arc, time::Duration};
 
 /// Summon the bot to a voice channel.
 #[cfg(not(tarpaulin_include))]
@@ -35,7 +25,7 @@ pub async fn summon(
     #[description = "Channel to join"] channel: Option<Channel>,
     #[description = "Channel id to join"] channel_id_str: Option<String>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let guild = ctx
         .serenity_context()
         .cache
@@ -102,9 +92,9 @@ pub async fn summon(
                 .entry(guild_id)
                 .and_modify(|guild_settings| {
                     // guild_settings.channel_id = Some(channel_id);
-                    if guild_settings.volume <= 10.0 {
-                        guild_settings.volume = 70.0;
-                        guild_settings.old_volume = 70.0;
+                    if guild_settings.volume <= 0.1 {
+                        guild_settings.volume = 0.7;
+                        guild_settings.old_volume = 0.7;
                     }
                 });
             let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
