@@ -25,8 +25,8 @@ tasks:
     #       . "$HOME/.cargo/env"
     #       cargo install cargo-tarpaulin
     - install-yt-dlp: |
-          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
-          chmod +x /usr/local/bin/yt-dlp
+          sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          sudo chmod +x /usr/local/bin/yt-dlp
 
     - fmt: |
           . "$HOME/.cargo/env"
