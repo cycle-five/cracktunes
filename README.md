@@ -110,8 +110,11 @@ Didn't really track stuff here...
 - [] Port to next branch of serenity
 - [] Flesh out admin commands
 
-## 0.3.0
-- [] Database Schema
+## 0.3.0.rc1
+- [x] Dockerized!
+- [x] Refactored settings commands.
+- [x] Storing and retrieving settings from Postgres.
+- [x] Updated dependencies to be in line with current.
 
 ...and more!
 ## 1.0.0

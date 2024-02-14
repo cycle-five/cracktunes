@@ -40,7 +40,7 @@ async fn main() -> Result<(), Error> {
     let url = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp";
 
     init_telemetry(url).await;
-    let _ = main_async(event_log).await?;
+    main_async(event_log).await?;
     Ok(())
 }
 
