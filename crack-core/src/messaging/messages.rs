@@ -104,5 +104,6 @@ pub const WAYBACK_SNAPSHOT: &str = "Wayback snapshot for";
 pub const KICKED: &str = "Kicked ";
 pub const VERSION_LATEST: &str = "Find the latest version [here]";
 pub const VERSION: &str = "Version";
+pub const VERSION_LATEST_HASH: &str = "Build hash [here]";
 pub const VOLUME: &str = "🔊 Volume";
 pub const VOICE_CHANNEL_CREATED: &str = "🔊 Created voice channel!";

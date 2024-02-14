@@ -7,6 +7,7 @@ use poise::serenity_prelude::{self as serenity, UserId};
 use crate::messaging::messages::*;
 
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
+const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
 
 #[derive(Debug)]
 pub enum CrackedMessage {
@@ -126,6 +127,7 @@ pub enum CrackedMessage {
     },
     Version {
         current: String,
+        hash: String,
     },
     VoteSkip {
         mention: Mention,
@@ -249,9 +251,17 @@ impl Display for CrackedMessage {
             Self::UserUnmuted { user, user_id } => {
                 f.write_str(&format!("{} {} {}", UNMUTED, user, user_id))
             }
-            Self::Version { current } => f.write_str(&format!(
-                "{} [{}]({}/tag/v{})\n{}({}/latest)",
-                VERSION, current, RELEASES_LINK, current, VERSION_LATEST, RELEASES_LINK
+            Self::Version { current, hash } => f.write_str(&format!(
+                "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}/tree/{})",
+                VERSION,
+                current,
+                RELEASES_LINK,
+                current,
+                VERSION_LATEST,
+                RELEASES_LINK,
+                VERSION_LATEST_HASH,
+                REPO_LINK,
+                hash,
             )),
             Self::VoiceChannelCreated { channel_name } => {
                 f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))

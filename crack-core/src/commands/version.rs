@@ -11,10 +11,12 @@ pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
         .unwrap()
         .reply_with_embed;
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| "Unknown");
+    let hash = option_env!("GIT_HASH").unwrap_or_else(|| "Unknown");
     let msg = send_response_poise(
         ctx,
         CrackedMessage::Version {
             current: current.to_owned(),
+            hash: hash.to_owned(),
         },
         reply_with_embed,
     )
