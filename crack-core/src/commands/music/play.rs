@@ -12,7 +12,10 @@ use crate::{
         PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
         TRACK_TIME_TO_PLAY,
     },
-    sources::spotify::{Spotify, SPOTIFY},
+    sources::{
+        spotify::{Spotify, SPOTIFY},
+        ytdl::MyYoutubeDl,
+    },
     utils::{
         compare_domains, edit_response_poise, get_guild_name, get_human_readable_timestamp,
         get_interaction, get_track_metadata, send_embed_response_poise, send_response_poise_text,
@@ -227,8 +230,12 @@ pub async fn get_call_with_fail_msg(
                             mention: channel_id.mention(),
                         }
                         .to_string();
-                        ctx.send(CreateReply::default().content(text).ephemeral(true))
+                        let msg = ctx
+                            .send(CreateReply::default().content(text).ephemeral(true))
+                            .await?
+                            .into_message()
                             .await?;
+                        ctx.data().add_msg_to_cache(guild_id, msg);
                     }
                     Ok(call)
                     // Ok(manager.get(guild_id).unwrap())
@@ -822,12 +829,14 @@ async fn match_mode(
                     .await;
             }
             // FIXME
-            QueryType::PlaylistLink(_url) => {
+            QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
                 //     .ok_or(CrackedError::PlayListFail)?;
-                let urls = ["".to_string()];
+                // let client = reqwest::Client::new();
+                let mut my_ytdl = MyYoutubeDl::new(url);
+                let urls = my_ytdl.get_playlist().await?;
 
                 for url in urls.iter() {
                     let queue = enqueue_track_pgwrite(

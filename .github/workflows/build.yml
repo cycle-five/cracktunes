@@ -20,6 +20,12 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v4
 
+      - name: "Install yt-dlp"
+        run: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+        shell: bash
+
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update

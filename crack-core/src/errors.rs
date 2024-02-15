@@ -1,16 +1,7 @@
 use crate::messaging::messages::{
-    FAIL_ANOTHER_CHANNEL,
-    FAIL_AUTHOR_DISCONNECTED,
-    FAIL_AUTHOR_NOT_FOUND,
-    FAIL_NOTHING_PLAYING,
-    FAIL_NO_SONGBIRD,
-    FAIL_NO_VOICE_CONNECTION,
-    FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH,
-    FAIL_WRONG_CHANNEL,
-    NO_GUILD_ID,
-    NO_GUILD_SETTINGS,
-    QUEUE_IS_EMPTY, //, TRACK_INAPPROPRIATE, TRACK_NOT_FOUND,
+    FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
+    FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY,
     UNAUTHORIZED_USER,
 };
 use crate::Error;
@@ -23,6 +14,7 @@ use songbird::error::JoinError;
 use songbird::input::AudioStreamError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
+use std::process::ExitStatus;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -34,7 +26,9 @@ pub enum CrackedError {
     Anyhow(anyhow::Error),
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
+    CommandFailed(String, ExitStatus, String),
     DurationParseError(String, String),
+    GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
     LogChannelWarning(&'static str, GuildId),
@@ -90,9 +84,13 @@ impl Display for CrackedError {
             }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
+            Self::CommandFailed(program, status, output) => f.write_str(&format!(
+                "Command `{program}` failed with status `{status}` and output `{output}`"
+            )),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             }
+            Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),
             Self::Other(msg) => f.write_str(msg),

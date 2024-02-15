@@ -27,7 +27,7 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    send_response_poise(ctx, CrackedMessage::Clear).await?;
+    send_response_poise(ctx, CrackedMessage::Clear, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

@@ -4,25 +4,33 @@ services:
     container_name: crack_postgres
     image: postgres:latest
     volumes:
-      - /data/postgres:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - PGPORT=${PGPORT}
+      # - PORT=${PUB_PORT:-5432}
+      - PGDATA=/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${PGPORT}:${PGPORT}"
+      - "127.0.0.1:${PUB_PORT}:5432"
     restart: always
   cracktunes:
     container_name: cracktunes
     image: cyclefive/cracktunes:dev
     volumes:
-      - "/data:/data"
-      - "./.env:/app/.env"
-      - "./cracktunes.toml:/app/cracktunes.toml"
+      - crack_data:/data:rw
+      - ./.env:/home/cyclefive/app/.env:rw
+      - ./cracktunes.toml:/home/cyclefive/app/cracktunes.toml:rw
     environment:
-      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:${PGPORT}/postgres
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+      #- PUID=1001
+      #- PGID=1001
     links:
       - crack_postgres
     ports:
       - "127.0.0.1:8000:8000"
+volumes:
+  pgdata:
+    external: true
+  crack_data:
+    external: true

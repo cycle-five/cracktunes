@@ -26,6 +26,7 @@ pub async fn delete_channel(
                     send_response_poise(
                         ctx,
                         CrackedMessage::Other(format!("Failed to delete channel: {}", e)),
+                        true,
                     )
                     .await?;
                 } else {
@@ -36,12 +37,17 @@ pub async fn delete_channel(
                             channel_id,
                             channel_name: channel_name.clone(),
                         },
+                        true,
                     )
                     .await?;
                 }
             } else {
-                send_response_poise(ctx, CrackedMessage::Other("Channel not found.".to_string()))
-                    .await?;
+                send_response_poise(
+                    ctx,
+                    CrackedMessage::Other("Channel not found.".to_string()),
+                    true,
+                )
+                .await?;
             }
         }
         None => {

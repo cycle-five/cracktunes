@@ -39,6 +39,7 @@ pub async fn add_prefix(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
         )),
+        true,
     )
     .await?;
     Ok(())
@@ -73,6 +74,7 @@ pub async fn clear_prefixes(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
         )),
+        true,
     )
     .await?;
     Ok(())
@@ -96,6 +98,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
         )),
+        true,
     )
     .await?;
     ctx.data().add_msg_to_cache(guild_id, msg);

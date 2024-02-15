@@ -482,18 +482,14 @@ impl SerenityHandler {
             tracing::warn!("GuildSettings: {:?}", settings);
 
             let _ = guild_settings_map.insert(*guild_id, settings);
-            tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
+            // tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
 
             let guild_settings_opt = guild_settings_map.get_mut(guild_id);
 
             match guild_settings_opt {
                 Some(&mut ref guild_settings) => {
-                    tracing::info!("saving guild {}...", guild_settings);
+                    tracing::info!("loaded guild from db {}...", guild_settings);
                     guild_settings_list.push(guild_settings.clone());
-                    // guild_settings
-                    //     .save()
-                    //     .await
-                    //     .expect("Error saving guild settings");
                 }
                 None => {
                     tracing::error!("Guild not found in settings map");
@@ -501,8 +497,9 @@ impl SerenityHandler {
             }
         }
 
+        // let pool = self.data.database_pool.clone().unwrap();
         // for guild in guild_settings_list.clone() {
-        //     guild.save().await.expect("Guild saves correctly");
+        //     guild.save(&pool).await.expect("Guild saves correctly");
         // }
 
         Ok(())

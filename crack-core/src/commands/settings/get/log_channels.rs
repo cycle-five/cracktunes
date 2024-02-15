@@ -28,6 +28,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
                 "All Log Channel: {:?}",
                 all_log_channel.unwrap_or_default()
             )),
+            true,
         )
         .await?;
     }
@@ -61,6 +62,7 @@ pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
                 "Join/Leave Log Channel: {:?}",
                 join_leave_log_channel.unwrap_or_default()
             )),
+            true,
         )
         .await?;
     }

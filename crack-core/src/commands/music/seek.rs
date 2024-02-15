@@ -44,6 +44,7 @@ pub async fn seek(
         CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },
+        true,
     )
     .await?;
     ctx.data().add_msg_to_cache(guild_id, msg);

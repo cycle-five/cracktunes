@@ -10,18 +10,28 @@
 name: Dockerhub
 
 on:
-  # push:
-  #   tags: ['v*.*.*']
-  #   branches: [master]
+  workflow_dispatch:
+  push:
+    branches:
+      - 'master'
+    tags: ['v*.*.*']
+  pull_request:
+    #branches:
+    #  - 'master'
   workflow_call:
 
 env:
+  REGISTRY: docker.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   push:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    #if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build') 
+    #if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build') 
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - 
         name: Repository Checkout
@@ -39,32 +49,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - 
-        name: Cache
-        uses: Swatinem/rust-cache@v2
-      - 
-        name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres
-      - 
-        uses: ikalnytskyi/action-setup-postgres@v4
+        name: Extract Git Metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          username: postgres
-          password: mysecretpassword
-          database: postgres
-          port: 5432
-        id: postgres
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       -
-        name: Migrate database
-        env:
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
-          PG_USER: postgres
-          PG_PASSWORD: mysecretpassword
-        run: |
-          sqlx database create
-          sqlx migrate run --source migrations/
-          cargo sqlx prepare --workspace
-      -
-        name: Build and push
+        name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
-          push:  ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') }}
-          tags: ${{ env.IMAGE_NAME }}
+          context: .
+          push: ${{ github.event.inputs.trigger == 'push' }}
+          # push:
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

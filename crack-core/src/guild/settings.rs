@@ -1,6 +1,7 @@
 use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
-//use ::serenity::prelude::Context;
+use crate::db::{GuildEntity, WelcomeSettingsRead};
+use crate::errors::CrackedError;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
@@ -16,10 +17,6 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
-use crate::db::{GuildEntity, WelcomeSettingsRead};
-use crate::errors::CrackedError;
-//use crate::Data;
-
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
@@ -27,12 +24,12 @@ pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str =
-    "postgresql://postgres:mysecretpassword@localhost:5433/postgres";
+    "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
 pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
 pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
 pub(crate) const DEFAULT_PREMIUM: bool = false;
-pub(crate) const ADDITIONAL_PREFIXES: [&str; 10] = [
-    "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", "m/", "M/",
+pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
+    "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", //, "m/", "M/",
 ];
 pub(crate) const MOD_VAL: u64 = 1 << 1;
 pub(crate) const ADMIN_VAL: u64 = 2 << 1;
@@ -252,6 +249,8 @@ pub struct GuildSettings {
     pub autopause: bool,
     #[serde(default = "default_true")]
     pub autoplay: bool,
+    #[serde(default = "default_true")]
+    pub reply_with_embed: bool,
     #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -364,6 +363,7 @@ impl GuildSettings {
             premium: DEFAULT_PREMIUM,
             autopause: false,
             autoplay: true,
+            reply_with_embed: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
@@ -389,7 +389,6 @@ impl GuildSettings {
         let prefix = self.prefix.clone();
         let (guild, mut settings) =
             crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
-        // let mut settings = guild.get_settings(pool).await?;
         let welcome_settings = guild.get_welcome_settings(pool).await?;
         let log_settings = guild.get_log_settings(pool).await?;
         settings.welcome_settings = welcome_settings;
@@ -427,7 +426,8 @@ impl GuildSettings {
         Ok(())
     }
 
-    pub fn old_save(&self) -> Result<(), CrackedError> {
+    /// Save the guild settings to a JSON file. Unused?
+    pub fn save_json(&self) -> Result<(), CrackedError> {
         tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!(
@@ -818,6 +818,7 @@ impl GuildSettings {
     }
 }
 
+/// Save the guild settings to the database.
 pub async fn save_guild_settings(
     guild_settings_map: &HashMap<GuildId, GuildSettings>,
     pool: &PgPool,
@@ -843,3 +844,26 @@ impl TypeMapKey for AtomicU16Key {
 
 pub type GuildSettingsMapParam =
     std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
+
+#[cfg(test)]
+mod test {
+    use serenity::all::GuildId;
+
+    #[test]
+    fn test_default() {
+        let settings = crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
+        assert_eq!(settings.prefix, "r!");
+        assert_eq!(settings.allowed_domains.len(), 1);
+        assert_eq!(settings.allowed_domains.contains("youtube.com"), true);
+        assert_eq!(settings.banned_domains.len(), 0);
+        assert_eq!(settings.authorized_users.len(), 0);
+        assert_eq!(settings.ignored_channels.len(), 1);
+        assert_eq!(settings.old_volume, 1.0);
+        assert_eq!(settings.volume, 1.0);
+        assert_eq!(settings.self_deafen, true);
+        assert_eq!(settings.timeout, 600);
+        assert_eq!(settings.welcome_settings.is_none(), true);
+        assert_eq!(settings.log_settings.is_none(), true);
+        assert_eq!(settings.additional_prefixes.len(), 0);
+    }
+}

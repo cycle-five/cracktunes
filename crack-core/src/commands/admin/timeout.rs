@@ -46,6 +46,7 @@ pub async fn timeout(
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to timeout user: {}", e)),
+            true,
         )
         .await?;
     } else {
@@ -57,6 +58,7 @@ pub async fn timeout(
                 user_id: format!("{}", user_id),
                 timeout_until: timeout_until.clone(),
             },
+            true,
         )
         .await?;
     }

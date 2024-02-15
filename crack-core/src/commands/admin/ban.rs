@@ -33,6 +33,7 @@ pub async fn ban(
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to ban user: {}", e)),
+            true,
         )
         .await?;
     } else {
@@ -43,6 +44,7 @@ pub async fn ban(
                 user: user.name.clone(),
                 user_id: user.clone().id,
             },
+            true,
         )
         .await?;
     }

@@ -16,12 +16,14 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
                 send_response_poise(
                     ctx,
                     CrackedMessage::Other("No auto role set for this server.".to_string()),
+                    true,
                 )
             },
             |role_id| {
                 send_response_poise(
                     ctx,
                     CrackedMessage::Other(format!("Auto role: <@&{}>", role_id)),
+                    true,
                 )
             },
         )

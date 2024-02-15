@@ -122,10 +122,14 @@ pub async fn send_log_embed(
 pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
+    as_embed: bool,
 ) -> Result<Message, Error> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
-
-    send_embed_response_poise(ctx, embed).await
+    if as_embed {
+        let embed = CreateEmbed::default().description(format!("{message}"));
+        send_embed_response_poise(ctx, embed).await
+    } else {
+        send_nonembed_response_poise(ctx, format!("{message}")).await
+    }
 }
 
 pub async fn send_response_poise_text(
@@ -215,6 +219,28 @@ pub async fn send_embed_response_poise(
     ctx.send(
         CreateReply::default()
             .embed(embed)
+            .ephemeral(false)
+            .reply(true),
+    )
+    .await?
+    .into_message()
+    .await
+    .map_err(|e| {
+        tracing::error!("error: {:?}", e);
+        e.into()
+    })
+}
+
+/// Sends a regular reply response.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_nonembed_response_poise(
+    ctx: CrackContext<'_>,
+    text: String,
+) -> Result<Message, Error> {
+    tracing::warn!("create_embed_response_poise");
+    ctx.send(
+        CreateReply::default()
+            .content(text)
             .ephemeral(false)
             .reply(true),
     )

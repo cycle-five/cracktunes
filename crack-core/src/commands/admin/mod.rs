@@ -22,10 +22,7 @@ pub mod timeout;
 pub mod unban;
 pub mod unmute;
 
-use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
-    Error,
-};
+use crate::{Context, Error};
 pub use audit_logs::*;
 pub use authorize::*;
 pub use ban::*;
@@ -88,49 +85,5 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 
     ctx.say("You found the admin command").await?;
 
-    Ok(())
-}
-
-/// Delete category.
-#[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn delete_category(ctx: Context<'_>, category_name: String) -> Result<(), Error> {
-    match ctx.guild_id() {
-        Some(guild) => {
-            let guild = guild.to_partial_guild(&ctx).await?;
-            let category = guild
-                .channels(&ctx)
-                .await?
-                .into_iter()
-                .find(|c| c.1.name == category_name);
-            if let Some(category) = category {
-                if let Err(e) = category.1.delete(&ctx).await {
-                    // Handle error, send error message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::Other(format!("Failed to delete category: {}", e)),
-                    )
-                    .await?;
-                } else {
-                    // Send success message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::Other(format!("Category deleted: {}", category_name)),
-                    )
-                    .await?;
-                }
-            } else {
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other("Category not found.".to_string()),
-                )
-                .await?;
-            }
-        }
-        None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
-        }
-    }
     Ok(())
 }

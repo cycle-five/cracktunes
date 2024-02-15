@@ -3,6 +3,7 @@ use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
 use errors::CrackedError;
+use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
@@ -381,10 +382,12 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
+    /// Add a message to the cache
     pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
         self.add_msg_to_cache_ts(guild_id, now, msg)
     }
+
     /// Add msg to the cache with a timestamp.
     pub fn add_msg_to_cache_ts(
         &self,
@@ -400,6 +403,7 @@ impl Data {
             .insert(ts, msg)
     }
 
+    /// Get and remove a message from the cache
     pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
@@ -408,4 +412,18 @@ impl Data {
             .time_ordered_messages
             .remove(&ts)
     }
+
+    /// Get the guild settings for a guild (read only)
+    pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+        self.guild_settings_map
+            .read()
+            .unwrap()
+            .get(&guild_id)
+            .cloned()
+    }
+
+    // /// Get the guild settings for a guild (mutable)
+    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+    //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
+    // }
 }

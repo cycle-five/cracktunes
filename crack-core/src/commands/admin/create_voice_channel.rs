@@ -28,6 +28,7 @@ pub async fn create_voice_channel(
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+            true,
         )
         .await?;
     } else {
@@ -37,6 +38,7 @@ pub async fn create_voice_channel(
             CrackedMessage::VoiceChannelCreated {
                 channel_name: channel_name.clone(),
             },
+            true,
         )
         .await?;
     }

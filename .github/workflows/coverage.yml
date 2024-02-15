@@ -24,6 +24,12 @@ jobs:
           rustup update
         shell: bash
 
+      - name: "Install yt-dlp"
+        run: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+        shell: bash
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "coverage"

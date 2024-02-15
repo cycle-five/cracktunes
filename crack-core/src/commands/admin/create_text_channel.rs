@@ -29,6 +29,7 @@ pub async fn create_text_channel(
             send_response_poise(
                 ctx,
                 CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+                true,
             )
             .await?;
         }
@@ -40,6 +41,7 @@ pub async fn create_text_channel(
                     channel_name: channel.name.clone(),
                     channel_id: channel.id,
                 },
+                true,
             )
             .await?;
         }
@@ -70,6 +72,7 @@ pub async fn create_category(
             send_response_poise(
                 ctx,
                 CrackedMessage::Other(format!("Failed to create channel: {}", e)),
+                true,
             )
             .await?;
         }
@@ -81,6 +84,7 @@ pub async fn create_category(
                     channel_name: channel.name.clone(),
                     channel_id: channel.id,
                 },
+                true,
             )
             .await?;
         }

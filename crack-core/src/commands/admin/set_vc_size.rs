@@ -20,6 +20,7 @@ pub async fn set_vc_size(
     send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Channel size sent to {size}")),
+        true,
     )
     .await
     .map(|_| ())

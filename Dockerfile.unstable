@@ -1,6 +1,6 @@
 # Build image
 # Necessary dependencies to build CrackTunes
-FROM debian:bookworm-slim as build
+FROM debian:unstable-slim as build
 ARG SQLX_OFFLINE=true
 
 RUN apt-get update && apt-get install -y \
@@ -26,7 +26,7 @@ RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes
-FROM debian:bookworm-slim AS runtime
+FROM debian:unstable-slim AS runtime
 
 ARG USERNAME=cyclefive
 ARG USER_UID=1000
