@@ -113,7 +113,7 @@ impl TrackReaction {
                 play_log_id = $1
             RETURNING 
                 play_log_id, likes, dislikes, skip_votes, created_at"#,
-            play_log_id,
+            play_log_id.into(),
         )
         .fetch_one(pool)
         .await

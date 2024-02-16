@@ -4,6 +4,8 @@ use poise::futures_util::StreamExt;
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::{Error, PgPool};
 
+use crate::db::Metadata;
+
 #[derive(Debug, Clone)]
 pub struct PlayLog {
     pub id: i64,
@@ -75,6 +77,7 @@ impl PlayLog {
         }
     }
 
+    ///
     pub async fn get_last_played_by_guild(
         conn: &PgPool,
         guild_id: i64,
@@ -98,6 +101,44 @@ impl PlayLog {
             last_played.push(item?);
         }
         Ok(last_played.into_iter().map(|t| t.to_string()).collect())
+    }
+
+    pub async fn get_last_played_by_guild_metadata(
+        conn: &PgPool,
+        guild_id: i64,
+    ) -> Result<Vec<i64>, Error> {
+        //let last_played: Vec<TitleArtist> = sqlx::query_as!(
+        //     pub id: i32,
+        //     pub track: Option<String>,
+        //     pub artist: Option<String>,
+        //     pub album: Option<String>,
+        //     pub date: Option<chrono::NaiveDate>,
+        //     pub channels: Option<i16>,
+        //     pub channel: Option<String>,
+        //     pub start_time: i64,
+        //     pub duration: i64,
+        //     pub sample_rate: Option<i32>,
+        //     pub source_url: Option<String>,
+        //     pub title: Option<String>,
+        //     pub thumbnail: Option<String>,
+        let mut last_played: Vec<Metadata> = Vec::new();
+        let mut last_played_stream = sqlx::query_as!(
+            Metadata,
+            r#"
+            select metadata.id, title, artist, album, track, date, channels, channel, start_time, duration, sample_rate, source_url, thumbnail
+            from play_log 
+            join metadata on 
+            play_log.metadata_id = metadata.id 
+            where guild_id = $1 order by created_at desc limit 5
+            "#,
+            guild_id
+        )
+        .fetch(conn);
+        while let Some(item) = last_played_stream.next().await {
+            // Process the item
+            last_played.push(item?);
+        }
+        Ok(last_played.into_iter().map(|t| t.id as i64).collect())
     }
 
     pub async fn get_last_played_by_user(

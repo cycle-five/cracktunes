@@ -2,6 +2,8 @@ use crate::guild::settings::DEFAULT_PREFIX;
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
+use db::PlayLog;
+use db::TrackReaction;
 use errors::CrackedError;
 use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
@@ -382,6 +384,22 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
+    pub async fn downvote_track(&self, guild_id: GuildId, _track: &str) -> Result<(), Error> {
+        let play_log_id = PlayLog::get_last_played_by_guild_metadata(
+            &self.database_pool.as_ref().unwrap(),
+            guild_id.into(),
+        )
+        .await?;
+        // let mut guild_cache_map = self.guild_cache_map.lock().unwrap();
+        TrackReaction::add_dislike(
+            &self.database_pool.as_ref().unwrap(),
+            *play_log_id.first().unwrap() as i32,
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// Add a message to the cache
     pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();

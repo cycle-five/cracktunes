@@ -80,6 +80,37 @@ pub async fn create_skip_response(
     }
 }
 
+/// Downvote and skip song causing it to *not* be used in music recommendations.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, slash_command, guild_only)]
+pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = match manager.get(guild_id) {
+        Some(call) => call,
+        None => {
+            tracing::warn!(
+                "Not in voice channel: manager.get({}) returned None",
+                guild_id
+            );
+            return Ok(());
+        }
+    };
+
+    let handler = call.lock().await;
+    let queue = handler.queue();
+    let metadata = get_track_metadata(&queue.current().unwrap()).await;
+
+    ctx.data()
+        .downvote_track(guild_id, &metadata.source_url.unwrap().to_owned())
+        .await?;
+
+    force_skip_top_track(&handler).await?;
+    Ok(())
+}
+
 /// Do the actual skipping of the top track.
 #[cfg(not(tarpaulin_include))]
 pub async fn force_skip_top_track(
