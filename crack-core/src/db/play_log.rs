@@ -92,8 +92,8 @@ impl PlayLog {
             from (play_log
                 join metadata on 
                 play_log.metadata_id = metadata.id)
-                join track_reaction on play_log.id = track_reaction.play_log_id
-            where guild_id = $1 and track_reaction.dislikes < $2
+                left join track_reaction on play_log.id = track_reaction.play_log_id
+            where guild_id = $1 and (track_reaction is null or track_reaction.dislikes < $2)
             order by play_log.created_at desc limit 5
             "#,
             guild_id,
@@ -118,20 +118,6 @@ impl PlayLog {
         conn: &PgPool,
         guild_id: i64,
     ) -> Result<Vec<i64>, Error> {
-        //let last_played: Vec<TitleArtist> = sqlx::query_as!(
-        //     pub id: i32,
-        //     pub track: Option<String>,
-        //     pub artist: Option<String>,
-        //     pub album: Option<String>,
-        //     pub date: Option<chrono::NaiveDate>,
-        //     pub channels: Option<i16>,
-        //     pub channel: Option<String>,
-        //     pub start_time: i64,
-        //     pub duration: i64,
-        //     pub sample_rate: Option<i32>,
-        //     pub source_url: Option<String>,
-        //     pub title: Option<String>,
-        //     pub thumbnail: Option<String>,
         let mut last_played: Vec<Metadata> = Vec::new();
         let mut last_played_stream = sqlx::query_as!(
             Metadata,

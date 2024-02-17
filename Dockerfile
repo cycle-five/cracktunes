@@ -1,6 +1,7 @@
 # Build image
 # Necessary dependencies to build CrackTunes
 FROM debian:bookworm-slim as build
+ARG SQLX_OFFLINE=true
 
 RUN apt-get update && apt-get install -y \
        autoconf \
@@ -21,6 +22,7 @@ RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
 WORKDIR "/app"
 
 COPY . .
+COPY names.txt /app/names.txt
 RUN . "$HOME/.cargo/env" && cargo build --release --locked
 
 # Release image
@@ -70,6 +72,7 @@ COPY --chown=${USER_UID}:${USER_GID} --from=build /app/target/release/cracktunes
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/data  $HOME/app/data
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/.env.example $HOME/app/.env
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app/cracktunes.toml
+COPY --chown=${USER_UID}:${USER_GID} --from=build /app/names.txt $HOME/app/names.txt
 # RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
