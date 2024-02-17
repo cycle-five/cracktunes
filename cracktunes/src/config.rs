@@ -84,6 +84,7 @@ pub async fn poise_framework(
 
     tracing::warn!("Using prefix: {}", config.get_prefix());
     let up_prefix = config.get_prefix().to_ascii_uppercase();
+    // FIXME: Is this the proper way to allocate this memory?
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let options = poise::FrameworkOptions::<_, Error> {
@@ -100,6 +101,7 @@ pub async fn poise_framework(
             commands::toggle_autoplay(),
             commands::clear(),
             commands::clean(),
+            commands::downvote(),
             commands::help(),
             commands::leave(),
             commands::lyrics(),

@@ -78,9 +78,10 @@ impl PlayLog {
     }
 
     ///
-    pub async fn get_last_played_by_guild(
+    pub async fn get_last_played_by_guild_filter(
         conn: &PgPool,
         guild_id: i64,
+        max_dislikes: i32,
     ) -> Result<Vec<String>, Error> {
         //let last_played: Vec<TitleArtist> = sqlx::query_as!(
         let mut last_played: Vec<TitleArtist> = Vec::new();
@@ -88,12 +89,15 @@ impl PlayLog {
             TitleArtist,
             r#"
             select title, artist 
-            from play_log 
-            join metadata on 
-            play_log.metadata_id = metadata.id 
-            where guild_id = $1 order by created_at desc limit 5
+            from (play_log
+                join metadata on 
+                play_log.metadata_id = metadata.id)
+                join track_reaction on play_log.id = track_reaction.play_log_id
+            where guild_id = $1 and track_reaction.dislikes < $2
+            order by play_log.created_at desc limit 5
             "#,
-            guild_id
+            guild_id,
+            max_dislikes
         )
         .fetch(conn);
         while let Some(item) = last_played_stream.next().await {
@@ -101,6 +105,13 @@ impl PlayLog {
             last_played.push(item?);
         }
         Ok(last_played.into_iter().map(|t| t.to_string()).collect())
+    }
+
+    pub async fn get_last_played_by_guild(
+        conn: &PgPool,
+        guild_id: i64,
+    ) -> Result<Vec<String>, Error> {
+        Self::get_last_played_by_guild_filter(conn, guild_id, 1).await
     }
 
     pub async fn get_last_played_by_guild_metadata(

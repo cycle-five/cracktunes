@@ -1,7 +1,6 @@
 # Build image
 # Necessary dependencies to build CrackTunes
 FROM debian:bookworm-slim as build
-ARG SQLX_OFFLINE=true
 
 RUN apt-get update && apt-get install -y \
        autoconf \
