@@ -5,4 +5,4 @@
 # volume = 1.0
 # prefix = "r!"
 # owners = [ ]
-# database_url = "postgresql://postgres:mysecretpassword@localhost:5433/postgres"
+database_url = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"

@@ -4,6 +4,8 @@ use poise::futures_util::StreamExt;
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::{Error, PgPool};
 
+use crate::db::Metadata;
+
 #[derive(Debug, Clone)]
 pub struct PlayLog {
     pub id: i64,
@@ -75,9 +77,11 @@ impl PlayLog {
         }
     }
 
-    pub async fn get_last_played_by_guild(
+    ///
+    pub async fn get_last_played_by_guild_filter(
         conn: &PgPool,
         guild_id: i64,
+        max_dislikes: i32,
     ) -> Result<Vec<String>, Error> {
         //let last_played: Vec<TitleArtist> = sqlx::query_as!(
         let mut last_played: Vec<TitleArtist> = Vec::new();
@@ -85,6 +89,40 @@ impl PlayLog {
             TitleArtist,
             r#"
             select title, artist 
+            from (play_log
+                join metadata on 
+                play_log.metadata_id = metadata.id)
+                left join track_reaction on play_log.id = track_reaction.play_log_id
+            where guild_id = $1 and (track_reaction is null or track_reaction.dislikes < $2)
+            order by play_log.created_at desc limit 5
+            "#,
+            guild_id,
+            max_dislikes
+        )
+        .fetch(conn);
+        while let Some(item) = last_played_stream.next().await {
+            // Process the item
+            last_played.push(item?);
+        }
+        Ok(last_played.into_iter().map(|t| t.to_string()).collect())
+    }
+
+    pub async fn get_last_played_by_guild(
+        conn: &PgPool,
+        guild_id: i64,
+    ) -> Result<Vec<String>, Error> {
+        Self::get_last_played_by_guild_filter(conn, guild_id, 1).await
+    }
+
+    pub async fn get_last_played_by_guild_metadata(
+        conn: &PgPool,
+        guild_id: i64,
+    ) -> Result<Vec<i64>, Error> {
+        let mut last_played: Vec<Metadata> = Vec::new();
+        let mut last_played_stream = sqlx::query_as!(
+            Metadata,
+            r#"
+            select metadata.id, title, artist, album, track, date, channels, channel, start_time, duration, sample_rate, source_url, thumbnail
             from play_log 
             join metadata on 
             play_log.metadata_id = metadata.id 
@@ -97,7 +135,7 @@ impl PlayLog {
             // Process the item
             last_played.push(item?);
         }
-        Ok(last_played.into_iter().map(|t| t.to_string()).collect())
+        Ok(last_played.into_iter().map(|t| t.id as i64).collect())
     }
 
     pub async fn get_last_played_by_user(

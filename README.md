@@ -108,19 +108,23 @@ docker run -d --env-file .env cracktunes
 ## ~~0.2.6~~
 Didn't really track stuff here...
 ## ~~0.2.12~~
-## 0.2.13
-- [] Port to next branch of serenity
-- [] Flesh out admin commands
+## ~~0.2.13~~
+- ~~[] Port to next branch of serenity~~
+- ~~[] Flesh out admin commands~~
 
 ## 0.3.0.rc1
 - [x] Dockerized!
 - [x] Refactored settings commands.
 - [x] Storing and retrieving settings from Postgres.
 - [x] Updated dependencies to be in line with current.
+## 0.3.0.rc2
+- [x] Clean command
+- [x] Bug fixes
+- [ ] Down vote
 
 ...and more!
 ## 1.0.0
-- [] RTChris' Demuxer in C++ (for fun)?
+- [ ] RTChris' Demuxer in C++ (for fun)?
 
 
 <p align="center">

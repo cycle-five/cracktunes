@@ -493,7 +493,7 @@ async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Err
 
 /// Download a file and upload it as an attachment.
 async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadata), Error> {
-    if mp3 {
+    if mp3 || url.contains("youtube.com") {
         return download_file_ytdlp_mp3(url).await;
     }
 
@@ -1366,12 +1366,20 @@ async fn get_download_status_and_filename(
         QueryType::NewYoutubeDl((_src, metadata)) => {
             tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
             let url = metadata.source_url.unwrap();
-            let file_name = format!(
-                "/data/downloads/{} [{}].{}",
-                metadata.title.unwrap(),
-                url.split('=').last().unwrap(),
-                extension,
-            );
+            let file_name = if url.contains("twitter") {
+                format!(
+                    "/data/downloads/{}.{}",
+                    url.split('/').last().unwrap(),
+                    extension,
+                )
+            } else {
+                format!(
+                    "/data/downloads/{} [{}].{}",
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                )
+            };
             tracing::warn!("file_name: {}", file_name);
             let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
             let status = output.status.success();

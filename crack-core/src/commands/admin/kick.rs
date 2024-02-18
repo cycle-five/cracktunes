@@ -63,7 +63,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
     //     .map(|x| x.reply_with_embed)
     //     .ok_or(CrackedError::NoGuildSettings)?;
     // load names from file
-    let mut names: Vec<String> = read_lines("bell_labs_final.txt")
+    let mut names: Vec<String> = read_lines("names.txt")
         .iter()
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
@@ -74,10 +74,8 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
     let mut backoff = Duration::from_secs(1);
     // Half a second
     let sleep = Duration::from_millis(100);
-    let to_skip = [
-        UserId::new(981535296669765652),
-        UserId::new(491560191624740865),
-    ];
+    let to_skip = [];
+
     for member in members {
         if to_skip.contains(&member.user.id) {
             continue;

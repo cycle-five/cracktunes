@@ -12,7 +12,9 @@ services:
       # - PORT=${PUB_PORT:-5432}
       - PGDATA=/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${PUB_PORT}:5432"
+      - "${PUB_PORT}:5432"
+    expose:
+      - "${PUB_PORT}"
     restart: always
   cracktunes:
     container_name: cracktunes
