@@ -61,7 +61,7 @@ pub async fn volume(
             None => {
                 let volume_track = match track_handle {
                     Some(handle) => handle.get_info().await.unwrap().volume,
-                    None => 0.0,
+                    None => 0.1,
                 };
                 ctx.data()
                     .guild_settings_map

@@ -98,15 +98,15 @@ pub async fn summon(
         {
             let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
 
-            guild_settings_map
-                .entry(guild_id)
-                .and_modify(|guild_settings| {
-                    // guild_settings.channel_id = Some(channel_id);
-                    if guild_settings.volume <= 10.0 {
-                        guild_settings.volume = 70.0;
-                        guild_settings.old_volume = 70.0;
-                    }
-                });
+            // guild_settings_map
+            //     .entry(guild_id)
+            //     .and_modify(|guild_settings| {
+            //         // // guild_settings.channel_id = Some(channel_id);
+            //         // if guild_settings.volume <= 0.1 {
+            //         //     guild_settings.volume = 0.7;
+            //         //     guild_settings.old_volume = 0.7;
+            //         // }
+            //     });
             let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
                 let timeout = guild_settings.timeout;
                 if timeout > 0 {
