@@ -2,7 +2,7 @@
 # only use them if you excplicitly want that.
 # video_status_poll_interval = 120
 # sys_log_channel_id = 0
-# volume = 1.0
+# volume = 0.1
 # prefix = "r!"
 # owners = [ ]
 # database_url = "postgresql://postgres:mysecretpassword@localhost:5433/postgres"
