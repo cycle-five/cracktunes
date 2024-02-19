@@ -8,6 +8,10 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
 [![Rust Version](https://img.shields.io/badge/rustc-1.74-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
+## Aknowledgements
+
+Thanks to the guys over at  [alwaysdata](https://www.alwaysdata.com/) for hosting the website, web portal, email, etc for this project for free, in their "Open Source" program.
+
 ## Deployment
 
 ### Usage
