@@ -48,7 +48,7 @@ mod test {
         assert_eq!(old_vol, 1.0);
 
         let (vol, old_vol) = get_volume(guild_settings_map.clone(), guild_id);
-        assert_eq!(vol, 1.0);
-        assert_eq!(old_vol, 1.0);
+        assert_eq!(vol, 0.1);
+        assert_eq!(old_vol, 0.1);
     }
 }
