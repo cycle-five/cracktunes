@@ -3,14 +3,14 @@ members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt"]
 resolver = "2"
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.0-rc.0" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3.0-rc.3" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 tungstenite = "0.21"
-async-tungstenite = "0.24"
+async-tungstenite = "0.25"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 audiopus = "0.3.0-rc.0"
-either = "1.9"
+either = "1.10"
 opentelemetry = { version = "0.21" }
 opentelemetry-otlp = { version = "0.14" }
 opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }

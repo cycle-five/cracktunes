@@ -1,12 +1,16 @@
 [package]
 name = "crack-core"
-version = "0.3.0-rc.0"
+version = "0.3.0-rc.3"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
-description = "A Discord music bot built on Rust and Crack."
-repository = "https://github.com/cycle-five/cracktunes"
+description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking Discord music bot."
+publish = false
 license = "MIT"
-keywords = ["discord", "music-bot", "rust"]
+keywords = ["music", "discord", "bot", "crack", "tunes"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+repository = "https://sr.ht/~cycle-five/cracktunes"
+
 
 [features]
 default = ["playlist", "crack-gpt"]
@@ -64,4 +68,4 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 [dev-dependencies]
 mockall = "0.12"
 tungstenite = "0.21"
-async-tungstenite = "0.24"
+async-tungstenite = "0.25"

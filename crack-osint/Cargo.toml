@@ -2,8 +2,14 @@
 name = "crack-osint"
 version = "0.1.2"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = false                                          # Don't publish for right now
+copyright = "2021, Cycle Five"
+license = "MIT"
+keywords = ["music", "discord", "bot", "crack", "tunes"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+repository = "https://sr.ht/~cycle-five/cracktunes"
 
 [dependencies]
 whois-rust = "1.6"
