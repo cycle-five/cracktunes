@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://sr.ht/~cycle-five/cracktunes"
+repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [dependencies]
 whois-rust = "1.6"
