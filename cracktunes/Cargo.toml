@@ -2,7 +2,8 @@
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
 version = "0.3.0-rc.3"
-publish = false                                          # Don't publish for right now
+description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, Cracking Smoking Discord Music Bot."
+publish = true
 edition = "2021"
 license = "MIT"
 keywords = ["music", "discord", "bot", "crack", "tunes"]
@@ -16,7 +17,7 @@ playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 
 [dependencies]
-crack-core = { workspace = true }
+crack-core = { workspace = true, optional = false }
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
