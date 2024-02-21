@@ -1,17 +1,23 @@
 [package]
+authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.3.0-rc.1"
+version = "0.3.0-rc.3"
+description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
+publish = true
 edition = "2021"
+license = "MIT"
+keywords = ["music", "discord", "bot", "crack", "tunes"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 default = ["playlist", "crack-gpt"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 
-
 [dependencies]
-crack-core = { workspace = true }
+crack-core = { workspace = true, optional = false }
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
@@ -40,5 +46,5 @@ dotenv = "0.15"
 colored = "2.1"
 
 [dev-dependencies]
-async-tungstenite = "0.25.0"
+async-tungstenite = "0.25"
 tungstenite = "0.21"
