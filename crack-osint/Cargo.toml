@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = false
 license = "MIT"
+description = "OSINT module for Cracktunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
