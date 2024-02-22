@@ -858,8 +858,8 @@ mod test {
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
-        assert_eq!(settings.old_volume, 1.0);
-        assert_eq!(settings.volume, 1.0);
+        assert_eq!(settings.old_volume, 0.1);
+        assert_eq!(settings.volume, 0.1);
         assert_eq!(settings.self_deafen, true);
         assert_eq!(settings.timeout, 600);
         assert_eq!(settings.welcome_settings.is_none(), true);
