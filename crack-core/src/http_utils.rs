@@ -1,5 +1,6 @@
 use crate::errors::CrackedError;
 
+/// Gets the final URL after following all redirects.
 pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // Make a GET request, which will follow redirects by default
     let response = reqwest::get(url).await?;
@@ -10,6 +11,7 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     Ok(final_url.as_str().to_string())
 }
 
+/// Gets the guild_name for a channel_id.
 pub async fn get_guild_name(
     http: &serenity::http::Http,
     channel_id: serenity::model::id::ChannelId,
@@ -36,4 +38,18 @@ pub async fn get_guild_name_from_guild_id(
         .await
         .map(|x| x.name)
         .map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::http_utils::resolve_final_url;
+
+    #[tokio::test]
+    async fn test_resolve_final_url() {
+        let url = "https://example.com";
+
+        let final_url = resolve_final_url(url).await.unwrap();
+        // assert_eq!(final_url, "https://example.com/");
+        assert_eq!(final_url, "https://example.com/");
+    }
 }
