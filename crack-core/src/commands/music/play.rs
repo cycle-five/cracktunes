@@ -1343,6 +1343,8 @@ async fn get_download_status_and_filename(
     query_type: QueryType,
     mp3: bool,
 ) -> Result<(bool, String), Error> {
+    // FIXME: Don't hardcode this.
+    let prefix = "/data/downloads";
     let extension = if mp3 { "mp3" } else { "webm" };
     let client = reqwest::Client::new();
     tracing::warn!("query_type: {:?}", query_type);
@@ -1356,7 +1358,8 @@ async fn get_download_status_and_filename(
             let status = output.status.success();
             let url = metadata.source_url.unwrap();
             let file_name = format!(
-                "/data/downloads/{} [{}].{}",
+                "{}/{} [{}].{}",
+                prefix,
                 metadata.title.unwrap(),
                 url.split('=').last().unwrap(),
                 extension,
@@ -1366,20 +1369,13 @@ async fn get_download_status_and_filename(
         QueryType::NewYoutubeDl((_src, metadata)) => {
             tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
             let url = metadata.source_url.unwrap();
-            let file_name = if url.contains("twitter") {
-                format!(
-                    "/data/downloads/{}.{}",
-                    url.split('/').last().unwrap(),
-                    extension,
-                )
-            } else {
-                format!(
-                    "/data/downloads/{} [{}].{}",
-                    metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
-                    extension,
-                )
-            };
+            let file_name = format!(
+                "{}/{} [{}].{}",
+                prefix,
+                metadata.title.unwrap(),
+                url.split('=').last().unwrap(),
+                extension,
+            );
             tracing::warn!("file_name: {}", file_name);
             let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
             let status = output.status.success();
@@ -1393,7 +1389,8 @@ async fn get_download_status_and_filename(
             let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
 
             let file_name = format!(
-                "/data/downloads/{} [{}].{}",
+                "{}/{} [{}].{}",
+                prefix,
                 metadata.title.unwrap(),
                 url.split('=').last().unwrap(),
                 extension,
@@ -1409,7 +1406,8 @@ async fn get_download_status_and_filename(
             tracing::warn!("In PlaylistLink");
             let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
             let file_name = format!(
-                "/data/downloads/{} [{}].{}",
+                "{}/{} [{}].{}",
+                prefix,
                 metadata.title.unwrap(),
                 url.split('=').last().unwrap(),
                 extension,
@@ -1425,7 +1423,8 @@ async fn get_download_status_and_filename(
             let metadata = ytdl.aux_metadata().await.unwrap();
             let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
             let file_name = format!(
-                "/data/downloads/{} [{}].{}",
+                "{}/{} [{}].{}",
+                prefix,
                 metadata.title.unwrap(),
                 url.split('=').last().unwrap(),
                 extension,

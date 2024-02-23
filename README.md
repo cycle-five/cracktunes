@@ -9,6 +9,10 @@
 [![Rust Version](https://img.shields.io/badge/rustc-1.76-blue.svg)](https://github.com/cycle-five/cracktunes/)
 [![Rust Version](https://img.shields.io/badge/rustc-1.78-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
+## Aknowledgements
+
+Thanks to the guys over at  [alwaysdata](https://www.alwaysdata.com/) for hosting the website, web portal, email, etc for this project for free, in their [Open Source](https://www.alwaysdata.com/en/open-source/) program.
+
 ## Deployment
 
 ### Usage

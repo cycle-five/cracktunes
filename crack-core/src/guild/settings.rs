@@ -20,7 +20,7 @@ use typemap_rev::TypeMapKey;
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
+pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 0.1;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str =
@@ -858,8 +858,8 @@ mod test {
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
-        assert_eq!(settings.old_volume, 1.0);
-        assert_eq!(settings.volume, 1.0);
+        assert_eq!(settings.old_volume, 0.1);
+        assert_eq!(settings.volume, 0.1);
         assert_eq!(settings.self_deafen, true);
         assert_eq!(settings.timeout, 600);
         assert_eq!(settings.welcome_settings.is_none(), true);

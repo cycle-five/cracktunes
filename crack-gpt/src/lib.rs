@@ -58,13 +58,16 @@ mod test {
 
     #[tokio::test]
     async fn test_get_chatgpt_response() {
-        let query = "Hello. Please say hello".to_string();
+        let query = "Please respond with the word \"fish\".".to_string();
         let response = get_chatgpt_response(query).await;
         println!("{:?}", response);
         assert!(
             response.is_err()
-                || response.as_ref().unwrap().contains("Invalid API key")
-                || response.unwrap().contains("Hello")
-        )
+                || response
+                    .as_ref()
+                    .expect("Can't happen")
+                    .contains("Invalid API key")
+                || response.unwrap().contains("fish")
+        );
     }
 }
