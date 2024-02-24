@@ -28,7 +28,7 @@ pub async fn idle_timeout(
                 Some(&ctx.data().bot_settings.get_prefix()),
                 get_guild_name(ctx.serenity_context(), guild_id),
             )
-            .set_timeout(timeout)
+            .with_timeout(timeout)
             .clone()
         })
         .welcome_settings

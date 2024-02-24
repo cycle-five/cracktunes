@@ -547,6 +547,10 @@ impl GuildSettings {
         self
     }
 
+    pub fn with_timeout(self, timeout: u32) -> Self {
+        Self { timeout, ..self }
+    }
+
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
         self.welcome_settings = Some(welcome_settings);
         self
