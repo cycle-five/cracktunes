@@ -664,9 +664,9 @@ impl GuildSettings {
 
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
-            self.guild_id.to_string().to_ascii_lowercase()
+            self.guild_id.to_string()
         } else {
-            self.guild_name.to_ascii_lowercase()
+            self.guild_name.clone()
         }
     }
 
