@@ -1,4 +1,6 @@
+use crate::guild::settings::GuildSettings;
 use crate::utils::check_reply;
+use crate::utils::get_guild_name;
 use crate::Context;
 use crate::Error;
 use poise::CreateReply;
@@ -14,12 +16,23 @@ pub async fn idle_timeout(
 
     let timeout = timeout * 60;
 
-    data.guild_settings_map
+    let _res = data
+        .guild_settings_map
         .write()
         .unwrap()
         .entry(guild_id)
-        .and_modify(|e| e.timeout = timeout);
-
+        .and_modify(|e| e.timeout = timeout)
+        .or_insert_with(|| {
+            GuildSettings::new(
+                guild_id,
+                Some(&ctx.data().bot_settings.get_prefix()),
+                get_guild_name(ctx.serenity_context(), guild_id),
+            )
+            .set_timeout(timeout)
+            .clone()
+        })
+        .welcome_settings
+        .clone();
     check_reply(
         ctx.send(
             CreateReply::default()

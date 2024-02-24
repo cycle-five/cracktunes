@@ -22,13 +22,13 @@ pub async fn auto_role(
         .guild_settings_map
         .write()
         .unwrap()
-        .entry(ctx.guild_id().unwrap())
+        .entry(guild_id)
         .and_modify(|e| {
             e.set_auto_role(Some(auto_role_id));
         })
         .or_insert_with(|| {
             GuildSettings::new(
-                ctx.guild_id().unwrap(),
+                guild_id,
                 Some(&ctx.data().bot_settings.get_prefix()),
                 get_guild_name(ctx.serenity_context(), guild_id),
             )
