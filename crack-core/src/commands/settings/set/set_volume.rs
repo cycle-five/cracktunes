@@ -15,8 +15,8 @@ pub fn set_volume(
     guild_settings_mut
         .entry(guild_id)
         .and_modify(|e| {
-            (*e).old_volume = e.volume;
-            (*e).volume = vol;
+            e.old_volume = e.volume;
+            e.volume = vol;
         })
         .or_insert(GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None).with_volume(vol));
     let guild_settings = guild_settings_mut.get(&guild_id).unwrap();
