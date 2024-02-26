@@ -387,12 +387,8 @@ impl GuildSettings {
         let guild_id = self.guild_id.get() as i64;
         let name = self.guild_name.clone();
         let prefix = self.prefix.clone();
-        let (guild, mut settings) =
+        let (_guild, settings) =
             crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
-        let welcome_settings = guild.get_welcome_settings(pool).await?;
-        let log_settings = guild.get_log_settings(pool).await?;
-        settings.welcome_settings = welcome_settings;
-        settings.log_settings = log_settings;
         Ok(settings)
     }
 
@@ -402,11 +398,7 @@ impl GuildSettings {
         let prefix = self.prefix.clone();
         let (guild, _guild_settings) =
             crate::db::GuildEntity::get_or_create(pool, guild_id, name, prefix).await?;
-        let mut settings = guild.get_settings(pool).await?;
-        let welcome_settings = guild.get_welcome_settings(pool).await?;
-        let log_settings = guild.get_log_settings(pool).await?;
-        settings.welcome_settings = welcome_settings;
-        settings.log_settings = log_settings;
+        let settings = guild.get_settings(pool).await?;
         Ok(settings)
     }
 
@@ -531,6 +523,17 @@ impl GuildSettings {
     pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
+
+    /// Set the volume level without mutating.
+    pub fn with_volume(self, volume: f32) -> Self {
+        Self {
+            old_volume: self.volume,
+            volume,
+            ..self
+        }
+    }
+
+    /// Set the volume level with mutating.
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
         self.old_volume = self.volume;
         self.volume = volume;
@@ -545,6 +548,10 @@ impl GuildSettings {
     pub fn set_timeout(&mut self, timeout: u32) -> &mut Self {
         self.timeout = timeout;
         self
+    }
+
+    pub fn with_timeout(self, timeout: u32) -> Self {
+        Self { timeout, ..self }
     }
 
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
@@ -664,9 +671,9 @@ impl GuildSettings {
 
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
-            self.guild_id.to_string().to_ascii_lowercase()
+            self.guild_id.to_string()
         } else {
-            self.guild_name.to_ascii_lowercase()
+            self.guild_name.clone()
         }
     }
 

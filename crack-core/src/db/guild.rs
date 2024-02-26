@@ -131,6 +131,7 @@ impl GuildEntity {
     }
 
     /// Create or update the welcome settings for a guild.
+    #[cfg(not(tarpaulin_include))]
     pub async fn write_welcome_settings(
         pool: &PgPool,
         guild_id: i64,
@@ -154,6 +155,7 @@ impl GuildEntity {
     }
 
     /// Update the premium status for a guild.
+    #[cfg(not(tarpaulin_include))]
     pub async fn update_premium(
         pool: &PgPool,
         guild_id: i64,
@@ -176,6 +178,7 @@ impl GuildEntity {
     }
 
     /// Write the settings for a guild to the database.
+    #[cfg(not(tarpaulin_include))]
     pub async fn write_settings(
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
@@ -260,8 +263,8 @@ impl GuildEntity {
 
     /// Get the log settings for a guild from the database.
     pub async fn get_log_settings(
-        &self,
         pool: &PgPool,
+        id: i64,
     ) -> Result<Option<crate::guild::settings::LogSettings>, sqlx::Error> {
         let settings_read = sqlx::query_as!(
             LogSettingsRead,
@@ -269,7 +272,7 @@ impl GuildEntity {
             SELECT * FROM log_settings
             WHERE guild_id = $1
             "#,
-            self.id
+            id
         )
         .fetch_optional(pool)
         .await?;
@@ -278,8 +281,8 @@ impl GuildEntity {
 
     /// Get the welcome settings for a guild from the database.
     pub async fn get_welcome_settings(
-        &self,
         pool: &PgPool,
+        id: i64,
     ) -> Result<Option<WelcomeSettings>, sqlx::Error> {
         let settings_read = sqlx::query_as!(
             WelcomeSettingsRead,
@@ -287,7 +290,7 @@ impl GuildEntity {
             SELECT * FROM welcome_settings
             WHERE guild_id = $1
             "#,
-            self.id
+            id
         )
         .fetch_optional(pool)
         .await?;
@@ -325,8 +328,8 @@ impl GuildEntity {
                 .await
             }
         }?;
-        let welcome_settings = self.get_welcome_settings(pool).await?;
-        let log_settings = self.get_log_settings(pool).await?;
+        let welcome_settings = GuildEntity::get_welcome_settings(pool, self.id).await?;
+        let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings))
@@ -418,7 +421,11 @@ impl GuildEntity {
                 .fetch_one(pool)
                 .await?;
 
-                let guild_settings = GuildSettings::from(guild_settings);
+                let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
+                let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
+                let guild_settings = GuildSettings::from(guild_settings)
+                    .with_welcome_settings(welcome_settings)
+                    .with_log_settings(log_settings);
                 (guild_entity, guild_settings)
             }
         };
