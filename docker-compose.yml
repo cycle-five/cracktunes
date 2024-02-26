@@ -31,6 +31,15 @@ services:
       - crack_postgres
     ports:
       - "127.0.0.1:8000:8000"
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW}
+    ports:
+      - "127.0.0.1:5050:80"
+    restart: always
 volumes:
   pgdata:
     external: true
