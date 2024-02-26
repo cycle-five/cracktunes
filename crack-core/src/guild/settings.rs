@@ -523,6 +523,17 @@ impl GuildSettings {
     pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
+
+    /// Set the volume level without mutating.
+    pub fn with_volume(self, volume: f32) -> Self {
+        Self {
+            old_volume: self.volume,
+            volume,
+            ..self
+        }
+    }
+
+    /// Set the volume level with mutating.
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
         self.old_volume = self.volume;
         self.volume = volume;
