@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.0-rc.3"
+version = "0.3.0-rc.4"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -38,7 +38,7 @@ anyhow = "1.0"
 proc-macro2 = "1.0"
 typemap_rev = "0.3"
 chatgpt_rs = "1.2"
-either = "1.9"
+either = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 crack-gpt = { path = "../crack-gpt" }
 tracing = { workspace = true }
