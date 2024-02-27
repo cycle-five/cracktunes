@@ -103,11 +103,15 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue();
     let metadata = get_track_metadata(&queue.current().unwrap()).await;
 
-    ctx.data()
-        .downvote_track(guild_id, &metadata.source_url.unwrap().to_owned())
-        .await?;
+    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
+    let res1 = ctx.data().downvote_track(guild_id, source_url);
 
-    force_skip_top_track(&handler).await?;
+    let res2 = force_skip_top_track(&handler);
+
+    tracing::warn!("downvoting track: {}", source_url);
+
+    tokio::join!(res1, res2).0?;
+
     Ok(())
 }
 
