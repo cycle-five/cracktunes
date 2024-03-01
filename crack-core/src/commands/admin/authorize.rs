@@ -8,6 +8,7 @@ use poise::serenity_prelude::UserId;
 
 /// Authorize a user to use the bot.
 #[poise::command(prefix_command, owners_only, ephemeral)]
+#[cfg(not(tarpaulin_include))]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: String,
@@ -63,7 +64,8 @@ pub async fn authorize(
             guild_name,
         },
         true,
-    );
-
-    Ok(())
+    )
+    .await
+    .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
+    .map(|_| ())
 }

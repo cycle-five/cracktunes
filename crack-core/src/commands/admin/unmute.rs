@@ -9,6 +9,7 @@ use serenity::builder::EditMember;
 /// Unmute a user.
 /// TODO: Add a way to unmute a user by their ID.
 #[poise::command(prefix_command, owners_only, guild_only, ephemeral)]
+#[cfg(not(tarpaulin_include))]
 pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: serenity::model::user::User,
@@ -16,6 +17,9 @@ pub async fn unmute(
     unmute_impl(ctx, user).await.map(|_| ())
 }
 
+/// Unmute a user
+/// impl for other internal use.
+#[cfg(not(tarpaulin_include))]
 pub async fn unmute_impl(
     ctx: Context<'_>,
     user: serenity::model::user::User,
