@@ -62,7 +62,7 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use crate::osint;
 
     #[test]

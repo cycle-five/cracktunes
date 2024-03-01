@@ -978,7 +978,7 @@ pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Opt
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 

@@ -1,6 +1,6 @@
 #[cfg(feature = "osint")]
 #[cfg(test)]
-mod tests {
+mod test {
     use crack_osint::socialmedia::fetch_social_media_info;
 
     #[tokio::test]

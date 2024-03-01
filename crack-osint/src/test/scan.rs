@@ -1,6 +1,6 @@
 #[cfg(feature = "osint")]
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

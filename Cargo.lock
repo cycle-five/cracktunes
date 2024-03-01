@@ -617,6 +617,7 @@ dependencies = [
  "reqwest",
  "serde",
  "sha1",
+ "tokio",
  "tracing",
  "whois-rust",
 ]

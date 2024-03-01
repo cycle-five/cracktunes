@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod test {
     use crate::http_utils::resolve_final_url;
 
     #[tokio::test]

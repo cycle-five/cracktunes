@@ -1,6 +1,6 @@
 #[cfg(feature = "osint")]
 #[cfg(test)]
-mod tests {
+mod test {
     use crack_osint::fetch_phone_number_info;
 
     #[tokio::test]

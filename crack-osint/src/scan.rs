@@ -105,3 +105,40 @@ fn format_scan_result(scan_result: &ScanResult) -> String {
         scan_result.result_url
     )
 }
+
+#[cfg(test)]
+mod test {
+    use tokio;
+
+    #[tokio::test]
+    async fn test_scan_url() {
+        let url = "https://www.google.com".to_string();
+        let result = scan_url(url).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_perform_scan() {
+        let url = "https://www.google.com";
+        let result = perform_scan(url).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_url_validator() {
+        let url = "https://www.google.com";
+        assert!(url_validator(url));
+    }
+
+    #[test]
+    fn test_format_scan_result() {
+        let scan_result = ScanResult {
+            result_url: "https://www.virustotal.com/url/scan/result".to_string(),
+        };
+        let result = format_scan_result(&scan_result);
+        assert_eq!(
+            result,
+            "Scan submitted successfully! Result URL: https://www.virustotal.com/url/scan/result"
+        );
+    }
+}
