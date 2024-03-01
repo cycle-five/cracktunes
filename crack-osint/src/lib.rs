@@ -1,3 +1,4 @@
+use poise::CreateReply;
 // // pub mod checkpass;
 pub mod ip;
 // // pub mod ipv;
@@ -47,7 +48,15 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
         .guild()
         .map(|x| x.name.clone())
         .unwrap_or("DMs".to_string());
-    tracing::warn!("Osint command called");
+
+    let msg_str = format!("Osint found in {guild_name}!");
+    let msg = ctx
+        .send(CreateReply::default().content(msg_str.clone()))
+        .await?
+        .into_message()
+        .await?;
+    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
+    tracing::warn!("{}", msg_str.clone());
 
     Ok(())
 }

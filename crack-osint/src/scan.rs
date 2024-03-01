@@ -1,13 +1,16 @@
 use crack_core::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
-    Error,
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    utils::{send_channel_message, SendMessageParams},
+    Context, Error,
 };
 use poise::serenity_prelude::GuildId;
 use reqwest::Url;
 use serde::Deserialize;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
-struct ScanResult {
+pub struct ScanResult {
     result_url: String,
 }
 
@@ -22,11 +25,23 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let channel_id = ctx.channel_id();
 
     let message = scan_url(url).await?;
+    let message = CrackedMessage::ScanResult { result: message };
 
-    // Send the response to the user
-    send_response_poise(ctx, CrackedMessage::ScanResult { result: message })
+    let params = SendMessageParams {
+        channel: channel_id,
+        as_embed: true,
+        ephemeral: false,
+        reply: true,
+        msg: message,
+    };
+
+    send_channel_message(Arc::new(ctx.http()), params)
         .await
-        .map(|m| ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), m))
+        .map(|m| {
+            ctx.data()
+                .add_msg_to_cache(guild_id_opt.unwrap_or(GuildId::new(1)), m);
+        })
+        .map_err(|e| e.into())
 }
 
 /// Scan a website for viruses or malicious content.

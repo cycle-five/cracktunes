@@ -13,7 +13,7 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{CacheHttp, GuildId, Interaction},
+    all::{GuildId, Interaction},
     builder::{
         CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
