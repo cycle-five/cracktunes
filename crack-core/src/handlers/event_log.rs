@@ -48,6 +48,7 @@ pub fn get_log_channel(
         .unwrap()
 }
 
+/// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
     guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
@@ -86,6 +87,9 @@ pub async fn get_channel_id(
     x
 }
 
+/// Handles (routes and logs) an event.
+/// Currently doesn't handle all events.
+#[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
     ctx: &serenity::all::Context,
     event_in: &FullEvent,
