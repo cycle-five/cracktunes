@@ -6,10 +6,28 @@ use crack_core::{
 };
 use poise::serenity_prelude::GuildId;
 use reqwest::Url;
+use reqwest_mock::Client;
 use serde::Deserialize;
 use std::sync::Arc;
 
 const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
+
+pub struct MyClient<C: Client> {
+    client: C,
+}
+
+pub fn new_client() -> MyClient<DirectClient> {
+    MyClient {
+        client: request::Client::new(),
+    }
+}
+
+#[cfg(test)]
+pub fn test_client(path: &str) -> MyClient<ReplayClient> {
+    MyClient {
+        client: ReplayClient::new(path),
+    }
+}
 
 #[derive(Deserialize)]
 pub struct ScanResult {
@@ -25,8 +43,9 @@ pub struct ScanResult {
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let guild_id_opt = ctx.guild_id();
     let channel_id = ctx.channel_id();
+    let client = reqwest::Client::new();
 
-    let message = scan_url(url).await?;
+    let message = scan_url(url, client).await?;
     let message = CrackedMessage::ScanResult { result: message };
 
     let params = SendMessageParams {
@@ -46,7 +65,7 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
 }
 
 /// Scan a website for viruses or malicious content.
-pub async fn scan_url(url: String) -> Result<String, Error> {
+pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
@@ -54,7 +73,7 @@ pub async fn scan_url(url: String) -> Result<String, Error> {
     }
 
     // Perform the scan and retrieve the result
-    let scan_result = perform_scan(&url).await?;
+    let scan_result = perform_scan(&url, client).await?;
 
     // Format the result into a user-friendly message
     let message = format_scan_result(&scan_result);
@@ -70,7 +89,7 @@ pub async fn scan_url(url: String) -> Result<String, Error> {
 ///     --url https://www.virustotal.com/api/v3/urls \
 ///     --form url=<Your URL here> \
 ///     --header 'x-apikey: <your API key>'
-pub async fn perform_scan(url: &str) -> Result<ScanResult, Error> {
+pub async fn perform_scan<C: Client>(url: &str, client: MyClient<C>) -> Result<ScanResult, Error> {
     // URL to submit the scan request to VirusTotal
     let api_url = VIRUSTOTAL_API_URL.to_string();
     // Retrieve the API key from the environment variable
@@ -78,8 +97,8 @@ pub async fn perform_scan(url: &str) -> Result<ScanResult, Error> {
         .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
 
     // Set up the API request with headers, including the API key
-    let client = reqwest::Client::new();
     let response = client
+        .client
         .post(&api_url)
         .header("x-apikey", api_key)
         .form(&[("url", url)])
@@ -108,19 +127,23 @@ fn format_scan_result(scan_result: &ScanResult) -> String {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use tokio;
 
     #[tokio::test]
     async fn test_scan_url() {
+        let client = reqwest_mock::ReplayClient::new(VIRUSTOTAL_API_URL, RecordMode::ReplayOnly);
+        let my_client = MyClient { client };
         let url = "https://www.google.com".to_string();
-        let result = scan_url(url).await;
+        let result = scan_url(url, my_client).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_perform_scan() {
+        let my_client = test_client(VIRUSTOTAL_API_URL);
         let url = "https://www.google.com";
-        let result = perform_scan(url).await;
+        let result = perform_scan(url, my_client).await;
         assert!(result.is_ok());
     }
 
