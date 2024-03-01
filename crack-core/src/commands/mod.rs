@@ -1,9 +1,9 @@
 pub mod admin;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
-#[cfg(feature = "crack-osint")]
-pub mod crack_osint;
 pub mod music;
+// #[cfg(feature = "crack-osint")]
+// pub mod osint;
 pub mod ping;
 pub mod playlist;
 pub mod settings;
@@ -12,9 +12,9 @@ pub mod version;
 pub use admin::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
-#[cfg(feature = "crack-osint")]
-pub use crack_osint::*;
 pub use music::*;
+// #[cfg(feature = "crack-osint")]
+// pub use osint::*;
 pub use ping::*;
 pub use playlist::playlist;
 pub use settings::*;

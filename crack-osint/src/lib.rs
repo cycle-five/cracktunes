@@ -1,22 +1,22 @@
 // // pub mod checkpass;
-// pub mod ip;
+pub mod ip;
 // // pub mod ipv;
 // // pub mod paywall;
 // // pub mod phcode;
 // // pub mod phlookup;
-// pub mod scan;
+pub mod scan;
 // pub mod socialmedia;
 // pub mod wayback;
 // pub mod whois;
 
 // pub use checkpass::*;
 // pub use crack_core::PhoneCodeData;
-pub use ip::*;
+pub use ip::ip;
 // pub use ipv::*;
 // pub use paywall::*;
 // pub use phcode::*;
 // pub use phlookup::*;
-pub use scan::*;
+pub use scan::scan;
 // pub use socialmedia::*;
 // pub use wayback::*;
 // pub use whois::*;
@@ -42,7 +42,11 @@ pub use crack_core::{
         "scan",
     ),
 )]
-pub async fn osint(_ctx: Context<'_>) -> Result<(), Error> {
+pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_name = ctx
+        .guild()
+        .map(|x| x.name.clone())
+        .unwrap_or("DMs".to_string());
     tracing::warn!("Osint command called");
 
     Ok(())

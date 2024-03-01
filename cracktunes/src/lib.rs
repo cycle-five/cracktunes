@@ -2,6 +2,11 @@ pub mod config;
 
 pub use config::*;
 
+/// Osint commands list
+pub fn get_osint_commands() -> Vec<&'static str> {
+    vec!["ip", "scan"]
+}
+
 /// Music commands list
 pub fn get_music_commands() -> Vec<&'static str> {
     vec![
@@ -122,6 +127,7 @@ pub fn get_commands() -> Vec<(&'static str, Vec<&'static str>)> {
         ("admin", get_admin_commands()),
         ("settings", get_settings_commands()),
         ("owner", get_owner_commands()),
+        ("osint", get_owner_commands()),
     ]
 }
 

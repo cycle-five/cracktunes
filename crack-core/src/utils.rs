@@ -1,4 +1,4 @@
-use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message};
+use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
 use crate::{
     commands::MyAuxMetadata,
     interface::build_nav_btns,
@@ -13,7 +13,7 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{GuildId, Interaction},
+    all::{CacheHttp, GuildId, Interaction},
     builder::{
         CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
@@ -114,6 +114,31 @@ pub async fn send_log_embed(
         .send_message(http, CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
+}
+
+pub struct SendMessageParams {
+    pub channel: ChannelId,
+    // pub http: &Arc<Http>,
+    pub as_embed: bool,
+    pub ephemeral: bool,
+    pub reply: bool,
+    pub msg: CrackedMessage,
+}
+
+pub async fn send_channel_message(
+    http: Arc<&Http>,
+    params: SendMessageParams,
+) -> Result<Message, Error> {
+    let channel = params.channel;
+    // let http = params.http;
+    let content = format!("{}", params.msg);
+    let msg = if params.as_embed {
+        let embed = CreateEmbed::default().description(content);
+        CreateMessage::new().add_embed(embed)
+    } else {
+        CreateMessage::new().content(content)
+    };
+    channel.send_message(http, msg).await.map_err(Into::into)
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
