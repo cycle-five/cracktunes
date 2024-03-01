@@ -814,6 +814,8 @@ pub fn check_msg(result: Result<Message, Error>) {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
+/// Takes a Result ReplyHandle and logs the error if it's an Err.
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);

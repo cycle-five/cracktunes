@@ -1,9 +1,10 @@
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::utils::check_reply;
+use crate::messaging::message::CrackedMessage;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use poise::CreateReply;
+use poise::serenity_prelude::UserId;
 
 /// Authorize a user to use the bot.
 #[poise::command(prefix_command, owners_only, ephemeral)]
@@ -41,13 +42,27 @@ pub async fn authorize(
     })?;
     guild_settings.save(&pool).await?;
 
-    check_reply(
-        ctx.send(
-            CreateReply::default()
-                .content("User authorized.")
-                .reply(true),
-        )
-        .await,
+    let user_id = UserId::new(id);
+    let user_name = ctx
+        .http()
+        .get_user(user_id)
+        .await
+        .map(|u| u.name)
+        .unwrap_or_else(|_| "Unknown".to_string());
+    let guild_name = guild_id
+        .to_partial_guild(ctx.http())
+        .await
+        .map(|g| g.name)
+        .unwrap_or_else(|_| "Unknown".to_string());
+    send_response_poise(
+        ctx,
+        CrackedMessage::UserAuthorized {
+            user_id,
+            user_name,
+            guild_id,
+            guild_name,
+        },
+        true,
     );
 
     Ok(())

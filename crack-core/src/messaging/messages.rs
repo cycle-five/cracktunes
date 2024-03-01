@@ -7,6 +7,7 @@ pub const CLEARED: &str = "🗑️ Cleared!";
 pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
+pub const AUTHORIZED: &str = "✅ User has been authorized.";
 pub const BANNED: &str = "Banned";
 pub const UNBANNED: &str = "Unbanned";
 pub const DEAFENED: &str = "Deafened";
@@ -40,7 +41,7 @@ pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English 
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
-pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while, pay for premium if you want me to idle indefinitely plus better audio and more!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
+pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while, pay for premium if you want to stay, plus better audio and more!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";
 pub const LEAVING: &str = "👋 See you soon!";
