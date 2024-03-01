@@ -1,4 +1,5 @@
-use crack_osint::scan;
+use crate::messaging::message::CrackedMessage;
+use crack_osint::osint::scan;
 
 /// Scan a website for viruses or malicious content.
 ///

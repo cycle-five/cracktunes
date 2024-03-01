@@ -1,9 +1,9 @@
-// pub mod checkpass;
-pub mod ip;
-// pub mod ipv;
-// pub mod paywall;
-// pub mod phcode;
-// pub mod phlookup;
+// // pub mod checkpass;
+// pub mod ip;
+// // pub mod ipv;
+// // pub mod paywall;
+// // pub mod phcode;
+// // pub mod phlookup;
 // pub mod scan;
 // pub mod socialmedia;
 // pub mod wayback;
@@ -16,7 +16,7 @@ pub use ip::*;
 // pub use paywall::*;
 // pub use phcode::*;
 // pub use phlookup::*;
-// pub use scan::*;
+pub use scan::*;
 // pub use socialmedia::*;
 // pub use wayback::*;
 // pub use whois::*;
@@ -28,6 +28,7 @@ pub use crack_core::{
 /// Osint Commands
 #[poise::command(
     prefix_command,
+    slash_command,
     subcommands(
         "ip",
         // "ipv",
@@ -38,9 +39,8 @@ pub use crack_core::{
         // "checkpass",
         // "phlookup",
         // "phcode",
-        // "scan"
+        "scan",
     ),
-    owners_only
 )]
 pub async fn osint(_ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Osint command called");
