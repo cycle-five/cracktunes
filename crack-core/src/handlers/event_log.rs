@@ -158,7 +158,7 @@ pub async fn handle_event(
             )
         }
         FullEvent::Message { new_message } => {
-            let guild_id = new_message.guild_id.unwrap();
+            let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();
                 let _ = data_global
