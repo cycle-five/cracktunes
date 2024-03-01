@@ -9,6 +9,8 @@ use reqwest::Url;
 use serde::Deserialize;
 use std::sync::Arc;
 
+const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
+
 #[derive(Deserialize)]
 pub struct ScanResult {
     result_url: String,
@@ -41,7 +43,6 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
             ctx.data()
                 .add_msg_to_cache(guild_id_opt.unwrap_or(GuildId::new(1)), m);
         })
-        .map_err(|e| e.into())
 }
 
 /// Scan a website for viruses or malicious content.
@@ -71,7 +72,7 @@ pub async fn scan_url(url: String) -> Result<String, Error> {
 ///     --header 'x-apikey: <your API key>'
 pub async fn perform_scan(url: &str) -> Result<ScanResult, Error> {
     // URL to submit the scan request to VirusTotal
-    let api_url = format!("https://www.virustotal.com/api/v3/urls");
+    let api_url = VIRUSTOTAL_API_URL.to_string();
     // Retrieve the API key from the environment variable
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
         .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
