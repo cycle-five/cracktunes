@@ -14,10 +14,21 @@ struct ScanResult {
 ///
 /// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
 ///
-/// # Arguments
-/// * `url` - The URL of the website to be scanned.
-#[poise::command(prefix_command, hide_in_help)]
-pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
+
+// #[poise::command(prefix_command, hide_in_help)]
+// pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
+//     let guild_id = ctx.guild_id().unwrap_or()?;
+
+//     let message = scan(ctx, url).await;
+
+//     // Send the response to the user
+//     send_response_poise(ctx, CrackedMessage::ScanResult { result: message })
+//         .await
+//         .map(|m| ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), m))
+//
+
+/// Scan a website for viruses or malicious content.
+pub async fn scan(ctx: Context<'_>, url: String) -> Result<String, Error> {
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
@@ -29,32 +40,32 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
     // Format the result into a user-friendly message
     let message = format_scan_result(&scan_result);
-
-    // Send the response to the user
-    send_response_poise(ctx, CrackedMessage::ScanResult { result: message }).await
-
-    //Ok(())
 }
 
-async fn perform_scan(_url: &str) -> Result<ScanResult, Error> {
+/// Perform the scan using VirusTotal API.
+/// # Arguments
+/// * `url` - The URL of the website to be scanned.
+/// curl --request POST \
+///     --url https://www.virustotal.com/api/v3/urls \
+///     --form url=<Your URL here> \
+///     --header 'x-apikey: <your API key>'
+pub async fn perform_scan(url: &str) -> Result<ScanResult, Error> {
     // URL to submit the scan request to VirusTotal
-    // let api_url = format!("https://www.virustotal.com/api/v3/urls");
-    // let api_key = std::env::var("VIRUSTOTAL_API_KEY").ok().unwrap_or_default();
+    let api_url = format!("https://www.virustotal.com/api/v3/urls");
+    // Retrieve the API key from the environment variable
+    let api_key = std::env::var("VIRUSTOTAL_API_KEY").ok_or(CrackedError::Other("No API key"))?;
 
-    // // Set up the API request with headers, including the API key
-    // let client = reqwest::Client::new();
-    // let response = client
-    //     .post(&api_url)
-    //     .header("x-apikey", api_key)
-    //     .json(&serde_json::json!({"url": url}))
-    //     .send()
-    //     .await?;
+    // Set up the API request with headers, including the API key
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&api_url)
+        .header("x-apikey", api_key)
+        .form(&[("url", url)])
+        .send()
+        .await?;
 
-    // // Process the response
-    // let scan_result: ScanResult = response.json().await?;
-    let scan_result = ScanResult {
-        result_url: "google.com".to_string(),
-    };
+    // Process the response
+    let scan_result: ScanResult = response.json().await?;
 
     Ok(scan_result)
 }

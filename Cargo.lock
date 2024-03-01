@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.5"
 dependencies = [
  "async-trait",
  "async-tungstenite",
