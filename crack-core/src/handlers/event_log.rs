@@ -150,12 +150,13 @@ pub async fn handle_event(
         }
         FullEvent::VoiceStateUpdate { old, new } => {
             let log_data = &(old, new);
+            let guild_id = new.guild_id.unwrap_or(GuildId::new(1));
             log_event2!(
                 log_voice_state_update,
                 guild_settings,
                 event_in,
                 log_data,
-                &new.guild_id.unwrap(),
+                &guild_id,
                 ctx,
                 event_log,
                 event_name
