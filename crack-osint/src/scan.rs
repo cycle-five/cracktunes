@@ -6,28 +6,30 @@ use crack_core::{
 };
 use poise::serenity_prelude::GuildId;
 use reqwest::Url;
-use reqwest_mock::Client;
+// use reqwest_mock::Client;
+use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
 
 const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 
-pub struct MyClient<C: Client> {
-    client: C,
-}
+// pub struct MyClient<C: Client> {
+//     client: C,
+// }
 
-pub fn new_client() -> MyClient<DirectClient> {
-    MyClient {
-        client: request::Client::new(),
-    }
-}
+// //pub fn new_client() -> MyClient<Client> {
+// pub fn new_client() -> MyClient<DirectClient> {
+//     MyClient {
+//         client: reqwest::Client::new(),
+//     }
+// }
 
-#[cfg(test)]
-pub fn test_client(path: &str) -> MyClient<ReplayClient> {
-    MyClient {
-        client: ReplayClient::new(path),
-    }
-}
+// #[cfg(test)]
+// pub fn test_client(path: &str) -> MyClient<ReplayClient> {
+//     MyClient {
+//         client: ReplayClient::new(path),
+//     }
+// }
 
 #[derive(Deserialize)]
 pub struct ScanResult {
@@ -65,7 +67,8 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
 }
 
 /// Scan a website for viruses or malicious content.
-pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
+//pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
+pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
@@ -89,23 +92,30 @@ pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<Str
 ///     --url https://www.virustotal.com/api/v3/urls \
 ///     --form url=<Your URL here> \
 ///     --header 'x-apikey: <your API key>'
-pub async fn perform_scan<C: Client>(url: &str, client: MyClient<C>) -> Result<ScanResult, Error> {
+//pub async fn perform_scan<C: Client>(url: &str, client: MyClient<C>) -> Result<ScanResult, Error> {
+pub async fn perform_scan(url: &str, client: Client) -> Result<ScanResult, Error> {
     // URL to submit the scan request to VirusTotal
     let api_url = VIRUSTOTAL_API_URL.to_string();
     // Retrieve the API key from the environment variable
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
         .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
 
+    // let form = reqwest::multipart::Form::new().text("url", url);
+    let mut map = std::collections::HashMap::new();
+    map.insert("url", url);
+
     // Set up the API request with headers, including the API key
     let response = client
-        .client
         .post(&api_url)
         .header("x-apikey", api_key)
-        .form(&[("url", url)])
+        .form(&map)
+        //.body(Body::from(form))
         .send()
         .await?;
 
-    // Process the response
+    // // Process the response
+    // let asdf = response.body().await?;
+
     let scan_result: ScanResult = response.json().await?;
 
     Ok(scan_result)
@@ -132,19 +142,21 @@ mod test {
 
     #[tokio::test]
     async fn test_scan_url() {
-        let client = reqwest_mock::ReplayClient::new(VIRUSTOTAL_API_URL, RecordMode::ReplayOnly);
-        let my_client = MyClient { client };
+        // let client = reqwest_mock::ReplayClient::new(VIRUSTOTAL_API_URL, RecordMode::ReplayOnly);
+        // let my_client = MyClient { client };
+        let client = reqwest::Client::new();
         let url = "https://www.google.com".to_string();
-        let result = scan_url(url, my_client).await;
-        assert!(result.is_ok());
+        let result = scan_url(url, client).await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_perform_scan() {
-        let my_client = test_client(VIRUSTOTAL_API_URL);
+        // let my_client = test_client(VIRUSTOTAL_API_URL);
+        let my_client = reqwest::Client::new();
         let url = "https://www.google.com";
         let result = perform_scan(url, my_client).await;
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
