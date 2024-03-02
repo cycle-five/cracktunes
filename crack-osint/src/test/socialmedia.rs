@@ -1,4 +1,4 @@
-#[cfg(feature = "osint")]
+#[cfg(feature = "crack-osint")]
 #[cfg(test)]
 mod test {
     use crack_osint::socialmedia::fetch_social_media_info;
