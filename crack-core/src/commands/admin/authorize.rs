@@ -6,8 +6,20 @@ use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::UserId;
 
+/// Utilizes the permissions v2 `default_member_permissions` field
+#[poise::command(slash_command, default_member_permissions = "ADMINISTRATOR")]
+pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.say("Authorized.").await?;
+
+    Ok(())
+}
+
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    default_member_permissions = "ADMINISTRATOR"
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn authorize(
     ctx: Context<'_>,
