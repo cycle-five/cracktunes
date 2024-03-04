@@ -6,7 +6,13 @@ use crate::{Context, Data, Error};
 
 /// Get the current bot settings for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_auto_role"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral,
+    aliases("get_auto_role")
+)]
 pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();

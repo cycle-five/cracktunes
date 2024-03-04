@@ -19,9 +19,14 @@ use poise::{
 };
 use songbird::serenity::SerenityInit;
 use std::sync::RwLock;
-use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    process::exit,
+    sync::Arc,
+    time::Duration,
+};
 
-use crate::{get_mod_commands, get_music_commands};
+use crate::{get_admin_commands_hashset, get_mod_commands, get_music_commands};
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -152,7 +157,7 @@ pub async fn poise_framework(
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefixes = &guild_settings.additional_prefixes;
                         if prefixes.is_empty() {
-                            tracing::warn!(
+                            tracing::trace!(
                                 "Prefix is empty for guild {}",
                                 guild_settings.guild_name
                             );
@@ -162,7 +167,7 @@ pub async fn poise_framework(
                         if let Some(prefix_len) = check_prefixes(prefixes, &msg.content) {
                             Ok(Some(msg.content.split_at(prefix_len)))
                         } else {
-                            tracing::warn!("Prefix not found");
+                            tracing::trace!("Prefix not found");
                             Ok(None)
                         }
                     } else {
@@ -191,18 +196,22 @@ pub async fn poise_framework(
         // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
-                let command = ctx.command().qualified_name.clone();
-                let lit_command = command.trim().to_string();
+                // TODO: Make these constants
                 let music_commands = get_music_commands();
                 let mod_commands: HashMap<&str, Vec<&str>> =
                     get_mod_commands().into_iter().collect();
-                let admin_commands: HashMap<&str, Vec<&str>> =
-                    get_admin_commands().into_iter().collect();
+                let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
+
+                // param
+                let qualified_command_clean =
+                    ctx.command().qualified_name.clone().trim().to_string();
+                // let clean_command = qualified_command.trim().to_string();
 
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
                 let first = lit_command.split_whitespace().next().unwrap_or_default();
                 let second = lit_command.split_whitespace().nth(1);
+
                 let mut mod_command = false;
                 for cmd in mod_commands.keys() {
                     if cmd.eq(&first)
@@ -214,16 +223,7 @@ pub async fn poise_framework(
                     }
                 }
 
-                let mut admin_command = false;
-                for cmd in admin_commands.keys() {
-                    if cmd.eq(&first)
-                        && second.is_some()
-                        && admin_commands.get(cmd).unwrap().contains(&second.unwrap())
-                    {
-                        admin_command = true;
-                        break;
-                    }
-                }
+                let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap());
                 // let mod_command = mod_commands
                 //     .get(first)
                 //     .unwrap()

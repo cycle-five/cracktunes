@@ -6,7 +6,13 @@ use crate::{Context, Error};
 
 /// Get the all log channel.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_all_log_channel"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    ephemeral,
+    default_member_permissions = "ADMINISTRATOR",
+    aliases("get_all_log_channel")
+)]
 pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     {
@@ -38,7 +44,12 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Get the join/leave log channel.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()

@@ -23,6 +23,7 @@ pub use log_channels::*;
 
 /// Settings-get commands
 #[poise::command(
+    slash_command,
     prefix_command,
     subcommands(
         "all",
@@ -36,13 +37,13 @@ pub use log_channels::*;
         // "self_deafen",
     ),
     ephemeral,
-    owners_only
+    default_member_permissions = "ADMINISTRATOR",
 )]
 
 /// Get settings
 #[cfg(not(tarpaulin_include))]
 pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
-    tracing::warn!("");
+    tracing::warn!("settings-get");
 
     ctx.say("You found the settings-get command").await?;
 

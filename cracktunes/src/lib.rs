@@ -1,6 +1,7 @@
 pub mod config;
 
 pub use config::*;
+use std::collections::HashSet;
 
 /// Osint commands list
 pub fn get_osint_commands() -> Vec<&'static str> {
@@ -61,9 +62,13 @@ pub fn get_mod_commands() -> Vec<(&'static str, Vec<&'static str>)> {
     //     .chain(get_settings_commands())
     //     .collect()
     vec![
-        ("admin", get_admin_commands()),
+        ("admin", get_admin_commands().to_vec()),
         ("settings", get_settings_commands()),
     ]
+}
+
+pub fn get_admin_commands_hashset() -> HashSet<&'static str> {
+    get_admin_commands().into_iter().collect()
 }
 
 /// Admin commands list
@@ -124,7 +129,7 @@ pub fn get_owner_commands() -> Vec<&'static str> {
 pub fn get_commands() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("music", get_music_commands()),
-        ("admin", get_admin_commands()),
+        ("admin", get_admin_commands().to_vec()),
         ("settings", get_settings_commands()),
         ("owner", get_owner_commands()),
         ("osint", get_owner_commands()),
