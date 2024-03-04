@@ -5,7 +5,12 @@ use crate::Context;
 use crate::Error;
 
 /// Delete channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn delete_channel(
     ctx: Context<'_>,
     #[rest]

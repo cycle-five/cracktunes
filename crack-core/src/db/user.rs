@@ -40,7 +40,7 @@ impl User {
             .await;
 
         match result {
-            Ok(user) => Some(user),
+            Ok(user) => Some(user?),
             Err(e) => {
                 println!("Failed to get user: {}", e);
                 None

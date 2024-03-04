@@ -9,7 +9,12 @@ use std::time::Duration;
 
 /// Timeout a user from the server.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn timeout(
     ctx: Context<'_>,
     #[description = "User to timout."] user: Option<User>,

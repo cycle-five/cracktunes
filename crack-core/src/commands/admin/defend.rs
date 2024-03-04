@@ -57,7 +57,12 @@ pub async fn defend(
     Ok(())
 }
 
-#[poise::command(prefix_command, ephemeral, owners_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn cancel(ctx: Context<'_>) -> Result<(), Error> {
     // let guild_id = ctx.guild_id().unwrap();
 

@@ -7,7 +7,13 @@ use serenity::builder::EditMember;
 
 /// Deafen a user.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, guild_only, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn deafen(
     ctx: Context<'_>,
     #[rest]

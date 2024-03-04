@@ -196,6 +196,9 @@ pub async fn poise_framework(
                 let music_commands = get_music_commands();
                 let mod_commands: HashMap<&str, Vec<&str>> =
                     get_mod_commands().into_iter().collect();
+                let admin_commands: HashMap<&str, Vec<&str>> =
+                    get_admin_commands().into_iter().collect();
+
                 tracing::info!("Checking command {}...", command);
                 let user_id = ctx.author().id.get();
                 let first = lit_command.split_whitespace().next().unwrap_or_default();
@@ -207,6 +210,17 @@ pub async fn poise_framework(
                         && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
                     {
                         mod_command = true;
+                        break;
+                    }
+                }
+
+                let mut admin_command = false;
+                for cmd in admin_commands.keys() {
+                    if cmd.eq(&first)
+                        && second.is_some()
+                        && admin_commands.get(cmd).unwrap().contains(&second.unwrap())
+                    {
+                        admin_command = true;
                         break;
                     }
                 }
@@ -234,11 +248,12 @@ pub async fn poise_framework(
                     },
                     |member| {
                         tracing::info!("Author found in guild");
-                        let allow = member
-                            .permissions(ctx)?
-                            .contains(Permissions::ADMINISTRATOR)
-                            && mod_command;
-                        Ok(allow)
+                        let perms = member.permissions(ctx)?;
+                        tracing::warn!("perm {}", perms);
+                        let is_admin = perms.contains(Permissions::ADMINISTRATOR);
+                        tracing::warn!("is_admin: {}", is_admin);
+                        Ok(is_admin && (mod_command || admin_command))
+                        // return Ok(is_admin);
                     },
                 );
 

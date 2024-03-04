@@ -15,7 +15,12 @@ use serenity::all::User;
 //    same time. This makes creation of the response embeds relient on the type
 //    of command and thus the context.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn ban(
     ctx: Context<'_>,
     #[description = "User to ban."] user: User,

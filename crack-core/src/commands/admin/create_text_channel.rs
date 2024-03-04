@@ -50,7 +50,12 @@ pub async fn create_text_channel(
 }
 
 /// Create text channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn create_category(
     ctx: Context<'_>,
     #[rest]

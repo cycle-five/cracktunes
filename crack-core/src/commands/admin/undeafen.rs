@@ -6,7 +6,12 @@ use crate::Error;
 use serenity::builder::EditMember;
 
 /// Undeafen a user.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn undeafen(
     ctx: Context<'_>,

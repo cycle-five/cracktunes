@@ -9,7 +9,12 @@ use crate::Context;
 use crate::Error;
 
 /// Unban command
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn unban(
     ctx: Context<'_>,

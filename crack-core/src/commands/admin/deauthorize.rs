@@ -4,7 +4,12 @@ use crate::Error;
 use poise::CreateReply;
 
 /// Deauthorize a user from using the bot.
-#[poise::command(prefix_command, owners_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    owners_only
+)]
 pub async fn deauthorize(
     ctx: Context<'_>,
     #[rest]

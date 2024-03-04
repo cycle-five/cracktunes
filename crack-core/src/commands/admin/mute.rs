@@ -9,7 +9,12 @@ use serenity::all::EditMember;
 use serenity::all::{Context as SerenityContext, GuildId};
 
 /// Mute a user.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn mute(
     ctx: Context<'_>,
     #[description = "User to mute"] user: serenity::model::user::User,

@@ -7,7 +7,12 @@ use crate::Context;
 use crate::Error;
 
 /// Create voice channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    default_member_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn create_voice_channel(
     ctx: Context<'_>,
     #[rest]
