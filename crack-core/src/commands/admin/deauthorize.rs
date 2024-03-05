@@ -4,6 +4,7 @@ use crate::Error;
 use poise::CreateReply;
 
 /// Deauthorize a user from using the bot.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -20,7 +21,7 @@ pub async fn deauthorize(
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
     // FIXME: ASDFASDF
-    let _res = data
+    let res = data
         .guild_settings_map
         .write()
         .unwrap()
@@ -30,7 +31,6 @@ pub async fn deauthorize(
         })
         .key();
 
-    //if res {
     check_reply(
         ctx.send(
             CreateReply::default()
@@ -40,7 +40,4 @@ pub async fn deauthorize(
         .await,
     );
     Ok(())
-    // } else {
-    //     Err(CrackedError::UnauthorizedUser.into())
-    // }
 }
