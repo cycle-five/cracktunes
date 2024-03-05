@@ -8,6 +8,7 @@ pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
 pub const AUTHORIZED: &str = "✅ User has been authorized.";
+pub const DEAUTHORIZED: &str = "❌ User has been deauthorized.";
 pub const BANNED: &str = "Banned";
 pub const UNBANNED: &str = "Unbanned";
 pub const DEAFENED: &str = "Deafened";

@@ -19,9 +19,8 @@ pub async fn deauthorize(
 ) -> Result<(), Error> {
     let id = user_id.parse::<u64>().expect("Failed to parse user id");
     let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
-    // FIXME: ASDFASDF
-    let res = data
+    let res = ctx
+        .data()
         .guild_settings_map
         .write()
         .unwrap()
@@ -30,14 +29,34 @@ pub async fn deauthorize(
             settings.authorized_users.remove(&id);
         })
         .key();
+    tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
-    check_reply(
-        ctx.send(
-            CreateReply::default()
-                .content("User deauthorized.")
-                .reply(true),
-        )
-        .await,
-    );
-    Ok(())
+    // TODO: Test to see how expensive this is.
+    // TODO: Make this into a function, it's used other places.
+    let user_id = UserId::new(id);
+    let user_name = ctx
+        .http()
+        .get_user(user_id)
+        .await
+        .map(|u| u.name)
+        .unwrap_or_else(|_| "Unknown".to_string());
+    let guild_name = guild_id
+        .to_partial_guild(ctx.http())
+        .await
+        .map(|g| g.name)
+        .unwrap_or_else(|_| "Unknown".to_string());
+
+    send_response_poise(
+        ctx,
+        CrackedMessage::UserDeauthorized {
+            user_id,
+            user_name,
+            guild_id,
+            guild_name,
+        },
+        true,
+    )
+    .await
+    .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
+    .map(|_| ())
 }

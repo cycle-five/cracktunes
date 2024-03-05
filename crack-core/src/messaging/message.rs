@@ -96,6 +96,12 @@ pub enum CrackedMessage {
         guild_id: serenity::GuildId,
         guild_name: String,
     },
+    UserDeauthorized {
+        user_id: UserId,
+        user_name: String,
+        guild_id: serenity::GuildId,
+        guild_name: String,
+    },
     UserTimeout {
         user: String,
         user_id: String,
@@ -238,6 +244,15 @@ impl Display for CrackedMessage {
             } => f.write_str(&format!(
                 "{}\n User: {} ({}) Guild: {} ({})",
                 AUTHORIZED, user_name, user_id, guild_name, guild_id
+            )),
+            Self::UserDeauthorized {
+                user_id,
+                user_name,
+                guild_id,
+                guild_name,
+            } => f.write_str(&format!(
+                "{}\n User: {} ({}) Guild: {} ({})",
+                DEAUTHORIZED, user_name, user_id, guild_name, guild_id
             )),
             Self::UserTimeout {
                 user: _,
