@@ -257,6 +257,8 @@ pub struct GuildSettings {
     pub banned_domains: HashSet<String>,
     #[serde(default = "authorized_users_default")]
     pub authorized_users: BTreeMap<u64, u64>,
+    #[serde(default = "authorized_users_default")]
+    pub authorized_groups: BTreeMap<u64, u64>,
     pub ignored_channels: HashSet<u64>,
     #[serde(default = "volume_default")]
     pub old_volume: f32,
@@ -321,6 +323,7 @@ impl From<crate::db::GuildSettingsRead> for GuildSettings {
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
         settings.authorized_users = BTreeMap::<u64, u64>::new(); // FIXME
+        settings.authorized_groups = BTreeMap::<u64, u64>::new(); // FIXME
 
         settings.ignored_channels = settings_db
             .ignored_channels
@@ -368,6 +371,7 @@ impl GuildSettings {
             allowed_domains,
             banned_domains: HashSet::new(),
             authorized_users: BTreeMap::new(),
+            authorized_groups: BTreeMap::new(),
             ignored_channels: asdf.into_iter().collect(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,

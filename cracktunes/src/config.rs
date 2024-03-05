@@ -196,39 +196,12 @@ pub async fn poise_framework(
         // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
-                // TODO: Make these constants
-                let music_commands = get_music_commands();
-                let mod_commands: HashMap<&str, Vec<&str>> =
-                    get_mod_commands().into_iter().collect();
-                let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
-
-                // param
-                let qualified_command_clean =
-                    ctx.command().qualified_name.clone().trim().to_string();
-                // let clean_command = qualified_command.trim().to_string();
-
-                tracing::info!("Checking command {}...", command);
+                let command = &ctx.command().qualified_name;
                 let user_id = ctx.author().id.get();
-                let first = lit_command.split_whitespace().next().unwrap_or_default();
-                let second = lit_command.split_whitespace().nth(1);
 
-                let mut mod_command = false;
-                for cmd in mod_commands.keys() {
-                    if cmd.eq(&first)
-                        && second.is_some()
-                        && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
-                    {
-                        mod_command = true;
-                        break;
-                    }
-                }
+                let (mod_command, admin_command, music_command) =
+                    check_command_categories(command.clone());
 
-                let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap());
-                // let mod_command = mod_commands
-                //     .get(first)
-                //     .unwrap()
-                //     .contains(&lit_command.as_str());
-                //lit_command.eq("settings") && mod_commands.contains_key(&lit_command.as_str());
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
                     .data()
@@ -253,7 +226,6 @@ pub async fn poise_framework(
                         let is_admin = perms.contains(Permissions::ADMINISTRATOR);
                         tracing::warn!("is_admin: {}", is_admin);
                         Ok(is_admin && (mod_command || admin_command))
-                        // return Ok(is_admin);
                     },
                 );
 
@@ -271,14 +243,10 @@ pub async fn poise_framework(
                     }
                 };
 
-                if music_commands.contains(&command.as_str()) {
-                    return Ok(true);
-                }
-
-                Ok(false)
+                Ok(music_command)
 
                 // //let user_id = ctx.author().id.as_u64();
-                // let guild_id = ctx.guild_id().unwrap_or_default();
+                // // let guild_id = ctx.guild_id().unwrap_or_default();
 
                 // ctx.data()
                 //     .guild_settings_map
@@ -450,6 +418,7 @@ pub async fn poise_framework(
     Ok(client)
 }
 
+/// Checks if the message starts with any of the given prefixes.
 fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     for prefix in prefixes {
         if content.starts_with(prefix) {
@@ -459,6 +428,38 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     None
 }
 
+/// Checks if the given command is a mod or admin command.
+/// TODO: Create a command struct with the categories info
+///     to parse this info.
+fn check_command_categories(user_cmd: String) -> (bool, bool, bool) {
+    // FIXME: Make these constants
+    let music_commands = get_music_commands();
+    let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
+    let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
+
+    let clean_cmd = user_cmd.clone().trim().to_string();
+    let first = clean_cmd.split_whitespace().next().unwrap_or_default();
+    let second = clean_cmd.split_whitespace().nth(1);
+
+    let mut mod_command = false;
+    for cmd in mod_commands.keys() {
+        if cmd.eq(&first)
+            && second.is_some()
+            && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
+        {
+            mod_command = true;
+            break;
+        }
+    }
+
+    let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap());
+
+    let music_command = music_commands.contains(&clean_cmd.as_str());
+
+    (mod_command, admin_command, music_command)
+}
+
+#[cfg(test)]
 mod test {
     #[test]
     fn test_prefix() {
@@ -480,5 +481,13 @@ mod test {
         let content = "crac test";
         let prefix_len = super::check_prefixes(&prefixes, content);
         assert!(prefix_len.is_none());
+    }
+
+    #[test]
+    fn test_mod_admin_cmd() {
+        let (mod_command, admin_command) =
+            super::check_mod_admin_cmd("admin settings".to_owned(), 123);
+        assert_eq!(mod_command, false);
+        assert_eq!(admin_command, true);
     }
 }
