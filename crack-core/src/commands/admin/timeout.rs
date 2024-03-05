@@ -5,9 +5,11 @@ use crate::Context;
 use crate::Error;
 use regex::Regex;
 use serenity::all::{User, UserId};
+use serenity::builder::EditMember;
 use std::time::Duration;
 
 /// Timeout a user from the server.
+/// FIXME: THIS IS BROKEN FIX
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
@@ -21,8 +23,6 @@ pub async fn timeout(
     #[description = "UserId to timeout"] user_id: Option<UserId>,
     #[description = "Amount of time"] duration: String,
 ) -> Result<(), Error> {
-    use serenity::builder::EditMember;
-
     let user_id = {
         if let Some(user) = user {
             user.id
@@ -81,26 +81,7 @@ fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
         return Err(CrackedError::Other("Invalid format"));
     }
     let mut total = Duration::from_secs(0);
-    // if let Some(caps) = re.captures(input) {
-    //     let n = caps.len();
-    //     let mut total = Duration::from_secs(0);
-    //     for i in (0..n).step_by(3) {
-    //         let str = caps.get(i + 1).unwrap().as_str().to_string();
-    //         let quantity = match str.parse::<u64>() {
-    //             Ok(n) => n,
-    //             Err(_) => {
-    //                 return Err(CrackedError::DurationParseError(str, i + 1));
-    //             }
-    //         };
-    //         match caps.get(i + 2).unwrap().as_str() {
-    //             "s" => total += Duration::from_secs(quantity),
-    //             "m" => total += Duration::from_secs(quantity * 60),
-    //             "h" => total += Duration::from_secs(quantity * 60 * 60),
-    //             "d" => total += Duration::from_secs(quantity * 24 * 60 * 60),
-    //             _ => return Err(CrackedError::Other("Invalid time unit")),
-    //         }
-    //     }
-    //     Ok(total)
+
     for (d, u) in parts {
         let d = match d.parse::<u64>() {
             Ok(n) => n,
@@ -120,9 +101,6 @@ fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
         }
     }
     Ok(total)
-    // } else {
-    //     Err(CrackedError::Other("Invalid format"))
-    // }
 }
 
 #[cfg(test)]
