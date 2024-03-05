@@ -14,6 +14,7 @@ use std::time::Duration;
 #[poise::command(
     slash_command,
     prefix_command,
+    guild_only,
     default_member_permissions = "ADMINISTRATOR",
     ephemeral
 )]
@@ -23,6 +24,17 @@ pub async fn timeout(
     #[description = "UserId to timeout"] user_id: Option<UserId>,
     #[description = "Amount of time"] duration: String,
 ) -> Result<(), Error> {
+    // Debugging print the params
+    tracing::error!(
+        "User: {:?}, User_id: {:?}, Duration: {}",
+        user,
+        user_id,
+        duration
+    );
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    tracing::error!("Guild_id: {}", guild_id);
+
     let user_id = {
         if let Some(user) = user {
             user.id
@@ -32,13 +44,22 @@ pub async fn timeout(
             return Err(CrackedError::Other("No user or user_id provided").into());
         }
     };
+    tracing::error!("User_id: {}", user_id);
+
     let timeout_duration = parse_duration(&duration)?;
+    tracing::error!("Timeout duration: {:?}", timeout_duration);
 
     let now = chrono::Utc::now();
     let timeout_until = now + timeout_duration;
     let timeout_until = timeout_until.to_rfc3339();
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
+    tracing::error!(
+        "Guild: {:?}, timeout_until: {}, now: {}",
+        guild,
+        timeout_until,
+        now
+    );
+
     if let Err(e) = guild
         .edit_member(
             &ctx,
@@ -48,6 +69,7 @@ pub async fn timeout(
         .await
     {
         // Handle error, send error message
+        tracing::error!("Failed to timeout user: {}", e);
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to timeout user: {}", e)),
@@ -56,20 +78,18 @@ pub async fn timeout(
         .await?;
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserTimeout {
-                user: user_id.to_user(&ctx).await?.name,
-                user_id: format!("{}", user_id),
-                timeout_until: timeout_until.clone(),
-            },
-            true,
-        )
-        .await?;
+        let msg = CrackedMessage::UserTimeout {
+            user: user_id.to_user(&ctx).await?.name,
+            user_id: format!("{}", user_id),
+            timeout_until: timeout_until.clone(),
+        };
+        tracing::info!("User timed out: {}", msg);
+        send_response_poise(ctx, msg, true).await?;
     }
     Ok(())
 }
 
+/// Parse the input string for a duration
 fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
     let mut parts = Vec::new();
     let re = Regex::new(r"((\d+)([smhd]))").unwrap();
