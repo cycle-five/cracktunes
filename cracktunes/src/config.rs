@@ -150,8 +150,6 @@ pub async fn poise_framework(
             stripped_dynamic_prefix: Some(|_ctx, msg, data| {
                 Box::pin(async move {
                     let guild_id = msg.guild_id.unwrap();
-                    // let data_read = data.read().await;
-                    // let guild_settings_map = data_read.get::<GuildSettingsMap>().unwrap();
                     let guild_settings_map = data.guild_settings_map.read().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
