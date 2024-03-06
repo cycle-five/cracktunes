@@ -1,7 +1,8 @@
-use crate::utils::check_reply;
+use crate::messaging::message::CrackedMessage;
+use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use poise::CreateReply;
+use poise::all::UserId;
 
 /// Deauthorize a user from using the bot.
 #[cfg(not(tarpaulin_include))]

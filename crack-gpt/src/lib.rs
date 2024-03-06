@@ -1,10 +1,10 @@
-///
 use chatgpt::{
     err::Error,
     prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder},
 };
 use url::Url;
 
+/// Get the response from ChatGPT to the given query string.
 pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
     let key = std::env::var("OPENAI_API_KEY")?;
 
