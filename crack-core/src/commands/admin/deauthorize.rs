@@ -2,7 +2,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use poise::all::UserId;
+use poise::serenity_prelude::UserId;
 
 /// Deauthorize a user from using the bot.
 #[cfg(not(tarpaulin_include))]
@@ -14,27 +14,13 @@ use poise::all::UserId;
 )]
 pub async fn deauthorize(
     ctx: Context<'_>,
-    #[rest]
-    #[description = "The user id to remove from the authorized list"]
-    user_id: String,
+    #[description = "The user id to remove from the authorized list"] user_id: UserId,
 ) -> Result<(), Error> {
-    let id = user_id.parse::<u64>().expect("Failed to parse user id");
+    let id = user_id.get();
     let guild_id = ctx.guild_id().unwrap();
-    let res = ctx
-        .data()
-        .guild_settings_map
-        .write()
-        .unwrap()
-        .entry(guild_id)
-        .and_modify(|settings| {
-            settings.authorized_users.remove(&id);
-        })
-        .key();
-    tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     // TODO: Test to see how expensive this is.
     // TODO: Make this into a function, it's used other places.
-    let user_id = UserId::new(id);
     let user_name = ctx
         .http()
         .get_user(user_id)
@@ -46,6 +32,26 @@ pub async fn deauthorize(
         .await
         .map(|g| g.name)
         .unwrap_or_else(|_| "Unknown".to_string());
+
+    let res = ctx
+        .data()
+        .guild_settings_map
+        .write()
+        .unwrap()
+        .entry(guild_id)
+        .and_modify(|settings| {
+            settings.authorized_users.remove(&id);
+        })
+        .or_insert({
+            crate::guild::settings::GuildSettings::new(
+                ctx.guild_id().unwrap(),
+                Some(&ctx.data().bot_settings.get_prefix()),
+                Some(guild_name.clone()),
+            )
+            .clone()
+        })
+        .clone();
+    tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     send_response_poise(
         ctx,

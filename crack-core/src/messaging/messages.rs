@@ -34,6 +34,7 @@ pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes
 pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
 pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
 pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
+pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
 pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
 pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";

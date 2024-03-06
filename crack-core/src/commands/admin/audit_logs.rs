@@ -1,12 +1,12 @@
 use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
-use std::io::Write;
+//use std::io::Write;
 
 /// Retreive audit logs.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn audit_logs(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn audit_logs(_ctx: Context<'_>) -> Result<(), Error> {
     Err(CrackedError::NotImplemented.into())
     // let guild = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // let guild = guild.to_partial_guild(&ctx).await?;
