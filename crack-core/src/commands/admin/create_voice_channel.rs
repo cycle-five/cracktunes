@@ -7,6 +7,7 @@ use crate::Context;
 use crate::Error;
 
 /// Create voice channel.
+#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,

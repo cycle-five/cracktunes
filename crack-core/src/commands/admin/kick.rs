@@ -12,7 +12,12 @@ use std::time::Duration;
 
 /// Kick command to kick a user from the server based on their ID
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, ephemeral, owners_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    ephemeral,
+    default_member_permissions = "ADMINISTRATOR"
+)]
 pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let reply_with_embed = ctx
