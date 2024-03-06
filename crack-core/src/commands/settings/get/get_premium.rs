@@ -14,7 +14,7 @@ pub fn get_premium(data: &Data, guild_id: GuildId) -> bool {
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral,
     aliases("get_premium_status")
 )]

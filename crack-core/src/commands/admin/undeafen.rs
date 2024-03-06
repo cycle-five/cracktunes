@@ -9,7 +9,7 @@ use serenity::builder::EditMember;
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]

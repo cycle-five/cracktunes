@@ -9,7 +9,7 @@ use poise::all::UserId;
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     owners_only
 )]
 pub async fn deauthorize(

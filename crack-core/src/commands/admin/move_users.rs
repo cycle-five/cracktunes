@@ -10,7 +10,7 @@ use serenity::builder::EditMember;
     rename = "move_users_to",
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn move_users_to(

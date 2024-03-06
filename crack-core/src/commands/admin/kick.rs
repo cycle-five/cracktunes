@@ -16,7 +16,7 @@ use std::time::Duration;
     slash_command,
     prefix_command,
     ephemeral,
-    default_member_permissions = "ADMINISTRATOR"
+    required_permissions = "ADMINISTRATOR"
 )]
 pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;

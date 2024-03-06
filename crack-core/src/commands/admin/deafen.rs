@@ -11,7 +11,7 @@ use serenity::builder::EditMember;
     slash_command,
     prefix_command,
     guild_only,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn deafen(

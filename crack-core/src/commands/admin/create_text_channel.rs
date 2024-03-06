@@ -11,7 +11,7 @@ use crate::Error;
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn create_text_channel(
@@ -59,7 +59,7 @@ pub async fn create_text_channel(
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn create_category(

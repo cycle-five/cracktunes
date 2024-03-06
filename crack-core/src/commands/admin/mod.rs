@@ -51,7 +51,7 @@ pub use unmute::*;
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     subcommands(
         "audit_logs",
         "authorize",

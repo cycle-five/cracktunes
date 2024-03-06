@@ -10,7 +10,7 @@ use serenity::all::EditChannel;
 #[poise::command(
     prefix_command,
     slash_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     guild_only
 )]
 pub async fn set_vc_size(

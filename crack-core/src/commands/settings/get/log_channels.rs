@@ -10,7 +10,7 @@ use crate::{Context, Error};
     slash_command,
     prefix_command,
     ephemeral,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     aliases("get_all_log_channel")
 )]
 pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
@@ -47,7 +47,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {

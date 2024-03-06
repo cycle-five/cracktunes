@@ -60,7 +60,7 @@ pub async fn defend(
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn cancel(ctx: Context<'_>) -> Result<(), Error> {

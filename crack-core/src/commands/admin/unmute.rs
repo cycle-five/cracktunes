@@ -11,7 +11,7 @@ use serenity::builder::EditMember;
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     guild_only,
     ephemeral
 )]

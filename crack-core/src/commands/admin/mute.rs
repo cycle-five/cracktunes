@@ -12,7 +12,7 @@ use serenity::all::{Context as SerenityContext, GuildId};
 #[poise::command(
     slash_command,
     prefix_command,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
 pub async fn mute(

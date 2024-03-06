@@ -37,7 +37,7 @@ pub use log_channels::*;
         // "self_deafen",
     ),
     ephemeral,
-    default_member_permissions = "ADMINISTRATOR",
+    required_permissions = "ADMINISTRATOR",
 )]
 
 /// Get settings
