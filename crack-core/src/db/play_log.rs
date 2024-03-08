@@ -77,7 +77,7 @@ impl PlayLog {
         }
     }
 
-    ///
+    /// Get the last played track for the given guild.
     pub async fn get_last_played_by_guild_filter(
         conn: &PgPool,
         guild_id: i64,

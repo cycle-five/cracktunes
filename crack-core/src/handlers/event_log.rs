@@ -460,10 +460,10 @@ pub async fn handle_event(
                     .unwrap_or_default(),
             );
             if avatar_url.is_empty() {
-                avatar_url = new.user.avatar_url().unwrap_or_default().clone();
+                avatar_url.clone_from(&new.user.avatar_url().unwrap_or_default());
             }
             if avatar_url.is_empty() {
-                avatar_url = new.user.default_avatar_url().clone();
+                avatar_url.clone_from(&new.user.default_avatar_url());
             }
 
             let mut notes = "";
