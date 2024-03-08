@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.3.0-rc.4"
+version = "0.3.0-rc.5"
 description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
 publish = true
 edition = "2021"
@@ -12,9 +12,10 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["playlist", "crack-gpt"]
+default = ["playlist", "crack-gpt", "crack-osint"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
+crack-osint = ["dep:crack-osint"]
 
 [dependencies]
 crack-core = { workspace = true, optional = false }

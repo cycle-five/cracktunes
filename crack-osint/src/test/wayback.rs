@@ -1,6 +1,6 @@
-#[cfg(feature = "osint")]
+#[cfg(feature = "crack-osint")]
 #[cfg(test)]
-mod tests {
+mod test {
     use crack_osint::wayback::fetch_wayback_snapshot;
 
     #[tokio::test]

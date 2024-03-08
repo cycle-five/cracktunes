@@ -460,12 +460,13 @@ impl SerenityHandler {
             // let default = GuildSettings::new(
             //     *guild_id,
             //     Some(&prefix),
-            //     Some(guild_name.to_ascii_lowercase().clone()),
+            //     Some(guild_name.clone()),
             // );
 
-            // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.to_ascii_lowercase().clone());
+            // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.clone());
             let guild_id_int = guild_id.get() as i64;
-            let guild_name = guild_name.to_ascii_lowercase().clone();
+            //let guild_name = guild_name.to_ascii_lowercase().clone();
+            let guild_name = guild_name.clone();
             let prefix = prefix.clone();
             let pool = self.data.database_pool.clone().unwrap();
             let (_guild, settings) =

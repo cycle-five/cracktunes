@@ -7,7 +7,12 @@ use serenity::all::ChannelId;
 use serenity::all::EditChannel;
 
 /// Set the size of a voice channel.
-#[poise::command(prefix_command, guild_only, owners_only)]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    required_permissions = "ADMINISTRATOR",
+    guild_only
+)]
 pub async fn set_vc_size(
     ctx: Context<'_>,
     #[description = "VoiceChannel to edit"] channel: ChannelId,

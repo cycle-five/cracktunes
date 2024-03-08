@@ -1,6 +1,6 @@
-#[cfg(feature = "osint")]
+#[cfg(feature = "crack-osint")]
 #[cfg(test)]
-mod tests {
+mod test {
     use crack_osint::{fetch_country_by_calling_code, PhoneCodeData};
 
     #[test]

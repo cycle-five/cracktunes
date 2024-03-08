@@ -5,18 +5,35 @@ use crate::Context;
 use crate::Error;
 use regex::Regex;
 use serenity::all::{User, UserId};
+use serenity::builder::EditMember;
 use std::time::Duration;
 
 /// Timeout a user from the server.
+/// FIXME: THIS IS BROKEN FIX
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn timeout(
     ctx: Context<'_>,
     #[description = "User to timout."] user: Option<User>,
     #[description = "UserId to timeout"] user_id: Option<UserId>,
     #[description = "Amount of time"] duration: String,
 ) -> Result<(), Error> {
-    use serenity::builder::EditMember;
+    // Debugging print the params
+    tracing::error!(
+        "User: {:?}, User_id: {:?}, Duration: {}",
+        user,
+        user_id,
+        duration
+    );
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    tracing::error!("Guild_id: {}", guild_id);
 
     let user_id = {
         if let Some(user) = user {
@@ -27,13 +44,22 @@ pub async fn timeout(
             return Err(CrackedError::Other("No user or user_id provided").into());
         }
     };
+    tracing::error!("User_id: {}", user_id);
+
     let timeout_duration = parse_duration(&duration)?;
+    tracing::error!("Timeout duration: {:?}", timeout_duration);
 
     let now = chrono::Utc::now();
     let timeout_until = now + timeout_duration;
     let timeout_until = timeout_until.to_rfc3339();
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
+    tracing::error!(
+        "Guild: {:?}, timeout_until: {}, now: {}",
+        guild,
+        timeout_until,
+        now
+    );
+
     if let Err(e) = guild
         .edit_member(
             &ctx,
@@ -43,6 +69,7 @@ pub async fn timeout(
         .await
     {
         // Handle error, send error message
+        tracing::error!("Failed to timeout user: {}", e);
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to timeout user: {}", e)),
@@ -51,20 +78,18 @@ pub async fn timeout(
         .await?;
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserTimeout {
-                user: user_id.to_user(&ctx).await?.name,
-                user_id: format!("{}", user_id),
-                timeout_until: timeout_until.clone(),
-            },
-            true,
-        )
-        .await?;
+        let msg = CrackedMessage::UserTimeout {
+            user: user_id.to_user(&ctx).await?.name,
+            user_id: format!("{}", user_id),
+            timeout_until: timeout_until.clone(),
+        };
+        tracing::info!("User timed out: {}", msg);
+        send_response_poise(ctx, msg, true).await?;
     }
     Ok(())
 }
 
+/// Parse the input string for a duration
 fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
     let mut parts = Vec::new();
     let re = Regex::new(r"((\d+)([smhd]))").unwrap();
@@ -76,26 +101,7 @@ fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
         return Err(CrackedError::Other("Invalid format"));
     }
     let mut total = Duration::from_secs(0);
-    // if let Some(caps) = re.captures(input) {
-    //     let n = caps.len();
-    //     let mut total = Duration::from_secs(0);
-    //     for i in (0..n).step_by(3) {
-    //         let str = caps.get(i + 1).unwrap().as_str().to_string();
-    //         let quantity = match str.parse::<u64>() {
-    //             Ok(n) => n,
-    //             Err(_) => {
-    //                 return Err(CrackedError::DurationParseError(str, i + 1));
-    //             }
-    //         };
-    //         match caps.get(i + 2).unwrap().as_str() {
-    //             "s" => total += Duration::from_secs(quantity),
-    //             "m" => total += Duration::from_secs(quantity * 60),
-    //             "h" => total += Duration::from_secs(quantity * 60 * 60),
-    //             "d" => total += Duration::from_secs(quantity * 24 * 60 * 60),
-    //             _ => return Err(CrackedError::Other("Invalid time unit")),
-    //         }
-    //     }
-    //     Ok(total)
+
     for (d, u) in parts {
         let d = match d.parse::<u64>() {
             Ok(n) => n,
@@ -115,9 +121,6 @@ fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
         }
     }
     Ok(total)
-    // } else {
-    //     Err(CrackedError::Other("Invalid format"))
-    // }
 }
 
 #[cfg(test)]

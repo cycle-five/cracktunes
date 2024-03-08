@@ -48,6 +48,7 @@ pub fn get_log_channel(
         .unwrap()
 }
 
+/// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
     guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
     guild_id: &GuildId,
@@ -86,6 +87,9 @@ pub async fn get_channel_id(
     x
 }
 
+/// Handles (routes and logs) an event.
+/// Currently doesn't handle all events.
+#[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
     ctx: &serenity::all::Context,
     event_in: &FullEvent,
@@ -146,19 +150,20 @@ pub async fn handle_event(
         }
         FullEvent::VoiceStateUpdate { old, new } => {
             let log_data = &(old, new);
+            let guild_id = new.guild_id.unwrap_or(GuildId::new(1));
             log_event2!(
                 log_voice_state_update,
                 guild_settings,
                 event_in,
                 log_data,
-                &new.guild_id.unwrap(),
+                &guild_id,
                 ctx,
                 event_log,
                 event_name
             )
         }
         FullEvent::Message { new_message } => {
-            let guild_id = new_message.guild_id.unwrap();
+            let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();
                 let _ = data_global
@@ -455,10 +460,10 @@ pub async fn handle_event(
                     .unwrap_or_default(),
             );
             if avatar_url.is_empty() {
-                avatar_url = new.user.avatar_url().unwrap_or_default().clone();
+                avatar_url.clone_from(&new.user.avatar_url().unwrap_or_default());
             }
             if avatar_url.is_empty() {
-                avatar_url = new.user.default_avatar_url().clone();
+                avatar_url.clone_from(&new.user.default_avatar_url());
             }
 
             let mut notes = "";

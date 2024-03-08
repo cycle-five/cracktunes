@@ -12,7 +12,12 @@ use std::time::Duration;
 
 /// Kick command to kick a user from the server based on their ID
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, ephemeral, owners_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    ephemeral,
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let reply_with_embed = ctx
@@ -42,6 +47,7 @@ pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
 
 use std::fs::read_to_string;
 
+/// Read lines from a file
 fn read_lines(filename: &str) -> Vec<String> {
     let mut result = Vec::new();
 
@@ -55,7 +61,12 @@ fn read_lines(filename: &str) -> Vec<String> {
 /// Kick command to kick all users from the server
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, ephemeral, owners_only)]
-pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn rename_all(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Don't actually change the names or print anything, just log"]
+    dry: bool,
+) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     // let reply_with_embed = ctx
     //     .data()
@@ -68,7 +79,11 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
     // let n = names.len();
-    ctx.say("Welcome to Bell Labs...").await?;
+    if !dry {
+        ctx.say("Chemical Compounds Abound!").await?;
+    } else {
+        tracing::info!("Chemical Compounds Abound!");
+    }
     let guild = guild_id.to_partial_guild(&ctx).await?;
     let members = guild.members(&ctx, None, None).await?;
     let mut backoff = Duration::from_secs(1);
@@ -81,6 +96,21 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             continue;
         }
         let r = rand::random::<usize>() % names.len();
+        let random_name = names.remove(r).clone();
+        let new_name = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
+            let emoji = cur_nick.chars().next().unwrap_or('🧪');
+            if !emoji.is_ascii() {
+                format!("{} {}", emoji, random_name)
+            } else {
+                format!("{} {}", "🧪", random_name)
+            }
+        } else {
+            random_name
+        };
+        if dry {
+            tracing::info!("{} -> {}", member.user.name, new_name);
+            continue;
+        }
         let _until =
             DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
                 .unwrap();
@@ -88,7 +118,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             .edit_member(
                 &ctx,
                 member.user.id,
-                EditMember::new().nickname(names.remove(r).clone()),
+                EditMember::new().nickname(new_name.clone()),
             )
             .await
         {
@@ -109,7 +139,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             tokio::time::sleep(sleep).await;
             // Send success message
             ctx.say(format!(
-                "Welcome to computer revolution {}!",
+                "Be careful of loose electrons, {}!",
                 member.mention()
             ))
             .await?;

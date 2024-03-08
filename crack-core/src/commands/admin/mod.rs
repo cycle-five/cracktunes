@@ -49,8 +49,9 @@ pub use unmute::*;
 
 /// Admin commands.
 #[poise::command(
+    slash_command,
     prefix_command,
-    //slash_command,
+    required_permissions = "ADMINISTRATOR",
     subcommands(
         "audit_logs",
         "authorize",
@@ -77,7 +78,7 @@ pub use unmute::*;
         "timeout",
     ),
     ephemeral,
-    owners_only
+    // owners_only
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {

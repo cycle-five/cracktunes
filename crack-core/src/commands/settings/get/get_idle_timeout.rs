@@ -5,7 +5,13 @@ use crate::utils::send_response_poise;
 use crate::{Context, Error};
 
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_idle_timeout"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral,
+    aliases("get_idle_timeout")
+)]
 pub async fn idle_timeout(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let idle_timeout = {

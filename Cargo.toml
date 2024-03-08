@@ -8,7 +8,7 @@ crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 tungstenite = "0.21"
 async-tungstenite = "0.25"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+reqwest = { version = "0.11", features = ["blocking", "json", "multipart"] }
 audiopus = "0.3.0-rc.0"
 either = "1.10"
 opentelemetry = { version = "0.22" }
@@ -80,7 +80,7 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 # To get additional codecs, you *must* add Symphonia yourself.
 # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
 [workspace.dependencies.symphonia]
-version = "0.5.3"
+version = "0.5.4"
 default-features = false
 features = ["all"]
 

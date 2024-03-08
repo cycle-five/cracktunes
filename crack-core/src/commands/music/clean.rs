@@ -21,7 +21,8 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     let reply_handle = ctx.say("Cleaning up old messages...").await?;
     let mut status_msg = reply_handle.into_message().await?;
     let mut deleted = 0;
-    let message_ttl = chrono::Duration::seconds(CHAT_CLEANUP_SECONDS as i64);
+    let message_ttl = chrono::Duration::try_seconds(CHAT_CLEANUP_SECONDS as i64)
+        .ok_or("Chat cleanup seconds not a number??!?")?;
     tracing::warn!("message_ttl: {:?}", message_ttl);
     while let Some(msg) = time_ordered_messages.pop_last() {
         let now = chrono::Utc::now();

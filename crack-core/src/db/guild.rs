@@ -552,7 +552,7 @@ impl GuildEntity {
 //     }
 // }
 // #[cfg(test)]
-// mod tests {
+// mod test {
 //     // Mock the GuildRepository trait
 //     use super::*;
 //     use mockall::predicate::*;

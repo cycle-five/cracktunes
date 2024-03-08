@@ -6,7 +6,13 @@ use serenity::all::{ChannelId, UserId};
 use serenity::builder::EditMember;
 
 /// Move usrers to a given channel.
-#[poise::command(rename = "move_users_to", prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    rename = "move_users_to",
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn move_users_to(
     ctx: Context<'_>,
     #[description = "Users to move"] user_ids: Vec<UserId>,

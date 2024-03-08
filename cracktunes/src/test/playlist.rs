@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod test {
     use crack_core::db::{
         playlist::{Playlist, PlaylistTrack},
         Metadata,

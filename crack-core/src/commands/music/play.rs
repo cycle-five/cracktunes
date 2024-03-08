@@ -276,6 +276,23 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
     Ok(guild_id)
 }
 
+/// Play a song next
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    aliases("next", "pn", "Pn", "PN")
+)]
+pub async fn playnext(
+    ctx: Context<'_>,
+    #[description = "File to play."] file: Option<serenity::Attachment>,
+    #[rest]
+    #[description = "song link or search query."]
+    query_or_url: Option<String>,
+) -> Result<(), Error> {
+    play_internal(ctx, Some("next".to_string()), file, query_or_url).await
+}
+
 /// Play a song.
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
@@ -284,6 +301,15 @@ pub async fn play(
     #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
+    query_or_url: Option<String>,
+) -> Result<(), Error> {
+    play_internal(ctx, mode, file, query_or_url).await
+}
+
+pub async fn play_internal(
+    ctx: Context<'_>,
+    mode: Option<String>,
+    file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
     let prefix = ctx.prefix();

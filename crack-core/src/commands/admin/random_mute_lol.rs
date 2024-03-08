@@ -9,7 +9,12 @@ use tokio::sync::Mutex;
 
 /// Randomly mute a user in the server.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, ephemeral, owners_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn random_mute(
     ctx: Context<'_>,
     #[description = "User to randomly mute and unmute"] user: User,

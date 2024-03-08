@@ -11,7 +11,13 @@ pub fn get_premium(data: &Data, guild_id: GuildId) -> bool {
 
 /// Get the current bot settings for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("get_premium_status"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral,
+    aliases("get_premium_status")
+)]
 pub async fn premium(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();

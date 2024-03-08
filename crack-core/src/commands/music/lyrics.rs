@@ -111,7 +111,7 @@ fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<GuildId> {
     ctx.guild_id()
 }
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use mockall::predicate::*;
     use mockall::*;

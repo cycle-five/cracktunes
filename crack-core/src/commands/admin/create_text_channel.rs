@@ -7,7 +7,13 @@ use crate::Context;
 use crate::Error;
 
 /// Create text channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn create_text_channel(
     ctx: Context<'_>,
     #[rest]
@@ -50,7 +56,12 @@ pub async fn create_text_channel(
 }
 
 /// Create text channel.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    ephemeral
+)]
 pub async fn create_category(
     ctx: Context<'_>,
     #[rest]
