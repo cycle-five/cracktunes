@@ -13,24 +13,6 @@ use std::sync::Arc;
 
 const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 
-// pub struct MyClient<C: Client> {
-//     client: C,
-// }
-
-// //pub fn new_client() -> MyClient<Client> {
-// pub fn new_client() -> MyClient<DirectClient> {
-//     MyClient {
-//         client: reqwest::Client::new(),
-//     }
-// }
-
-// #[cfg(test)]
-// pub fn test_client(path: &str) -> MyClient<ReplayClient> {
-//     MyClient {
-//         client: ReplayClient::new(path),
-//     }
-// }
-
 #[derive(Deserialize)]
 pub struct ScanResult {
     result_url: String,
@@ -40,7 +22,7 @@ pub struct ScanResult {
 ///
 /// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
 ///
-
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, hide_in_help)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let guild_id_opt = ctx.guild_id();

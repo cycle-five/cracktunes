@@ -114,6 +114,7 @@ pub async fn poise_framework(
             commands::now_playing(),
             commands::pause(),
             commands::play(),
+            commands::playnext(),
             commands::ping(),
             commands::remove(),
             commands::resume(),
