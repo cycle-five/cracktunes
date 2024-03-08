@@ -484,9 +484,10 @@ mod test {
 
     #[test]
     fn test_mod_admin_cmd() {
-        let (mod_command, admin_command) =
-            super::check_mod_admin_cmd("admin settings".to_owned(), 123);
+        let (mod_command, admin_command, music_command) =
+            super::check_command_categories("admin settings".to_owned());
         assert_eq!(mod_command, false);
         assert_eq!(admin_command, true);
+        assert_eq!(music_command, false);
     }
 }
