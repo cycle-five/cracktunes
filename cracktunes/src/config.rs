@@ -427,9 +427,10 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     None
 }
 
-/// Checks if the given command is a mod or admin command.
-/// TODO: Create a command struct with the categories info
-///     to parse this info.
+/// Checks what categories the given command belongs to.
+// TODO: Use the build it categories?!?
+// TODO: Create a command struct with the categories info
+//     to parse this info.
 fn check_command_categories(user_cmd: String) -> (bool, bool, bool) {
     // FIXME: Make these constants
     let music_commands = get_music_commands();
@@ -483,10 +484,28 @@ mod test {
     }
 
     #[test]
-    fn test_mod_admin_cmd() {
+    fn test_check_command_categories_bad_command() {
         let (mod_command, admin_command, music_command) =
             super::check_command_categories("admin settings".to_owned());
         assert_eq!(mod_command, false);
+        assert_eq!(admin_command, false);
+        assert_eq!(music_command, false);
+    }
+
+    #[test]
+    fn test_check_command_categories_music_command() {
+        let (mod_command, admin_command, music_command) =
+            super::check_command_categories("play".to_owned());
+        assert_eq!(mod_command, false);
+        assert_eq!(admin_command, false);
+        assert_eq!(music_command, true);
+    }
+
+    #[test]
+    fn test_check_command_categories_settings_command() {
+        let (mod_command, admin_command, music_command) =
+            super::check_command_categories("settings get all".to_owned());
+        assert_eq!(mod_command, true);
         assert_eq!(admin_command, true);
         assert_eq!(music_command, false);
     }
