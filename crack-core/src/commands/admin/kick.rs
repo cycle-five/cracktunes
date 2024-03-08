@@ -61,7 +61,12 @@ fn read_lines(filename: &str) -> Vec<String> {
 /// Kick command to kick all users from the server
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, ephemeral, owners_only)]
-pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn rename_all(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Don't actually change the names or print anything, just log"]
+    dry: bool,
+) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     // let reply_with_embed = ctx
     //     .data()
@@ -74,7 +79,11 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
     // let n = names.len();
-    ctx.say("Chemical Compounds Abound!").await?;
+    if !dry {
+        ctx.say("Chemical Compounds Abound!").await?;
+    } else {
+        tracing::info!("Chemical Compounds Abound!");
+    }
     let guild = guild_id.to_partial_guild(&ctx).await?;
     let members = guild.members(&ctx, None, None).await?;
     let mut backoff = Duration::from_secs(1);
@@ -98,6 +107,10 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
         } else {
             random_name
         };
+        if dry {
+            tracing::info!("{} -> {}", member.user.name, new_name);
+            continue;
+        }
         let _until =
             DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
                 .unwrap();
