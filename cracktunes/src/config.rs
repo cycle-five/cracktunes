@@ -506,6 +506,15 @@ mod test {
         let (mod_command, admin_command, music_command) =
             super::check_command_categories("settings get all".to_owned());
         assert_eq!(mod_command, true);
+        assert_eq!(admin_command, false);
+        assert_eq!(music_command, false);
+    }
+
+    #[test]
+    fn test_check_command_categories_admin_command() {
+        let (mod_command, admin_command, music_command) =
+            super::check_command_categories("admin ban".to_owned());
+        assert_eq!(mod_command, true);
         assert_eq!(admin_command, true);
         assert_eq!(music_command, false);
     }

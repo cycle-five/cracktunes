@@ -47,6 +47,7 @@ pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
 
 use std::fs::read_to_string;
 
+/// Read lines from a file
 fn read_lines(filename: &str) -> Vec<String> {
     let mut result = Vec::new();
 
@@ -73,7 +74,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
         .map(|s| s.to_string().trim().to_string())
         .collect::<Vec<String>>();
     // let n = names.len();
-    ctx.say("Welcome to Bell Labs...").await?;
+    ctx.say("Chemical Compounds Abound!").await?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
     let members = guild.members(&ctx, None, None).await?;
     let mut backoff = Duration::from_secs(1);
@@ -86,6 +87,17 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             continue;
         }
         let r = rand::random::<usize>() % names.len();
+        let random_name = names.remove(r).clone();
+        let new_name = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
+            let emoji = cur_nick.chars().next().unwrap_or('🧪');
+            if !emoji.is_ascii() {
+                format!("{} {}", emoji, random_name)
+            } else {
+                format!("{} {}", "🧪", random_name)
+            }
+        } else {
+            random_name
+        };
         let _until =
             DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
                 .unwrap();
@@ -93,7 +105,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             .edit_member(
                 &ctx,
                 member.user.id,
-                EditMember::new().nickname(names.remove(r).clone()),
+                EditMember::new().nickname(new_name.clone()),
             )
             .await
         {
@@ -114,7 +126,7 @@ pub async fn rename_all(ctx: Context<'_>) -> Result<(), Error> {
             tokio::time::sleep(sleep).await;
             // Send success message
             ctx.say(format!(
-                "Welcome to computer revolution {}!",
+                "Be careful of loose electrons, {}!",
                 member.mention()
             ))
             .await?;
