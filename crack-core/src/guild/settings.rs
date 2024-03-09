@@ -418,7 +418,7 @@ impl GuildSettings {
             prefix.clone(),
         )
         .await?;
-        let _entity = GuildEntity::write_settings(pool, self).await?;
+        GuildEntity::write_settings(pool, self).await?;
         Ok(())
     }
 

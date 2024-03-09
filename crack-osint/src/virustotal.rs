@@ -78,14 +78,15 @@ impl VirusTotalClient {
     }
 
     pub async fn fetch_initial_analysis_result(
-        client: VirusTotalClient,
+        self,
         url: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
         let mut map = std::collections::HashMap::new();
         map.insert("url", url);
 
         // Set up the API request with headers, including the API key
-        let initial_response = client
+        let initial_response = self
+            .client
             .post(&client.api_url)
             .header("x-apikey", client.api_key)
             .form(&map)
@@ -98,18 +99,33 @@ impl VirusTotalClient {
         Ok(initial_response)
     }
 
+    pub fn format_initial_scan_result(self, initial_response: VirusTotalApiResponse) -> String {
+        let result_url = initial_response.data.links.item;
+        format!("Scan result: {}", result_url)
+    }
+
     pub async fn fetch_detailed_analysis_result(
+        self,
         analysis_id: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
         let detailed_api_url =
             format!("https://www.virustotal.com/api/v3/analyses/{}", analysis_id);
-        let detailed_response = client
+        let detailed_response = self
+            .client
             .get(&detailed_api_url)
-            .header("x-apikey", client.api_key)
+            .header("x-apikey", self.api_key)
             .await?
             .json::<VirusTotalApiResponse>()
             .await?;
         Ok(detailed_response)
+    }
+
+    pub fn format_detailed_scan_result(detailed_response: VirusTotalApiResponse) -> String {
+        let stats = detailed_response.data.attributes.stats;
+        format!(
+            "Malicious: {}\nSuspicious: {}\nUndetected: {}\nHarmless: {}\nTimeout: {}",
+            stats.malicious, stats.suspicious, stats.undetected, stats.harmless, stats.timeout
+        )
     }
 }
 

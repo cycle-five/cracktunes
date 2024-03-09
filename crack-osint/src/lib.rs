@@ -6,6 +6,7 @@ pub mod ip;
 // // pub mod phcode;
 // // pub mod phlookup;
 pub mod scan;
+pub mod virustotal;
 // pub mod socialmedia;
 // pub mod wayback;
 // pub mod whois;

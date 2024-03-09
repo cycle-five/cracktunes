@@ -4,12 +4,11 @@ use crack_core::{
     utils::{send_channel_message, SendMessageParams},
     Context, Error,
 };
-use poise::serenity_prelude::GuildId;
+use os_int::virustotal::{VirusTotalApiResponse, VirusTotalClient};
 use reqwest::Client;
 use reqwest::Url;
 use serde::Deserialize;
 use std::sync::Arc;
-use virustotal::VirusTotalClient;
 
 const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 
@@ -21,10 +20,14 @@ const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 #[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     // let guild_id_opt = ctx.guild_id();
+    let api_url = VIRUSTOTAL_API_URL.to_string();
+    // Retrieve the API key from the environment variable
+    let api_key = std::env::var("VIRUSTOTAL_API_KEY")
+        .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
     let channel_id = ctx.channel_id();
-    let client = reqwest::Client::new();
+    client = VirusTotalClient::new(api_key);
 
-    let message = scan_url(url, client).await?;
+    let message = scan_url(client, url).await?;
     let message = CrackedMessage::ScanResult { result: message };
 
     let params = SendMessageParams {
@@ -41,7 +44,7 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
 /// Scan a website for viruses or malicious content.
 //pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
-pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
+pub async fn scan_url(client: VirusTotalClient, url: String) -> Result<String, Error> {
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
@@ -49,10 +52,10 @@ pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
     }
 
     // Perform the scan and retrieve the result
-    let scan_result = virustotal::VirusTotalClient::new(url);
+    let res = client.fetch_inital_scan_result(url).await?;
 
     // Format the result into a user-friendly message
-    let message = format_scan_result(&scan_result);
+    let message = (&scan_result);
 
     // Send the response to the user
     Ok(message)
@@ -98,14 +101,6 @@ fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
     //url::Url::parse(url).is_ok()
     Url::parse(url).is_ok()
-}
-
-fn format_scan_result(scan_result: &ScanResult) -> String {
-    // Formatting the scan result into a user-friendly message
-    format!(
-        "Scan submitted successfully! Result URL: {}",
-        scan_result.result_url
-    )
 }
 
 #[cfg(test)]
