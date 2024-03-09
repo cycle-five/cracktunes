@@ -418,7 +418,7 @@ impl GuildSettings {
             prefix.clone(),
         )
         .await?;
-        let _ = GuildEntity::write_settings(pool, self).await;
+        let _entity = GuildEntity::write_settings(pool, self).await?;
         Ok(())
     }
 
@@ -637,11 +637,8 @@ impl GuildSettings {
     ) -> &mut Self {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
-            raw_event_log_channel: None,
-            server_log_channel: None,
-            member_log_channel: None,
             join_leave_log_channel: Some(join_leave_log_channel),
-            voice_log_channel: None,
+            ..self.log_settings.clone().unwrap_or_default()
         });
         self
     }

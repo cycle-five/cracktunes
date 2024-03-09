@@ -23,9 +23,9 @@ pub struct ScanResult {
 /// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
 ///
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, hide_in_help)]
+#[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
-    let guild_id_opt = ctx.guild_id();
+    // let guild_id_opt = ctx.guild_id();
     let channel_id = ctx.channel_id();
     let client = reqwest::Client::new();
 
@@ -40,12 +40,8 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
         msg: message,
     };
 
-    send_channel_message(Arc::new(ctx.http()), params)
-        .await
-        .map(|m| {
-            ctx.data()
-                .add_msg_to_cache(guild_id_opt.unwrap_or(GuildId::new(1)), m);
-        })
+    let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
+    Ok(())
 }
 
 /// Scan a website for viruses or malicious content.
