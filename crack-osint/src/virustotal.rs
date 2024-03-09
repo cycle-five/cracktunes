@@ -2,68 +2,69 @@ use reqwest::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct VirusTotalApiResponse {
-    data: Data,
-    meta: Meta,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VirusTotalApiResponse {
+    pub data: Data,
+    pub meta: Meta,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Data {
-    id: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Data {
+    pub id: String,
     #[serde(rename = "type")]
-    type_: String,
-    links: Links,
-    attributes: Attributes,
+    pub type_: String,
+    pub links: Links,
+    pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Links {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Links {
     #[serde(rename = "self")]
-    self_: String,
-    item: String,
+    pub self_: String,
+    pub item: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Attributes {
-    stats: Stats,
-    date: u64,
-    results: HashMap<String, EngineResult>,
-    status: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Attributes {
+    pub stats: Stats,
+    pub date: u64,
+    pub results: HashMap<String, EngineResult>,
+    pub status: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Stats {
-    malicious: u32,
-    suspicious: u32,
-    undetected: u32,
-    harmless: u32,
-    timeout: u32,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Stats {
+    pub malicious: u32,
+    pub suspicious: u32,
+    pub undetected: u32,
+    pub harmless: u32,
+    pub timeout: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct EngineResult {
-    method: String,
-    engine_name: String,
-    category: String,
-    result: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EngineResult {
+    pub method: String,
+    pub engine_name: String,
+    pub category: String,
+    pub result: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Meta {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Meta {
     url_info: UrlInfo,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UrlInfo {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UrlInfo {
     id: String,
     url: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct VirusTotalClient {
-    client: reqwest::Client,
-    api_key: String,
-    api_url: String,
+    pub client: reqwest::Client,
+    pub api_key: String,
+    pub api_url: String,
 }
 
 impl VirusTotalClient {
@@ -77,17 +78,18 @@ impl VirusTotalClient {
         }
     }
 
-    pub async fn fetch_initial_analysis_result(
-        client: VirusTotalClient,
+    pub async fn fetch_initial_scan_result(
+        self,
         url: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
         let mut map = std::collections::HashMap::new();
         map.insert("url", url);
 
         // Set up the API request with headers, including the API key
-        let initial_response = client
-            .post(&client.api_url)
-            .header("x-apikey", client.api_key)
+        let initial_response = self
+            .client
+            .post(&self.api_url)
+            .header("x-apikey", self.api_key)
             .form(&map)
             //.body(Body::from(form))
             .send()
@@ -98,18 +100,34 @@ impl VirusTotalClient {
         Ok(initial_response)
     }
 
-    pub async fn fetch_detailed_analysis_result(
+    pub fn format_initial_scan_result(self, initial_response: VirusTotalApiResponse) -> String {
+        let result_url = initial_response.data.links.item;
+        format!("Scan result: {}", result_url)
+    }
+
+    pub async fn fetch_detailed_scan_result(
+        self,
         analysis_id: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
         let detailed_api_url =
             format!("https://www.virustotal.com/api/v3/analyses/{}", analysis_id);
-        let detailed_response = client
+        let detailed_response = self
+            .client
             .get(&detailed_api_url)
-            .header("x-apikey", client.api_key)
+            .header("x-apikey", self.api_key)
+            .send()
             .await?
             .json::<VirusTotalApiResponse>()
             .await?;
         Ok(detailed_response)
+    }
+
+    pub fn format_detailed_scan_result(detailed_response: VirusTotalApiResponse) -> String {
+        let stats = detailed_response.data.attributes.stats;
+        format!(
+            "Malicious: {}\nSuspicious: {}\nUndetected: {}\nHarmless: {}\nTimeout: {}",
+            stats.malicious, stats.suspicious, stats.undetected, stats.harmless, stats.timeout
+        )
     }
 }
 

@@ -569,6 +569,7 @@ dependencies = [
  "chrono",
  "colored",
  "crack-gpt",
+ "crack-osint",
  "either",
  "ffprobe",
  "lazy_static",
@@ -611,7 +612,6 @@ dependencies = [
 name = "crack-osint"
 version = "0.1.3"
 dependencies = [
- "crack-core",
  "ipinfo",
  "poise",
  "reqwest",

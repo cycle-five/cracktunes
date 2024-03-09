@@ -130,7 +130,7 @@ pub async fn poise_framework(
             // commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "crack-osint")]
-            crack_osint::osint(),
+            commands::osint(),
             // all playlist commands
             commands::playlist(),
             // all admin commands

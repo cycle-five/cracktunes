@@ -1,58 +1,35 @@
-use crack_core::{
-    errors::CrackedError,
-    messaging::message::CrackedMessage,
-    utils::{send_channel_message, SendMessageParams},
-    Context, Error,
-};
-use poise::serenity_prelude::GuildId;
-use reqwest::Client;
+use crate::virustotal::{VirusTotalApiResponse, VirusTotalClient};
+use ipinfo::{IpError, IpErrorKind};
 use reqwest::Url;
-use serde::Deserialize;
-use std::sync::Arc;
-use virustotal::VirusTotalClient;
 
-const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
-/// Scan a website for viruses or malicious content.
-///
-/// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
-///
-#[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command)]
-pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
-    // let guild_id_opt = ctx.guild_id();
-    let channel_id = ctx.channel_id();
-    let client = reqwest::Client::new();
-
-    let message = scan_url(url, client).await?;
-    let message = CrackedMessage::ScanResult { result: message };
-
-    let params = SendMessageParams {
-        channel: channel_id,
-        as_embed: true,
-        ephemeral: false,
-        reply: true,
-        msg: message,
-    };
-
-    let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
-    Ok(())
-}
+const _VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 
 /// Scan a website for viruses or malicious content.
 //pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
-pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
+pub async fn scan_url(
+    client: &VirusTotalClient,
+    url: String,
+) -> Result<VirusTotalApiResponse, Error> {
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
-        return Err(CrackedError::Other("Invalid URL provided.").into());
+        return Err(Box::new(IpError::new(
+            IpErrorKind::ParseError,
+            Some("Invalid URL provided"),
+        )));
     }
 
     // Perform the scan and retrieve the result
-    let scan_result = virustotal::VirusTotalClient::new(url);
+    let res = client.clone().fetch_initial_scan_result(&url).await?;
 
+    let res2 = client
+        .clone()
+        .fetch_detailed_scan_result(&res.data.links.item)
+        .await?;
     // Format the result into a user-friendly message
-    let message = format_scan_result(&scan_result);
+    let message = res2;
 
     // Send the response to the user
     Ok(message)
@@ -98,14 +75,6 @@ fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
     //url::Url::parse(url).is_ok()
     Url::parse(url).is_ok()
-}
-
-fn format_scan_result(scan_result: &ScanResult) -> String {
-    // Formatting the scan result into a user-friendly message
-    format!(
-        "Scan submitted successfully! Result URL: {}",
-        scan_result.result_url
-    )
 }
 
 #[cfg(test)]
