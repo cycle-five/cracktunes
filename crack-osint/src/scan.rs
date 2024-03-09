@@ -5,9 +5,8 @@ use crack_core::{
     Context, Error,
 };
 use poise::serenity_prelude::GuildId;
-use reqwest::Url;
-// use reqwest_mock::Client;
 use reqwest::Client;
+use reqwest::Url;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -120,7 +119,6 @@ mod test {
 
     #[tokio::test]
     async fn test_scan_url() {
-        // let client = reqwest_mock::ReplayClient::new(VIRUSTOTAL_API_URL, RecordMode::ReplayOnly);
         // let my_client = MyClient { client };
         let client = reqwest::Client::new();
         let url = "https://www.google.com".to_string();
