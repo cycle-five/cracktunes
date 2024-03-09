@@ -9,13 +9,9 @@ use reqwest::Client;
 use reqwest::Url;
 use serde::Deserialize;
 use std::sync::Arc;
+use virustotal::VirusTotalClient;
 
 const VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
-
-#[derive(Deserialize)]
-pub struct ScanResult {
-    result_url: String,
-}
 
 /// Scan a website for viruses or malicious content.
 ///
@@ -53,7 +49,7 @@ pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
     }
 
     // Perform the scan and retrieve the result
-    let scan_result = perform_scan(&url, client).await?;
+    let scan_result = virustotal::VirusTotalClient::new(url);
 
     // Format the result into a user-friendly message
     let message = format_scan_result(&scan_result);
@@ -70,33 +66,33 @@ pub async fn scan_url(url: String, client: Client) -> Result<String, Error> {
 ///     --form url=<Your URL here> \
 ///     --header 'x-apikey: <your API key>'
 //pub async fn perform_scan<C: Client>(url: &str, client: MyClient<C>) -> Result<ScanResult, Error> {
-pub async fn perform_scan(url: &str, client: Client) -> Result<ScanResult, Error> {
-    // URL to submit the scan request to VirusTotal
-    let api_url = VIRUSTOTAL_API_URL.to_string();
-    // Retrieve the API key from the environment variable
-    let api_key = std::env::var("VIRUSTOTAL_API_KEY")
-        .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
+// pub async fn perform_scan(url: &str, client: Client) -> Result<ScanResult, Error> {
+//     // URL to submit the scan request to VirusTotal
+//     let api_url = VIRUSTOTAL_API_URL.to_string();
+//     // Retrieve the API key from the environment variable
+//     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
+//         .map_err(|_| CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
 
-    // let form = reqwest::multipart::Form::new().text("url", url);
-    let mut map = std::collections::HashMap::new();
-    map.insert("url", url);
+//     // let form = reqwest::multipart::Form::new().text("url", url);
+//     let mut map = std::collections::HashMap::new();
+//     map.insert("url", url);
 
-    // Set up the API request with headers, including the API key
-    let response = client
-        .post(&api_url)
-        .header("x-apikey", api_key)
-        .form(&map)
-        //.body(Body::from(form))
-        .send()
-        .await?;
+//     // Set up the API request with headers, including the API key
+//     let response = client
+//         .post(&api_url)
+//         .header("x-apikey", api_key)
+//         .form(&map)
+//         //.body(Body::from(form))
+//         .send()
+//         .await?;
 
-    // // Process the response
-    // let asdf = response.body().await?;
+//     // // Process the response
+//     // let asdf = response.body().await?;
 
-    let scan_result: ScanResult = response.json().await?;
+//     let scan_result: VirusTotalApiResponse = response.json::<VirusTotalApiResponse>().await?;
 
-    Ok(scan_result)
-}
+//     Ok(scan_result)
+// }
 
 fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
