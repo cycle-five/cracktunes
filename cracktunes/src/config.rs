@@ -104,6 +104,7 @@ pub async fn poise_framework(
         commands: vec![
             commands::autopause(),
             commands::toggle_autoplay(),
+            commands::altplay(),
             commands::clear(),
             commands::clean(),
             commands::downvote(),
@@ -114,7 +115,7 @@ pub async fn poise_framework(
             commands::now_playing(),
             commands::pause(),
             commands::play(),
-            commands::playnext(),
+            commands::search(),
             commands::ping(),
             commands::remove(),
             commands::resume(),

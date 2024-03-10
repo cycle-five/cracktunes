@@ -45,7 +45,6 @@ pub use queue::*;
 pub use remove::*;
 pub use repeat::*;
 pub use resume::*;
-pub use search::*;
 pub use seek::*;
 pub use shuffle::*;
 pub use skip::*;

@@ -301,7 +301,7 @@ pub async fn search(
     #[description = "search query."]
     query: String,
 ) -> Result<(), Error> {
-    play_internal(ctx, Some(search), None, query).await
+    play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
 /// Play a song.

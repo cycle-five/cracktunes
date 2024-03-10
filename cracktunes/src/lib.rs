@@ -18,6 +18,8 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "skip",
         "seek",
         "summon",
+        "search",
+        "altplay",
         "leave",
         "lyrics",
         "volume",

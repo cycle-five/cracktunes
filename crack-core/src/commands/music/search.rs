@@ -7,13 +7,13 @@ use songbird::input::YoutubeDl;
 /// Search for a song and play it.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn search(
+pub async fn do_yt_search(
     ctx: Context<'_>,
     #[rest]
     #[description = "Search query."]
     search_query: String,
 ) -> Result<(), Error> {
-    do_yt_search(ctx, search_query)
+    do_yt_search_internal(ctx, search_query)
         .await
         .map(|_| ())
         .map_err(Into::into)
@@ -21,7 +21,10 @@ pub async fn search(
 
 /// Perform a youtube search and send a list of results to discord
 #[cfg(not(tarpaulin_include))]
-async fn do_yt_search(ctx: Context<'_>, search_query: String) -> Result<ReplyHandle, CrackedError> {
+async fn do_yt_search_internal(
+    ctx: Context<'_>,
+    search_query: String,
+) -> Result<ReplyHandle, CrackedError> {
     let mut ytdl = YoutubeDl::new(Client::new(), search_query);
     let results = ytdl.search(None).await?;
 
