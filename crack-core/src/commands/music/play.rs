@@ -297,6 +297,15 @@ pub async fn playnext(
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
+    #[description = "song link or search query."] query: Option<String>,
+) -> Result<(), Error> {
+    play_internal(ctx, None, None, query).await
+}
+
+/// Play a song with more options
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn altplay(
+    ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
