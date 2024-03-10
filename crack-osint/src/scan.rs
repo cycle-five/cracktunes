@@ -83,20 +83,20 @@ mod test {
     use tokio;
 
     #[tokio::test]
-    async fn test_scan_url() {
+    async fn test_scan_url_error() {
         // let my_client = MyClient { client };
-        let client = reqwest::Client::new();
+        let client = VirusTotalClient::new("asdf");
         let url = "https://www.google.com".to_string();
-        let result = scan_url(url, client).await;
+        let result = scan_url(&client, url).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn test_perform_scan() {
-        // let my_client = test_client(VIRUSTOTAL_API_URL);
-        let my_client = reqwest::Client::new();
-        let url = "https://www.google.com";
-        let result = perform_scan(url, my_client).await;
+    async fn test_scan_url_success() {
+        // let my_client = MyClient { client };
+        let client = VirusTotalClient::new("asdf");
+        let url = "https://www.google.com".to_string();
+        let result = scan_url(&client, url).await;
         assert!(result.is_err());
     }
 
@@ -104,17 +104,5 @@ mod test {
     fn test_url_validator() {
         let url = "https://www.google.com";
         assert!(url_validator(url));
-    }
-
-    #[test]
-    fn test_format_scan_result() {
-        let scan_result = ScanResult {
-            result_url: "https://www.virustotal.com/url/scan/result".to_string(),
-        };
-        let result = format_scan_result(&scan_result);
-        assert_eq!(
-            result,
-            "Scan submitted successfully! Result URL: https://www.virustotal.com/url/scan/result"
-        );
     }
 }

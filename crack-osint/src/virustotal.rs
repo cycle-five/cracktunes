@@ -1,5 +1,7 @@
+//use poise::serenity_prelude::json::hashmap_to_json_map;
 use reqwest::Error;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -124,19 +126,70 @@ impl VirusTotalClient {
 
     pub fn format_detailed_scan_result(detailed_response: VirusTotalApiResponse) -> String {
         let stats = detailed_response.data.attributes.stats;
-        format!(
-            "Malicious: {}\nSuspicious: {}\nUndetected: {}\nHarmless: {}\nTimeout: {}",
-            stats.malicious, stats.suspicious, stats.undetected, stats.harmless, stats.timeout
-        )
+        let map = detailed_response.data.attributes.results;
+        let j1 = map
+            .iter()
+            .map(|(k, v)| format!("{}: {:?}", k, v))
+            .collect::<Vec<_>>()
+            .join(", ");
+        // let j1 = serde_json::to_string_pretty(hashmap_to_json_map(map).to_string())?;
+        let j2 = json!({
+            "Malicious": stats.malicious,
+            "Suspicious":stats.suspicious,
+            "Undetected":stats.undetected,
+            "Harmless": stats.harmless,
+            "Timeout": stats.timeout,
+        });
+        format!("{}\n{}", serde_json::to_string_pretty(&j2).unwrap(), j1)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //use super::json;
+
+    use serde_json::json;
 
     // Example JSON response (simplified for brevity)
-    const TEST_JSON: &str = r#"{
+
+    #[test]
+    fn test_api_response_value() {
+        let test_json: serde_json::Value = json!({
+                "data": {
+                    "id": "example_id",
+                    "type": "analysis",
+                    "links": {
+                        "self": "https://example.com/self",
+                        "item": "https://example.com/item",
+                    },
+                    "attributes": {
+                        "stats": {
+                            "malicious": 0,
+                            "suspicious": 0,
+                            "undetected": 19,
+                            "harmless": 74,
+                            "timeout": 0,
+                        },
+                        "date": 1709984912,
+                        "results": {},
+                        "status": "completed",
+                    },
+                },
+                "meta": {
+                    "url_info": {
+                        "id": "example_url_id",
+                        "url": "https://google.com/",
+                    },
+                },
+        });
+        let api_response: VirusTotalApiResponse =
+            serde_json::from_value(test_json.clone()).unwrap();
+        assert_eq!(api_response.data.id, "example_id");
+        assert_eq!(api_response.data.attributes.stats.undetected, 19);
+        assert_eq!(api_response.meta.url_info.url, "https://google.com/");
+    }
+
+    const TEST_JSON_DETAILED: &str = r#"{
         "data": {
             "id": "example_id",
             "type": "analysis",
@@ -165,9 +218,11 @@ mod tests {
         }
     }"#;
 
+    use crate::VirusTotalApiResponse;
+
     #[tokio::test]
     async fn test_api_response_deserialization() {
-        let api_response: VirusTotalApiResponse = serde_json::from_str(TEST_JSON).unwrap();
+        let api_response: VirusTotalApiResponse = serde_json::from_str(TEST_JSON_DETAILED).unwrap();
         assert_eq!(api_response.data.id, "example_id");
         assert_eq!(api_response.data.attributes.stats.undetected, 19);
         assert_eq!(api_response.meta.url_info.url, "https://google.com/");
