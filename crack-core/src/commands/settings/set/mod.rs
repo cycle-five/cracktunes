@@ -19,6 +19,7 @@ pub use set_welcome_settings::*;
 
 /// Settings-get commands
 #[poise::command(
+    slash_command,
     prefix_command,
     subcommands(
         "log_channel_for_guild",
@@ -34,9 +35,8 @@ pub use set_welcome_settings::*;
         // "log_guild"
     ),
     ephemeral,
-    owners_only
+    required_permissions = "ADMINISTRATOR",
 )]
-
 /// Set settings
 #[cfg(not(tarpaulin_include))]
 pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
