@@ -66,7 +66,7 @@ fn url_validator(url: &str) -> bool {
     //     url.to_string()
     // };
     tracing::info!("url_validator: {}", url);
-    Url::parse(&url).is_ok()
+    Url::parse(url).is_ok()
 }
 
 #[cfg(test)]
