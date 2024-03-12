@@ -23,6 +23,7 @@ use crate::errors::CrackedError;
 // use crate::{Context, Error};
 // use typemap_rev::TypeMap;
 
+#[allow(dead_code)]
 struct Handler;
 
 #[async_trait]

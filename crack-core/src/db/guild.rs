@@ -368,7 +368,7 @@ impl GuildEntity {
         name: String,
         prefix: String,
     ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
-        let guild_opt = match sqlx::query_as!(
+        let guild_opt: Option<GuildEntity> = match sqlx::query_as!(
             GuildEntity,
             r#"
             SELECT * FROM guild

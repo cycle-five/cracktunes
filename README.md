@@ -82,7 +82,7 @@ docker build -t cracktunes .
 docker run -d --env-file .env cracktunes
 ```
 
-### Roadmap
+### ~~Roadmap~~ Change Log
 
 ## 0.2.0
 - [x] Play music from YouTube
@@ -124,9 +124,26 @@ Didn't really track stuff here...
 ## 0.3.0.rc2
 - [x] Clean command
 - [x] Bug fixes
-- [ ] Down vote
-
-...and more!
+- ~~[ ] Down vote~~ (not working)
+## ~~0.3.0.rc3~~
+## 0.3.0.rc4
+* fix storing auto role and timeout I think
+* download and skip together
+* ~~try to finally fix this fucking volume bug~~
+* fix loading guild settings
+* add pgadmin to docker compose
+* ~~fix volume~~ (volume is still broken)
+## 0.3.0.rc5 (2024/03/09)
+- cargo update
+- GuildId checks
+- user authorized message
+- adding scan command
+- add feature for osint
+- make admin commands usable by guild members with admin
+- add dry run to rename_all
+## 0.1.4 (crack-osint) (2024/03/12)
+- osint scan command to check urls for malicious content
+...
 ## 1.0.0
 - [ ] RTChris' Demuxer in C++ (for fun)?
 

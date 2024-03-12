@@ -41,6 +41,7 @@ jobs:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
+          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
@@ -51,4 +52,4 @@ jobs:
 
       - name: Run clippy
         if: success() || failure()
-        run: cargo clippy --all -- -D clippy::all -D warnings
+        run: cargo clippy --workspace -- -D clippy::all -D warnings

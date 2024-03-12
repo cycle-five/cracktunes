@@ -35,20 +35,20 @@ async fn fetch_ip_info(ip_address: &str) -> Result<IpDetails, Error> {
     Ok(ip_info)
 }
 
-async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
-    send_response_poise(ctx, CrackedMessage::InvalidIP(ip_address.to_string()), true).await?;
-    Ok(())
-}
+// async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
+//     send_response_poise(ctx, CrackedMessage::InvalidIP(ip_address.to_string()), true).await?;
+//     Ok(())
+// }
 
-async fn send_ip_details_response(ctx: Context<'_>, ip_details: &IpDetails) -> Result<(), Error> {
-    send_response_poise(
-        ctx,
-        CrackedMessage::IPDetails(format!("IP Details: {:?}", ip_details)),
-        true,
-    )
-    .await?;
-    Ok(())
-}
+// async fn send_ip_details_response(ctx: Context<'_>, ip_details: &IpDetails) -> Result<(), Error> {
+//     send_response_poise(
+//         ctx,
+//         CrackedMessage::IPDetails(format!("IP Details: {:?}", ip_details)),
+//         true,
+//     )
+//     .await?;
+//     Ok(())
+// }
 
 // /// Fetch and display information about an IP address.
 // ///

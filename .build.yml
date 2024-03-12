@@ -1,4 +1,6 @@
 image: debian/bookworm
+secrets:
+    - 5ec53080-dbed-4207-ab0f-d6056a62bb46
 tasks:
     - install-dependencies: |
           sudo apt-get update -y
@@ -25,7 +27,7 @@ tasks:
     #       . "$HOME/.cargo/env"
     #       cargo install cargo-tarpaulin
     - install-yt-dlp: |
-          sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.03.10.193100/yt-dlp_linux 
           sudo chmod +x /usr/local/bin/yt-dlp
 
     - fmt: |
@@ -35,8 +37,9 @@ tasks:
     - lint: |
           . "$HOME/.cargo/env"
           cd cracktunes
-          cargo +nightly clippy --all -- -D warnings
+          cargo +nightly clippy --all -- -D clippy::all -D warnings
     - test: |
+          export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
           . "$HOME/.cargo/env"
           cd cracktunes
           # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml

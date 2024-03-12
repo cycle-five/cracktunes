@@ -25,7 +25,7 @@ impl Display for QueryType {
 /// attempts to find the best audio-only source (typically `WebM`, enabling low-cost
 /// Opus frame passthrough).
 ///
-/// [`HttpRequest`]: super::HttpRequest
+/// [`HttpRequest`]: songbird::input::HttpRequest
 #[derive(Clone, Debug)]
 pub struct MyYoutubeDl {
     program: &'static str,
@@ -53,6 +53,7 @@ impl MyYoutubeDl {
         }
     }
 
+    /// Gets all the URLs in a YouTube playlist.
     pub async fn get_playlist(&mut self) -> Result<Vec<String>, CrackedError> {
         let ytdl_args = [
             // "-j",
@@ -88,6 +89,7 @@ impl MyYoutubeDl {
     }
 }
 
+#[cfg(test)]
 mod test {
 
     #[tokio::test]

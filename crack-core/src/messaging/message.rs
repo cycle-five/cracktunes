@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use self::serenity::model::mention::Mention;
 use ::serenity::builder::CreateEmbed;
+#[cfg(feature = "crack-osint")]
+use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude::{self as serenity, UserId};
 
 use crate::messaging::messages::*;
@@ -47,6 +49,7 @@ pub enum CrackedMessage {
     PlaylistQueued,
     PlayLog(Vec<String>),
     Premium(bool),
+    PremiumPlug,
     RemoveMultiple,
     Resume,
     RoleCreated {
@@ -57,8 +60,13 @@ pub enum CrackedMessage {
         role_id: serenity::RoleId,
         role_name: String,
     },
+    #[cfg(feature = "crack-osint")]
     ScanResult {
-        result: String,
+        result: VirusTotalApiResponse,
+    },
+    #[cfg(feature = "crack-osint")]
+    ScanResultQueued {
+        id: String,
     },
     Search,
     Seek {
@@ -194,7 +202,13 @@ impl Display for CrackedMessage {
             }
             Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
-            Self::ScanResult { result } => f.write_str(result),
+            Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
+            #[cfg(feature = "crack-osint")]
+            Self::ScanResult { result } => {
+                f.write_str(&format!("{}", result.data.attributes.stats))
+            }
+            #[cfg(feature = "crack-osint")]
+            Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),

@@ -85,6 +85,7 @@ pub enum QueryType {
 }
 
 /// Get the guild name.
+#[cfg(not(tarpaulin))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!(
@@ -277,11 +278,12 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
 }
 
 /// Play a song next
+//#[cfg(not(tarpaulin))]
 #[poise::command(
     slash_command,
     prefix_command,
     guild_only,
-    aliases("next", "pn", "Pn", "PN")
+    aliases("next", "pn", "Pn", "PN", "push")
 )]
 pub async fn playnext(
     ctx: Context<'_>,
@@ -293,9 +295,34 @@ pub async fn playnext(
     play_internal(ctx, Some("next".to_string()), file, query_or_url).await
 }
 
+/// Search interactively for a song
+//#[cfg(not(tarpaulin))]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
+pub async fn search(
+    ctx: Context<'_>,
+    #[rest]
+    #[description = "search query."]
+    query: String,
+) -> Result<(), Error> {
+    play_internal(ctx, Some("search".to_string()), None, Some(query)).await
+}
+
 /// Play a song.
+//#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
+    ctx: Context<'_>,
+    #[rest]
+    #[description = "song link or search query."]
+    query: Option<String>,
+) -> Result<(), Error> {
+    play_internal(ctx, None, None, query).await
+}
+
+/// Play a song with more options
+// #[cfg(not(tarpaulin))]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("altp"))]
+pub async fn altplay(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
@@ -306,7 +333,8 @@ pub async fn play(
     play_internal(ctx, mode, file, query_or_url).await
 }
 
-pub async fn play_internal(
+/// Does the actual playing of the song, all the other commands use this.
+async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
     file: Option<serenity::Attachment>,

@@ -25,7 +25,7 @@ pub use toggle::*;
         "print_settings",
     ),
     ephemeral,
-    owners_only
+    required_permissions = "ADMINISTRATOR"
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {

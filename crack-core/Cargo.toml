@@ -17,8 +17,8 @@ default = ["playlist", "crack-gpt", "crack-osint"]
 playlist = []
 shuttle = []
 log_all = []
-crack-gpt = []
-crack-osint = []
+crack-gpt = ["dep:crack-gpt"]
+crack-osint = ["dep:crack-osint"]
 
 [dependencies]
 audiopus = "0.3.0-rc.0"
@@ -41,7 +41,8 @@ typemap_rev = "0.3"
 chatgpt_rs = "1.2"
 either = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
-crack-gpt = { path = "../crack-gpt" }
+crack-gpt = { path = "../crack-gpt", optional = true }
+crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 sqlx = { workspace = true, optional = true }
