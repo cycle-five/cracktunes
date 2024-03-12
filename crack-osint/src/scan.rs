@@ -13,7 +13,7 @@ pub async fn get_scan_result(
 ) -> Result<VirusTotalApiResponse, Error> {
     client
         .clone()
-        .fetch_detailed_scan_result(&id)
+        .fetch_analysis_report(&id)
         .await
         .map_err(|e| e.into())
 }

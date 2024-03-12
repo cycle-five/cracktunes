@@ -91,13 +91,13 @@ pub struct EngineResult {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Meta {
-    url_info: UrlInfo,
+    pub url_info: UrlInfo,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UrlInfo {
-    id: String,
-    url: String,
+    pub id: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +146,22 @@ impl VirusTotalClient {
             "Scan result: {}",
             serde_json::to_string_pretty(&initial_response).unwrap()
         )
+    }
+
+    pub async fn fetch_analysis_report(
+        self,
+        analysis_id: &str,
+    ) -> Result<VirusTotalApiResponse, Error> {
+        let detailed_api_url = format!("https://www.virustotal.com/api/v3/urls/{}", analysis_id);
+        let detailed_response = self
+            .client
+            .get(&detailed_api_url)
+            .header("x-apikey", self.api_key)
+            .send()
+            .await?
+            .json::<VirusTotalApiResponse>()
+            .await?;
+        Ok(detailed_response)
     }
 
     pub async fn fetch_detailed_scan_result(

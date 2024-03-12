@@ -112,7 +112,9 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
     let result = get_scan_result(&client, id.clone()).await?;
 
     let message = if result.data.attributes.status == "queued" {
-        CrackedMessage::ScanResultQueued { id }
+        CrackedMessage::ScanResultQueued {
+            id: result.meta.url_info.id.clone(),
+        }
     } else {
         CrackedMessage::ScanResult { result }
     };
