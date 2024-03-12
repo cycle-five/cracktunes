@@ -63,6 +63,9 @@ pub enum CrackedMessage {
     ScanResult {
         result: VirusTotalApiResponse,
     },
+    ScanResultQueued {
+        id: String,
+    },
     Search,
     Seek {
         timestamp: String,
@@ -200,6 +203,9 @@ impl Display for CrackedMessage {
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
+            }
+            Self::ScanResultQueued { id } => {
+                f.write_str(&format!("Scan queued, play call /virustotal_result {} in a few minutes to check for the result.w", id))
             }
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),

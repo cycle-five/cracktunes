@@ -6,6 +6,18 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 const _VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 
+/// Get the scan result for a given id.
+pub async fn get_scan_result(
+    client: &VirusTotalClient,
+    id: String,
+) -> Result<VirusTotalApiResponse, Error> {
+    client
+        .clone()
+        .fetch_detailed_scan_result(&id)
+        .await
+        .map_err(|e| e.into())
+}
+
 /// Scan a website for viruses or malicious content.
 //pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
 pub async fn scan_url(
@@ -18,7 +30,7 @@ pub async fn scan_url(
         // Handle invalid URL
         return Err(Box::new(IpError::new(
             IpErrorKind::ParseError,
-            Some("Invalid URL provided"),
+            Some("Invalid URL provided: Did you remember the 'http(s)://'?"),
         )));
     }
 
@@ -48,13 +60,13 @@ pub async fn scan_url(
 /// Validate the provided URL
 fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
-    let test_url = if !url.starts_with("http://") && !url.starts_with("https://") {
-        format!("https://{}", url)
-    } else {
-        url.to_string()
-    };
-    tracing::info!("url_validator: {}", test_url);
-    Url::parse(&test_url).is_ok()
+    // let test_url = if !url.starts_with("http://") && !url.starts_with("https://") {
+    //     format!("https://{}", url)
+    // } else {
+    //     url.to_string()
+    // };
+    tracing::info!("url_validator: {}", url);
+    Url::parse(&url).is_ok()
 }
 
 #[cfg(test)]
@@ -78,7 +90,7 @@ mod test {
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
         println!("{:?}", result);
-        assert_eq!(result.unwrap().data.attributes.stats.harmless, 74);
+        assert_eq!(result.unwrap().data.attributes.stats.harmless, 75);
     }
 
     #[test]

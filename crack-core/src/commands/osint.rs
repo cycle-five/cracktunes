@@ -4,8 +4,8 @@ pub use crate::{
     utils::{send_response_poise, SendMessageParams},
     Context, Error, Result,
 };
-use crack_osint::scan_url;
 use crack_osint::VirusTotalClient;
+use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
 use std::sync::Arc;
 
@@ -24,6 +24,7 @@ use std::sync::Arc;
         // "phlookup",
         // "phcode",
         "scan",
+        "virustotal_result",
     ),
 )]
 pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
@@ -61,9 +62,6 @@ mod test {
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
-    // let guild_id_opt = ctx.guild_id();
-    // let api_url = VIRUSTOTAL_API_URL.to_string();
-    // Retrieve the API key from the environment variable
     ctx.reply("Scanning...").await?;
     tracing::info!("Scanning URL: {}", url);
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
@@ -79,8 +77,45 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
         "Scan result: {}",
         serde_json::ser::to_string_pretty(&result)?
     );
-    let result = result.without_results_map();
-    let message = CrackedMessage::ScanResult { result };
+
+    let message = if result.data.attributes.status == "queued" {
+        let id = result.data.id;
+        CrackedMessage::ScanResultQueued { id }
+    } else {
+        CrackedMessage::ScanResult { result }
+    };
+
+    let params = SendMessageParams {
+        channel: channel_id,
+        as_embed: true,
+        ephemeral: false,
+        reply: true,
+        msg: message,
+    };
+
+    let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
+    Ok(())
+}
+
+#[cfg(not(tarpaulin_include))]
+#[poise::command(prefix_command, slash_command)]
+pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error> {
+    ctx.reply("Scanning...").await?;
+    let api_key = std::env::var("VIRUSTOTAL_API_KEY")
+        .map_err(|_| crate::CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
+    let channel_id = ctx.channel_id();
+    tracing::info!("channel_id: {}", channel_id);
+    let client = VirusTotalClient::new(&api_key);
+
+    tracing::info!("client: {:?}", client);
+
+    let result = get_scan_result(&client, id.clone()).await?;
+
+    let message = if result.data.attributes.status == "queued" {
+        CrackedMessage::ScanResultQueued { id }
+    } else {
+        CrackedMessage::ScanResult { result }
+    };
 
     let params = SendMessageParams {
         channel: channel_id,
