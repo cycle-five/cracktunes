@@ -64,6 +64,7 @@ pub enum CrackedMessage {
     ScanResult {
         result: VirusTotalApiResponse,
     },
+    #[cfg(feature = "crack-osint")]
     ScanResultQueued {
         id: String,
     },

@@ -45,16 +45,6 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(test)]
-mod test {
-    use crate::commands::osint;
-
-    #[test]
-    fn it_works() {
-        osint();
-    }
-}
-
 /// Scan a website for viruses or malicious content.
 ///
 /// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
@@ -129,4 +119,14 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
 
     let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::commands::osint;
+
+    #[test]
+    fn it_works() {
+        osint();
+    }
 }
