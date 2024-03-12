@@ -12,6 +12,7 @@ pub async fn scan_url(
     client: &VirusTotalClient,
     url: String,
 ) -> Result<VirusTotalApiResponse, Error> {
+    println!("in scan_url");
     // Validate the provided URL
     if !url_validator(&url) {
         // Handle invalid URL
@@ -24,10 +25,19 @@ pub async fn scan_url(
     // Perform the scan and retrieve the result
     let res = client.clone().fetch_initial_scan_result(&url).await?;
 
+    //tracing::info!("Scan resrlt: {}", serde_json::ser::to_string_pretty(&res)?);
+    println!("Scan resrlt: {}", serde_json::ser::to_string_pretty(&res)?);
+
     let res2 = client
         .clone()
-        .fetch_detailed_scan_result(&res.data.links.item)
+        .fetch_detailed_scan_result(&res.data.id)
         .await?;
+
+    //tracing::info!(
+    println!(
+        "Detailed scan result: {}",
+        serde_json::to_string_pretty(&res2)?
+    );
     // Format the result into a user-friendly message
     let message = res2;
 
@@ -97,7 +107,8 @@ mod test {
         let client = VirusTotalClient::new(&api_key);
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
-        assert!(result.is_err());
+        println!("{:?}", result);
+        assert_eq!(result.unwrap().data.attributes.stats.harmless, 74);
     }
 
     #[test]

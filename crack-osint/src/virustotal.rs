@@ -11,6 +11,11 @@ pub struct VirusTotalApiResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VirusTotalApiInitialResponse {
+    pub data: DataInitial,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Data {
     pub id: String,
     #[serde(rename = "type")]
@@ -20,10 +25,24 @@ pub struct Data {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DataInitial {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub links: LinksInitial,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Links {
     #[serde(rename = "self")]
     pub self_: String,
     pub item: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LinksInitial {
+    #[serde(rename = "self")]
+    pub self_: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -83,7 +102,7 @@ impl VirusTotalClient {
     pub async fn fetch_initial_scan_result(
         self,
         url: &str,
-    ) -> Result<VirusTotalApiResponse, Error> {
+    ) -> Result<VirusTotalApiInitialResponse, Error> {
         let mut map = std::collections::HashMap::new();
         map.insert("url", url);
 
@@ -96,15 +115,18 @@ impl VirusTotalClient {
             //.body(Body::from(form))
             .send()
             .await?
-            .json::<VirusTotalApiResponse>()
+            .json::<VirusTotalApiInitialResponse>()
             .await?;
 
         Ok(initial_response)
     }
 
     pub fn format_initial_scan_result(self, initial_response: VirusTotalApiResponse) -> String {
-        let result_url = initial_response.data.links.item;
-        format!("Scan result: {}", result_url)
+        // let result_url = initial_response.data.links.self_;
+        format!(
+            "Scan result: {}",
+            serde_json::to_string_pretty(&initial_response).unwrap()
+        )
     }
 
     pub async fn fetch_detailed_scan_result(
