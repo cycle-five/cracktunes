@@ -66,7 +66,7 @@ mod test {
                 || response
                     .as_ref()
                     .expect("Can't happen")
-                    .contains("Invalid API key")
+                    .contains("invalid_request_error")
                 || response.unwrap().contains("fish")
         );
     }

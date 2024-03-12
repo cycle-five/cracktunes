@@ -1,6 +1,7 @@
 pub mod config;
 
 pub use config::*;
+
 use std::collections::HashSet;
 
 /// Osint commands list
@@ -12,6 +13,7 @@ pub fn get_osint_commands() -> Vec<&'static str> {
 pub fn get_music_commands() -> Vec<&'static str> {
     vec![
         "play",
+        "playnext",
         "pause",
         "resume",
         "stop",

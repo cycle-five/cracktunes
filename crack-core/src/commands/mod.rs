@@ -13,6 +13,7 @@ pub use admin::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
 pub use music::*;
+//pub use music::play::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use ping::*;

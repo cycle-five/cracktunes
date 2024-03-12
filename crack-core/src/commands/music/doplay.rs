@@ -85,6 +85,7 @@ pub enum QueryType {
 }
 
 /// Get the guild name.
+#[cfg(not(tarpaulin))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!(
@@ -277,6 +278,7 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
 }
 
 /// Play a song next
+#[cfg(not(tarpaulin))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -294,6 +296,7 @@ pub async fn playnext(
 }
 
 /// Search interactively for a song
+#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
 pub async fn search(
     ctx: Context<'_>,
@@ -305,6 +308,7 @@ pub async fn search(
 }
 
 /// Play a song.
+#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
@@ -316,6 +320,7 @@ pub async fn play(
 }
 
 /// Play a song with more options
+#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn altplay(
     ctx: Context<'_>,
@@ -328,7 +333,8 @@ pub async fn altplay(
     play_internal(ctx, mode, file, query_or_url).await
 }
 
-pub async fn play_internal(
+/// Does the actual playing of the song, all the other commands use this.
+async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
     file: Option<serenity::Attachment>,

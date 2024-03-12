@@ -65,37 +65,37 @@ impl From<crate::db::LogSettingsRead> for LogSettings {
     }
 }
 
-const DEFAULT_LOG_CHANNEL: u64 = 1165246445654388746;
+const DEFAULT_LOG_CHANNEL: Option<ChannelId> = None;
 
 impl LogSettings {
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         self.all_log_channel
             .map(ChannelId::new)
-            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
+            .or(DEFAULT_LOG_CHANNEL)
     }
 
     pub fn get_server_log_channel(&self) -> Option<ChannelId> {
         self.server_log_channel
             .map(ChannelId::new)
-            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
+            .or(DEFAULT_LOG_CHANNEL)
     }
 
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
         self.join_leave_log_channel
             .map(ChannelId::new)
-            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
+            .or(DEFAULT_LOG_CHANNEL)
     }
 
     pub fn get_member_log_channel(&self) -> Option<ChannelId> {
         self.member_log_channel
             .map(ChannelId::new)
-            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
+            .or(DEFAULT_LOG_CHANNEL)
     }
 
     pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
         self.voice_log_channel
             .map(ChannelId::new)
-            .or(Some(ChannelId::new(DEFAULT_LOG_CHANNEL)))
+            .or(DEFAULT_LOG_CHANNEL)
     }
 
     pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
