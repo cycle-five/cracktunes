@@ -63,6 +63,7 @@ jobs:
       - name: Generate code coverage
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
         run: |
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
 

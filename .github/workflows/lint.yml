@@ -41,6 +41,7 @@ jobs:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
+          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
