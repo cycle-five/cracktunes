@@ -64,13 +64,23 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     // let guild_id_opt = ctx.guild_id();
     // let api_url = VIRUSTOTAL_API_URL.to_string();
     // Retrieve the API key from the environment variable
+    ctx.reply("Scanning...").await?;
+    tracing::info!("Scanning URL: {}", url);
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
         .map_err(|_| crate::CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
     let channel_id = ctx.channel_id();
+    tracing::info!("channel_id: {}", channel_id);
     let client = VirusTotalClient::new(&api_key);
 
-    let message = scan_url(&client, url).await?;
-    let message = CrackedMessage::ScanResult { result: message };
+    tracing::info!("client: {:?}", client);
+
+    let result = scan_url(&client, url).await?;
+    tracing::info!(
+        "Scan result: {}",
+        serde_json::ser::to_string_pretty(&result)?
+    );
+    let result = result.without_results_map();
+    let message = CrackedMessage::ScanResult { result };
 
     let params = SendMessageParams {
         channel: channel_id,

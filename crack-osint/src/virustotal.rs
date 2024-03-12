@@ -10,6 +10,14 @@ pub struct VirusTotalApiResponse {
     pub meta: Meta,
 }
 
+impl VirusTotalApiResponse {
+    pub fn without_results_map(&self) -> Self {
+        let mut new_self = self.clone();
+        new_self.data.attributes.results = HashMap::new();
+        new_self
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VirusTotalApiInitialResponse {
     pub data: DataInitial,

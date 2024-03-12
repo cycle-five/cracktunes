@@ -151,7 +151,13 @@ pub async fn poise_framework(
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
             stripped_dynamic_prefix: Some(|_ctx, msg, data| {
                 Box::pin(async move {
-                    let guild_id = msg.guild_id.unwrap();
+                    let guild_id = match msg.guild_id {
+                        Some(id) => id,
+                        None => {
+                            tracing::warn!("No guild id found");
+                            GuildId::new(1)
+                        }
+                    };
                     let guild_settings_map = data.guild_settings_map.read().unwrap();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {

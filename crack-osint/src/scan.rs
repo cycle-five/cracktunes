@@ -84,6 +84,7 @@ pub async fn scan_url(
 fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
     //url::Url::parse(url).is_ok()
+    tracing::info!("url_validator: {}", url);
     Url::parse(url).is_ok()
 }
 
