@@ -48,7 +48,7 @@ jobs:
           cargo sqlx prepare --workspace -- --tests
 
       - name: Run cargo fmt
-        run: cargo fmt --workspace -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
         if: success() || failure()
