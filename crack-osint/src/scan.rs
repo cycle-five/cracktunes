@@ -80,7 +80,6 @@ fn url_validator(url: &str) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tokio;
 
     #[tokio::test]
     async fn test_scan_url_error() {

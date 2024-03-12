@@ -37,7 +37,7 @@ tasks:
     - lint: |
           . "$HOME/.cargo/env"
           cd cracktunes
-          cargo +nightly clippy --all -- -D warnings
+          cargo +nightly clippy --all -- -D clippy::all -D warnings
     - test: |
           export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
           . "$HOME/.cargo/env"

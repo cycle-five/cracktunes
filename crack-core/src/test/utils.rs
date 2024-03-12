@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod test {
     use crate::utils::build_log_embed;
-    use tokio;
 
     #[tokio::test]
     async fn test_build_log_embed() {
