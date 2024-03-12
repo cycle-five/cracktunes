@@ -93,8 +93,9 @@ mod test {
 
     #[tokio::test]
     async fn test_scan_url_success() {
-        // let my_client = MyClient { client };
-        let client = VirusTotalClient::new("asdf");
+        // Get API key from environment
+        let api_key = std::env::var("VIRUSTOTAL_API_KEY").unwrap();
+        let client = VirusTotalClient::new(&api_key);
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
         assert!(result.is_err());
@@ -105,4 +106,27 @@ mod test {
         let url = "https://www.google.com";
         assert!(url_validator(url));
     }
+
+    #[test]
+    fn test_url_validator_valid_url() {
+        assert!(url_validator("https://www.example.com"));
+    }
+
+    #[test]
+    fn test_url_validator_invalid_url() {
+        assert!(!url_validator("invalid_url"));
+    }
+
+    // #[test]
+    // fn test_format_scan_result() {
+    //     let scan_result = ScanResult {
+    //         result_url: "https://urlscan.io/result/123456".to_string(),
+    //     };
+
+    //     let formatted_result = format_scan_result(&scan_result);
+    //     assert_eq!(
+    //         formatted_result,
+    //         "Scan submitted successfully! Result URL: https://urlscan.io/result/123456"
+    //     );
+    // }
 }

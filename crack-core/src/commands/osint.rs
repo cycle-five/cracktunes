@@ -46,7 +46,7 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 
 #[cfg(test)]
 mod test {
-    use crate::osint;
+    use crate::commands::osint;
 
     #[test]
     fn it_works() {
