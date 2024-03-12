@@ -141,7 +141,9 @@ Didn't really track stuff here...
 - add feature for osint
 - make admin commands usable by guild members with admin
 - add dry run to rename_all
-
+## 0.1.4 (crack-osint) (2024/03/12)
+- osint scan command to check urls for malicious content
+...
 ## 1.0.0
 - [ ] RTChris' Demuxer in C++ (for fun)?
 

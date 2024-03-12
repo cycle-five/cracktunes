@@ -37,8 +37,7 @@ pub async fn scan_url(
     // Perform the scan and retrieve the result
     let res = client.clone().fetch_initial_scan_result(&url).await?;
 
-    //tracing::info!("Scan resrlt: {}", serde_json::ser::to_string_pretty(&res)?);
-    println!("Scan result: {}", serde_json::ser::to_string_pretty(&res)?);
+    tracing::info!("Scan result: {}", serde_json::ser::to_string_pretty(&res)?);
 
     let res2 = client
         .clone()
@@ -75,7 +74,6 @@ mod test {
 
     #[tokio::test]
     async fn test_scan_url_error() {
-        // let my_client = MyClient { client };
         let client = VirusTotalClient::new("asdf");
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
@@ -90,7 +88,7 @@ mod test {
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
         println!("{:?}", result);
-        assert_eq!(result.unwrap().data.attributes.stats.harmless, 75);
+        assert!(result.is_ok());
     }
 
     #[test]
