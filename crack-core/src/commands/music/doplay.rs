@@ -278,7 +278,7 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
 }
 
 /// Play a song next
-#[cfg(not(tarpaulin))]
+//#[cfg(not(tarpaulin))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -296,7 +296,7 @@ pub async fn playnext(
 }
 
 /// Search interactively for a song
-#[cfg(not(tarpaulin))]
+//#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
 pub async fn search(
     ctx: Context<'_>,
@@ -308,7 +308,7 @@ pub async fn search(
 }
 
 /// Play a song.
-#[cfg(not(tarpaulin))]
+//#[cfg(not(tarpaulin))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
@@ -320,8 +320,8 @@ pub async fn play(
 }
 
 /// Play a song with more options
-#[cfg(not(tarpaulin))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+// #[cfg(not(tarpaulin))]
+#[poise::command(slash_command, prefix_command, guild_only, aliases("altp"))]
 pub async fn altplay(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
