@@ -3,6 +3,7 @@ use reqwest::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VirusTotalApiResponse {
@@ -68,6 +69,16 @@ pub struct Stats {
     pub undetected: u32,
     pub harmless: u32,
     pub timeout: u32,
+}
+
+impl Display for Stats {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(
+            f,
+            "Malicious: {}\n Suspicious: {}\n Undetected: {}\n Harmless: {}\n Timeout: {}\n",
+            self.malicious, self.suspicious, self.undetected, self.harmless, self.timeout
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
