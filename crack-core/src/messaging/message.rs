@@ -49,6 +49,7 @@ pub enum CrackedMessage {
     PlaylistQueued,
     PlayLog(Vec<String>),
     Premium(bool),
+    PremiumPlug,
     RemoveMultiple,
     Resume,
     RoleCreated {
@@ -200,13 +201,13 @@ impl Display for CrackedMessage {
             }
             Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
+            Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
             }
-            Self::ScanResultQueued { id } => {
-                f.write_str(&format!("Scan queued, play call /virustotal_result {} in a few minutes to check for the result.w", id))
-            }
+            #[cfg(feature = "crack-osint")]
+            Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
             Self::Search => f.write_str(SEARCHING),
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),

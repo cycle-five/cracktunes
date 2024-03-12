@@ -152,7 +152,8 @@ impl VirusTotalClient {
         self,
         analysis_id: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
-        let detailed_api_url = format!("https://www.virustotal.com/api/v3/urls/{}", analysis_id);
+        let detailed_api_url =
+            format!("https://www.virustotal.com/api/v3/analyses/{}", analysis_id);
         let detailed_response = self
             .client
             .get(&detailed_api_url)
