@@ -1,4 +1,6 @@
 image: debian/bookworm
+secrets:
+    - 5ec53080-dbed-4207-ab0f-d6056a62bb46
 tasks:
     - install-dependencies: |
           sudo apt-get update -y
@@ -37,6 +39,7 @@ tasks:
           cd cracktunes
           cargo +nightly clippy --all -- -D warnings
     - test: |
+          export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
           . "$HOME/.cargo/env"
           cd cracktunes
           # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
