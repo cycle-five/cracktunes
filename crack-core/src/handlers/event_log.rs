@@ -557,7 +557,19 @@ pub async fn handle_event(
         FullEvent::GuildRoleUpdate {
             old_data_global_if_available,
             new,
-        } => event_log.write_log_obj(event_name, &(old_data_global_if_available, new)),
+        } => {
+            let log_data = (old_data_global_if_available, new);
+            log_event!(
+                log_guild_role_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        }
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildRoleUpdate {
             new,
