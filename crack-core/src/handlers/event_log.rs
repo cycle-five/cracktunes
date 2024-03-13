@@ -783,8 +783,6 @@ pub async fn handle_event(
             )
         }
         FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
-        #[cfg(feature = "cache")]
-        FullEvent::VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
