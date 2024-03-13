@@ -13,7 +13,7 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 
 [features]
-default = ["playlist", "crack-gpt", "crack-osint"]
+default = ["cache", "playlist", "crack-gpt", "crack-osint"]
 playlist = []
 shuttle = []
 log_all = []
