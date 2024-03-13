@@ -16,6 +16,21 @@ default = ["playlist", "crack-gpt", "crack-osint"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
+# opentelemetry = { version = "0.22" }
+# opentelemetry-otlp = { version = "0.15", features = [
+#   "logs",
+#   "metrics",
+#   "trace",
+#   "grpc-tonic",
+# ] }
+# opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+# opentelemetry-semantic-conventions = "0.14"
+crack-telemetry = [
+    "opentelemetry",
+    "opentelemetry-otlp",
+    "opentelemetry-semantic-conventions",
+    "tracing-opentelemetry",
+]
 
 [dependencies]
 crack-core = { workspace = true, optional = false }
