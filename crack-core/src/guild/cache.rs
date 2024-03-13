@@ -42,8 +42,6 @@ impl TypeMapKey for GuildCacheMap {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
 
     #[tokio::test]
     async fn test_guild_cache() {
@@ -52,13 +50,5 @@ mod test {
         assert_eq!(guild_cache.time_ordered_messages.len(), 0);
         assert_eq!(guild_cache.queue_messages.len(), 0);
         assert_eq!(guild_cache.current_skip_votes.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_guild_cache_map() {
-        let guild_cache_map = GuildCacheMap::default();
-        let guild_cache = GuildCache::default();
-        let mut map = HashMap::new();
-        map.insert(GuildId::new(1), guild_cache);
     }
 }
