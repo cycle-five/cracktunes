@@ -348,12 +348,12 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        FullEvent::GuildCreate { guild } => {
+        FullEvent::GuildCreate { guild, is_new } => {
             log_event!(
                 log_guild_create,
                 guild_settings,
                 event_in,
-                &(guild),
+                &(guild, is_new, guild_settings),
                 &guild.id,
                 &ctx.http,
                 event_log,
@@ -374,8 +374,8 @@ pub async fn handle_event(
             )
         }
         #[cfg(feature = "cache")]
-        FullEvent::GuildDelete { incomplete } => {
-            let log_data = (event_name, incomplete);
+        FullEvent::GuildDelete { incomplete, full } => {
+            let log_data = (event_name, incomplete, full);
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
@@ -555,10 +555,10 @@ pub async fn handle_event(
         }
         #[cfg(feature = "cache")]
         FullEvent::GuildRoleUpdate {
-            old_data_global_if_available,
+            old_data_if_available,
             new,
         } => {
-            let log_data = (old_data_global_if_available, new);
+            let log_data = (old_data_if_available, new);
             log_event!(
                 log_guild_role_update,
                 guild_settings,
@@ -612,12 +612,21 @@ pub async fn handle_event(
         }
         #[cfg(feature = "cache")]
         FullEvent::GuildUpdate {
-            old_data_global_if_available,
-            new_but_incomplete,
-        } => event_log.write_log_obj(
-            event_name,
-            &(old_data_global_if_available, new_but_incomplete),
-        ),
+            old_data_if_available,
+            new_data,
+        } => {
+            let log_data = (old_data_if_available, new_data);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new_data.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        } //event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
@@ -667,7 +676,7 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-        } => event_log.write_obj(event_name, &(old_if_available, new, event)),
+        } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
         #[cfg(not(feature = "cache"))]
         FullEvent::MessageUpdate {
             old_if_available,
@@ -775,7 +784,7 @@ pub async fn handle_event(
         }
         FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
         #[cfg(feature = "cache")]
-        VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
+        FullEvent::VoiceStateUpdate { old, new } => event_log.write_obj(&(old, new)),
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
