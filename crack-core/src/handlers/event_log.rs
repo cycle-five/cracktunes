@@ -96,6 +96,8 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
+    use serenity::all::User;
+
     let event_log = Arc::new(&data_global.event_log);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
@@ -317,9 +319,9 @@ pub async fn handle_event(
             guild_id,
             banned_user,
         } => {
-            let log_data = (event_name, guild_id, banned_user);
+            let log_data: (&str, &GuildId, &User) = (event_name, guild_id, banned_user);
             log_event!(
-                log_unimplemented_event,
+                log_guild_ban_addition::<&(&str, &GuildId, &User)>,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -335,7 +337,7 @@ pub async fn handle_event(
         } => {
             let log_data = (event_name, guild_id, unbanned_user);
             log_event!(
-                log_unimplemented_event,
+                log_guild_ban_removal::<&(&str, &GuildId, &User)>,
                 guild_settings,
                 event_in,
                 &log_data,
