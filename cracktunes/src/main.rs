@@ -5,9 +5,11 @@ use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
-use opentelemetry::global::set_text_map_propagator;
 // use opentelemetry::KeyValue;
 // use opentelemetry_otlp::WithExportConfig;
+#[cfg(feature = "crack-telemetry")]
+use opentelemetry::global::set_text_map_propagator;
+#[cfg(feature = "crack-telemetry")]
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 // use opentelemetry_sdk::{trace, Resource};
 use poise::serenity_prelude as serenity;
@@ -245,6 +247,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     let stdout_formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
+    #[cfg(feature = "crack-telemetry")]
     set_text_map_propagator(TraceContextPropagator::new());
 
     subscriber
