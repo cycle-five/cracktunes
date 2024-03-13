@@ -122,6 +122,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
     let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
+    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY".to_string()).ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
