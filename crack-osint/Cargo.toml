@@ -21,4 +21,3 @@ tokio = { workspace = true }
 reqwest = { workspace = true }
 poise = { workspace = true }
 tracing = { workspace = true }
-#crack-core = { path = "../crack-core", default-features = true }
