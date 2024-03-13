@@ -16,15 +16,6 @@ default = ["playlist", "crack-gpt", "crack-osint"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
-# opentelemetry = { version = "0.22" }
-# opentelemetry-otlp = { version = "0.15", features = [
-#   "logs",
-#   "metrics",
-#   "trace",
-#   "grpc-tonic",
-# ] }
-# opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
-# opentelemetry-semantic-conventions = "0.14"
 crack-telemetry = [
     "opentelemetry",
     "opentelemetry-otlp",
@@ -33,6 +24,18 @@ crack-telemetry = [
 ]
 
 [dependencies]
+opentelemetry = { version = "0.22", optional = true }
+opentelemetry-otlp = { version = "0.15", features = [
+    "logs",
+    "metrics",
+    "trace",
+    "grpc-tonic",
+], optional = true }
+opentelemetry_sdk = { version = "0.22", features = [
+    "rt-tokio",
+], optional = true }
+opentelemetry-semantic-conventions = { version = "0.14", optional = true }
+tracing-opentelemetry = { version = "0.23.0", optional = true }
 crack-core = { workspace = true, optional = false }
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
@@ -46,11 +49,11 @@ tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-futures = { workspace = true }
 # tracing-bunyan-formatter = { workspace = true }
-opentelemetry = { workspace = true, optional = true }
-tracing-opentelemetry = { workspace = true, optional = true }
-opentelemetry_sdk = { workspace = true, optional = true }
-opentelemetry-otlp = { workspace = true, optional = true }
-opentelemetry-semantic-conventions = { workspace = true, optional = true }
+# opentelemetry = { workspace = true, optional = true }
+# tracing-opentelemetry = { workspace = true, optional = true }
+# opentelemetry_sdk = { workspace = true, optional = true }
+# opentelemetry-otlp = { workspace = true, optional = true }
+# opentelemetry-semantic-conventions = { workspace = true, optional = true
 tungstenite = { workspace = true }
 async-tungstenite = { workspace = true }
 async-trait = { version = "0.1" }
