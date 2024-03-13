@@ -111,6 +111,7 @@ pub struct BotCredentials {
     pub spotify_client_id: Option<String>,
     pub spotify_client_secret: Option<String>,
     pub openai_api_key: Option<String>,
+    pub virustotal_api_key: Option<String>,
 }
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {

@@ -138,6 +138,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         spotify_client_id,
         spotify_client_secret,
         openai_api_key,
+        virustotal_api_key,
     });
 
     Ok(config_with_creds.clone())
