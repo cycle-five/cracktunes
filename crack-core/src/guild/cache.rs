@@ -41,7 +41,6 @@ impl TypeMapKey for GuildCacheMap {
 
 #[cfg(test)]
 mod test {
-    use ::serenity::all::{ChannelId, MessageId};
 
     use super::*;
 
