@@ -516,7 +516,7 @@ pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
     log_data: &(&str, &GuildId, &serenity::model::prelude::User),
 ) -> Result<(), Error> {
     let &(_event, _guild_id, user) = log_data;
-    let title = format!("Member Banned: {}", user.name);
+    let title = format!("Member Unbanned: {}", user.name);
     // let description = format!("User: {}\nID: {}", user.name, user.id);
     let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();
