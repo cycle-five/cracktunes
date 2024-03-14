@@ -255,11 +255,12 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     #[cfg(feature = "crack-telemetry")]
     set_text_map_propagator(TraceContextPropagator::new());
 
-    subscriber
+    let x = subscriber
         .with(stdout_formatting_layer)
-        .with(level_filter_layer)
-        // .with(tracing_layer)
-        // .with(JsonStorageLayer)
-        // .with(formatting_layer)
-        .init()
+        .with(level_filter_layer);
+    // .with(tracing_layer)
+    #[cfg(feature = "crack-telemetry")]
+    let x = x.with(JsonStorageLayer).with(formatting_layer);
+
+    x.init()
 }
