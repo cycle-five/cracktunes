@@ -242,8 +242,9 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Layer for adding our configured tracer.
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
-    // let formatting_layer =
-    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    #[cfg(feature = "crack-telemetry")]
+    let formatting_layer =
+        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
     // Layer for printing to stdout.
     let stdout_formatting_layer = get_current_log_layer();
