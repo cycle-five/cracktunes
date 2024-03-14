@@ -264,3 +264,57 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
 
     x.init()
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::init_telemetry;
+
+    #[cfg(feature = "crack-telemetry")]
+    use {
+        opentelemetry::global::set_text_map_propagator,
+        opentelemetry_sdk::propagation::TraceContextPropagator,
+        tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+    };
+
+    #[tokio::test]
+    async fn test_init_telemetry() {
+        init_telemetry("").await;
+    }
+
+    #[test]
+    fn test_get_current_log_layer() {
+        let _layer = get_current_log_layer();
+        //assert!(layer.h(&tracing::Level::INFO));
+    }
+
+    #[test]
+    fn test_get_debug_log() {
+        let _layer = get_debug_log();
+    }
+
+    #[test]
+    fn test_combine_log_layers() {
+        let stdout_log = tracing_subscriber::fmt::layer().pretty();
+        let debug_log = get_debug_log();
+        let _layer = combine_log_layers(stdout_log, debug_log);
+    }
+
+    #[test]
+    fn test_init_metrics() {
+        init_metrics();
+    }
+
+    #[test]
+    fn test_load_key() {
+        let key = "DISCORD_TOKEN".to_string();
+        let result = load_key(key);
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_load_bot_config() {
+        let result = load_bot_config().await;
+        assert!(result.is_ok());
+    }
+}
