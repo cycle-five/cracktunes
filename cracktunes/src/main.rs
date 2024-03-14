@@ -268,7 +268,6 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::init_telemetry;
 
     #[cfg(feature = "crack-telemetry")]
     use {
