@@ -13,9 +13,9 @@ use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 #[cfg(feature = "crack-telemetry")]
 use {
-    opentelemetry::{global::set_text_map_propagator, KeyValue},
-    opentelemetry_otlp::WithExportConfig,
-    opentelemetry_sdk::{propagation::TraceContextPropagator, trace, Resource},
+    opentelemetry::global::set_text_map_propagator,
+    // opentelemetry_otlp::WithExportConfig,
+    opentelemetry_sdk::propagation::TraceContextPropagator,
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
 };
 
