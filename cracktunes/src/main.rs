@@ -19,6 +19,9 @@ use {
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
 };
 
+#[cfg(feature = "crack-telemetry")]
+const SERVICE_NAME: &str = "cracktunes";
+
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Main function, get everything kicked off.
