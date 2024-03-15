@@ -333,7 +333,10 @@ mod test {
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
         let result = load_key(key);
-        assert!(result.is_ok());
+        match result {
+            Ok(token) => assert!(!token.is_empty()),
+            Err(error) => panic!("Error: {:?}", error),
+        }
     }
 
     #[tokio::test]
