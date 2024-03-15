@@ -181,7 +181,8 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 
 #[allow(dead_code)]
 fn get_bunyan_writer() -> Arc<std::fs::File> {
-    let debug_file = std::fs::File::create("/data/bunyan.log");
+    let log_path = &format!("{}/bunyan.log", DEFAULT_LOG_PREFIX);
+    let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),
