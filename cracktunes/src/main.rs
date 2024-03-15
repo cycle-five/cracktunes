@@ -9,6 +9,7 @@ use cracktunes::poise_framework;
 use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
+use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
@@ -148,11 +149,16 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     Ok(config_with_creds.clone())
 }
 
+// fn combine_log_layers(
+//     stdout_log: Box<impl tracing_subscriber::Layer<Registry>>,
+//     debug_log: Box<impl tracing_subscriber::Layer<Registry>>,
+// ) -> Box<impl tracing_subscriber::Layer<Registry>> {
 fn combine_log_layers(
     stdout_log: impl tracing_subscriber::Layer<Registry>,
     debug_log: impl tracing_subscriber::Layer<Registry>,
 ) -> impl tracing_subscriber::Layer<Registry> {
     // A layer that logs events to a file
+    //let log = stdout_log
     stdout_log
         // Add an `INFO` filter to the stdout logging layer
         .with_filter(filter::LevelFilter::INFO)
@@ -169,16 +175,26 @@ fn combine_log_layers(
         }))
 }
 
+//fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
+
+    // let log_file = std::fs::File::create("my_cool_trace.log")?;
+    // let subscriber = tracing_subscriber::fmt::layer().with_writer(Mutex::new(log_file));
+
     match debug_file {
-        Ok(file) => tracing_subscriber::fmt::layer().with_writer(Arc::new(file)),
+        Ok(file) => {
+            //let xyz: tracing_subscriber::fmt::Layer<Registry> =
+            //.with_writer(Box::make_writer(&Box::new(Mutex::new(file))));
+            tracing_subscriber::fmt::layer().with_writer(file)
+        }
         Err(error) => {
-            println!("WARNING: No log file available for output! {:?}", error);
-            let sink = std::io::sink();
-            tracing_subscriber::fmt::layer()
-                .with_writer(Arc::new(std::fs::File::create("/dev/null").unwrap()))
+            println!("warning: no log file available for output! {:?}", error);
+            // let sink: std::io::Sink = std::io::sink();
+            // let writer = Arc::new(sink);
+            let sink = std::fs::File::open("/dev/null").unwrap();
+            tracing_subscriber::fmt::layer().with_writer(sink)
         }
     }
 }
@@ -194,6 +210,7 @@ fn get_bunyan_writer() -> Arc<std::fs::File> {
     Arc::new(debug_file)
 }
 
+// fn get_current_log_layer() -> Box<dyn tracing_subscriber::Layer<Registry>> {
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
@@ -201,7 +218,7 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let debug_log = get_debug_log();
 
     // Get the debug layer.
-    combine_log_layers(stdout_log, debug_log)
+    Box::new(combine_log_layers(stdout_log, debug_log))
 }
 
 #[tracing::instrument]
