@@ -176,6 +176,7 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
         Ok(file) => tracing_subscriber::fmt::layer().with_writer(Arc::new(file)),
         Err(error) => {
             println!("WARNING: No log file available for output! {:?}", error);
+            let sink = std::io::sink();
             tracing_subscriber::fmt::layer()
                 .with_writer(Arc::new(std::fs::File::create("/dev/null").unwrap()))
         }
