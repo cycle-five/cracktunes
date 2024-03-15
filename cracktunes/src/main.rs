@@ -10,6 +10,7 @@ use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
 use std::{collections::HashMap, sync::Arc};
+use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 #[cfg(feature = "crack-telemetry")]
@@ -171,11 +172,14 @@ fn combine_log_layers(
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
-    let debug_file = match debug_file {
-        Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
-    };
-    tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file))
+    match debug_file {
+        Ok(file) => tracing_subscriber::fmt::layer().with_writer(Arc::new(file)),
+        Err(error) => {
+            println!("WARNING: No log file available for output! {:?}", error);
+            tracing_subscriber::fmt::layer()
+                .with_writer(Arc::new(std::fs::File::create("/dev/null").unwrap()))
+        }
+    }
 }
 
 #[allow(dead_code)]
