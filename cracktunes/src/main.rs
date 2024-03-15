@@ -114,8 +114,8 @@ fn load_key(k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
         Err(_) => {
-            tracing::warn!("{} not found in environment", &k);
-            Err(format!("{} not found in environment or Secrets.toml", k).into())
+            tracing::warn!("{} not found in environment.", &k);
+            Err(format!("{} not found in environment.", &k).into())
         }
     }
 }
