@@ -1,4 +1,5 @@
 use config_file::FromConfigFile;
+use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
 use crack_core::metrics::REGISTRY;
 use crack_core::BotConfig;
@@ -167,10 +168,8 @@ fn combine_log_layers(
         }))
 }
 
-use crack_core::guild::settings::DEFAULT_LOG_PREFIX;
-
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
-    let log_path = &format!("{}/debug.log", DEFAULT_LOG_PREFIX);
+    let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
@@ -181,7 +180,7 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 
 #[allow(dead_code)]
 fn get_bunyan_writer() -> Arc<std::fs::File> {
-    let log_path = &format!("{}/bunyan.log", DEFAULT_LOG_PREFIX);
+    let log_path = &format!("{}/bunyan.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,

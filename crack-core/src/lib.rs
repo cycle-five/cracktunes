@@ -5,9 +5,9 @@ use chrono::Utc;
 use db::PlayLog;
 use db::TrackReaction;
 use errors::CrackedError;
+use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
-use guild::settings::DEFAULT_LOG_PREFIX;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
@@ -296,7 +296,7 @@ impl std::ops::DerefMut for EventLog {
 
 impl Default for EventLog {
     fn default() -> Self {
-        let log_path = format!("{}/events.log", DEFAULT_LOG_PREFIX);
+        let log_path = format!("{}/events.log", get_log_prefix());
         Self(Arc::new(Mutex::new(File::create(log_path).unwrap())))
     }
 }

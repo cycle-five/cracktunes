@@ -38,6 +38,18 @@ pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 lazy_static! {
     static ref SETTINGS_PATH: String =
         env::var("SETTINGS_PATH").unwrap_or(DEFAULT_SETTINGS_PATH.to_string());
+    pub static ref LOG_PREFIX: String =
+        env::var("LOG_PREFIX").unwrap_or(DEFAULT_LOG_PREFIX.to_string());
+}
+
+/// Get the settings path, global.
+pub fn get_settings_path() -> String {
+    SETTINGS_PATH.to_string()
+}
+
+/// Get the log prefix, global.
+pub fn get_log_prefix() -> String {
+    LOG_PREFIX.to_string()
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
