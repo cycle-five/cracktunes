@@ -167,8 +167,11 @@ fn combine_log_layers(
         }))
 }
 
+use crack_core::guild::settings::DEFAULT_LOG_PREFIX;
+
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
-    let debug_file = std::fs::File::create("/data/debug.log");
+    let log_path = &format!("{}/debug.log", DEFAULT_LOG_PREFIX);
+    let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),

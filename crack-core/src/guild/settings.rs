@@ -17,6 +17,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
+pub const DEFAULT_LOG_PREFIX: &str = "/data";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];

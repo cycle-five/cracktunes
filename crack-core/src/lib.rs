@@ -126,7 +126,7 @@ pub struct BotConfig {
     pub prefix: Option<String>,
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
-    pub users_to_log: Option<Vec<u64>>,
+    pub log_prefix: Option<String>,
 }
 
 impl Display for BotConfig {
@@ -136,7 +136,7 @@ impl Display for BotConfig {
             "video_status_poll_interval: {:?}\n",
             self.video_status_poll_interval
         ));
-        result.push_str(&format!("authorized_users: {:?}\n", self.owners));
+        result.push_str(&format!("owners: {:?}\n", self.owners));
         result.push_str(&format!("cam_kick: {:?}\n", self.cam_kick));
         result.push_str(&format!(
             "sys_log_channel_id: {:?}\n",
@@ -155,6 +155,9 @@ impl Display for BotConfig {
                 .cloned()
                 .unwrap_or(DEFAULT_PREFIX.to_string())
         ));
+        result.push_str(&format!("credentials: {:?}\n", self.credentials));
+        result.push_str(&format!("database_url: {:?}\n", self.database_url));
+        result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
         write!(f, "{}", result)
     }
 }
