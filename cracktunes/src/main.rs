@@ -9,9 +9,9 @@ use cracktunes::poise_framework;
 use poise::serenity_prelude as serenity;
 use prometheus::{Encoder, TextEncoder};
 use std::env;
-use std::sync::Mutex;
+// use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
-use tracing_subscriber::fmt::MakeWriter;
+// use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 use warp::Filter;
 #[cfg(feature = "crack-telemetry")]
