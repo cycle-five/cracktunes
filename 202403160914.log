@@ -1,0 +1,110 @@
+
+running 29 tests
+test test::errors::test::test_crack_error_other ... ok
+test test::errors::test::test_crack_error ... ok
+test test::errors::test::test_crack_error_nothing_playing ... ok
+test test::errors::test::test_crack_error_playlist_failed ... ok
+test test::errors::test::test_crack_error_parse_time_failed ... ok
+test test::errors::test::test_crack_error_anyhow ... ok
+test commands::music::doplay::test::test_get_mode ... ok
+test commands::music::doplay::test::test_get_msg ... ok
+test commands::music::shuffle::test::test_fisher_yates ... ok
+test utils::test::test_compare_domains ... ok
+test utils::test::test_get_human_readable_timestamp ... ok
+test commands::osint::test::it_works ... ok
+test guild::settings::test::test_default ... ok
+test commands::settings::set::set_volume::test::test_set_volume ... ok
+test metrics::metrics_internal::test::metrics_test ... ok
+test utils::test::test_get_footer_info ... ok
+test commands::music::lyrics::test::test_do_lyric_query_not_found ... ok
+test commands::settings::get::get_volume::test::test_volume ... ok
+test commands::music::lyrics::test::test_do_lyric_query_found ... ok
+test guild::cache::test::test_guild_cache ... ok
+test guild::cache::test::test_queue_messages ... ok
+test utils::test::test_build_single_nav_btn ... ok
+test test::utils::test::test_build_log_embed ... ok
+test utils::test::test_build_nav_btns ... ok
+test test::structs::test::test_phone_code_data ... ok
+test commands::admin::timeout::test::test_parse_duration ... ok
+test http_utils::test::test_resolve_final_url ... ok
+test test::http_utils::test::test_resolve_final_url ... ok
+test sources::ytdl::test::test_ytdl ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.17s
+
+
+running 1 test
+test test::test_get_chatgpt_response ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+
+running 7 tests
+test scan::test::test_url_validator_invalid_url ... ok
+test scan::test::test_url_validator_valid_url ... ok
+test scan::test::test_url_validator ... ok
+test virustotal::tests::test_api_response_value ... ok
+test virustotal::tests::test_api_response_deserialization ... ok
+test scan::test::test_scan_url_error ... ok
+test scan::test::test_scan_url_success ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s
+
+
+running 21 tests
+test test::errors::test_verify_options ... ok
+test test::errors::test_verify_results ... ok
+test test::errors::test_verify_bools ... ok
+test test::playlist::test::test_delete_playlist_by_id ... ignored
+test config::test::test_prefix ... ok
+test config::test::test_prefix_no_match ... ok
+test test::utils::test_get_human_readable_timestamp ... ok
+test config::test::test_check_command_categories_settings_command ... ok
+test config::test::test_check_command_categories_music_command ... ok
+test config::test::test_check_command_categories_bad_command ... ok
+test config::test::test_check_command_categories_admin_command ... ok
+test test::utils::test_load_config2 ... ok
+test test::playlist::test::test_create_playlist ... ok
+test test::playlist::test::test_add_track ... ok
+test test::playlist::test::test_update_playlist_name ... ok
+test test::playlist::test::test_create_metadata ... ok
+test test::playlist::test::test_delete_playlist ... ok
+test test::playlist::test::test_get_tracks ... ok
+test test::playlist::test::test_delete_track ... ok
+test test::playlist::test::test_get_playlist_by_id ... ok
+test test::utils::test_load_config ... ok
+
+test result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 7 tests
+test test::test_load_key ... ok
+test test::test_get_debug_log ... ok
+test test::test_combine_log_layers ... ok
+test test::test_get_current_log_layer ... ok
+test test::test_init_metrics ... ok
+test test::test_load_bot_config ... ok
+test test::test_init_telemetry ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
