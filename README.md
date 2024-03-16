@@ -117,24 +117,24 @@ Didn't really track stuff here...
 - ~~[] Port to next branch of serenity~~
 - ~~[] Flesh out admin commands~~
 
-## 0.3.0.rc1
+## 0.3.0-rc.1
 - [x] Dockerized!
 - [x] Refactored settings commands.
 - [x] Storing and retrieving settings from Postgres.
 - [x] Updated dependencies to be in line with current.
-## 0.3.0.rc2
+## 0.3.0-rc.2
 - [x] Clean command
 - [x] Bug fixes
 - ~~[ ] Down vote~~ (not working)
-## ~~0.3.0.rc3~~
-## 0.3.0.rc4
+## ~~0.3.0-rc.3~~
+## 0.3.0-rc.4
 * fix storing auto role and timeout I think
 * download and skip together
 * ~~try to finally fix this fucking volume bug~~
 * fix loading guild settings
 * add pgadmin to docker compose
 * ~~fix volume~~ (volume is still broken)
-## 0.3.0.rc5 (2024/03/09)
+## 0.3.0-rc.5 (2024/03/09)
 - cargo update
 - GuildId checks
 - user authorized message
@@ -144,6 +144,7 @@ Didn't really track stuff here...
 - add dry run to rename_all
 ## 0.1.4 (crack-osint) (2024/03/12)
 - osint scan command to check urls for malicious content
+## 0.3.0-rc.6
 ...
 ## 1.0.0
 - [ ] RTChris' Demuxer in C++ (for fun)?
