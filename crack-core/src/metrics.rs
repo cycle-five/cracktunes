@@ -1,5 +1,5 @@
 #[cfg(feature = "crack-metrics")]
-{
+pub mod metrics {
     use lazy_static::lazy_static;
     use prometheus::{Gauge, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
@@ -58,4 +58,8 @@
                 .observe(1.0);
         }
     }
+}
+#[cfg(not(feature = "crack-metrics"))]
+mod metrics {
+    pub fn register_custom_metrics() {}
 }
