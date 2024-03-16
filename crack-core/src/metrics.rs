@@ -22,8 +22,8 @@ lazy_static! {
     .expect("metric can be created");
 }
 
-#[cfg(feature = "crack-metrics")]
 /// Register custom metrics with the prometheus registry
+#[cfg(feature = "crack-metrics")]
 pub fn register_custom_metrics() {
     REGISTRY
         .register(Box::new(COMMAND_EXECUTIONS.clone()))
