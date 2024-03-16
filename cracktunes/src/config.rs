@@ -6,12 +6,13 @@ use crack_core::{
     handlers::handle_event,
     handlers::SerenityHandler,
     is_prefix,
-    metrics::COMMAND_ERRORS,
     utils::{
         check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
+#[cfg(feature = "crack-metrics")]
+use metrics::COMMAND_ERRORS;
 use poise::serenity_prelude::{model::permissions::Permissions, Client};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
@@ -49,6 +50,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             }
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
+            #[cfg(feature = "crack-metrics")]
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
