@@ -1,4 +1,6 @@
 use colored::Colorize;
+#[cfg(feature = "crack-metrics")]
+use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
     commands,
     errors::CrackedError,
@@ -11,8 +13,6 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-#[cfg(feature = "crack-metrics")]
-use metrics::COMMAND_ERRORS;
 use poise::serenity_prelude::{model::permissions::Permissions, Client};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
