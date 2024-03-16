@@ -1,13 +1,11 @@
 use config_file::FromConfigFile;
 use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
-use crack_core::metrics::REGISTRY;
 use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
 use poise::serenity_prelude as serenity;
-use prometheus::{Encoder, TextEncoder};
 use std::env;
 // use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
@@ -20,6 +18,12 @@ use {
     // opentelemetry_otlp::WithExportConfig,
     opentelemetry_sdk::propagation::TraceContextPropagator,
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+};
+
+#[cfg(feature = "crack-metrics")]
+use {
+    crack_core::metrics::REGISTRY,
+    prometheus::{Encoder, TextEncoder},
 };
 
 #[cfg(feature = "crack-telemetry")]
@@ -78,8 +82,10 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     drop(data_global);
 
+    #[cfg(feature = "crack-metrics")]
     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
+    #[cfg(feature = "crack-metrics")]
     let server = async {
         warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
         Ok::<(), serenity::Error>(())
@@ -87,7 +93,10 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     let bot = client.start();
 
+    #[cfg(feature = "crack-metrics")]
     tokio::try_join!(bot, server)?;
+    #[cfg(not(feature = "crack-metrics"))]
+    bot.await?;
 
     Ok(())
 }
@@ -225,8 +234,15 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
 #[tracing::instrument]
 /// Initialize metrics.
 fn init_metrics() {
-    tracing::info!("Initializing metrics");
-    crack_core::metrics::register_custom_metrics();
+    #[cfg(feature = "crack-metrics")]
+    {
+        tracing::info!("Initializing metrics");
+        crack_core::metrics::register_custom_metrics();
+    }
+    #[cfg(not(feature = "crack-metrics"))]
+    {
+        tracing::info!("Metrics not enabled");
+    }
 }
 
 #[tracing::instrument]
