@@ -63,3 +63,5 @@ pub mod metrics {
 mod metrics {
     pub fn register_custom_metrics() {}
 }
+
+pub use metrics::*;
