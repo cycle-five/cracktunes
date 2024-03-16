@@ -1,6 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
 #[cfg(feature = "crack-metrics")]
-use crate::metrics::metrics::COMMAND_EXECUTIONS;
+use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
     commands::MyAuxMetadata,
     interface::build_nav_btns,
