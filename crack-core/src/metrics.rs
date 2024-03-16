@@ -1,6 +1,8 @@
 use lazy_static::lazy_static;
+#[cfg(feature = "crack-metrics")]
 use prometheus::{Gauge, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
+#[cfg(feature = "crack-metrics")]
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
     pub static ref COMMAND_EXECUTIONS: IntCounterVec = IntCounterVec::new(
@@ -20,6 +22,7 @@ lazy_static! {
     .expect("metric can be created");
 }
 
+#[cfg(feature = "crack-metrics")]
 /// Register custom metrics with the prometheus registry
 pub fn register_custom_metrics() {
     REGISTRY
@@ -39,6 +42,7 @@ pub fn register_custom_metrics() {
         .expect("collector can be registered");
 }
 
+#[cfg(feature = "crack-metrics")]
 #[cfg(test)]
 mod test {
     use super::*;
