@@ -18,6 +18,7 @@ playlist = []
 shuttle = []
 log_all = []
 cache = ["serenity/cache", "poise/cache"]
+crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
