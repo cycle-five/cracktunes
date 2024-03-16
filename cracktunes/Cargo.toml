@@ -23,7 +23,7 @@ crack-telemetry = [
     "tracing-opentelemetry",
     "tracing-bunyan-formatter",
 ]
-crack-metrics = ["prometheus"]
+crack-metrics = ["prometheus", "warp"]
 
 [dependencies]
 opentelemetry = { version = "0.22", optional = true }
@@ -40,6 +40,7 @@ opentelemetry-semantic-conventions = { version = "0.14", optional = true }
 tracing-opentelemetry = { version = "0.23.0", optional = true }
 tracing-bunyan-formatter = { version = "0.3.9", optional = true }
 prometheus = { version = "0.13", features = ["process"], optional = true }
+warp = { version = "0.3", optional = true }
 crack-core = { workspace = true, optional = false }
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
@@ -62,7 +63,6 @@ tungstenite = { workspace = true }
 async-tungstenite = { workspace = true }
 async-trait = { version = "0.1" }
 mockall = { version = "0.12" }
-warp = "0.3"
 config-file = { version = "0.2", features = ["json"] }
 dotenv = "0.15"
 colored = "2.1"
