@@ -23,6 +23,7 @@ crack-telemetry = [
     "tracing-opentelemetry",
     "tracing-bunyan-formatter",
     "tonic",
+    "warp",
 ]
 crack-metrics = ["prometheus", "warp"]
 
