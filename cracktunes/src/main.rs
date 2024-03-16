@@ -214,12 +214,13 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 //     Arc::new(debug_file)
 // }
 
+#[cfg(feature = "crack-telemetry")]
 fn get_bunyan_writer() -> Arc<std::fs::File> {
     let log_path = &format!("{}/bunyan.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
-        Err(error) => std::fs::File::open("/dev/null"), // panic!("Error: {:?}", error),
+        Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
     };
     Arc::new(debug_file)
 }
