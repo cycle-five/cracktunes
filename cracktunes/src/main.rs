@@ -225,7 +225,7 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let debug_log = get_debug_log();
 
     // Get the debug layer.
-    Box::new(combine_log_layers(stdout_log, debug_log))
+    combine_log_layers(stdout_log, debug_log)
 }
 
 #[tracing::instrument]
