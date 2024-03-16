@@ -335,7 +335,7 @@ mod test {
         let result = load_key(key);
         match result {
             Ok(token) => assert!(!token.is_empty()),
-            Err(_error) => assert!(true), // panic!("Error: {:?}", error),
+            Err(_error) => assert!(true),
         }
     }
 
