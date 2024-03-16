@@ -5,7 +5,6 @@ mod test {
         Metadata,
     };
 
-    #[cfg(test)]
     use mockall::automock;
 
     use async_trait::async_trait;
