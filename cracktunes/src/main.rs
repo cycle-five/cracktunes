@@ -93,6 +93,7 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 }
 
 /// Prometheus handler
+#[cfg(feature = "crack-metrics")]
 #[cfg(not(tarpaulin_include))]
 async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
