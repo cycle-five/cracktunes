@@ -204,13 +204,22 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     }
 }
 
-#[allow(dead_code)]
+// fn get_bunyan_writer() -> Arc<std::io::BufWriter<_>> {
+//     let log_path = &format!("{}/bunyan.log", get_log_prefix());
+//     let debug_file = std::fs::File::create(log_path);
+//     let debug_file = match debug_file {
+//         Ok(file) => std::io::BufWriter::new(file),
+//         Err(error) => std::io::BufWriter::new(std::io::sink()), //panic!("Error: {:?}", error),
+//     };
+//     Arc::new(debug_file)
+// }
+
 fn get_bunyan_writer() -> Arc<std::fs::File> {
     let log_path = &format!("{}/bunyan.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
+        Err(error) => std::fs::File::open("/dev/null"), // panic!("Error: {:?}", error),
     };
     Arc::new(debug_file)
 }
