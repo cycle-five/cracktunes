@@ -79,13 +79,14 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
     drop(data_global);
 
     #[cfg(feature = "crack-metrics")]
-    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+    {
+        let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
-    #[cfg(feature = "crack-metrics")]
-    let server = async {
-        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
-        Ok::<(), serenity::Error>(())
-    };
+        let server = async {
+            warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+            Ok::<(), serenity::Error>(())
+        };
+    }
 
     let bot = client.start();
 
