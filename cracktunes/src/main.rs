@@ -7,16 +7,16 @@ use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 #[cfg(feature = "crack-telemetry")]
 use {
+    // opentelemetry_otlp::WithExportConfig,
     crack_core::metrics::REGISTRY,
     opentelemetry::global::set_text_map_propagator,
-    // opentelemetry_otlp::WithExportConfig,
     opentelemetry_sdk::propagation::TraceContextPropagator,
     poise::serenity_prelude as serenity,
     prometheus::{Encoder, TextEncoder},
+    std::sync::Arc,
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
     warp::Filter,
 };
