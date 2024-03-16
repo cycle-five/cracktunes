@@ -243,6 +243,7 @@ pub async fn get_call_with_fail_msg(
                     // Ok(manager.get(guild_id).unwrap())
                 }
                 Err(_) => {
+                    // FIXME: Do something smarter here also.
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));
                     send_embed_response_poise(ctx, embed).await?;
