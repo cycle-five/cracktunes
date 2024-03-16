@@ -941,9 +941,10 @@ pub async fn handle_error(
         .await
         .expect("failed to create response");
 }
+
+#[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {
     tracing::warn!("counting command: {}", command);
-    #[cfg(feature = "crack-metrics")]
     match COMMAND_EXECUTIONS
         .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
     {
@@ -956,6 +957,10 @@ pub fn count_command(command: &str, is_prefix: bool) {
     };
     #[cfg(not(feature = "crack-metrics"))]
     tracing::warn!("crack-metrics feature not enabled");
+}
+#[cfg(not(feature = "crack-metrics"))]
+pub fn count_command(command: &str, is_prefix: bool) {
+    tracing::warn!("counting command: {}, {}", command, is_prefix);
 }
 
 /// Gets the channel id that the bot is currently playing in for a given guild.

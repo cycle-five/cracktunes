@@ -5,25 +5,21 @@ use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
-use poise::serenity_prelude as serenity;
 use std::env;
 // use std::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
 // use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
-use warp::Filter;
 #[cfg(feature = "crack-telemetry")]
 use {
+    crack_core::metrics::REGISTRY,
     opentelemetry::global::set_text_map_propagator,
     // opentelemetry_otlp::WithExportConfig,
     opentelemetry_sdk::propagation::TraceContextPropagator,
-    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
-};
-
-#[cfg(feature = "crack-metrics")]
-use {
-    crack_core::metrics::REGISTRY,
+    poise::serenity_prelude as serenity,
     prometheus::{Encoder, TextEncoder},
+    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+    warp::Filter,
 };
 
 #[cfg(feature = "crack-telemetry")]
