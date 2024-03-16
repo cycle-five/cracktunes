@@ -315,13 +315,6 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
 mod test {
     use super::*;
 
-    #[cfg(feature = "crack-telemetry")]
-    use {
-        opentelemetry::global::set_text_map_propagator,
-        opentelemetry_sdk::propagation::TraceContextPropagator,
-        tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
-    };
-
     #[tokio::test]
     async fn test_init_telemetry() {
         init_telemetry("").await;
