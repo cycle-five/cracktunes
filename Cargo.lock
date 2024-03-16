@@ -646,6 +646,7 @@ dependencies = [
  "sqlx",
  "symphonia",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-appender",
  "tracing-bunyan-formatter",
