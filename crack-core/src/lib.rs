@@ -5,6 +5,7 @@ use chrono::Utc;
 use db::PlayLog;
 use db::TrackReaction;
 use errors::CrackedError;
+use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
@@ -111,6 +112,7 @@ pub struct BotCredentials {
     pub spotify_client_id: Option<String>,
     pub spotify_client_secret: Option<String>,
     pub openai_api_key: Option<String>,
+    pub virustotal_api_key: Option<String>,
 }
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
@@ -125,7 +127,7 @@ pub struct BotConfig {
     pub prefix: Option<String>,
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
-    pub users_to_log: Option<Vec<u64>>,
+    pub log_prefix: Option<String>,
 }
 
 impl Display for BotConfig {
@@ -135,7 +137,7 @@ impl Display for BotConfig {
             "video_status_poll_interval: {:?}\n",
             self.video_status_poll_interval
         ));
-        result.push_str(&format!("authorized_users: {:?}\n", self.owners));
+        result.push_str(&format!("owners: {:?}\n", self.owners));
         result.push_str(&format!("cam_kick: {:?}\n", self.cam_kick));
         result.push_str(&format!(
             "sys_log_channel_id: {:?}\n",
@@ -154,6 +156,9 @@ impl Display for BotConfig {
                 .cloned()
                 .unwrap_or(DEFAULT_PREFIX.to_string())
         ));
+        result.push_str(&format!("credentials: {:?}\n", self.credentials));
+        result.push_str(&format!("database_url: {:?}\n", self.database_url));
+        result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
         write!(f, "{}", result)
     }
 }
@@ -291,9 +296,8 @@ impl std::ops::DerefMut for EventLog {
 
 impl Default for EventLog {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(
-            File::create("/data/events.log").unwrap(),
-        )))
+        let log_path = format!("{}/events.log", get_log_prefix());
+        Self(Arc::new(Mutex::new(File::create(log_path).unwrap())))
     }
 }
 

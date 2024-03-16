@@ -1,4 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
+#[cfg(feature = "crack-metrics")]
+use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
     commands::MyAuxMetadata,
     interface::build_nav_btns,
@@ -9,9 +11,9 @@ use crate::{
             QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
         },
     },
-    metrics::COMMAND_EXECUTIONS,
     Context as CrackContext, CrackedError, Data, Error,
 };
+
 use ::serenity::{
     all::{GuildId, Interaction},
     builder::{
@@ -939,6 +941,8 @@ pub async fn handle_error(
         .await
         .expect("failed to create response");
 }
+
+#[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {
     tracing::warn!("counting command: {}", command);
     match COMMAND_EXECUTIONS
@@ -951,6 +955,12 @@ pub fn count_command(command: &str, is_prefix: bool) {
             tracing::error!("Failed to get metric: {}", e);
         }
     };
+    #[cfg(not(feature = "crack-metrics"))]
+    tracing::warn!("crack-metrics feature not enabled");
+}
+#[cfg(not(feature = "crack-metrics"))]
+pub fn count_command(command: &str, is_prefix: bool) {
+    tracing::warn!("counting command: {}, {}", command, is_prefix);
 }
 
 /// Gets the channel id that the bot is currently playing in for a given guild.

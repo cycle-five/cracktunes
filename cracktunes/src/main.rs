@@ -1,22 +1,28 @@
 use config_file::FromConfigFile;
+use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
-use crack_core::metrics::REGISTRY;
 use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
-use opentelemetry::global::set_text_map_propagator;
-// use opentelemetry::KeyValue;
-// use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
-// use opentelemetry_sdk::{trace, Resource};
-use poise::serenity_prelude as serenity;
-use prometheus::{Encoder, TextEncoder};
+use std::collections::HashMap;
 use std::env;
-use std::{collections::HashMap, sync::Arc};
-// use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
-use warp::Filter;
+#[cfg(feature = "crack-telemetry")]
+use {
+    // opentelemetry_otlp::WithExportConfig,
+    crack_core::metrics::REGISTRY,
+    opentelemetry::global::set_text_map_propagator,
+    opentelemetry_sdk::propagation::TraceContextPropagator,
+    poise::serenity_prelude as serenity,
+    prometheus::{Encoder, TextEncoder},
+    std::sync::Arc,
+    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+    warp::Filter,
+};
+
+#[cfg(feature = "crack-telemetry")]
+const SERVICE_NAME: &str = "cracktunes";
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -71,21 +77,26 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     drop(data_global);
 
-    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
-
-    let server = async {
-        warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
-        Ok::<(), serenity::Error>(())
-    };
-
     let bot = client.start();
 
-    tokio::try_join!(bot, server)?;
+    #[cfg(feature = "crack-metrics")]
+    {
+        let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+
+        let server = async {
+            warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+            Ok::<(), serenity::Error>(())
+        };
+        tokio::try_join!(bot, server)?;
+    };
+    #[cfg(not(feature = "crack-metrics"))]
+    bot.await?;
 
     Ok(())
 }
 
 /// Prometheus handler
+#[cfg(feature = "crack-metrics")]
 #[cfg(not(tarpaulin_include))]
 async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
     let encoder = TextEncoder::new();
@@ -107,8 +118,8 @@ fn load_key(k: String) -> Result<String, Error> {
     match env::var(&k) {
         Ok(token) => Ok(token),
         Err(_) => {
-            tracing::warn!("{} not found in environment", &k);
-            Err(format!("{} not found in environment or Secrets.toml", k).into())
+            tracing::warn!("{} not found in environment.", &k);
+            Err(format!("{} not found in environment.", &k).into())
         }
     }
 }
@@ -120,6 +131,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
     let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
+    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY".to_string()).ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -135,16 +147,22 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         spotify_client_id,
         spotify_client_secret,
         openai_api_key,
+        virustotal_api_key,
     });
 
     Ok(config_with_creds.clone())
 }
 
+// fn combine_log_layers(
+//     stdout_log: Box<impl tracing_subscriber::Layer<Registry>>,
+//     debug_log: Box<impl tracing_subscriber::Layer<Registry>>,
+// ) -> Box<impl tracing_subscriber::Layer<Registry>> {
 fn combine_log_layers(
     stdout_log: impl tracing_subscriber::Layer<Registry>,
     debug_log: impl tracing_subscriber::Layer<Registry>,
 ) -> impl tracing_subscriber::Layer<Registry> {
     // A layer that logs events to a file
+    //let log = stdout_log
     stdout_log
         // Add an `INFO` filter to the stdout logging layer
         .with_filter(filter::LevelFilter::INFO)
@@ -161,25 +179,52 @@ fn combine_log_layers(
         }))
 }
 
+//fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
-    let debug_file = std::fs::File::create("/data/debug.log");
-    let debug_file = match debug_file {
-        Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
-    };
-    tracing_subscriber::fmt::layer().with_writer(Arc::new(debug_file))
+    let log_path = &format!("{}/debug.log", get_log_prefix());
+    let debug_file = std::fs::File::create(log_path);
+
+    // let log_file = std::fs::File::create("my_cool_trace.log")?;
+    // let subscriber = tracing_subscriber::fmt::layer().with_writer(Mutex::new(log_file));
+
+    match debug_file {
+        Ok(file) => {
+            //let xyz: tracing_subscriber::fmt::Layer<Registry> =
+            //.with_writer(Box::make_writer(&Box::new(Mutex::new(file))));
+            tracing_subscriber::fmt::layer().with_writer(file)
+        }
+        Err(error) => {
+            println!("warning: no log file available for output! {:?}", error);
+            // let sink: std::io::Sink = std::io::sink();
+            // let writer = Arc::new(sink);
+            let sink = std::fs::File::open("/dev/null").unwrap();
+            tracing_subscriber::fmt::layer().with_writer(sink)
+        }
+    }
 }
 
-#[allow(dead_code)]
+// fn get_bunyan_writer() -> Arc<std::io::BufWriter<_>> {
+//     let log_path = &format!("{}/bunyan.log", get_log_prefix());
+//     let debug_file = std::fs::File::create(log_path);
+//     let debug_file = match debug_file {
+//         Ok(file) => std::io::BufWriter::new(file),
+//         Err(error) => std::io::BufWriter::new(std::io::sink()), //panic!("Error: {:?}", error),
+//     };
+//     Arc::new(debug_file)
+// }
+
+#[cfg(feature = "crack-telemetry")]
 fn get_bunyan_writer() -> Arc<std::fs::File> {
-    let debug_file = std::fs::File::create("/data/bunyan.log");
+    let log_path = &format!("{}/bunyan.log", get_log_prefix());
+    let debug_file = std::fs::File::create(log_path);
     let debug_file = match debug_file {
         Ok(file) => file,
-        Err(error) => panic!("Error: {:?}", error),
+        Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
     };
     Arc::new(debug_file)
 }
 
+// fn get_current_log_layer() -> Box<dyn tracing_subscriber::Layer<Registry>> {
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
@@ -193,8 +238,15 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
 #[tracing::instrument]
 /// Initialize metrics.
 fn init_metrics() {
-    tracing::info!("Initializing metrics");
-    crack_core::metrics::register_custom_metrics();
+    #[cfg(feature = "crack-metrics")]
+    {
+        tracing::info!("Initializing metrics");
+        crack_core::metrics::register_custom_metrics();
+    }
+    #[cfg(not(feature = "crack-metrics"))]
+    {
+        tracing::info!("Metrics not enabled");
+    }
 }
 
 #[tracing::instrument]
@@ -238,20 +290,72 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Layer for adding our configured tracer.
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
-    // let formatting_layer =
-    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    #[cfg(feature = "crack-telemetry")]
+    let formatting_layer =
+        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
     // Layer for printing to stdout.
     let stdout_formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
+    #[cfg(feature = "crack-telemetry")]
     set_text_map_propagator(TraceContextPropagator::new());
 
-    subscriber
+    let x = subscriber
         .with(stdout_formatting_layer)
-        .with(level_filter_layer)
-        // .with(tracing_layer)
-        // .with(JsonStorageLayer)
-        // .with(formatting_layer)
-        .init()
+        .with(level_filter_layer);
+    // .with(tracing_layer)
+    #[cfg(feature = "crack-telemetry")]
+    let x = x.with(JsonStorageLayer).with(formatting_layer);
+
+    x.init()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_init_telemetry() {
+        init_telemetry("").await;
+    }
+
+    #[test]
+    fn test_get_current_log_layer() {
+        let _layer = get_current_log_layer();
+        //assert!(layer.h(&tracing::Level::INFO));
+    }
+
+    #[test]
+    fn test_get_debug_log() {
+        let _layer = get_debug_log();
+    }
+
+    #[test]
+    fn test_combine_log_layers() {
+        let stdout_log = tracing_subscriber::fmt::layer().pretty();
+        let debug_log = get_debug_log();
+        let _layer = combine_log_layers(stdout_log, debug_log);
+    }
+
+    #[test]
+    fn test_init_metrics() {
+        init_metrics();
+    }
+
+    #[test]
+    fn test_load_key() {
+        let key = "DISCORD_TOKEN".to_string();
+        let result = load_key(key);
+        match result {
+            Ok(token) => assert!(!token.is_empty()),
+            Err(_error) => assert!(true),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_load_bot_config() {
+        let result = load_bot_config().await;
+        assert!(result.is_ok() || result.is_err());
+    }
 }

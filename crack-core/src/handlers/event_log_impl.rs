@@ -487,10 +487,36 @@ pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, 
 pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
     http: &Arc<Http>,
-    log_data: &(&GuildId, &serenity::model::prelude::User),
+    log_data: &(&str, &GuildId, &serenity::model::prelude::User),
 ) -> Result<(), Error> {
-    let &(_guild_id, user) = log_data;
+    let &(_event_name, _guild_id, user) = log_data;
     let title = format!("Member Banned: {}", user.name);
+    // let description = format!("User: {}\nID: {}", user.name, user.id);
+    let description = "";
+    let avatar_url = user.avatar_url().unwrap_or_default();
+
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &user.id.to_string(),
+        &title,
+        description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild ban removal
+pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&str, &GuildId, &serenity::model::prelude::User),
+) -> Result<(), Error> {
+    let &(_event, _guild_id, user) = log_data;
+    let title = format!("Member Unbanned: {}", user.name);
     // let description = format!("User: {}\nID: {}", user.name, user.id);
     let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();

@@ -186,6 +186,7 @@ pub async fn get_call_with_fail_msg(
         None => {
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
+            // TODO: Don't just return an error on failure, do something smarter.
             let channel_id =
                 get_voice_channel_for_user(&ctx.guild().unwrap().clone(), &ctx.author().id)?;
             match manager.join(guild_id, channel_id).await {
@@ -242,6 +243,7 @@ pub async fn get_call_with_fail_msg(
                     // Ok(manager.get(guild_id).unwrap())
                 }
                 Err(_) => {
+                    // FIXME: Do something smarter here also.
                     let embed = CreateEmbed::default()
                         .description(format!("{}", CrackedError::NotConnected));
                     send_embed_response_poise(ctx, embed).await?;
@@ -340,6 +342,7 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    // FIXME: This should be generalized.
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
 

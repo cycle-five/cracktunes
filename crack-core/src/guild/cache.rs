@@ -38,3 +38,30 @@ pub struct GuildCacheMap;
 impl TypeMapKey for GuildCacheMap {
     type Value = HashMap<GuildId, GuildCache>;
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_guild_cache() {
+        let guild_cache = GuildCache::default();
+        assert_eq!(guild_cache.autoplay, true);
+        assert_eq!(guild_cache.time_ordered_messages.len(), 0);
+        assert_eq!(guild_cache.queue_messages.len(), 0);
+        assert_eq!(guild_cache.current_skip_votes.len(), 0);
+    }
+
+    // Test inserting queue messages and getting them out
+    #[tokio::test]
+    async fn test_queue_messages() {
+        let guild_cache = GuildCache::default();
+        let message = Message::default();
+        let queue_message = (message, Arc::new(RwLock::new(0)));
+        let mut guild_cache = guild_cache.clone();
+        guild_cache.queue_messages.push(queue_message.clone());
+        assert_eq!(guild_cache.queue_messages.len(), 1);
+        //assert_eq!(guild_cache.queue_messages[0], queue_message);
+    }
+}
