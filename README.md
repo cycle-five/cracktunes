@@ -22,6 +22,7 @@ Thanks to the guys over at  [alwaysdata](https://www.alwaysdata.com/) for hostin
 * Define `DATABASE_URL`, `PG_USER`, `PG_PASSWORD` for the Postgres database.
 * *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
 * *Optional* define `OPENAI_API_KEY` for chatgpt support.
+* *Optional* define `VIRUSTOTAL_API_KEY` for osint URL checking.
 * Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
 
 ### Docker **FIXME**
