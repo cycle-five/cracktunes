@@ -342,6 +342,7 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    // FIXME: This should be generalized.
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
 
