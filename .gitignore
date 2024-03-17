@@ -17,8 +17,5 @@ cracktunes.env
 # IDE config
 .vscode/
 
-# submodules
-dep-installer-hack/
-
 # code coverage
 cobertura.xml
