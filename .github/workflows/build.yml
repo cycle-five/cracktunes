@@ -62,13 +62,13 @@ jobs:
         if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
         env:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-        run: cargo test --workspace
+        run: cargo test all-features --workspace
 
       - name: Run Release Unit Tests
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
         env:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-        run: cargo test --release --locked
+        run: cargo test --all-features --release --locked
 
       # - name: Build Binary
       #   if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
@@ -76,4 +76,4 @@ jobs:
 
       - name: Build Release Binary
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
-        run: cargo build --release --locked
+        run: cargo build --all-features --release --locked
