@@ -3,7 +3,7 @@ secrets:
     - 5ec53080-dbed-4207-ab0f-d6056a62bb46
 tasks:
     - install-dependencies: |
-          sudo apt-get update -y
+          sudo apt-get update
           sudo apt-get install -y \
             autoconf \
             automake \
