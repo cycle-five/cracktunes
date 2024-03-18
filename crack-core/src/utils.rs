@@ -503,7 +503,7 @@ use crate::commands::music::doplay::RequestingUser;
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::User, CrackedError> {
     let user = match track.typemap().read().await.get::<RequestingUser>() {
-        Some(RequestingUser::User(&user)) => user.to_owned(),
+        Some(RequestingUser::User(user)) => user.to_owned(),
         None => {
             tracing::warn!("No user found for track: {:?}", track);
             serenity::User::default()

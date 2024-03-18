@@ -25,7 +25,7 @@ use crate::{
 use ::serenity::{
     all::{
         ChannelId, ComponentInteractionDataKind, Context as SerenityContext, EmbedField, GuildId,
-        Member, Mentionable, Message, User, UserId,
+        Mentionable, Message, User, UserId,
     },
     builder::{
         CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
