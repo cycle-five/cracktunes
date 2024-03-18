@@ -25,6 +25,8 @@ use std::fmt::Write;
 /// Builds a page of the queue.
 #[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
+    use serenity::all::User;
+
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
         .iter()
@@ -43,7 +45,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
-        let requested_by = get_requesting_user(t).await;
+        let requesting_user = get_requesting_user(t).await.unwrap_or(User::default());
 
         let _ = writeln!(
             description,
