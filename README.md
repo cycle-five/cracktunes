@@ -144,11 +144,12 @@ Didn't really track stuff here...
 - add dry run to rename_all
 ## 0.1.4 (crack-osint) (2024/03/12)
 - osint scan command to check urls for malicious content
-## 0.3.0-rc.6
+## ~~0.3.0-rc.6~~
+## 0.3.0
 - Added more breakdown of features which can be optionally turned on/off
-  - Telemitry
-  - Metrics / logging
-  - Removed a lot of unescesarry dependencies  
+- Telemitry
+- Metrics / logging
+- Removed a lot of unescesarry dependencies  
 ...
 ## 1.0.0
 - [ ] RTChris' Demuxer in C++ (for fun)?
