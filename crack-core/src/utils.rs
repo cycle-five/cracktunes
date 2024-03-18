@@ -498,6 +498,20 @@ pub async fn edit_embed_response_poise(
     }
 }
 
+/// Gets the requesting user from the typemap of the track handle.
+pub async fn get_requesting_user(track: &TrackHandle) -> serenity::UserId {
+    let map = track.typemap().read().await;
+    let user = match map.get::<crate::commands::RequestingUser>() {
+        Some(user) => user.clone(),
+        None => {
+            tracing::warn!("No user found for track: {:?}", track);
+            serenity::UserId::default()
+        }
+    };
+    user
+}
+
+/// Gets the metadata from a track.
 pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
     let metadata = {
         let map = track.typemap().read().await;

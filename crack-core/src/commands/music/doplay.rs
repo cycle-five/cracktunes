@@ -25,7 +25,7 @@ use crate::{
 use ::serenity::{
     all::{
         ChannelId, ComponentInteractionDataKind, Context as SerenityContext, EmbedField, GuildId,
-        Mentionable, Message, UserId,
+        Member, Mentionable, Message, User, UserId,
     },
     builder::{
         CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
@@ -1337,6 +1337,21 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
 }
 
 #[derive(Debug, Clone)]
+pub enum RequestingUser {
+    User(User),
+}
+
+impl TypeMapKey for RequestingUser {
+    type Value = RequestingUser;
+}
+
+impl Default for RequestingUser {
+    fn default() -> Self {
+        RequestingUser::User(UserId::new(1))
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum MyAuxMetadata {
     Data(AuxMetadata),
 }
@@ -1351,7 +1366,7 @@ impl Default for MyAuxMetadata {
     }
 }
 
-/// Build an embed for the curre
+/// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
     track: &TrackHandle,

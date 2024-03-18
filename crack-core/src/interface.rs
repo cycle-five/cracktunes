@@ -10,7 +10,9 @@ use crate::utils::EMBED_PAGE_SIZE;
 use crate::Context as CrackContext;
 use crate::{
     messaging::message::CrackedMessage,
-    utils::{get_footer_info, get_human_readable_timestamp, get_track_metadata},
+    utils::{
+        get_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
+    },
 };
 use poise::CreateReply;
 use serenity::{
@@ -41,6 +43,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
+        let requested_by = get_requesting_user(t).await;
 
         let _ = writeln!(
             description,
