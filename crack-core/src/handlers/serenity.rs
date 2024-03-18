@@ -21,7 +21,6 @@ use serenity::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    // fmt,
     sync::{atomic::Ordering, Arc, Mutex},
     time::SystemTime,
 };

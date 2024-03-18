@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use poise::CreateReply;
+use serenity::all::User;
 use serenity::{
     all::{ButtonStyle, CreateEmbed},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
@@ -25,8 +26,6 @@ use std::fmt::Write;
 /// Builds a page of the queue.
 #[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
-    use serenity::all::User;
-
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
         .iter()
@@ -54,7 +53,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
             title,
             url,
             duration,
-            requesting_user.tag(),
+            requesting_user,
         );
     }
 
@@ -102,6 +101,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_metadata(track).await;
     let title = metadata.title.clone().unwrap_or_default();
     let source_url = metadata.source_url.clone().unwrap_or_default();
+    let requesting_user = get_requesting_user(track).await.unwrap_or(User::default());
 
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
@@ -109,8 +109,8 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(channel) => ("Channel", format!(">>> {}", channel), true),
-        None => ("Channel", ">>> N/A".to_string(), true),
+        Some(_channel) => ("Requested By", format!(">>> {:?}", requesting_user), true),
+        None => ("Requested By", ">>> N/A".to_string(), true),
     };
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
