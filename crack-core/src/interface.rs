@@ -49,11 +49,12 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
         let _ = writeln!(
             description,
-            "{}. [{}]({}) • {}",
+            "{}. [{}]({}) • {} ({})",
             i + start_idx + 1,
             title,
             url,
-            duration
+            duration,
+            requesting_user.tag(),
         );
     }
 
