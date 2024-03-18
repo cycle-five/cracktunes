@@ -1347,7 +1347,8 @@ impl TypeMapKey for RequestingUser {
 
 impl Default for RequestingUser {
     fn default() -> Self {
-        RequestingUser::User(UserId::new(1))
+        let user = User::default().into();
+        RequestingUser::User(user)
     }
 }
 
