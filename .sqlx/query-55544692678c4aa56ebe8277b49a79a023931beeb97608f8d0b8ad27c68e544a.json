@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE guild_settings\n            SET premium = $1\n            WHERE guild_id = $2\n            RETURNING *\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "guild_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "prefix",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "premium",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "autopause",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "allow_all_domains",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "allowed_domains",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 7,
+        "name": "banned_domains",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 8,
+        "name": "ignored_channels",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 9,
+        "name": "old_volume",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 10,
+        "name": "volume",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 11,
+        "name": "self_deafen",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 12,
+        "name": "timeout_seconds",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
+        "name": "additional_prefixes",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "55544692678c4aa56ebe8277b49a79a023931beeb97608f8d0b8ad27c68e544a"
+}
