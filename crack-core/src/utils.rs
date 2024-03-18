@@ -498,17 +498,18 @@ pub async fn edit_embed_response_poise(
     }
 }
 
+use crate::commands::music::doplay::RequestingUser;
+
 /// Gets the requesting user from the typemap of the track handle.
-pub async fn get_requesting_user(track: &TrackHandle) -> serenity::UserId {
-    let map = track.typemap().read().await;
-    let user = match map.get::<crate::commands::RequestingUser>() {
-        Some(user) => user.clone(),
+pub async fn get_requesting_user(track: &TrackHandle) -> Result<&serenity::User, CrackedError> {
+    let user = match track.typemap().read().await.get::<RequestingUser>() {
+        Some(RequestingUser::User(&user)) => user,
         None => {
             tracing::warn!("No user found for track: {:?}", track);
-            serenity::UserId::default()
+            serenity::User::default()
         }
     };
-    user
+    Ok(user)
 }
 
 /// Gets the metadata from a track.
