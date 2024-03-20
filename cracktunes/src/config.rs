@@ -256,7 +256,14 @@ pub async fn poise_framework(
                     }
                 };
 
-                Ok(music_command || osint_command)
+                if osint_command {
+                    if is_authorized_osint() {
+                        return Ok(true);
+                    }
+                }
+                if music_command {
+                    return Ok(is_authorized_music());
+                }
 
                 // //let user_id = ctx.author().id.as_u64();
                 // // let guild_id = ctx.guild_id().unwrap_or_default();
