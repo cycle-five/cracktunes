@@ -8,6 +8,7 @@ use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
+use guild::settings::DEFAULT_LOG_PREFIX;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
@@ -114,7 +115,21 @@ pub struct BotCredentials {
     pub openai_api_key: Option<String>,
     pub virustotal_api_key: Option<String>,
 }
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+
+impl Default for BotCredentials {
+    fn default() -> Self {
+        Self {
+            discord_token: "XXXX".to_string(),
+            discord_app_id: "XXXX".to_string(),
+            spotify_client_id: None,
+            spotify_client_secret: None,
+            openai_api_key: None,
+            virustotal_api_key: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: Option<u64>,
     pub owners: Option<Vec<u64>>,
@@ -128,6 +143,24 @@ pub struct BotConfig {
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
     pub log_prefix: Option<String>,
+}
+
+impl Default for BotConfig {
+    fn default() -> Self {
+        Self {
+            video_status_poll_interval: Some(DEFAULT_VIDEO_STATUS_POLL_INTERVAL),
+            owners: None,
+            cam_kick: None,
+            sys_log_channel_id: None,
+            self_deafen: Some(true),
+            volume: Some(1.0),
+            guild_settings_map: None,
+            prefix: Some(DEFAULT_PREFIX.to_string()),
+            credentials: Some(BotCredentials::default()),
+            database_url: Some(DEFAULT_DB_URL.to_string()),
+            log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
+        }
+    }
 }
 
 impl Display for BotConfig {
