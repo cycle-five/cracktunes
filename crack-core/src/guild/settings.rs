@@ -738,7 +738,12 @@ impl GuildSettings {
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            FullEvent::GuildMemberAddition { .. }
+            | FullEvent::PresenceReplace { .. }
+            | FullEvent::PresenceUpdate { .. } => {
+                None 
+                //.or(log_settings.get_all_log_channel()),
+            }
+            | FullEvent::GuildMemberAddition { .. }
             | FullEvent::GuildMemberRemoval { .. } => {
                 log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
             }
@@ -764,7 +769,6 @@ impl GuildSettings {
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
             FullEvent::Message { .. }
-            | FullEvent::PresenceReplace { .. }
             | FullEvent::Resume { .. }
             | FullEvent::ShardStageUpdate { .. }
             | FullEvent::WebhookUpdate { .. }
@@ -792,7 +796,6 @@ impl GuildSettings {
             | FullEvent::ReactionAdd { .. }
             | FullEvent::ReactionRemove { .. }
             | FullEvent::ReactionRemoveAll { .. }
-            | FullEvent::PresenceUpdate { .. }
             | FullEvent::Ready { .. }
             | FullEvent::StageInstanceCreate { .. }
             | FullEvent::StageInstanceDelete { .. }
