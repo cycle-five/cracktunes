@@ -312,6 +312,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     #[cfg(feature = "crack-telemetry")]
     let x = x.with(JsonStorageLayer).with(formatting_layer);
 
+    #[cfg(any(feature = "crack-tracing", feature = "crack-telemetry"))]
     x.init()
 }
 
