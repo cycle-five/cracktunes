@@ -413,7 +413,8 @@ async fn play_internal(
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
-    queue.iter().for_each(|t| t.set_volume(volume).unwrap());
+    // queue.first().map(|t| t.set_volume(volume).unwrap());
+    // queue.iter().for_each(|t| t.set_volume(volume).unwrap());
     drop(handler);
 
     let embed = match queue.len().cmp(&1) {
