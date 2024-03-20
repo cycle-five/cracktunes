@@ -614,6 +614,7 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     description
 }
 
+/// Calculate the number of pages needed to display all the tracks.
 pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     let num_pages = ((tracks.len() as f64 - 1.0) / EMBED_PAGE_SIZE as f64).ceil() as usize;
     max(1, num_pages)
