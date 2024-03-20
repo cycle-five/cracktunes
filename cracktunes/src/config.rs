@@ -80,6 +80,18 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
+fn is_authorized_osint() -> bool {
+    // implementation of the is_authorized_osint function
+    // ...
+    true // placeholder return value
+}
+
+fn is_authorized_music() -> bool {
+    // implementation of the is_authorized_music function
+    // ...
+    true // placeholder return value
+}
+
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
     config: BotConfig,
@@ -256,6 +268,8 @@ pub async fn poise_framework(
                     }
                 };
 
+                // These need to be processed in order of most to least restrictive
+
                 if osint_command {
                     return Ok(is_authorized_osint());
                 }
@@ -264,7 +278,8 @@ pub async fn poise_framework(
                     return Ok(is_authorized_music());
                 }
 
-                return Ok(false);
+                // Default case fail to be on the safe side.
+                Ok(false)
 
                 // //let user_id = ctx.author().id.as_u64();
                 // // let guild_id = ctx.guild_id().unwrap_or_default();
