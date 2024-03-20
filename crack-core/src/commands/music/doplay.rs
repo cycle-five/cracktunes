@@ -1340,6 +1340,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
 #[derive(Debug, Clone)]
 pub enum RequestingUser {
     User(User),
+    UserId(UserId),
 }
 
 impl TypeMapKey for RequestingUser {
@@ -1658,6 +1659,7 @@ pub async fn enqueue_track_pgwrite(
     let track_handle = handler.enqueue(track).await;
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(res.clone());
+    map.insert::<RequestingUser>(RequestingUser::User(http.get_user(user_id).await?));
 
     Ok(handler.queue().current_queue())
 }
