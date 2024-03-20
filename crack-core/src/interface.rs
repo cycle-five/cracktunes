@@ -102,20 +102,19 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_metadata(track).await;
     let title = metadata.title.clone().unwrap_or_default();
     let source_url = metadata.source_url.clone().unwrap_or_default();
-    let requesting_user = get_requesting_user(track).await.unwrap_or(UserId::new(1));
+    let requesting_user = get_requesting_user(track).await;
 
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
 
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
-    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(_channel) => (
-            "Requested By",
-            format!(">>> {}", requesting_user.mention()),
-            true,
-        ),
-        None => ("Requested By", ">>> N/A".to_string(), true),
+    let channel_field: (&'static str, String, bool) = match requesting_user {
+        Ok(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        Err(error) => {
+            tracing::error!("error getting requesting user: {:?}", error);
+            ("Requested By", ">>> N/A".to_string(), true)
+        }
     };
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();

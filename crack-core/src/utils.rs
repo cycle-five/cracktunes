@@ -25,7 +25,7 @@ use ::serenity::{
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-        MessageInteraction,
+        Mentionable, MessageInteraction,
     },
     CreateReply, ReplyHandle,
 };
@@ -534,6 +534,7 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 pub fn create_now_playing_embed_metadata(
+    requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
     metadata: MyAuxMetadata,
 ) -> CreateEmbed {
@@ -551,11 +552,13 @@ pub fn create_now_playing_embed_metadata(
 
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
-    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(channel) => ("Channel", format!(">>> {}", channel), true),
-        None => ("Channel", ">>> N/A".to_string(), true),
+    let channel_field: (&'static str, String, bool) = match requesting_user {
+        Some(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        None => {
+            tracing::warn!("No user id");
+            ("Requested By", ">>> N/A".to_string(), true)
+        }
     };
-
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url) = get_footer_info(&source_url);
