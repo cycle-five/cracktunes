@@ -29,6 +29,14 @@ use std::{
 
 use crate::{get_admin_commands_hashset, get_mod_commands, get_music_commands, get_osint_commands};
 
+#[derive(Debug, Clone)]
+struct CommandCategories {
+    mod_command: bool,
+    admin_command: bool,
+    music_command: bool,
+    osint_command: bool,
+}
+
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
@@ -80,12 +88,14 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
+/// Check if the user is authorized to use the osint commands.
 fn is_authorized_osint() -> bool {
     // implementation of the is_authorized_osint function
     // ...
     true // placeholder return value
 }
 
+/// Check if the user is authorized to use the music commands.
 fn is_authorized_music() -> bool {
     // implementation of the is_authorized_music function
     // ...
@@ -584,14 +594,6 @@ mod test {
         assert_eq!(music_command, false);
         assert_eq!(osint_command, false);
     }
-}
-
-#[derive(Debug, Clone)]
-struct CommandCategories {
-    mod_command: bool,
-    admin_command: bool,
-    music_command: bool,
-    osint_command: bool,
 }
 
 // impl CommandCategories {
