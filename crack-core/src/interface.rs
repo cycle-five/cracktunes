@@ -15,9 +15,9 @@ use crate::{
     },
 };
 use poise::CreateReply;
-use serenity::all::User;
 use serenity::{
     all::{ButtonStyle, CreateEmbed},
+    all::{Mentionable, User},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
 use songbird::tracks::TrackHandle;
@@ -109,7 +109,11 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(_channel) => ("Requested By", format!(">>> {:?}", requesting_user), true),
+        Some(_channel) => (
+            "Requested By",
+            format!(">>> {}", requesting_user.id.mention()),
+            true,
+        ),
         None => ("Requested By", ">>> N/A".to_string(), true),
     };
 
