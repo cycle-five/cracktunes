@@ -54,7 +54,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
             title,
             url,
             duration,
-            requesting_user,
+            requesting_user.mention(),
         );
     }
 
