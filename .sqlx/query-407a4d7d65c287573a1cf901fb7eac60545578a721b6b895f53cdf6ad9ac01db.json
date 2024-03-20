@@ -1,0 +1,105 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO\n                metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n                RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "track",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "artist",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "album",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "channels",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 6,
+        "name": "channel",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "start_time",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "duration",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "sample_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "source_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "thumbnail",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Date",
+        "Int2",
+        "Text",
+        "Int8",
+        "Int8",
+        "Int4",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "407a4d7d65c287573a1cf901fb7eac60545578a721b6b895f53cdf6ad9ac01db"
+}

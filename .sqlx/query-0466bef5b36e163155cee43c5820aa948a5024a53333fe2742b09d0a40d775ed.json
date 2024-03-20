@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO welcome_settings (guild_id, auto_role, channel_id, message)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (guild_id)\n            DO UPDATE SET auto_role = $2, channel_id = $3, message = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0466bef5b36e163155cee43c5820aa948a5024a53333fe2742b09d0a40d775ed"
+}
