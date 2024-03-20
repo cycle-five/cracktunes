@@ -515,7 +515,31 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
 #[cfg(test)]
 mod test {
+    use crack_core::{BotConfig, EventLog};
+
     use crate::config::CommandCategories;
+
+    #[test]
+    fn test_command_categories() {
+        let cmd = CommandCategories {
+            mod_command: true,
+            admin_command: false,
+            music_command: false,
+            osint_command: false,
+        };
+        assert_eq!(cmd.mod_command, true);
+        assert_eq!(cmd.admin_command, false);
+        assert_eq!(cmd.music_command, false);
+        assert_eq!(cmd.osint_command, false);
+    }
+
+    #[tokio::test]
+    async fn test_build_framework() {
+        let config = BotConfig::default();
+        let event_log = EventLog::new();
+        let client = super::poise_framework(config, event_log).await;
+        assert!(client.is_ok());
+    }
 
     #[test]
     fn test_prefix() {
