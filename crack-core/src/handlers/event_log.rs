@@ -103,7 +103,7 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
 
     match event_in {
-        #[cfg(feature = "log_all")]
+        #[cfg(not(feature = "ignore_presence_log"))]
         FullEvent::PresenceUpdate { new_data } => {
             log_event!(
                 log_presence_update,
@@ -116,7 +116,7 @@ pub async fn handle_event(
                 event_name
             )
         }
-        #[cfg(not(feature = "log_all"))]
+        #[cfg(feature = "ignore_presence_log")]
         FullEvent::PresenceUpdate { new_data } => {
             let _ = new_data;
             Ok(())
