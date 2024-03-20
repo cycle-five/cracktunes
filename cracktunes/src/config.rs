@@ -257,13 +257,14 @@ pub async fn poise_framework(
                 };
 
                 if osint_command {
-                    if is_authorized_osint() {
-                        return Ok(true);
-                    }
+                    return Ok(is_authorized_osint());
                 }
+
                 if music_command {
                     return Ok(is_authorized_music());
                 }
+
+                return Ok(false);
 
                 // //let user_id = ctx.author().id.as_u64();
                 // // let guild_id = ctx.guild_id().unwrap_or_default();
