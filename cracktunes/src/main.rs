@@ -285,8 +285,10 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     //     .expect("Error: Failed to initialize the tracer.");
 
     // Define a subscriber.
+    #[cfg(feature = "crack-tracing")]
     let subscriber = Registry::default();
     // Level filter layer to filter traces based on level (trace, debug, info, warn, error).
+    #[cfg(feature = "crack-tracing")]
     let level_filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO"));
     // Layer for adding our configured tracer.
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
@@ -302,6 +304,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     #[cfg(feature = "crack-telemetry")]
     set_text_map_propagator(TraceContextPropagator::new());
 
+    #[cfg(feature = "crack-tracing")]
     let x = subscriber
         .with(stdout_formatting_layer)
         .with(level_filter_layer);
