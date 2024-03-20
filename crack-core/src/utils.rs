@@ -538,8 +538,6 @@ pub fn create_now_playing_embed_metadata(
     cur_position: Option<Duration>,
     metadata: MyAuxMetadata,
 ) -> CreateEmbed {
-    // TrackHandle::metadata(track);
-
     let MyAuxMetadata::Data(metadata) = metadata;
     tracing::warn!("metadata: {:?}", metadata);
 
