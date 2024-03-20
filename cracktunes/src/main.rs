@@ -7,6 +7,7 @@ use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
 use std::collections::HashMap;
 use std::env;
+#[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 #[cfg(feature = "crack-telemetry")]
 use {

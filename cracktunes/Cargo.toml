@@ -12,7 +12,7 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["playlist", "crack-gpt", "crack-osint"]
+default = ["playlist", "crack-gpt", "crack-osint", "crack-tracing"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
@@ -26,6 +26,7 @@ crack-telemetry = [
     "warp",
 ]
 crack-metrics = ["prometheus", "warp"]
+crack-tracing = ["tracing-subscriber", "tracing-futures"]
 
 [dependencies]
 opentelemetry = { version = "0.22", optional = true }
