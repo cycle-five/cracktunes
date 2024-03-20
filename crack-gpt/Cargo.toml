@@ -15,5 +15,5 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 [dependencies]
 chatgpt_rs = "1.2"
 url = "2.5"
-tracing = "0.1"
+tracing = { workspace = true }
 tokio = { workspace = true }
