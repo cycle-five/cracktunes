@@ -740,7 +740,7 @@ impl GuildSettings {
         match event {
             | FullEvent::PresenceReplace { .. }
             | FullEvent::PresenceUpdate { .. } => {
-                None 
+                None
                 //.or(log_settings.get_all_log_channel()),
             }
             | FullEvent::GuildMemberAddition { .. }
