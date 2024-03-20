@@ -21,7 +21,6 @@ use serenity::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    // fmt,
     sync::{atomic::Ordering, Arc, Mutex},
     time::SystemTime,
 };
@@ -32,12 +31,12 @@ pub struct SerenityHandler {
     pub is_loop_running: std::sync::atomic::AtomicBool,
 }
 
+///
 #[derive(Copy, Clone, Debug)]
 pub struct MyVoiceUserInfo {
     pub user_id: UserId,
     pub guild_id: GuildId,
     pub channel_id: ChannelId,
-    // true = on, false = off
     pub camera_status: bool,
     pub time_last_cam_change: Instant,
 }

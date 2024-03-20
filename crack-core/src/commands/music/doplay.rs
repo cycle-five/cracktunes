@@ -396,7 +396,7 @@ async fn play_internal(
         return Ok(());
     }
 
-    let volume = {
+    let _volume = {
         let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
         let guild_settings = settings.entry(guild_id).or_insert_with(|| {
             GuildSettings::new(
@@ -413,7 +413,8 @@ async fn play_internal(
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
-    queue.iter().for_each(|t| t.set_volume(volume).unwrap());
+    // queue.first().map(|t| t.set_volume(volume).unwrap());
+    // queue.iter().for_each(|t| t.set_volume(volume).unwrap());
     drop(handler);
 
     let embed = match queue.len().cmp(&1) {
@@ -1337,6 +1338,22 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
 }
 
 #[derive(Debug, Clone)]
+pub enum RequestingUser {
+    UserId(UserId),
+}
+
+impl TypeMapKey for RequestingUser {
+    type Value = RequestingUser;
+}
+
+impl Default for RequestingUser {
+    fn default() -> Self {
+        let user = UserId::new(1);
+        RequestingUser::UserId(user)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum MyAuxMetadata {
     Data(AuxMetadata),
 }
@@ -1351,7 +1368,7 @@ impl Default for MyAuxMetadata {
     }
 }
 
-/// Build an embed for the curre
+/// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
     track: &TrackHandle,
@@ -1641,6 +1658,7 @@ pub async fn enqueue_track_pgwrite(
     let track_handle = handler.enqueue(track).await;
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(res.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
 
     Ok(handler.queue().current_queue())
 }

@@ -2,8 +2,8 @@
 set -ex
 
 if [ "${1}" != "replit" ]; then
-	export DATABASE_URL=postgresql://postgres:asdf@localhost:5432/postgres
-	# export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5433/postgres
+	#export DATABASE_URL=postgresql://postgres:asdf@localhost:5433/postgres
+	export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5433/postgres
 fi
 # cargo clean
 sqlx database drop

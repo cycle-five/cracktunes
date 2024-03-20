@@ -15,7 +15,7 @@ use crate::{
 };
 
 use ::serenity::{
-    all::{GuildId, Interaction},
+    all::{GuildId, Interaction, UserId},
     builder::{
         CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
@@ -498,6 +498,22 @@ pub async fn edit_embed_response_poise(
     }
 }
 
+use crate::commands::music::doplay::RequestingUser;
+
+/// Gets the requesting user from the typemap of the track handle.
+pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
+    let user = match track.typemap().read().await.get::<RequestingUser>() {
+        Some(RequestingUser::UserId(user)) => *user,
+        None => {
+            tracing::warn!("No user found for track: {:?}", track);
+            // return Err(CrackedError::Other("No user found for track").into());
+            UserId::new(1)
+        }
+    };
+    Ok(user)
+}
+
+/// Gets the metadata from a track.
 pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
     let metadata = {
         let map = track.typemap().read().await;

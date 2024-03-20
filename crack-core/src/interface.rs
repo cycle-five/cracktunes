@@ -10,10 +10,14 @@ use crate::utils::EMBED_PAGE_SIZE;
 use crate::Context as CrackContext;
 use crate::{
     messaging::message::CrackedMessage,
-    utils::{get_footer_info, get_human_readable_timestamp, get_track_metadata},
+    utils::{
+        get_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
+    },
 };
 use poise::CreateReply;
+use serenity::all::UserId;
 use serenity::{
+    all::Mentionable,
     all::{ButtonStyle, CreateEmbed},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
@@ -41,14 +45,16 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
+        let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
 
         let _ = writeln!(
             description,
-            "{}. [{}]({}) • {}",
+            "{}. [{}]({}) • {} ({})",
             i + start_idx + 1,
             title,
             url,
-            duration
+            duration,
+            requesting_user.mention(),
         );
     }
 
@@ -96,6 +102,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_metadata(track).await;
     let title = metadata.title.clone().unwrap_or_default();
     let source_url = metadata.source_url.clone().unwrap_or_default();
+    let requesting_user = get_requesting_user(track).await.unwrap_or(UserId::new(1));
 
     let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
     let duration = get_human_readable_timestamp(metadata.duration);
@@ -103,8 +110,12 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(channel) => ("Channel", format!(">>> {}", channel), true),
-        None => ("Channel", ">>> N/A".to_string(), true),
+        Some(_channel) => (
+            "Requested By",
+            format!(">>> {}", requesting_user.mention()),
+            true,
+        ),
+        None => ("Requested By", ">>> N/A".to_string(), true),
     };
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
