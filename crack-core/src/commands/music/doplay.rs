@@ -25,7 +25,7 @@ use crate::{
 use ::serenity::{
     all::{
         ChannelId, ComponentInteractionDataKind, Context as SerenityContext, EmbedField, GuildId,
-        Mentionable, Message, User, UserId,
+        Mentionable, Message, UserId,
     },
     builder::{
         CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
@@ -396,7 +396,7 @@ async fn play_internal(
         return Ok(());
     }
 
-    let volume = {
+    let _volume = {
         let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
         let guild_settings = settings.entry(guild_id).or_insert_with(|| {
             GuildSettings::new(

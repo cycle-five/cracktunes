@@ -17,8 +17,8 @@ use crate::{
 use poise::CreateReply;
 use serenity::all::UserId;
 use serenity::{
+    all::Mentionable,
     all::{ButtonStyle, CreateEmbed},
-    all::{Mentionable, User},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
 use songbird::tracks::TrackHandle;
