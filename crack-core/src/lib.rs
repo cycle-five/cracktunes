@@ -330,7 +330,18 @@ impl std::ops::DerefMut for EventLog {
 impl Default for EventLog {
     fn default() -> Self {
         let log_path = format!("{}/events.log", get_log_prefix());
-        Self(Arc::new(Mutex::new(File::create(log_path).unwrap())))
+        let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
+        let log_file = match File::create(log_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error creating log file: {}", e);
+                // FIXME: Maybe use io::null()?
+                // I went down this path with sink and it was a mistake.
+                File::create("/dev/null")
+                    .expect("Should be able to have a file object to write too.")
+            }
+        };
+        Self(Arc::new(Mutex::new(log_file)))
     }
 }
 
@@ -482,4 +493,32 @@ impl Data {
     // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
     //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_phone_code_data() {
+        let data = PhoneCodeData::load().unwrap();
+        let country_names = data.country_names;
+        let phone_codes = data.phone_codes;
+        let country_by_phone_code = data.country_by_phone_code;
+
+        assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
+        assert_eq!(phone_codes.get("United States"), Some(&"US".to_string()));
+        assert_eq!(
+            country_by_phone_code.get("1"),
+            Some(&vec!["US".to_string(), "CA".to_string()])
+        );
+    }
+
+    // Test the creationg of a default EventLog
+    #[test]
+    fn test_event_log_default() {
+        let event_log = EventLog::default();
+        let file = event_log.lock().unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 0);
+    }
 }
