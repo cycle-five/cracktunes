@@ -31,7 +31,6 @@ pub struct SerenityHandler {
     pub is_loop_running: std::sync::atomic::AtomicBool,
 }
 
-///
 #[derive(Copy, Clone, Debug)]
 pub struct MyVoiceUserInfo {
     pub user_id: UserId,
