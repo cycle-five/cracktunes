@@ -42,13 +42,6 @@ use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 
-// pub fn aux_metadata_from_db(metadata: &crate::db::Metadata) -> MyAuxMetadata {
-//     let mut metadata = metadata.clone();
-//     metadata.duration = metadata.duration / 1000;
-//     let metadata = MyAuxMetadata::Data(metadata.into());
-//     metadata
-// }
-
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
 pub async fn build_log_embed(
@@ -103,6 +96,7 @@ pub async fn send_log_embed_thumb(
         .map_err(Into::into)
 }
 
+/// Create and sends an log message as an embed.
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
@@ -127,6 +121,7 @@ pub struct SendMessageParams {
     pub msg: CrackedMessage,
 }
 
+/// Sends a message to a channel.
 pub async fn send_channel_message(
     http: Arc<&Http>,
     params: SendMessageParams,
@@ -158,6 +153,7 @@ pub async fn send_response_poise(
     }
 }
 
+/// Sends a reply response as text
 pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
@@ -167,6 +163,8 @@ pub async fn send_response_poise_text(
     send_embed_response_str(ctx, message_str).await
 }
 
+/// Create an emdend to send as a response.
+///
 pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -176,6 +174,7 @@ pub async fn create_response(
     send_embed_response(ctx, interaction, embed).await
 }
 
+/// Create an emdend to send as a response.
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
