@@ -163,6 +163,8 @@ pub async fn send_response_poise_text(
     send_embed_response_str(ctx, message_str).await
 }
 
+/// Create an emdend to send as a response.
+///
 pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -172,6 +174,7 @@ pub async fn create_response(
     send_embed_response(ctx, interaction, embed).await
 }
 
+/// Create an emdend to send as a response.
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
