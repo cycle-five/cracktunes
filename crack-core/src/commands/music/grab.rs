@@ -1,9 +1,13 @@
 use poise::serenity_prelude::{ChannelId, Message};
 use serenity::{builder::CreateMessage, http::Http};
+use songbird::input::AuxMetadata;
 use songbird::Call;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
+use crate::utils::create_now_playing_embed_metadata;
+use crate::utils::get_requesting_user;
 use crate::{errors::CrackedError, interface::create_now_playing_embed, Context, Error};
 
 /// Send the current tack to your DMs.
@@ -38,10 +42,6 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-use crate::utils::create_now_playing_embed_metadata;
-use songbird::input::AuxMetadata;
-use std::time::Duration;
-
 /// Send the current track information as an ebmed to the given channel.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_now_playing(
@@ -58,8 +58,10 @@ pub async fn send_now_playing(
         Some(track_handle) => {
             tracing::warn!("track handle found, dropping mutex guard");
             drop(mutex_guard);
+            let requesting_user = get_requesting_user(&track_handle).await;
             let embed = if let Some(metadata2) = metadata {
                 create_now_playing_embed_metadata(
+                    requesting_user.ok(),
                     cur_position,
                     crate::commands::MyAuxMetadata::Data(metadata2),
                 )

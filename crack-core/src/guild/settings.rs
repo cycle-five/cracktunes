@@ -17,7 +17,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
-pub const DEFAULT_LOG_PREFIX: &str = "/data";
+pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
@@ -738,7 +738,12 @@ impl GuildSettings {
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            FullEvent::GuildMemberAddition { .. }
+            | FullEvent::PresenceReplace { .. }
+            | FullEvent::PresenceUpdate { .. } => {
+                None
+                //.or(log_settings.get_all_log_channel()),
+            }
+            | FullEvent::GuildMemberAddition { .. }
             | FullEvent::GuildMemberRemoval { .. } => {
                 log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
             }
@@ -764,7 +769,6 @@ impl GuildSettings {
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
             FullEvent::Message { .. }
-            | FullEvent::PresenceReplace { .. }
             | FullEvent::Resume { .. }
             | FullEvent::ShardStageUpdate { .. }
             | FullEvent::WebhookUpdate { .. }
@@ -792,7 +796,6 @@ impl GuildSettings {
             | FullEvent::ReactionAdd { .. }
             | FullEvent::ReactionRemove { .. }
             | FullEvent::ReactionRemoveAll { .. }
-            | FullEvent::PresenceUpdate { .. }
             | FullEvent::Ready { .. }
             | FullEvent::StageInstanceCreate { .. }
             | FullEvent::StageInstanceDelete { .. }
@@ -855,6 +858,37 @@ pub struct GuildSettingsMap;
 impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
 }
+
+// impl GuildSettingsMap {
+//     pub fn new() -> HashMap<GuildId, GuildSettings> {
+//         HashMap::new()
+//     }
+
+//     pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<&GuildSettings> {
+//         self.get(&guild_id)
+//     }
+
+//     pub fn get_guild_settings_mut(&mut self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+//         self.get_mut(&guild_id)
+//     }
+// }
+// impl std::ops::Index<GuildId> for GuildSettingsMap {
+//     type Output = GuildSettings;
+
+//     fn index(&self, guild_id: GuildId) -> &Self::Output {
+//         self.get(&guild_id).expect("Guild settings not found")
+//     }
+// }
+
+// impl std::ops::IndexMut<GuildId> for GuildSettingsMap {
+//     fn index_mut(&mut self, guild_id: GuildId) -> &mut Self::Output {
+//         self.get_mut(&guild_id).expect("Guild settings not found")
+//     }
+// }
+
+// pub fn set_guild_settings(&mut self, guild_id: GuildId, settings: GuildSettings) {
+//     self.insert(guild_id, settings);
+// }
 
 #[derive(Default)]
 pub struct AtomicU16Key;

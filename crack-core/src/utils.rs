@@ -1,4 +1,5 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
+use crate::commands::music::doplay::RequestingUser;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
@@ -13,7 +14,6 @@ use crate::{
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
-
 use ::serenity::{
     all::{GuildId, Interaction, UserId},
     builder::{
@@ -25,7 +25,7 @@ use ::serenity::{
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-        MessageInteraction,
+        Mentionable, MessageInteraction,
     },
     CreateReply, ReplyHandle,
 };
@@ -498,8 +498,6 @@ pub async fn edit_embed_response_poise(
     }
 }
 
-use crate::commands::music::doplay::RequestingUser;
-
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
     let user = match track.typemap().read().await.get::<RequestingUser>() {
@@ -534,11 +532,10 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 pub fn create_now_playing_embed_metadata(
+    requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
     metadata: MyAuxMetadata,
 ) -> CreateEmbed {
-    // TrackHandle::metadata(track);
-
     let MyAuxMetadata::Data(metadata) = metadata;
     tracing::warn!("metadata: {:?}", metadata);
 
@@ -551,11 +548,13 @@ pub fn create_now_playing_embed_metadata(
 
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
-    let channel_field: (&'static str, String, bool) = match metadata.channel.clone() {
-        Some(channel) => ("Channel", format!(">>> {}", channel), true),
-        None => ("Channel", ">>> N/A".to_string(), true),
+    let channel_field: (&'static str, String, bool) = match requesting_user {
+        Some(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        None => {
+            tracing::warn!("No user id");
+            ("Requested By", ">>> N/A".to_string(), true)
+        }
     };
-
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url) = get_footer_info(&source_url);
@@ -613,6 +612,7 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     description
 }
 
+/// Calculate the number of pages needed to display all the tracks.
 pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     let num_pages = ((tracks.len() as f64 - 1.0) / EMBED_PAGE_SIZE as f64).ceil() as usize;
     max(1, num_pages)

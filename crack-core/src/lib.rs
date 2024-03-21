@@ -8,6 +8,7 @@ use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
 use guild::settings::DEFAULT_DB_URL;
+use guild::settings::DEFAULT_LOG_PREFIX;
 use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
@@ -114,7 +115,21 @@ pub struct BotCredentials {
     pub openai_api_key: Option<String>,
     pub virustotal_api_key: Option<String>,
 }
-#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+
+impl Default for BotCredentials {
+    fn default() -> Self {
+        Self {
+            discord_token: "XXXX".to_string(),
+            discord_app_id: "XXXX".to_string(),
+            spotify_client_id: None,
+            spotify_client_secret: None,
+            openai_api_key: None,
+            virustotal_api_key: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: Option<u64>,
     pub owners: Option<Vec<u64>>,
@@ -128,6 +143,24 @@ pub struct BotConfig {
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
     pub log_prefix: Option<String>,
+}
+
+impl Default for BotConfig {
+    fn default() -> Self {
+        Self {
+            video_status_poll_interval: Some(DEFAULT_VIDEO_STATUS_POLL_INTERVAL),
+            owners: None,
+            cam_kick: None,
+            sys_log_channel_id: None,
+            self_deafen: Some(true),
+            volume: Some(1.0),
+            guild_settings_map: None,
+            prefix: Some(DEFAULT_PREFIX.to_string()),
+            credentials: Some(BotCredentials::default()),
+            database_url: Some(DEFAULT_DB_URL.to_string()),
+            log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
+        }
+    }
 }
 
 impl Display for BotConfig {
@@ -297,7 +330,18 @@ impl std::ops::DerefMut for EventLog {
 impl Default for EventLog {
     fn default() -> Self {
         let log_path = format!("{}/events.log", get_log_prefix());
-        Self(Arc::new(Mutex::new(File::create(log_path).unwrap())))
+        let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
+        let log_file = match File::create(log_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error creating log file: {}", e);
+                // FIXME: Maybe use io::null()?
+                // I went down this path with sink and it was a mistake.
+                File::create("/dev/null")
+                    .expect("Should be able to have a file object to write too.")
+            }
+        };
+        Self(Arc::new(Mutex::new(log_file)))
     }
 }
 
@@ -449,4 +493,33 @@ impl Data {
     // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
     //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_phone_code_data() {
+        let data = PhoneCodeData::load().unwrap();
+        let country_names = data.country_names;
+        let phone_codes = data.phone_codes;
+        let country_by_phone_code = data.country_by_phone_code;
+
+        assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
+        assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
+        let want = &vec!["CA".to_string(), "UM".to_string(), "US".to_string()];
+        let got = country_by_phone_code.get("1").unwrap();
+        // This would be cheaper using a heap or tree
+        assert!(got.iter().all(|x| want.contains(x)));
+        assert!(want.iter().all(|x| got.contains(x)));
+    }
+
+    // Test the creationg of a default EventLog
+    #[test]
+    fn test_event_log_default() {
+        let event_log = EventLog::default();
+        let file = event_log.lock().unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 0);
+    }
 }

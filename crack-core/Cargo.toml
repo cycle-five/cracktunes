@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -13,10 +13,16 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 
 [features]
-default = ["cache", "playlist", "crack-gpt", "crack-osint"]
+default = [
+    "cache",
+    "playlist",
+    "crack-gpt",
+    "crack-osint",
+    "ignore-presence-log",
+]
 playlist = []
 shuttle = []
-log_all = []
+ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
@@ -40,7 +46,7 @@ prometheus = { version = "0.13", features = ["process"], optional = true }
 anyhow = "1.0"
 proc-macro2 = "1.0"
 typemap_rev = "0.3"
-chatgpt_rs = "1.2"
+chatgpt_rs = { version = "1.2", optional = true }
 either = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 crack-gpt = { path = "../crack-gpt", optional = true }

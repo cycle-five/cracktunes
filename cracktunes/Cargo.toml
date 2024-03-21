@@ -12,7 +12,7 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["playlist", "crack-gpt", "crack-osint"]
+default = ["playlist", "crack-gpt", "crack-osint", "crack-tracing"]
 playlist = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
@@ -26,6 +26,7 @@ crack-telemetry = [
     "warp",
 ]
 crack-metrics = ["prometheus", "warp"]
+crack-tracing = ["tracing-subscriber", "tracing-futures"]
 
 [dependencies]
 opentelemetry = { version = "0.22", optional = true }
@@ -53,9 +54,12 @@ tokio = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
 tracing = { workspace = true }
-tracing-appender = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-futures = { workspace = true }
+tracing-appender = { version = "0.2", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+], optional = true }
+# tracing-subscriber = { workspace = true }
+tracing-futures = { version = "0.2", optional = true }
 # tracing-bunyan-formatter = { workspace = true }
 # opentelemetry = { workspace = true, optional = true }
 # tracing-opentelemetry = { workspace = true, optional = true }

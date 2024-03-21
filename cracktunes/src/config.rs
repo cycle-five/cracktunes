@@ -27,7 +27,15 @@ use std::{
     time::Duration,
 };
 
-use crate::{get_admin_commands_hashset, get_mod_commands, get_music_commands};
+use crate::{get_admin_commands_hashset, get_mod_commands, get_music_commands, get_osint_commands};
+
+#[derive(Debug, Clone)]
+struct CommandCategories {
+    mod_command: bool,
+    admin_command: bool,
+    music_command: bool,
+    osint_command: bool,
+}
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -78,6 +86,20 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             }
         }
     }
+}
+
+/// Check if the user is authorized to use the osint commands.
+fn is_authorized_osint() -> bool {
+    // implementation of the is_authorized_osint function
+    // ...
+    true // placeholder return value
+}
+
+/// Check if the user is authorized to use the music commands.
+fn is_authorized_music() -> bool {
+    // implementation of the is_authorized_music function
+    // ...
+    true // placeholder return value
 }
 
 /// Create the poise framework from the bot config.
@@ -208,8 +230,12 @@ pub async fn poise_framework(
                 let command = &ctx.command().qualified_name;
                 let user_id = ctx.author().id.get();
 
-                let (mod_command, admin_command, music_command) =
-                    check_command_categories(command.clone());
+                let CommandCategories {
+                    mod_command,
+                    admin_command,
+                    music_command,
+                    osint_command,
+                } = check_command_categories(command.clone());
 
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
@@ -252,7 +278,18 @@ pub async fn poise_framework(
                     }
                 };
 
-                Ok(music_command)
+                // These need to be processed in order of most to least restrictive
+
+                if osint_command {
+                    return Ok(is_authorized_osint());
+                }
+
+                if music_command {
+                    return Ok(is_authorized_music());
+                }
+
+                // Default case fail to be on the safe side.
+                Ok(false)
 
                 // //let user_id = ctx.author().id.as_u64();
                 // // let guild_id = ctx.guild_id().unwrap_or_default();
@@ -436,14 +473,14 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     }
     None
 }
-
 /// Checks what categories the given command belongs to.
 // TODO: Use the build it categories?!?
 // TODO: Create a command struct with the categories info
 //     to parse this info.
-fn check_command_categories(user_cmd: String) -> (bool, bool, bool) {
+fn check_command_categories(user_cmd: String) -> CommandCategories {
     // FIXME: Make these constants
     let music_commands = get_music_commands();
+    let osint_commands = get_osint_commands();
     let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
     let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
 
@@ -466,11 +503,44 @@ fn check_command_categories(user_cmd: String) -> (bool, bool, bool) {
 
     let music_command = music_commands.contains(&clean_cmd.as_str());
 
-    (mod_command, admin_command, music_command)
+    let osint_command = osint_commands.contains(&clean_cmd.as_str());
+
+    CommandCategories {
+        mod_command,
+        admin_command,
+        music_command,
+        osint_command,
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use crack_core::{BotConfig, EventLog};
+
+    use crate::config::CommandCategories;
+
+    #[test]
+    fn test_command_categories() {
+        let cmd = CommandCategories {
+            mod_command: true,
+            admin_command: false,
+            music_command: false,
+            osint_command: false,
+        };
+        assert_eq!(cmd.mod_command, true);
+        assert_eq!(cmd.admin_command, false);
+        assert_eq!(cmd.music_command, false);
+        assert_eq!(cmd.osint_command, false);
+    }
+
+    #[tokio::test]
+    async fn test_build_framework() {
+        let config = BotConfig::default();
+        let event_log = EventLog::new();
+        let client = super::poise_framework(config, event_log).await;
+        assert!(client.is_ok());
+    }
+
     #[test]
     fn test_prefix() {
         let prefixes = vec!["crack ", "crack", "crack!"]
@@ -495,37 +565,94 @@ mod test {
 
     #[test]
     fn test_check_command_categories_bad_command() {
-        let (mod_command, admin_command, music_command) =
-            super::check_command_categories("admin settings".to_owned());
+        let CommandCategories {
+            mod_command,
+            admin_command,
+            music_command,
+            osint_command,
+        } = super::check_command_categories("admin settings".to_owned());
         assert_eq!(mod_command, false);
         assert_eq!(admin_command, false);
         assert_eq!(music_command, false);
+        assert_eq!(osint_command, false);
     }
 
     #[test]
     fn test_check_command_categories_music_command() {
-        let (mod_command, admin_command, music_command) =
-            super::check_command_categories("play".to_owned());
+        let CommandCategories {
+            mod_command,
+            admin_command,
+            music_command,
+            osint_command,
+        } = super::check_command_categories("play".to_owned());
         assert_eq!(mod_command, false);
         assert_eq!(admin_command, false);
         assert_eq!(music_command, true);
+        assert_eq!(osint_command, false);
     }
 
     #[test]
     fn test_check_command_categories_settings_command() {
-        let (mod_command, admin_command, music_command) =
-            super::check_command_categories("settings get all".to_owned());
+        let CommandCategories {
+            mod_command,
+            admin_command,
+            music_command,
+            osint_command,
+        } = super::check_command_categories("settings get all".to_owned());
         assert_eq!(mod_command, true);
         assert_eq!(admin_command, false);
         assert_eq!(music_command, false);
+        assert_eq!(osint_command, false);
     }
 
     #[test]
     fn test_check_command_categories_admin_command() {
-        let (mod_command, admin_command, music_command) =
-            super::check_command_categories("admin ban".to_owned());
+        let CommandCategories {
+            mod_command,
+            admin_command,
+            music_command,
+            osint_command,
+        } = super::check_command_categories("admin ban".to_owned());
         assert_eq!(mod_command, true);
         assert_eq!(admin_command, true);
         assert_eq!(music_command, false);
+        assert_eq!(osint_command, false);
     }
 }
+
+// impl CommandCategories {
+//     pub fn is_mod_command(&self) -> bool {
+//         self.mod_command
+//     }
+
+//     pub fn is_admin_command(&self) -> bool {
+//         self.admin_command
+//     }
+
+//     pub fn is_music_command(&self) -> bool {
+//         self.music_command
+//     }
+
+//     pub fn is_osint_command(&self) -> bool {
+//         self.osint_command
+//     }
+// }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_command_categories() {
+//         let cmd = CommandCategories {
+//             mod_command: true,
+//             admin_command: false,
+//             music_command: false,
+//             osint_command: false,
+//         };
+//         assert_eq!(cmd.is_mod_command(), true);
+//         assert_eq!(cmd.is_admin_command(), false);
+//         assert_eq!(cmd.is_music_command(), false);
+//         assert_eq!(cmd.is_osint_command(), false);
+//     }
+// }
