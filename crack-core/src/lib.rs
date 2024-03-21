@@ -507,11 +507,12 @@ mod tests {
         let country_by_phone_code = data.country_by_phone_code;
 
         assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
-        assert_eq!(phone_codes.get("United States"), Some(&"US".to_string()));
-        assert_eq!(
-            country_by_phone_code.get("1"),
-            Some(&vec!["US".to_string(), "CA".to_string()])
-        );
+        assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
+        let want = &vec!["CA".to_string(), "UM".to_string(), "US".to_string()];
+        let got = country_by_phone_code.get("1").unwrap();
+        // This would be cheaper using a heap or tree
+        assert!(got.iter().all(|x| want.contains(x)));
+        assert!(want.iter().all(|x| got.contains(x)));
     }
 
     // Test the creationg of a default EventLog
