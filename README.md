@@ -96,44 +96,18 @@ docker run -d --env-file .env cracktunes
 - [x] Welcome Actions
 - [x] Play on multiple servers at once
 
-## 0.2.3
-- [x] Bug fixes (volume)
-- [x] Shuttle support (still broken)
-
-## 0.2.4 (2023/07/17)
-- [x] Bug fixes.
-- [x] Remove reliance on slash commands everywhere.
-- [x] Remove shuttle for now
-
-## 0.2.5
-- ~~[] Shuttle~~
-- ~~[] Reminders~~
-- ~~[] Notes~~
-
 ## ~~0.2.6~~
 Didn't really track stuff here...
-## ~~0.2.12~~
-## ~~0.2.13~~
-- ~~[] Port to next branch of serenity~~
-- ~~[] Flesh out admin commands~~
-
-## 0.3.0-rc.1
-- [x] Dockerized!
-- [x] Refactored settings commands.
-- [x] Storing and retrieving settings from Postgres.
-- [x] Updated dependencies to be in line with current.
-## 0.3.0-rc.2
-- [x] Clean command
-- [x] Bug fixes
-- ~~[ ] Down vote~~ (not working)
-## ~~0.3.0-rc.3~~
-## 0.3.0-rc.4
-* fix storing auto role and timeout I think
-* download and skip together
-* ~~try to finally fix this fucking volume bug~~
-* fix loading guild settings
-* add pgadmin to docker compose
-* ~~fix volume~~ (volume is still broken)
+## v0.3.1
+- Fix the requesting user not always displaying
+## ~~0.3.0-rc.6~~
+## 0.3.0
+- Added more breakdown of features which can be optionally turned on/off
+- Telemitry
+- Metrics / logging
+- Removed a lot of unescesarry dependencies  
+## 0.1.4 (crack-osint) (2024/03/12)
+- osint scan command to check urls for malicious content
 ## 0.3.0-rc.5 (2024/03/09)
 - cargo update
 - GuildId checks
@@ -142,20 +116,37 @@ Didn't really track stuff here...
 - add feature for osint
 - make admin commands usable by guild members with admin
 - add dry run to rename_all
-## 0.1.4 (crack-osint) (2024/03/12)
-- osint scan command to check urls for malicious content
-## ~~0.3.0-rc.6~~
-## 0.3.0
-- Added more breakdown of features which can be optionally turned on/off
-- Telemitry
-- Metrics / logging
-- Removed a lot of unescesarry dependencies  
-## v0.3.1
-- Fix the requesting user not always displaying
-
-...
-## 1.0.0
-- [ ] RTChris' Demuxer in C++ (for fun)?
+## 0.3.0-rc.4
+* fix storing auto role and timeout I think
+* download and skip together
+* ~~try to finally fix this fucking volume bug~~
+* fix loading guild settings
+* add pgadmin to docker compose
+* ~~fix volume~~ (volume is still broken)
+## 0.3.0-rc.2
+- [x] Clean command
+- [x] Bug fixes
+- ~~[ ] Down vote~~ (not working)
+## 0.3.0-rc.1
+- [x] Dockerized!
+- [x] Refactored settings commands.
+- [x] Storing and retrieving settings from Postgres.
+- [x] Updated dependencies to be in line with current.
+## ~~0.2.13~~
+- ~~[] Port to next branch of serenity~~
+- ~~[] Flesh out admin commands~~
+## ~~0.2.12~~
+## 0.2.5
+- ~~[] Shuttle~~
+- ~~[] Reminders~~
+- ~~[] Notes~~
+## 0.2.4 (2023/07/17)
+- [x] Bug fixes.
+- [x] Remove reliance on slash commands everywhere.
+- [x] Remove shuttle for now
+## 0.2.3
+- [x] Bug fixes (volume)
+- [x] Shuttle support (still broken)
 
 
 <p align="center">
