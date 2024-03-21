@@ -2,12 +2,10 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use serenity::all::GuildId;
-use serenity::model;
 use std::collections::HashMap;
 
 use crate::db::GuildEntity;
 use crate::guild::settings::GuildSettings;
-use crate::guild::settings::GuildSettingsMap;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
 use crate::utils::send_response_poise;
