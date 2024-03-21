@@ -1,4 +1,5 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
+use crate::commands::music::doplay::RequestingUser;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
@@ -13,7 +14,6 @@ use crate::{
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
-
 use ::serenity::{
     all::{GuildId, Interaction, UserId},
     builder::{
@@ -497,8 +497,6 @@ pub async fn edit_embed_response_poise(
         None => send_embed_response_poise(ctx, embed).await,
     }
 }
-
-use crate::commands::music::doplay::RequestingUser;
 
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
