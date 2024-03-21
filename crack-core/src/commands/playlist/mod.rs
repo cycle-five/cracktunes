@@ -14,7 +14,8 @@ use crate::{Context, Error};
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("add_to", "create", "delete", "get")
+    subcommands("add_to", "create", "delete", "get"),
+    aliases("pl")
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
