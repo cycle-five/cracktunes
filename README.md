@@ -23,7 +23,7 @@ Thanks to the guys over at  [alwaysdata](https://www.alwaysdata.com/) for hostin
 * *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
 * *Optional* define `OPENAI_API_KEY` for chatgpt support.
 * *Optional* define `VIRUSTOTAL_API_KEY` for osint URL checking.
-* Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
+* Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
 
 ### Docker **FIXME**
 
