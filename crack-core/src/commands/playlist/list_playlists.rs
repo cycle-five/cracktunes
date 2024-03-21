@@ -38,5 +38,25 @@ pub async fn get_playlists_by_user_id(user_id: UserId, pool: Pool) -> Vec<AuxMet
             }
         })
         .collect::<Vec<_>>();
+    tracing::warn!("aux_metadata: {:?}", len(aux_metadata));
+    aux_metadata
     // playlist.print_playlist(ctx).await?;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::aux_metadata_to_db_structures;
+    use crate::db::metadata::aux_metadata_from_db;
+    use crate::db::metadata::AuxMetadata;
+    use crate::db::metadata::Metadata;
+    use crate::db::playlist::Playlist;
+
+    #[tokio::test]
+    async fn test_get_playlists_by_user_id() {
+        let user_id = 1;
+        let pool = Pool::new();
+        let playlists = get_playlists_by_user_id(user_id, pool).await;
+        assert_eq!(playlists.len(), 0);
+    }
 }
