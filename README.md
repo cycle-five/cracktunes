@@ -85,21 +85,9 @@ docker run -d --env-file .env cracktunes
 
 ### ~~Roadmap~~ Change Log
 
-## 0.2.0
-- [x] Play music from YouTube
-- [x] Play music from Spotify (kind of...)
-
-## 0.2.1 (2023/07/02)
-- [x] Play music from local files
-
-## 0.2.2 (2023/07/09 ish)
-- [x] Welcome Actions
-- [x] Play on multiple servers at once
-
-## ~~0.2.6~~
-Didn't really track stuff here...
-## v0.3.1
+## v0.3.1 (2024/03/21)
 - Fix the requesting user not always displaying
+- Reversed order of this Change Log so newest stuff is on top
 ## ~~0.3.0-rc.6~~
 ## 0.3.0
 - Added more breakdown of features which can be optionally turned on/off
@@ -136,6 +124,8 @@ Didn't really track stuff here...
 - ~~[] Port to next branch of serenity~~
 - ~~[] Flesh out admin commands~~
 ## ~~0.2.12~~
+## ~~0.2.6~~
+Didn't really track stuff here...
 ## 0.2.5
 - ~~[] Shuttle~~
 - ~~[] Reminders~~
@@ -147,6 +137,14 @@ Didn't really track stuff here...
 ## 0.2.3
 - [x] Bug fixes (volume)
 - [x] Shuttle support (still broken)
+## 0.2.2 (2023/07/09 ish)
+- [x] Welcome Actions
+- [x] Play on multiple servers at once
+## 0.2.1 (2023/07/02)
+- [x] Play music from local files
+## 0.2.0
+- [x] Play music from YouTube
+- [x] Play music from Spotify (kind of...)
 
 
 <p align="center">
