@@ -153,6 +153,7 @@ pub async fn send_response_poise(
     }
 }
 
+/// Sends a reply response as text
 pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
