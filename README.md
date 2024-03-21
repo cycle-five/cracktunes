@@ -150,6 +150,9 @@ Didn't really track stuff here...
 - Telemitry
 - Metrics / logging
 - Removed a lot of unescesarry dependencies  
+## v0.3.1
+- Fix the requesting user not always displaying
+
 ...
 ## 1.0.0
 - [ ] RTChris' Demuxer in C++ (for fun)?
