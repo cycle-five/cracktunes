@@ -49,12 +49,6 @@ pub async fn add_to_playlist(
         Err(_) => Playlist::get_playlist_by_name(&db_pool, playlist_name.clone(), user_id).await,
     }?;
 
-    // // Check if the track exists
-    // // TODO: Add the SQL query and logic here
-
-    // // Add the track to the playlist
-    // // TODO: Add the SQL query and logic here
-
     let (in_metadata, _playlist_track) =
         aux_metadata_to_db_structures(metadata, guild_id, channel_id)?;
 
