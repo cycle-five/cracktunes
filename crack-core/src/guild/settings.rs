@@ -859,6 +859,37 @@ impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
 }
 
+// impl GuildSettingsMap {
+//     pub fn new() -> HashMap<GuildId, GuildSettings> {
+//         HashMap::new()
+//     }
+
+//     pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<&GuildSettings> {
+//         self.get(&guild_id)
+//     }
+
+//     pub fn get_guild_settings_mut(&mut self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+//         self.get_mut(&guild_id)
+//     }
+// }
+// impl std::ops::Index<GuildId> for GuildSettingsMap {
+//     type Output = GuildSettings;
+
+//     fn index(&self, guild_id: GuildId) -> &Self::Output {
+//         self.get(&guild_id).expect("Guild settings not found")
+//     }
+// }
+
+// impl std::ops::IndexMut<GuildId> for GuildSettingsMap {
+//     fn index_mut(&mut self, guild_id: GuildId) -> &mut Self::Output {
+//         self.get_mut(&guild_id).expect("Guild settings not found")
+//     }
+// }
+
+// pub fn set_guild_settings(&mut self, guild_id: GuildId, settings: GuildSettings) {
+//     self.insert(guild_id, settings);
+// }
+
 #[derive(Default)]
 pub struct AtomicU16Key;
 
