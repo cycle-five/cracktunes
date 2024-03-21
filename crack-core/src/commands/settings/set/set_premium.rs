@@ -27,6 +27,7 @@ pub async fn set_premium_internal(
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
     let prefix = ctx.data().bot_settings.get_prefix();
 
+    // here premium is parsed
     let premium = set_premium.parse::<bool>()?;
     let settings = {
         let mut write_guard = ctx.data().guild_settings_map.write().unwrap();
