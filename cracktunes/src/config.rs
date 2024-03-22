@@ -33,7 +33,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-struct CommandCategories {
+pub struct CommandCategories {
     mod_command: bool,
     admin_command: bool,
     music_command: bool,
@@ -104,6 +104,20 @@ fn is_authorized_music() -> bool {
     // implementation of the is_authorized_music function
     // ...
     true // placeholder return value
+}
+
+/// Check if the user is authorized to use mod commands.
+fn is_authorized_mod() -> bool {
+    // implementation of the is_authorized_mod function
+    // ...
+    false // placeholder return value
+}
+
+/// Check if the user is authorized to use admin commands.
+fn is_authorized_admin() -> bool {
+    // implementation of the is_authorized_admin function
+    // ...
+    false // placeholder return value
 }
 
 /// Create the poise framework from the bot config.
@@ -654,21 +668,16 @@ mod test {
 //     }
 // }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     fn test_command_categories() {
-//         let cmd = CommandCategories {
-//             mod_command: true,
-//             admin_command: false,
-//             music_command: false,
-//             osint_command: false,
-//         };
-//         assert_eq!(cmd.is_mod_command(), true);
-//         assert_eq!(cmd.is_admin_command(), false);
-//         assert_eq!(cmd.is_music_command(), false);
-//         assert_eq!(cmd.is_osint_command(), false);
-//     }
-// }
+    #[test]
+    fn test_is_authorized_defaults() {
+        // Just check the default return values of the authorization functions.
+        assert_eq!(is_authorized_osint(), true);
+        assert_eq!(is_authorized_music(), true);
+        assert_eq!(is_authorized_mod(), false);
+        assert_eq!(is_authorized_admin(), false);
+    }
+}

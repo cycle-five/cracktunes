@@ -639,7 +639,6 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
         let mut description = String::new();
 
-        let x = 0;
         for (i, &playlist) in playlists.iter().enumerate() {
             let _ = writeln!(
                 description,
