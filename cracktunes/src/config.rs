@@ -253,7 +253,7 @@ pub async fn poise_framework(
                     admin_command,
                     music_command,
                     osint_command,
-                    ..
+                    playlist_command,
                 } = check_command_categories(command.clone());
 
                 // If the physically running bot's owner is running the command, allow it
