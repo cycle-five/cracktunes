@@ -24,6 +24,8 @@ use {
 
 #[cfg(feature = "crack-telemetry")]
 const SERVICE_NAME: &str = "cracktunes";
+#[cfg(feature = "crack-metrics")]
+const WARP_PORT: u16 = 8833;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -78,14 +80,16 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     drop(data_global);
 
-    let bot = client.start();
+    let bot = client.start_shards(2);
 
     #[cfg(feature = "crack-metrics")]
     {
         let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
         let server = async {
-            warp::serve(metrics_route).run(([127, 0, 0, 1], 8000)).await;
+            warp::serve(metrics_route)
+                .run(([127, 0, 0, 1], WARP_PORT))
+                .await;
             Ok::<(), serenity::Error>(())
         };
         tokio::try_join!(bot, server)?;

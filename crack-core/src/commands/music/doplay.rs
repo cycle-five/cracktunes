@@ -68,7 +68,7 @@ pub enum Mode {
     Reverse,
     Shuffle,
     Jump,
-    Download,
+    DownloadMKV,
     DownloadMP3,
     Search,
 }
@@ -88,6 +88,7 @@ pub enum QueryType {
 #[cfg(not(tarpaulin))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
+    let _id = ctx.serenity_context().shard_id;
     ctx.say(format!(
         "The name of this guild is: {}",
         ctx.partial_guild().await.unwrap().name
@@ -116,8 +117,10 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             Mode::Reverse
         } else if asdf.starts_with("jump") {
             Mode::Jump
-        } else if asdf.starts_with("download") {
-            Mode::Download
+        } else if asdf.starts_with("downloadmkv") {
+            Mode::DownloadMKV
+        } else if asdf.starts_with("downloadmp3") {
+            Mode::DownloadMP3
         } else if asdf.starts_with("search") {
             Mode::Search
         } else {
@@ -142,7 +145,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             "reverse" => Mode::Reverse,
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
-            "download" => Mode::Download,
+            "download" => Mode::DownloadMKV,
             "downloadmp3" => Mode::DownloadMP3,
             "search" => Mode::Search,
             _ => Mode::End,
@@ -833,7 +836,7 @@ async fn match_mode(
                 }
             };
         }
-        Mode::Download => {
+        Mode::DownloadMKV => {
             let (status, file_name) =
                 get_download_status_and_filename(query_type.clone(), false).await?;
             ctx.channel_id()
@@ -1779,7 +1782,10 @@ mod test {
         let msg = None;
         let mode = Some("download".to_string());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Download, x.clone()));
+        assert_eq!(
+            get_mode(is_prefix, msg, mode),
+            (Mode::DownloadMKV, x.clone())
+        );
 
         let is_prefix = false;
         let msg = None;

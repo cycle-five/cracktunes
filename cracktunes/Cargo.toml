@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.3.0"
+version = "0.3.2"
 description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
 publish = true
 edition = "2021"
@@ -12,8 +12,8 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["playlist", "crack-gpt", "crack-osint", "crack-tracing"]
-playlist = ["crack-core/sqlx", "sqlx"]
+default = ["db", "crack-gpt", "crack-osint", "crack-tracing"]
+db = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
@@ -78,7 +78,7 @@ tracing-futures = { version = "0.2", optional = true }
 prometheus = { version = "0.13", features = ["process"], optional = true }
 warp = { version = "0.3", optional = true }
 
-# Is this even needed? What did I add it for?
-[dev-dependencies]
-async-tungstenite = "0.25"
-tungstenite = "0.21"
+# # Is this even needed? What did I add it for?
+# [dev-dependencies]
+# async-tungstenite = "0.25"
+# tungstenite = "0.21"

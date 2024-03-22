@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.0"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "async-tungstenite",

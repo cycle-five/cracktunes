@@ -11,3 +11,16 @@ services:
     expose:
       - 5432
     restart: always
+  pdc_agent:
+    image: grafana/pdc-agent:latest
+    container_name: pdc_agent
+    links:
+      - postgres
+    command:
+      - "-token"
+      - "XXX"
+      - "-cluster"
+      - "prod-us-east-0"
+      - "-gcloud-hosted-grafana-id"
+      - "691720"
+    restart: always
