@@ -1,7 +1,7 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
-use crate::commands::music::doplay::RequestingUser;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
+use crate::{commands::music::doplay::RequestingUser, db::Playlist};
 use crate::{
     commands::MyAuxMetadata,
     interface::build_nav_btns,
@@ -630,6 +630,41 @@ pub async fn forget_queue_message(
     cache.queue_messages.retain(|(m, _)| m.id != message.id);
 
     Ok(())
+}
+
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
+    let content = if !playlists.is_empty() {
+        let start_idx = EMBED_PAGE_SIZE * page;
+        let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
+
+        let mut description = String::new();
+
+        let x = 0;
+        for (i, &playlist) in playlists.iter().enumerate() {
+            let _ = writeln!(
+                description,
+                // "`{}.` [{}]({})",
+                "`{}.` {}",
+                i + start_idx + 1,
+                playlist.name,
+            );
+        }
+
+        description
+    } else {
+        QUEUE_NO_SONGS.to_string()
+    };
+
+    CreateEmbed::default()
+        .title("Playlists")
+        .description(content)
+    //     .footer(CreateEmbedFooter::new(format!(
+    //         "{} {} {} {}",
+    //         QUEUE_PAGE,
+    //         page + 1,
+    //         QUEUE_PAGE_OF,
+    //         calculate_num_pages(playlists),
+    //     )))
 }
 
 pub async fn build_tracks_embed_metadata(metadata_arr: &[AuxMetadata], page: usize) -> CreateEmbed {

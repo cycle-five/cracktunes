@@ -81,6 +81,21 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
+    /// Retreive playlists by user ID
+    pub async fn get_playlists_by_user_id(
+        pool: &PgPool,
+        user_id: i64,
+    ) -> Result<Vec<Playlist>, CrackedError> {
+        sqlx::query_as!(
+            Playlist,
+            "SELECT * FROM playlist WHERE user_id = $1",
+            user_id
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(CrackedError::SQLX)
+    }
+
     /// Reterive a playlist by name and user ID.
     pub async fn get_playlist_by_name(
         pool: &PgPool,

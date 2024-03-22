@@ -27,7 +27,10 @@ use std::{
     time::Duration,
 };
 
-use crate::{get_admin_commands_hashset, get_mod_commands, get_music_commands, get_osint_commands};
+use crate::{
+    get_admin_commands_hashset, get_mod_commands, get_music_commands, get_osint_commands,
+    get_playlist_commands,
+};
 
 #[derive(Debug, Clone)]
 struct CommandCategories {
@@ -35,6 +38,7 @@ struct CommandCategories {
     admin_command: bool,
     music_command: bool,
     osint_command: bool,
+    playlist_command: bool,
 }
 
 /// on_error is called when an error occurs in the framework.
@@ -235,6 +239,7 @@ pub async fn poise_framework(
                     admin_command,
                     music_command,
                     osint_command,
+                    ..
                 } = check_command_categories(command.clone());
 
                 // If the physically running bot's owner is running the command, allow it
@@ -480,6 +485,7 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
 fn check_command_categories(user_cmd: String) -> CommandCategories {
     // FIXME: Make these constants
     let music_commands = get_music_commands();
+    let playlist_commands = get_playlist_commands();
     let osint_commands = get_osint_commands();
     let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
     let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
@@ -505,11 +511,14 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
     let osint_command = osint_commands.contains(&clean_cmd.as_str());
 
+    let playlist_command = playlist_commands.contains(&clean_cmd.as_str());
+
     CommandCategories {
         mod_command,
         admin_command,
         music_command,
         osint_command,
+        playlist_command,
     }
 }
 
@@ -526,11 +535,13 @@ mod test {
             admin_command: false,
             music_command: false,
             osint_command: false,
+            playlist_command: false,
         };
         assert_eq!(cmd.mod_command, true);
         assert_eq!(cmd.admin_command, false);
         assert_eq!(cmd.music_command, false);
         assert_eq!(cmd.osint_command, false);
+        assert_eq!(cmd.playlist_command, false);
     }
 
     #[tokio::test]
@@ -570,11 +581,13 @@ mod test {
             admin_command,
             music_command,
             osint_command,
+            playlist_command,
         } = super::check_command_categories("admin settings".to_owned());
         assert_eq!(mod_command, false);
         assert_eq!(admin_command, false);
         assert_eq!(music_command, false);
         assert_eq!(osint_command, false);
+        assert_eq!(playlist_command, false);
     }
 
     #[test]
@@ -584,6 +597,7 @@ mod test {
             admin_command,
             music_command,
             osint_command,
+            ..
         } = super::check_command_categories("play".to_owned());
         assert_eq!(mod_command, false);
         assert_eq!(admin_command, false);
@@ -598,6 +612,7 @@ mod test {
             admin_command,
             music_command,
             osint_command,
+            ..
         } = super::check_command_categories("settings get all".to_owned());
         assert_eq!(mod_command, true);
         assert_eq!(admin_command, false);
@@ -612,6 +627,7 @@ mod test {
             admin_command,
             music_command,
             osint_command,
+            ..
         } = super::check_command_categories("admin ban".to_owned());
         assert_eq!(mod_command, true);
         assert_eq!(admin_command, true);

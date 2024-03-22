@@ -3,9 +3,11 @@ services:
     container_name: postgres
     image: postgres:latest
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PW}
-      - POSTGRES_DB=${POSTGRES_DB} #optional (specify default database instead of $POSTGRES_DB)
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres} #optional (specify default database instead of $POSTGRES_DB)
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
+    expose:
+      - 5432
     restart: always

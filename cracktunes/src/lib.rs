@@ -34,10 +34,14 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "remove",
         "grab",
         "voteskip",
+        "downvote",
         "version",
         "help",
         "autopause",
         "autoplay",
+        // we're putting other random commands under music for now to get them treated correctly by the perms system
+        "ping",
+        // "uptime",
     ]
 }
 
@@ -133,6 +137,7 @@ pub fn get_owner_commands() -> Vec<&'static str> {
 pub fn get_commands() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("music", get_music_commands()),
+        ("playlist", get_playlist_commands()),
         ("admin", get_admin_commands().to_vec()),
         ("settings", get_settings_commands()),
         ("owner", get_owner_commands()),
