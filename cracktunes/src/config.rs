@@ -285,6 +285,7 @@ pub async fn poise_framework(
                     },
                 );
 
+                // FIXME: This is a bit of a hack
                 match res {
                     Ok(true) => {
                         tracing::info!("Author is admin");
