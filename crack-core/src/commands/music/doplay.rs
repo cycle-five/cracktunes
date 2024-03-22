@@ -285,16 +285,15 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
     slash_command,
     prefix_command,
     guild_only,
-    aliases("next", "pn", "Pn", "PN", "push")
+    aliases("next", "pn", "Pn", "insert", "ins", "push")
 )]
 pub async fn playnext(
     ctx: Context<'_>,
-    #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    play_internal(ctx, Some("next".to_string()), file, query_or_url).await
+    play_internal(ctx, Some("next".to_string()), None, query_or_url).await
 }
 
 /// Search interactively for a song
