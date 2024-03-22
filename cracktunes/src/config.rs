@@ -135,14 +135,14 @@ pub async fn poise_framework(
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let options = poise::FrameworkOptions::<_, Error> {
-        #[cfg(feature = "set_owners_from_config")]
-        owners: config
-            .owners
-            .as_ref()
-            .unwrap_or(&vec![])
-            .iter()
-            .map(|id| UserId::new(*id))
-            .collect(),
+        // #[cfg(feature = "set_owners_from_config")]
+        // owners: config
+        //     .owners
+        //     .as_ref()
+        //     .unwrap_or(&vec![])
+        //     .iter()
+        //     .map(|id| UserId::new(*id))
+        //     .collect(),
         commands: vec![
             commands::autopause(),
             commands::autoplay(),
