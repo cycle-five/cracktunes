@@ -303,7 +303,7 @@ pub async fn poise_framework(
                     return Ok(is_authorized_osint());
                 }
 
-                if music_command {
+                if music_command || playlist_command {
                     return Ok(is_authorized_music());
                 }
 
