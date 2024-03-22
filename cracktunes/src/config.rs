@@ -247,6 +247,8 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = &ctx.command().qualified_name;
                 let user_id = ctx.author().id.get();
+                let _ = is_authorized_mod();
+                let _ = is_authorized_admin();
 
                 let CommandCategories {
                     mod_command,
