@@ -23,3 +23,6 @@ CREATE USER grafana WITH PASSWORD 'asdfqwer' CREATEDB;
 
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana;
 ```
+
+```bash
+```
