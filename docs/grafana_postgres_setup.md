@@ -25,4 +25,5 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana;
 ```
 
 ```bash
+docker run --name pdc-agent grafana/pdc-agent:latest -token <TOKEB>  -cluster prod-us-east-0 -gcloud-hosted-grafana-id 691720
 ```
