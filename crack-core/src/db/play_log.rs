@@ -23,17 +23,11 @@ struct TitleArtist {
 
 impl Display for TitleArtist {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let title = match self.title.as_ref() {
-            Some(title) => title,
-            None => "",
-        };
-        let _ = fmt.write_str(title);
+        let title = self.title.unwrap_or_default();
+        let _ = fmt.write_str(&title);
         let _ = fmt.write_str(" - ");
-        let artist = match self.artist.as_ref() {
-            Some(artist) => artist,
-            None => "",
-        };
-        let _ = fmt.write_str(artist);
+        let artist = self.artist.unwrap_or_default();
+        let _ = fmt.write_str(&artist);
         Ok(())
     }
 }
