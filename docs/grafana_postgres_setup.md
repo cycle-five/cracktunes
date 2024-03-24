@@ -31,5 +31,5 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana;
 3) Run the Postgres Exporter
 
 ```bash
-docker run --name pdc-agent grafana/pdc-agent:latest -token <TOKEN>  -cluster prod-us-east-0 -gcloud-hosted-grafana-id 691720
+docker run --name pdc-agent grafana/pdc-agent:latest -token [TOKEN] -cluster prod-us-east-0 -gcloud-hosted-grafana-id 691720
 ```
