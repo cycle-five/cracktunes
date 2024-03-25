@@ -1,4 +1,5 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
+use crate::interface::requesting_user_to_string;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{commands::music::doplay::RequestingUser, db::Playlist};
@@ -25,7 +26,7 @@ use ::serenity::{
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-        Mentionable, MessageInteraction,
+        MessageInteraction,
     },
     CreateReply, ReplyHandle,
 };
@@ -547,7 +548,11 @@ pub fn create_now_playing_embed_metadata(
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
-        Some(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        Some(user_id) => (
+            "Requested By",
+            format!(">>> {}", requesting_user_to_string(user_id)),
+            true,
+        ),
         None => {
             tracing::warn!("No user id");
             ("Requested By", ">>> N/A".to_string(), true)
