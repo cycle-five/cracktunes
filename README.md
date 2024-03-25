@@ -84,8 +84,10 @@ docker run -d --env-file .env cracktunes
 ```
 
 ### ~~Roadmap~~ Change Log
-## v0.3.2 (2024/03/21)
+## v0.3.2 (2024/03/21-)
 - Added pl alias for playlist
+- Added listplaylists
+- JSON for grafana dashboards
 ## v0.3.1 (2024/03/21)
 - Fix the requesting user not always displaying
 - Reversed order of this Change Log so newest stuff is on top
