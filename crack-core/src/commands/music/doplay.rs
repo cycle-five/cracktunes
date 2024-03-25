@@ -1344,6 +1344,14 @@ pub enum RequestingUser {
     UserId(UserId),
 }
 
+// impl Mentionable for RequestingUser {
+//     fn mention(&self) -> String {
+//         match self {
+//             RequestingUser::UserId(user) => user.mention(),
+//         }
+//     }
+// }
+
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
 }
