@@ -44,5 +44,4 @@ pub async fn get_playlists_by_user_id(
     //     .collect::<Vec<_>>();
     tracing::warn!("res: {:?}", playlists.is_ok());
     Ok(playlists?)
-    // playlist.print_playlist(ctx).await?;
 }
