@@ -211,3 +211,15 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
         build_single_nav_btn(">>", cant_right),
     ])]
 }
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_requesting_user_to_string() {
+        use super::requesting_user_to_string;
+        use serenity::model::id::UserId;
+
+        assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
+        assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+    }
+}
