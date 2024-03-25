@@ -80,3 +80,4 @@ mockall = "0.12"
 tungstenite = "0.21"
 async-tungstenite = "0.25"
 sqlx = { version = "0.7.4", features = ["runtime-async-std", "macros"] }
+sqlx-postgres = { version = "0.7.4" }

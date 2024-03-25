@@ -754,6 +754,7 @@ dependencies = [
  "serenity",
  "songbird",
  "sqlx",
+ "sqlx-postgres",
  "symphonia",
  "sys-info",
  "tokio",
