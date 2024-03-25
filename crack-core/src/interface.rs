@@ -47,6 +47,11 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         let duration = get_human_readable_timestamp(metadata.duration);
         let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
 
+        let mention = match requesting_user.get() {
+            1 => "(auto)".to_string(),
+            _ => requesting_user.mention().to_string(),
+        };
+
         let _ = writeln!(
             description,
             "{}. [{}]({}) • {} ({})",
@@ -54,7 +59,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
             title,
             url,
             duration,
-            requesting_user.mention(),
+            mention,
         );
     }
 
@@ -111,7 +116,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
         Ok(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
-        Err(error) => {
+        Err::Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
             ("Requested By", ">>> N/A".to_string(), true)
         }
