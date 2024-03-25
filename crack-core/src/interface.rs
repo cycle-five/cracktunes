@@ -118,7 +118,11 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
-        Ok(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        Ok(user_id) => (
+            "Requested By",
+            format!(">>> {}", requesting_user_to_string(user_id)),
+            true,
+        ),
         Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
             ("Requested By", ">>> N/A".to_string(), true)
