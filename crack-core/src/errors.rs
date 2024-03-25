@@ -39,6 +39,7 @@ pub enum CrackedError {
     NoGuildForChannelId(ChannelId),
     NoGuildSettings,
     NoLogChannel,
+    NoUserAutoplay,
     NothingPlaying,
     Other(&'static str),
     InvalidIP(String),
@@ -83,6 +84,10 @@ impl Display for CrackedError {
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }
+            Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
+            Self::AlreadyConnected(mention) => {
+                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
+            }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
@@ -106,11 +111,9 @@ impl Display for CrackedError {
             }
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
+            Self::NoUserAutoplay => f.write_str("(auto)"),
             Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),
-            Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
-            Self::AlreadyConnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
-            }
+
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::PlayListFail => f.write_str(FAIL_PLAYLIST_FETCH),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),

@@ -503,8 +503,7 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
         Some(RequestingUser::UserId(user)) => *user,
         None => {
             tracing::warn!("No user found for track: {:?}", track);
-            // return Err(CrackedError::Other("No user found for track").into());
-            UserId::new(1)
+            return Err(CrackedError::NoUserAutoplay);
         }
     };
     Ok(user)
