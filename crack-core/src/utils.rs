@@ -9,10 +9,7 @@ use crate::{
     interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
-        messages::{
-            QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
-            QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
-        },
+        messages::{QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT},
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
@@ -671,33 +668,13 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
     //     )))
 }
 
-pub async fn build_tracks_embed_metadata(metadata_arr: &[AuxMetadata], page: usize) -> CreateEmbed {
-    let (description, thumbnail) = if !metadata_arr.is_empty() {
-        // let metadata = get_track_metadata(&tracks[0]).await;
-        let metadata: AuxMetadata = metadata_arr[0].clone();
-
-        let thumbnail = metadata.thumbnail.unwrap_or_default();
-
-        let description = format!(
-            "[{}]({}) • `{}`",
-            metadata
-                .title
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
-            metadata
-                .source_url
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_SRC)),
-            get_human_readable_timestamp(metadata.duration)
-        );
-        (description, thumbnail)
-    } else {
-        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
-    };
-
+pub async fn build_tracks_embed_metadata(
+    playlist_name: String,
+    metadata_arr: &[AuxMetadata],
+    page: usize,
+) -> CreateEmbed {
     CreateEmbed::default()
-        .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, &description, false)
+        .field("Playlist:", &playlist_name, false)
         .field(
             QUEUE_UP_NEXT,
             build_queue_page_metadata(metadata_arr, page).await,
