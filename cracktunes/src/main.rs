@@ -80,7 +80,8 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     drop(data_global);
 
-    let bot = client.start_shards(2);
+    // let bot = client.start_shards(2);
+    let bot = client.start_autosharded();
 
     #[cfg(feature = "crack-metrics")]
     {
