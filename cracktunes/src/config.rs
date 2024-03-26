@@ -522,13 +522,14 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
         }
     }
 
-    let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap());
+    let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap_or_default());
 
-    let music_command = music_commands.contains(&clean_cmd.as_str());
+    let music_command = music_commands.contains(&first);
 
-    let osint_command = osint_commands.contains(&clean_cmd.as_str());
+    let osint_command = "osint".eq(first) && osint_commands.contains(&second.unwrap_or_default());
 
-    let playlist_command = playlist_commands.contains(&clean_cmd.as_str());
+    let playlist_command = ("playlist".eq(first) || "pl".eq(first))
+        && playlist_commands.contains(&second.unwrap_or_default());
 
     CommandCategories {
         mod_command,
