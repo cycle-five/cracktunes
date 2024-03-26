@@ -771,6 +771,7 @@ pub async fn create_paged_embed(
     Ok(())
 }
 
+/// Split a str into chunks
 pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
     string
         .chars()
@@ -803,6 +804,7 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
     chunks
 }
 
+/// Creates a closure that returns a page of a chunked string.
 pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String {
     let chunks = split_string_into_chunks(string, chunk_size);
     move |page| {
@@ -811,6 +813,7 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
     }
 }
 
+/// Creates a closure that returns a page of a chunked string, but tries to split on a newline if possible.
 pub fn create_page_getter_newline(
     string: &str,
     chunk_size: usize,
@@ -843,6 +846,7 @@ pub fn get_footer_info(url: &str) -> (String, String) {
     )
 }
 
+/// Converts a duration into a human readable timestamp
 pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     match duration {
         Some(duration) if duration == Duration::MAX => "∞".to_string(),
@@ -863,6 +867,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 
 use serenity::prelude::SerenityError;
 
+/// Check if a subdomian is from the same domain.
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
