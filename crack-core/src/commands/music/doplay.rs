@@ -325,8 +325,8 @@ pub async fn play(
 
 /// Play a song with more options
 // #[cfg(not(tarpaulin))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("altp"))]
-pub async fn altplay(
+#[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
+pub async fn optplay(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
