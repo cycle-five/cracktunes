@@ -78,6 +78,7 @@ pub async fn build_log_embed_thumb(
         .footer(footer))
 }
 
+/// Send a log message as a embed with a thumbnail.
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &serenity::ChannelId,
@@ -111,6 +112,7 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
+/// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams {
     pub channel: ChannelId,
     // pub http: &Arc<Http>,
@@ -162,8 +164,7 @@ pub async fn send_response_poise_text(
     send_embed_response_str(ctx, message_str).await
 }
 
-/// Create an emdend to send as a response.
-///
+/// Create an embed to send as a response.
 pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -173,7 +174,7 @@ pub async fn create_response(
     send_embed_response(ctx, interaction, embed).await
 }
 
-/// Create an emdend to send as a response.
+/// Create an embed to send as a response.
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -386,6 +387,7 @@ pub async fn create_response_interaction(
     }
 }
 
+/// Defers a response to an interaction.
 pub async fn defer_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
