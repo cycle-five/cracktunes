@@ -9,7 +9,7 @@ use crate::{
     interface::build_nav_btns,
     messaging::{
         message::CrackedMessage,
-        messages::{QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT},
+        messages::{QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF},
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
@@ -647,9 +647,10 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
             let _ = writeln!(
                 description,
                 // "`{}.` [{}]({})",
-                "`{}.` {}",
+                "`{}.` {} ({})",
                 i + start_idx + 1,
                 playlist.name,
+                playlist.id
             );
         }
 
@@ -676,9 +677,9 @@ pub async fn build_tracks_embed_metadata(
     page: usize,
 ) -> CreateEmbed {
     CreateEmbed::default()
-        .field("Playlist:", &playlist_name, false)
+        //.field("Playlist:", &playlist_name, true)
         .field(
-            QUEUE_UP_NEXT,
+            playlist_name,
             build_queue_page_metadata(metadata_arr, page).await,
             false,
         )
