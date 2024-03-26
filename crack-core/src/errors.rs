@@ -35,6 +35,7 @@ pub enum CrackedError {
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NotImplemented,
+    NoTrackName,
     NoDatabasePool,
     NoGuildId,
     NoGuildForChannelId(ChannelId),
@@ -106,6 +107,7 @@ impl Display for CrackedError {
             )),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
+            Self::NoTrackName => f.write_str("No track name"),
             Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {

@@ -4,7 +4,7 @@ pub mod delete_playlist;
 pub mod get_playlist;
 pub mod list_playlists;
 
-pub use add_to_playlist::add_to_playlist as add_to;
+pub use add_to_playlist::add_to_playlist as addto;
 pub use create_playlist::create_playlist as create;
 pub use delete_playlist::delete_playlist as delete;
 pub use get_playlist::get_playlist as get;
@@ -16,7 +16,7 @@ use crate::{Context, Error};
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("add_to", "create", "delete", "get", "list"),
+    subcommands("addto", "create", "delete", "get", "list"),
     aliases("pl")
 )]
 #[cfg(not(tarpaulin_include))]

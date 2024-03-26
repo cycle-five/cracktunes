@@ -10,10 +10,12 @@ use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only, rename = "add_to")]
+#[poise::command(prefix_command, slash_command, guild_only, rename = "addto")]
 pub async fn add_to_playlist(
     ctx: Context<'_>,
-    #[description = "Playlist to add current track to"] playlist: String,
+    #[rest]
+    #[description = "Playlist to add current track to"]
+    playlist: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let _ = playlist;
@@ -39,7 +41,7 @@ pub async fn add_to_playlist(
     // // Extract playlist name and track ID from the arguments
     let guild_id_i64 = guild_id.get() as i64;
     let channel_id = ctx.channel_id().get() as i64;
-    let track = metadata.track.clone().unwrap();
+    let track = metadata.track.clone().ok_or(CrackedError::NoTrackName)?;
     let user_id = ctx.author().id.get() as i64;
     // Database pool to execute queries
     let db_pool: PgPool = ctx
