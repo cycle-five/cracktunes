@@ -250,13 +250,16 @@ pub async fn poise_framework(
                 let _ = is_authorized_mod();
                 let _ = is_authorized_admin();
 
+                let cmd_cats = check_command_categories(command.clone());
+                tracing::info!("Command: {:?}", command);
+                tracing::info!("Command Categories: {:?}", cmd_cats);
                 let CommandCategories {
                     mod_command,
                     admin_command,
                     music_command,
                     osint_command,
                     playlist_command,
-                } = check_command_categories(command.clone());
+                } = cmd_cats;
 
                 // If the physically running bot's owner is running the command, allow it
                 if ctx
@@ -526,10 +529,11 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
     let music_command = music_commands.contains(&first);
 
-    let osint_command = "osint".eq(first) && osint_commands.contains(&second.unwrap_or_default());
+    let osint_command = "osint".eq(first)
+        && (second.is_none() || osint_commands.contains(&second.unwrap_or_default()));
 
     let playlist_command = ("playlist".eq(first) || "pl".eq(first))
-        && playlist_commands.contains(&second.unwrap_or_default());
+        && (second.is_none() || playlist_commands.contains(&second.unwrap_or_default()));
 
     CommandCategories {
         mod_command,
