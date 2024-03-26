@@ -1619,7 +1619,7 @@ pub async fn enqueue_track_pgwrite(
             }
         };
         let updated_metadata =
-            match crate::db::metadata::Metadata::create(database_pool, &metadata).await {
+            match crate::db::metadata::Metadata::get_or_create(database_pool, &metadata).await {
                 Ok(x) => x,
                 Err(e) => {
                     tracing::error!("crate::db::metadata::Metadata::create error: {}", e);

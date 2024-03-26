@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO\n                metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n                RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail\n            ",
+  "query": "INSERT INTO\n                metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n                ON CONFLICT DO NOTHING\n                RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail\n            ",
   "describe": {
     "columns": [
       {
@@ -101,5 +101,5 @@
       true
     ]
   },
-  "hash": "407a4d7d65c287573a1cf901fb7eac60545578a721b6b895f53cdf6ad9ac01db"
+  "hash": "7dec259a2f1670a2514e2b63efd09bec958c83386f724549299f8fb14526642d"
 }

@@ -78,12 +78,17 @@ pub struct MetadataRead {
 }
 
 impl Metadata {
-    pub async fn create(pool: &PgPool, in_metadata: &Metadata) -> Result<Metadata, CrackedError> {
+    /// Create a metadata entry or return the existing one with id if it exists.
+    pub async fn get_or_create(
+        pool: &PgPool,
+        in_metadata: &Metadata,
+    ) -> Result<Metadata, CrackedError> {
         let r = sqlx::query_as!(
             MetadataRead,
             r#"INSERT INTO
                 metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                ON CONFLICT DO NOTHING
                 RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
             "#,
             in_metadata.track,

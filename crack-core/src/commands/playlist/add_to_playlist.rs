@@ -51,17 +51,21 @@ pub async fn add_to_playlist(
         .ok_or(CrackedError::NoDatabasePool)?;
     let playlist_name = playlist;
 
-    // Check if the playlist exists
-    // TODO: Add the SQL query and logic here
-    let playlist = match Playlist::create(&db_pool, &playlist_name, user_id).await {
-        Ok(playlist) => Ok(playlist),
-        Err(_) => Playlist::get_playlist_by_name(&db_pool, playlist_name.clone(), user_id).await,
-    }?;
+    // Get playlist if exists, other create it.
+    let playlist =
+        match Playlist::get_playlist_by_name(&db_pool, playlist_name.clone(), user_id).await {
+            Ok(playlist) => Ok(playlist),
+            Err(e) => {
+                tracing::error!("Error getting playlist: {:?}", e);
+                tracing::info!("Creating playlist: {:?}", playlist_name);
+                Playlist::create(&db_pool, &playlist_name, user_id).await
+            }
+        }?;
 
     let (in_metadata, _playlist_track) =
         aux_metadata_to_db_structures(metadata, guild_id_i64, channel_id)?;
 
-    let metadata = Metadata::create(&db_pool, &in_metadata).await?;
+    let metadata = Metadata::get_or_create(&db_pool, &in_metadata).await?;
 
     let res =
         Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id_i64, channel_id).await?;
