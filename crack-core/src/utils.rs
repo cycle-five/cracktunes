@@ -1,5 +1,6 @@
 use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
 use crate::interface::requesting_user_to_string;
+use crate::messaging::messages::PLAYLIST_LIST_EMPTY;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{commands::music::doplay::RequestingUser, db::Playlist};
@@ -655,7 +656,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
         description
     } else {
-        QUEUE_NO_SONGS.to_string()
+        PLAYLIST_LIST_EMPTY.to_string()
     };
 
     CreateEmbed::default()
