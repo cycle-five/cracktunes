@@ -1,25 +1,25 @@
-use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
-use crate::interface::requesting_user_to_string;
-use crate::messaging::messages::PLAYLIST_LIST_EMPTY;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
-use crate::{commands::music::doplay::RequestingUser, db::Playlist};
 use crate::{
-    commands::MyAuxMetadata,
-    interface::build_nav_btns,
+    commands::{music::doplay::RequestingUser, MyAuxMetadata},
+    db::Playlist,
+    interface::{build_nav_btns, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
-        messages::{QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF},
+        messages::{PLAYLIST_LIST_EMPTY, QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF},
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{GuildId, Interaction, UserId},
+    all::{ChannelId, GuildId, Interaction, UserId},
+    builder::CreateEmbed,
     builder::{
         CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
+    http::Http,
+    model::channel::Message,
 };
 use poise::{
     serenity_prelude::{
@@ -29,9 +29,9 @@ use poise::{
     CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
-use std::fmt::Write;
 use std::{
     cmp::{max, min},
+    fmt::Write,
     ops::Add,
     sync::Arc,
     time::Duration,
