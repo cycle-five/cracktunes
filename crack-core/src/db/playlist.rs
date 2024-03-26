@@ -4,6 +4,7 @@ use sqlx::{postgres::PgQueryResult, query, PgPool};
 
 use crate::CrackedError;
 
+/// Playlist db structure (does not old the tracks)
 #[derive(Debug, Default)]
 pub struct Playlist {
     pub id: i32,
@@ -12,6 +13,7 @@ pub struct Playlist {
     pub privacy: String,
 }
 
+/// PlaylistTrack db structure.
 #[derive(Debug, Default)]
 pub struct PlaylistTrack {
     pub id: i64,
