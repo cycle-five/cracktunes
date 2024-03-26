@@ -1,6 +1,8 @@
 use crate::{
     commands::MyAuxMetadata,
+    db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, Playlist},
+    errors::CrackedError,
     utils::send_embed_response_str,
     Context, Error,
 };
@@ -8,16 +10,17 @@ use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "add_to")]
+#[poise::command(prefix_command, slash_command, guild_only, rename = "add_to")]
 pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[description = "Playlist to add current track to"] playlist: String,
 ) -> Result<(), Error> {
-    use crate::{db::aux_metadata_to_db_structures, errors::CrackedError};
-
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let _ = playlist;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(ctx.guild_id().unwrap()).unwrap();
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     let queue = call.lock().await.queue().clone();
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;
@@ -34,13 +37,17 @@ pub async fn add_to_playlist(
     };
 
     // // Extract playlist name and track ID from the arguments
-    let guild_id = ctx.guild_id().unwrap().get() as i64;
+    let guild_id_i64 = guild_id.get() as i64;
     let channel_id = ctx.channel_id().get() as i64;
-    let _track = metadata.track.clone().unwrap();
+    let track = metadata.track.clone().unwrap();
     let user_id = ctx.author().id.get() as i64;
-    let playlist_name = format!("{}-{}", user_id, playlist);
     // Database pool to execute queries
-    let db_pool: PgPool = ctx.data().database_pool.clone().unwrap();
+    let db_pool: PgPool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::NoDatabasePool)?;
+    let playlist_name = playlist;
 
     // Check if the playlist exists
     // TODO: Add the SQL query and logic here
@@ -50,11 +57,12 @@ pub async fn add_to_playlist(
     }?;
 
     let (in_metadata, _playlist_track) =
-        aux_metadata_to_db_structures(metadata, guild_id, channel_id)?;
+        aux_metadata_to_db_structures(metadata, guild_id_i64, channel_id)?;
 
     let metadata = Metadata::create(&db_pool, &in_metadata).await?;
 
-    let res = Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id, channel_id).await?;
+    let res =
+        Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id_i64, channel_id).await?;
 
     let operation_successfull = res.rows_affected() > 0;
 
@@ -62,7 +70,7 @@ pub async fn add_to_playlist(
     if operation_successfull {
         ctx.reply(format!(
             "Track {} has been added to playlist {}",
-            _track, playlist_name
+            track, playlist_name
         ))
         .await
         .map(|_| ())
@@ -70,7 +78,7 @@ pub async fn add_to_playlist(
     } else {
         ctx.reply(format!(
             "Failed to add track {} to playlist {}",
-            _track, playlist_name
+            track, playlist_name
         ))
         .await
         .map(|_| ())
