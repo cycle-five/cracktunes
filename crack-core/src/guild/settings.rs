@@ -21,7 +21,7 @@ pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 0.1;
+pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
 pub(crate) const DEFAULT_PREFIX: &str = "r!";
 pub(crate) const DEFAULT_DB_URL: &str =
@@ -852,51 +852,25 @@ pub async fn save_guild_settings(
     }
 }
 
+/// Struct to hold the guild settings map in a typemap
 #[derive(Default)]
 pub struct GuildSettingsMap;
 
+/// Implement the TypeMapKey trait for the GuildSettingsMap
 impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
 }
 
-// impl GuildSettingsMap {
-//     pub fn new() -> HashMap<GuildId, GuildSettings> {
-//         HashMap::new()
-//     }
-
-//     pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<&GuildSettings> {
-//         self.get(&guild_id)
-//     }
-
-//     pub fn get_guild_settings_mut(&mut self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-//         self.get_mut(&guild_id)
-//     }
-// }
-// impl std::ops::Index<GuildId> for GuildSettingsMap {
-//     type Output = GuildSettings;
-
-//     fn index(&self, guild_id: GuildId) -> &Self::Output {
-//         self.get(&guild_id).expect("Guild settings not found")
-//     }
-// }
-
-// impl std::ops::IndexMut<GuildId> for GuildSettingsMap {
-//     fn index_mut(&mut self, guild_id: GuildId) -> &mut Self::Output {
-//         self.get_mut(&guild_id).expect("Guild settings not found")
-//     }
-// }
-
-// pub fn set_guild_settings(&mut self, guild_id: GuildId, settings: GuildSettings) {
-//     self.insert(guild_id, settings);
-// }
-
+/// Struct to hold the atomic u16 key in a typemap
 #[derive(Default)]
 pub struct AtomicU16Key;
 
+/// Implement the TypeMapKey trait for the AtomicU16Key
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
 
+/// Convenience type for the GuildSettingsMap
 pub type GuildSettingsMapParam =
     std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
 
@@ -913,8 +887,8 @@ mod test {
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
-        assert_eq!(settings.old_volume, 0.1);
-        assert_eq!(settings.volume, 0.1);
+        assert_eq!(settings.old_volume, 1.0);
+        assert_eq!(settings.volume, 1.0);
         assert_eq!(settings.self_deafen, true);
         assert_eq!(settings.timeout, 600);
         assert_eq!(settings.welcome_settings.is_none(), true);

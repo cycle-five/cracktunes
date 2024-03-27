@@ -34,29 +34,20 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "remove",
         "grab",
         "voteskip",
+        "downvote",
         "version",
         "help",
         "autopause",
         "autoplay",
+        // we're putting other random commands under music for now to get them treated correctly by the perms system
+        "ping",
+        // "uptime",
     ]
 }
 
 /// Playlist related commands
 pub fn get_playlist_commands() -> Vec<&'static str> {
-    vec![
-        "playlist",
-        "playlist_create",
-        "playlist_delete",
-        "playlist_add",
-        "playlist_remove",
-        "playlist_list",
-        "playlist_play",
-        "playlist_queue",
-        "playlist_clear",
-        "playlist_rename",
-        "playlist_import",
-        "playlist_export",
-    ]
+    vec!["create", "delete", "addto", "get", "list", "play"]
 }
 
 /// Mod commands list
@@ -133,6 +124,7 @@ pub fn get_owner_commands() -> Vec<&'static str> {
 pub fn get_commands() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("music", get_music_commands()),
+        ("playlist", get_playlist_commands()),
         ("admin", get_admin_commands().to_vec()),
         ("settings", get_settings_commands()),
         ("owner", get_owner_commands()),

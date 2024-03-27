@@ -68,7 +68,7 @@ pub enum Mode {
     Reverse,
     Shuffle,
     Jump,
-    Download,
+    DownloadMKV,
     DownloadMP3,
     Search,
 }
@@ -88,6 +88,7 @@ pub enum QueryType {
 #[cfg(not(tarpaulin))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
+    let _id = ctx.serenity_context().shard_id;
     ctx.say(format!(
         "The name of this guild is: {}",
         ctx.partial_guild().await.unwrap().name
@@ -116,8 +117,10 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             Mode::Reverse
         } else if asdf.starts_with("jump") {
             Mode::Jump
-        } else if asdf.starts_with("download") {
-            Mode::Download
+        } else if asdf.starts_with("downloadmkv") {
+            Mode::DownloadMKV
+        } else if asdf.starts_with("downloadmp3") {
+            Mode::DownloadMP3
         } else if asdf.starts_with("search") {
             Mode::Search
         } else {
@@ -142,7 +145,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             "reverse" => Mode::Reverse,
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
-            "download" => Mode::Download,
+            "downloadmkv" => Mode::DownloadMKV,
             "downloadmp3" => Mode::DownloadMP3,
             "search" => Mode::Search,
             _ => Mode::End,
@@ -204,7 +207,7 @@ pub async fn get_call_with_fail_msg(
                             if timeout > 0 {
                                 let premium = guild_settings.premium;
                                 handler.add_global_event(
-                                    Event::Periodic(Duration::from_secs(1), None),
+                                    Event::Periodic(Duration::from_secs(5), None),
                                     IdleHandler {
                                         http: ctx.serenity_context().http.clone(),
                                         manager: manager.clone(),
@@ -285,16 +288,15 @@ async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildI
     slash_command,
     prefix_command,
     guild_only,
-    aliases("next", "pn", "Pn", "PN", "push")
+    aliases("next", "pn", "Pn", "insert", "ins", "push")
 )]
 pub async fn playnext(
     ctx: Context<'_>,
-    #[description = "File to play."] file: Option<serenity::Attachment>,
     #[rest]
     #[description = "song link or search query."]
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    play_internal(ctx, Some("next".to_string()), file, query_or_url).await
+    play_internal(ctx, Some("next".to_string()), None, query_or_url).await
 }
 
 /// Search interactively for a song
@@ -323,8 +325,8 @@ pub async fn play(
 
 /// Play a song with more options
 // #[cfg(not(tarpaulin))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("altp"))]
-pub async fn altplay(
+#[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
+pub async fn optplay(
     ctx: Context<'_>,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
@@ -834,7 +836,7 @@ async fn match_mode(
                 }
             };
         }
-        Mode::Download => {
+        Mode::DownloadMKV => {
             let (status, file_name) =
                 get_download_status_and_filename(query_type.clone(), false).await?;
             ctx.channel_id()
@@ -1342,6 +1344,14 @@ pub enum RequestingUser {
     UserId(UserId),
 }
 
+// impl Mentionable for RequestingUser {
+//     fn mention(&self) -> String {
+//         match self {
+//             RequestingUser::UserId(user) => user.mention(),
+//         }
+//     }
+// }
+
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
 }
@@ -1609,7 +1619,7 @@ pub async fn enqueue_track_pgwrite(
             }
         };
         let updated_metadata =
-            match crate::db::metadata::Metadata::create(database_pool, &metadata).await {
+            match crate::db::metadata::Metadata::get_or_create(database_pool, &metadata).await {
                 Ok(x) => x,
                 Err(e) => {
                     tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
@@ -1663,27 +1673,6 @@ pub async fn enqueue_track_pgwrite(
     Ok(handler.queue().current_queue())
 }
 
-// async fn enqueue_track(
-//     http: &Http,
-//     call: &Arc<Mutex<Call>>,
-//     query_type: &QueryType,
-// ) -> Result<Vec<TrackHandle>, CrackedError> {
-//     tracing::info!("query_type: {:?}", query_type);
-//     // is this comment still relevant to this section of code?
-//     // safeguard against ytdl dying on a private/deleted video and killing the playlist
-//     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-//         get_track_source_and_metadata(http, query_type.clone()).await;
-//     let res = metadata.first().unwrap().clone();
-//     let track: Track = source.into();
-
-//     let mut handler = call.lock().await;
-//     let track_handle = handler.enqueue(track).await;
-//     let mut map = track_handle.typemap().write().await;
-//     map.insert::<MyAuxMetadata>(res.clone());
-
-//     Ok(handler.queue().current_queue())
-// }
-
 #[allow(clippy::too_many_arguments)]
 async fn insert_track(
     pool: &PgPool,
@@ -1721,6 +1710,51 @@ async fn insert_track(
     });
 
     Ok(handler.queue().current_queue())
+}
+
+/// Add tracks to the queue from aux_metadata.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_aux_metadata(
+    ctx: Context<'_>,
+    aux_metadata: Vec<AuxMetadata>,
+) -> Result<(), CrackedError> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let search_results = aux_metadata.clone();
+    // let qt = yt_search_select(
+    //     ctx.serenity_context().clone(),
+    //     ctx.channel_id(),
+    //     search_results,
+    // )
+    // .await?;
+    let client = reqwest::Client::new();
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let call = manager.get(guild_id).unwrap();
+    for metadata in search_results {
+        let ytdl = YoutubeDl::new(client.clone(), metadata.clone().source_url.unwrap());
+        let query_type = QueryType::NewYoutubeDl((ytdl, metadata));
+        let queue = enqueue_track_pgwrite(
+            ctx.data().database_pool.as_ref().unwrap(),
+            ctx.guild_id().unwrap(),
+            ctx.channel_id(),
+            ctx.author().id,
+            ctx.http(),
+            &call,
+            &query_type,
+        )
+        .await?;
+        update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    }
+    // let queue = enqueue_track_pgwrite(
+    //     &pool,
+    //     guild_id,
+    //     ctx.channel_id(),
+    //     user_id,
+    //     ctx.http(),
+    //     &call,
+    //     &qt,
+    // )
+    // .await?;
+    Ok(())
 }
 
 /// Rotates the queue by `n` tracks to the right.
@@ -1778,9 +1812,21 @@ mod test {
 
         let is_prefix = false;
         let msg = None;
-        let mode = Some("download".to_string());
+        let mode = Some("downloadmkv".to_string());
 
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Download, x.clone()));
+        assert_eq!(
+            get_mode(is_prefix, msg, mode),
+            (Mode::DownloadMKV, x.clone())
+        );
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = Some("downloadmp3".to_string());
+
+        assert_eq!(
+            get_mode(is_prefix, msg, mode),
+            (Mode::DownloadMP3, x.clone())
+        );
 
         let is_prefix = false;
         let msg = None;

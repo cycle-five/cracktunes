@@ -78,30 +78,52 @@ pub struct MetadataRead {
 }
 
 impl Metadata {
-    pub async fn create(pool: &PgPool, in_metadata: &Metadata) -> Result<Metadata, CrackedError> {
-        let r = sqlx::query_as!(
-            MetadataRead,
-            r#"INSERT INTO
-                metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+    /// Create a metadata entry or return the existing one with id if it exists.
+    pub async fn get_or_create(
+        pool: &PgPool,
+        in_metadata: &Metadata,
+    ) -> Result<Metadata, CrackedError> {
+        let get_r: Result<MetadataRead, CrackedError> = sqlx::query_as!(MetadataRead, r#"
+            SELECT
+                metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail
+            FROM 
+                metadata
+            WHERE 
+                metadata.source_url = $1
             "#,
-            in_metadata.track,
-            in_metadata.artist,
-            in_metadata.album,
-            in_metadata.date,
-            in_metadata.channels.map(|x| i16::try_from(x).unwrap()),
-            in_metadata.channel,
-            in_metadata.start_time, //.map(|x| PgInterval::try_from(x).unwrap()),
-            in_metadata.duration, //.map(|x| PgInterval::try_from(x).unwrap()),
-            in_metadata.sample_rate,
-            in_metadata.source_url,
-            in_metadata.title,
-            in_metadata.thumbnail,
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(CrackedError::SQLX)?;
+                in_metadata.source_url,
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(CrackedError::SQLX);
+        let r = match get_r {
+            Ok(r) => r,
+            Err(_) => {
+                sqlx::query_as!(
+                    MetadataRead,
+                    r#"INSERT INTO
+                        metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
+                    "#,
+                    in_metadata.track,
+                    in_metadata.artist,
+                    in_metadata.album,
+                    in_metadata.date,
+                    in_metadata.channels.map(|x| i16::try_from(x).unwrap()),
+                    in_metadata.channel,
+                    in_metadata.start_time, //.map(|x| PgInterval::try_from(x).unwrap()),
+                    in_metadata.duration, //.map(|x| PgInterval::try_from(x).unwrap()),
+                    in_metadata.sample_rate,
+                    in_metadata.source_url,
+                    in_metadata.title,
+                    in_metadata.thumbnail,
+                    )
+                    .fetch_one(pool)
+                    .await
+                    .map_err(CrackedError::SQLX)?
+            }
+        };
         Ok(Metadata {
             id: r.id,
             track: r.track,

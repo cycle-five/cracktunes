@@ -5,7 +5,7 @@ use crate::{
 
 /// Deletes a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "delete")]
+#[poise::command(prefix_command, slash_command, guild_only, rename = "delete")]
 pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i32) -> Result<(), Error> {
     // Assuming you have a way to fetch the user_id of the command issuer
     let user_id = ctx.author().id.get() as i64;

@@ -10,7 +10,7 @@ use std::sync::Arc;
 /// Get the currently playing track.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only, aliases("np"))]
-pub async fn now_playing(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
     let (guild_id, _manager, call) = get_guild_id_and_songbird_call(ctx).await?;
 
     let handler = call.lock().await;

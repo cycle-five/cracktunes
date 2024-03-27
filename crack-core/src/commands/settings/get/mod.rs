@@ -25,6 +25,9 @@ pub use log_channels::*;
 #[poise::command(
     slash_command,
     prefix_command,
+    ephemeral,
+    guild_only,
+    required_permissions = "ADMINISTRATOR",
     subcommands(
         "all",
         "all_log_channel",
@@ -36,8 +39,6 @@ pub use log_channels::*;
         "volume",
         // "self_deafen",
     ),
-    ephemeral,
-    required_permissions = "ADMINISTRATOR",
 )]
 
 /// Get settings

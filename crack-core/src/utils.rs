@@ -1,38 +1,37 @@
-use self::serenity::{builder::CreateEmbed, http::Http, model::channel::Message, ChannelId};
-use crate::commands::music::doplay::RequestingUser;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
-    commands::MyAuxMetadata,
-    interface::build_nav_btns,
+    commands::{music::doplay::RequestingUser, MyAuxMetadata},
+    db::Playlist,
+    interface::{build_nav_btns, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
-        messages::{
-            QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
-            QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
-        },
+        messages::{PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE, QUEUE_PAGE_OF},
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{GuildId, Interaction, UserId},
+    all::{ChannelId, GuildId, Interaction, UserId},
+    builder::CreateEmbed,
     builder::{
         CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
+    http::Http,
+    model::channel::Message,
 };
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-        Mentionable, MessageInteraction,
+        MessageInteraction,
     },
     CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
-use std::fmt::Write;
 use std::{
     cmp::{max, min},
+    fmt::Write,
     ops::Add,
     sync::Arc,
     time::Duration,
@@ -79,6 +78,7 @@ pub async fn build_log_embed_thumb(
         .footer(footer))
 }
 
+/// Send a log message as a embed with a thumbnail.
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &serenity::ChannelId,
@@ -112,6 +112,7 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
+/// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams {
     pub channel: ChannelId,
     // pub http: &Arc<Http>,
@@ -163,8 +164,7 @@ pub async fn send_response_poise_text(
     send_embed_response_str(ctx, message_str).await
 }
 
-/// Create an emdend to send as a response.
-///
+/// Create an embed to send as a response.
 pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -174,7 +174,7 @@ pub async fn create_response(
     send_embed_response(ctx, interaction, embed).await
 }
 
-/// Create an emdend to send as a response.
+/// Create an embed to send as a response.
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -387,6 +387,7 @@ pub async fn create_response_interaction(
     }
 }
 
+/// Defers a response to an interaction.
 pub async fn defer_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
@@ -503,8 +504,7 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
         Some(RequestingUser::UserId(user)) => *user,
         None => {
             tracing::warn!("No user found for track: {:?}", track);
-            // return Err(CrackedError::Other("No user found for track").into());
-            UserId::new(1)
+            return Err(CrackedError::NoUserAutoplay);
         }
     };
     Ok(user)
@@ -548,7 +548,11 @@ pub fn create_now_playing_embed_metadata(
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
-        Some(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        Some(user_id) => (
+            "Requested By",
+            format!(">>> {}", requesting_user_to_string(user_id)),
+            true,
+        ),
         None => {
             tracing::warn!("No user id");
             ("Requested By", ">>> N/A".to_string(), true)
@@ -582,12 +586,12 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&AuxMetadata> = metadata
         .iter()
-        .skip(start_idx + 1)
+        .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
         .collect();
 
     if queue.is_empty() {
-        return String::from(QUEUE_NO_SONGS);
+        return String::from(PLAYLIST_EMPTY);
     }
 
     let mut description = String::new();
@@ -632,35 +636,50 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_tracks_embed_metadata(metadata_arr: &[AuxMetadata], page: usize) -> CreateEmbed {
-    let (description, thumbnail) = if !metadata_arr.is_empty() {
-        // let metadata = get_track_metadata(&tracks[0]).await;
-        let metadata: AuxMetadata = metadata_arr[0].clone();
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
+    let content = if !playlists.is_empty() {
+        let start_idx = EMBED_PAGE_SIZE * page;
+        let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
 
-        let thumbnail = metadata.thumbnail.unwrap_or_default();
+        let mut description = String::new();
 
-        let description = format!(
-            "[{}]({}) • `{}`",
-            metadata
-                .title
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
-            metadata
-                .source_url
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_SRC)),
-            get_human_readable_timestamp(metadata.duration)
-        );
-        (description, thumbnail)
+        for (i, &playlist) in playlists.iter().enumerate() {
+            let _ = writeln!(
+                description,
+                // "`{}.` [{}]({})",
+                "`{}.` {} ({})",
+                i + start_idx + 1,
+                playlist.name,
+                playlist.id
+            );
+        }
+
+        description
     } else {
-        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
+        PLAYLIST_LIST_EMPTY.to_string()
     };
 
     CreateEmbed::default()
-        .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, &description, false)
+        .title("Playlists")
+        .description(content)
+    //     .footer(CreateEmbedFooter::new(format!(
+    //         "{} {} {} {}",
+    //         QUEUE_PAGE,
+    //         page + 1,
+    //         QUEUE_PAGE_OF,
+    //         calculate_num_pages(playlists),
+    //     )))
+}
+
+pub async fn build_tracks_embed_metadata(
+    playlist_name: String,
+    metadata_arr: &[AuxMetadata],
+    page: usize,
+) -> CreateEmbed {
+    CreateEmbed::default()
+        //.field("Playlist:", &playlist_name, true)
         .field(
-            QUEUE_UP_NEXT,
+            playlist_name,
             build_queue_page_metadata(metadata_arr, page).await,
             false,
         )
@@ -753,6 +772,7 @@ pub async fn create_paged_embed(
     Ok(())
 }
 
+/// Split a str into chunks
 pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
     string
         .chars()
@@ -785,6 +805,7 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
     chunks
 }
 
+/// Creates a closure that returns a page of a chunked string.
 pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> String {
     let chunks = split_string_into_chunks(string, chunk_size);
     move |page| {
@@ -793,6 +814,7 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
     }
 }
 
+/// Creates a closure that returns a page of a chunked string, but tries to split on a newline if possible.
 pub fn create_page_getter_newline(
     string: &str,
     chunk_size: usize,
@@ -825,6 +847,7 @@ pub fn get_footer_info(url: &str) -> (String, String) {
     )
 }
 
+/// Converts a duration into a human readable timestamp
 pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     match duration {
         Some(duration) if duration == Duration::MAX => "∞".to_string(),
@@ -845,6 +868,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 
 use serenity::prelude::SerenityError;
 
+/// Check if a subdomian is from the same domain.
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }

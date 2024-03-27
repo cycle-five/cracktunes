@@ -1,4 +1,3 @@
-use crate::guild::settings::DEFAULT_PREFIX;
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
@@ -7,9 +6,10 @@ use db::TrackReaction;
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
-use guild::settings::DEFAULT_DB_URL;
-use guild::settings::DEFAULT_LOG_PREFIX;
-use guild::settings::DEFAULT_VIDEO_STATUS_POLL_INTERVAL;
+use guild::settings::{
+    DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
+    DEFAULT_VOLUME_LEVEL,
+};
 use poise::serenity_prelude::GuildId;
 use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
@@ -153,7 +153,7 @@ impl Default for BotConfig {
             cam_kick: None,
             sys_log_channel_id: None,
             self_deafen: Some(true),
-            volume: Some(1.0),
+            volume: Some(DEFAULT_VOLUME_LEVEL),
             guild_settings_map: None,
             prefix: Some(DEFAULT_PREFIX.to_string()),
             credentials: Some(BotCredentials::default()),

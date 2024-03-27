@@ -1,8 +1,8 @@
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
     FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_GUILD_ID, NO_GUILD_SETTINGS,
-    QUEUE_IS_EMPTY, UNAUTHORIZED_USER,
+    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_ID,
+    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -35,10 +35,13 @@ pub enum CrackedError {
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
     NotImplemented,
+    NoTrackName,
+    NoDatabasePool,
     NoGuildId,
     NoGuildForChannelId(ChannelId),
     NoGuildSettings,
     NoLogChannel,
+    NoUserAutoplay,
     NothingPlaying,
     Other(&'static str),
     InvalidIP(String),
@@ -83,6 +86,10 @@ impl Display for CrackedError {
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             }
+            Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
+            Self::AlreadyConnected(mention) => {
+                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
+            }
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
@@ -100,17 +107,17 @@ impl Display for CrackedError {
             )),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
+            Self::NoTrackName => f.write_str("No track name"),
+            Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {
                 f.write_fmt(format_args!("No guild for channel id {}", channel_id))
             }
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
+            Self::NoUserAutoplay => f.write_str("(auto)"),
             Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),
-            Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
-            Self::AlreadyConnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
-            }
+
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::PlayListFail => f.write_str(FAIL_PLAYLIST_FETCH),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),

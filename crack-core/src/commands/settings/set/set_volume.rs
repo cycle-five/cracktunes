@@ -49,7 +49,7 @@ pub async fn volume(
 #[cfg(test)]
 mod test {
     use crate::commands::settings::set::set_volume::set_volume;
-    use crate::guild::settings::GuildSettingsMapParam;
+    use crate::guild::settings::{GuildSettingsMapParam, DEFAULT_VOLUME_LEVEL};
     use serenity::model::id::GuildId;
 
     #[test]
@@ -59,7 +59,7 @@ mod test {
 
         let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.5);
         assert_eq!(vol, 0.5);
-        assert_eq!(old_vol, 0.1);
+        assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
         assert_eq!(
             guild_settings_map
                 .read()

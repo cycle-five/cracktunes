@@ -4,6 +4,7 @@ use sqlx::{postgres::PgQueryResult, query, PgPool};
 
 use crate::CrackedError;
 
+/// Playlist db structure (does not old the tracks)
 #[derive(Debug, Default)]
 pub struct Playlist {
     pub id: i32,
@@ -12,6 +13,7 @@ pub struct Playlist {
     pub privacy: String,
 }
 
+/// PlaylistTrack db structure.
 #[derive(Debug, Default)]
 pub struct PlaylistTrack {
     pub id: i64,
@@ -81,6 +83,21 @@ impl Playlist {
         .map_err(CrackedError::SQLX)
     }
 
+    /// Retreive playlists by user ID
+    pub async fn get_playlists_by_user_id(
+        pool: &PgPool,
+        user_id: i64,
+    ) -> Result<Vec<Playlist>, CrackedError> {
+        sqlx::query_as!(
+            Playlist,
+            "SELECT * FROM playlist WHERE user_id = $1",
+            user_id
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(CrackedError::SQLX)
+    }
+
     /// Reterive a playlist by name and user ID.
     pub async fn get_playlist_by_name(
         pool: &PgPool,
@@ -129,28 +146,35 @@ impl Playlist {
     }
 
     /// Delete a playlist by playlist ID
-    pub async fn delete_playlist(pool: &PgPool, playlist_id: i32) -> Result<u64, sqlx::Error> {
-        sqlx::query!("DELETE FROM playlist WHERE id = $1", playlist_id)
-            .execute(pool)
-            .await
-            .map(|r| r.rows_affected())
+    pub async fn delete_playlist(
+        pool: &PgPool,
+        playlist_id: i32,
+    ) -> Result<PgQueryResult, sqlx::Error> {
+        let _ = sqlx::query!(
+            r#"
+            DELETE FROM playlist_track
+            WHERE playlist_id = $1"#,
+            playlist_id
+        )
+        .execute(pool)
+        .await?;
+        sqlx::query!(
+            r#"
+            DELETE FROM playlist
+            WHERE id = $1"#,
+            playlist_id,
+        )
+        .execute(pool)
+        .await
     }
 
     /// Delete a playlist by playlist ID and user ID
     pub async fn delete_playlist_by_id(
         pool: &PgPool,
         playlist_id: i32,
-        user_id: i64,
+        _user_id: i64,
     ) -> Result<PgQueryResult, sqlx::Error> {
-        sqlx::query!(
-            r#"
-        DELETE FROM playlist
-        WHERE id = $1 AND user_id = $2"#,
-            playlist_id,
-            user_id
-        )
-        .execute(pool)
-        .await
+        Self::delete_playlist(pool, playlist_id).await
     }
 
     /// Get all tracks in a playlist
@@ -216,18 +240,22 @@ impl Playlist {
         playlist_name: String,
         user_id: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
+        struct I32Wrapper {
+            id: i32,
+        }
+        let I32Wrapper { id: playlist_id } = sqlx::query_as!(
+            I32Wrapper,
             r#"
-        DELETE FROM playlist
-        WHERE name = $1 AND user_id = $2 
-        "#,
+                SELECT id FROM playlist
+                WHERE name = $1 AND user_id = $2 
+            "#,
             playlist_name,
             user_id,
         )
-        .execute(pool)
+        .fetch_one(pool)
         .await?;
 
-        Ok(())
+        Self::delete_playlist(pool, playlist_id).await.map(|_| ())
     }
 }
 

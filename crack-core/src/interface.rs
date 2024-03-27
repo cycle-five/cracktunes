@@ -24,6 +24,14 @@ use serenity::{
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
 
+/// Converts a user id to a string, with special handling for autoplay.
+pub fn requesting_user_to_string(user_id: UserId) -> String {
+    match user_id.get() {
+        1 => "(auto)".to_string(),
+        _ => user_id.mention().to_string(),
+    }
+}
+
 /// Builds a page of the queue.
 #[cfg(not(tarpaulin_include))]
 async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
@@ -54,7 +62,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
             title,
             url,
             duration,
-            requesting_user.mention(),
+            requesting_user_to_string(requesting_user),
         );
     }
 
@@ -110,7 +118,11 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
-        Ok(user_id) => ("Requested By", format!(">>> {}", user_id.mention()), true),
+        Ok(user_id) => (
+            "Requested By",
+            format!(">>> {}", requesting_user_to_string(user_id)),
+            true,
+        ),
         Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
             ("Requested By", ">>> N/A".to_string(), true)
@@ -198,4 +210,16 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
         build_single_nav_btn(">", cant_right),
         build_single_nav_btn(">>", cant_right),
     ])]
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_requesting_user_to_string() {
+        use super::requesting_user_to_string;
+        use serenity::model::id::UserId;
+
+        assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
+        assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+    }
 }

@@ -75,8 +75,6 @@ pub async fn premium(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serenity::all::GuildId;
-    use std::collections::HashMap;
 
     /// Test setting premium of the Guild settings structure
     #[tokio::test]

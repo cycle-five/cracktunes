@@ -1,3 +1,4 @@
+use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
@@ -10,11 +11,12 @@ use crate::{Context, Error};
     slash_command,
     prefix_command,
     ephemeral,
+    guild_only,
     required_permissions = "ADMINISTRATOR",
     aliases("get_all_log_channel")
 )]
 pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     {
         let all_log_channel = {
             let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();

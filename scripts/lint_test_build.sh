@@ -1,5 +1,6 @@
 #!/bin/sh
-cargo +nightly clippy --all -- -D clippy::all -D warnings
+cargo +nightly fmt --all -- --check
+cargo +nightly clippy --all-features --all -- -D clippy::all -D warnings
 RES1=$?
 cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
 RES2=$?

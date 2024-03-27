@@ -23,22 +23,17 @@ struct TitleArtist {
 
 impl Display for TitleArtist {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let title = match self.title.as_ref() {
-            Some(title) => title,
-            None => "",
-        };
+        let title = self.title.as_deref().unwrap_or_default();
         let _ = fmt.write_str(title);
         let _ = fmt.write_str(" - ");
-        let artist = match self.artist.as_ref() {
-            Some(artist) => artist,
-            None => "",
-        };
+        let artist = self.artist.as_deref().unwrap_or_default();
         let _ = fmt.write_str(artist);
         Ok(())
     }
 }
 
 impl PlayLog {
+    /// Create a new play log entry.
     pub async fn create(
         conn: &PgPool,
         user_id: i64,
@@ -72,7 +67,6 @@ impl PlayLog {
         } else if user_id.is_none() && guild_id.is_some() {
             Self::get_last_played_by_guild(conn, guild_id.unwrap()).await
         } else {
-            // user_id.is_some() && guild_id.is_none()
             Self::get_last_played_by_user(conn, user_id.unwrap()).await
         }
     }
@@ -107,6 +101,7 @@ impl PlayLog {
         Ok(last_played.into_iter().map(|t| t.to_string()).collect())
     }
 
+    /// Get the last played track for the given guild.
     pub async fn get_last_played_by_guild(
         conn: &PgPool,
         guild_id: i64,
@@ -114,6 +109,7 @@ impl PlayLog {
         Self::get_last_played_by_guild_filter(conn, guild_id, 1).await
     }
 
+    /// Get the last played track for the given guild and return as metadata.
     pub async fn get_last_played_by_guild_metadata(
         conn: &PgPool,
         guild_id: i64,
@@ -138,6 +134,7 @@ impl PlayLog {
         Ok(last_played.into_iter().map(|t| t.id as i64).collect())
     }
 
+    /// Get the last played track for the given user.
     pub async fn get_last_played_by_user(
         conn: &PgPool,
         user_id: i64,

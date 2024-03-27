@@ -23,7 +23,7 @@ Thanks to the guys over at  [alwaysdata](https://www.alwaysdata.com/) for hostin
 * *Optional* define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
 * *Optional* define `OPENAI_API_KEY` for chatgpt support.
 * *Optional* define `VIRUSTOTAL_API_KEY` for osint URL checking.
-* Use [.env.example](https://github.com/cycle-five/cracktunes/blob/main/.env.example) as a starting point.
+* Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
 
 ### Docker **FIXME**
 
@@ -84,56 +84,30 @@ docker run -d --env-file .env cracktunes
 ```
 
 ### ~~Roadmap~~ Change Log
-
-## 0.2.0
-- [x] Play music from YouTube
-- [x] Play music from Spotify (kind of...)
-
-## 0.2.1 (2023/07/02)
-- [x] Play music from local files
-
-## 0.2.2 (2023/07/09 ish)
-- [x] Welcome Actions
-- [x] Play on multiple servers at once
-
-## 0.2.3
-- [x] Bug fixes (volume)
-- [x] Shuttle support (still broken)
-
-## 0.2.4 (2023/07/17)
-- [x] Bug fixes.
-- [x] Remove reliance on slash commands everywhere.
-- [x] Remove shuttle for now
-
-## 0.2.5
-- ~~[] Shuttle~~
-- ~~[] Reminders~~
-- ~~[] Notes~~
-
-## ~~0.2.6~~
-Didn't really track stuff here...
-## ~~0.2.12~~
-## ~~0.2.13~~
-- ~~[] Port to next branch of serenity~~
-- ~~[] Flesh out admin commands~~
-
-## 0.3.0-rc.1
-- [x] Dockerized!
-- [x] Refactored settings commands.
-- [x] Storing and retrieving settings from Postgres.
-- [x] Updated dependencies to be in line with current.
-## 0.3.0-rc.2
-- [x] Clean command
-- [x] Bug fixes
-- ~~[ ] Down vote~~ (not working)
-## ~~0.3.0-rc.3~~
-## 0.3.0-rc.4
-* fix storing auto role and timeout I think
-* download and skip together
-* ~~try to finally fix this fucking volume bug~~
-* fix loading guild settings
-* add pgadmin to docker compose
-* ~~fix volume~~ (volume is still broken)
+## v0.3.2 (2024/03/27)
+- Playlists!
+- Here are the available playlist commands
+    - `/playlist create <playlistname>` Creates a playlist with the given name
+    - `/playlist delete <playlistname>` Deletes a playlist with the given name
+    - `/playlist addto <playlistname>`  Adds the currently playing song to <playlistname>
+    - `/playlist list` List your playlists
+    - `/playlist get <playlistname>` displays the contents of <playlistname>
+    - `/playlist play <playlistname>` queues the given playlist on the bot
+- Added pl alias for playlist
+- Added /playlist list
+- Fixed Requested by Field
+- JSON for grafana dashboards
+## v0.3.1 (2024/03/21)
+- Fix the requesting user not always displaying
+- Reversed order of this Change Log so newest stuff is on top
+## ~~0.3.0-rc.6~~
+## 0.3.0
+- Added more breakdown of features which can be optionally turned on/off
+- Telemitry
+- Metrics / logging
+- Removed a lot of unescesarry dependencies  
+## 0.1.4 (crack-osint) (2024/03/12)
+- osint scan command to check urls for malicious content
 ## 0.3.0-rc.5 (2024/03/09)
 - cargo update
 - GuildId checks
@@ -142,17 +116,47 @@ Didn't really track stuff here...
 - add feature for osint
 - make admin commands usable by guild members with admin
 - add dry run to rename_all
-## 0.1.4 (crack-osint) (2024/03/12)
-- osint scan command to check urls for malicious content
-## ~~0.3.0-rc.6~~
-## 0.3.0
-- Added more breakdown of features which can be optionally turned on/off
-- Telemitry
-- Metrics / logging
-- Removed a lot of unescesarry dependencies  
-...
-## 1.0.0
-- [ ] RTChris' Demuxer in C++ (for fun)?
+## 0.3.0-rc.4
+* fix storing auto role and timeout I think
+* download and skip together
+* ~~try to finally fix this fucking volume bug~~
+* fix loading guild settings
+* add pgadmin to docker compose
+* ~~fix volume~~ (volume is still broken)
+## 0.3.0-rc.2
+- [x] Clean command
+- [x] Bug fixes
+- ~~[ ] Down vote~~ (not working)
+## 0.3.0-rc.1
+- [x] Dockerized!
+- [x] Refactored settings commands.
+- [x] Storing and retrieving settings from Postgres.
+- [x] Updated dependencies to be in line with current.
+## ~~0.2.13~~
+- ~~[] Port to next branch of serenity~~
+- ~~[] Flesh out admin commands~~
+## ~~0.2.12~~
+## ~~0.2.6~~
+Didn't really track stuff here...
+## 0.2.5
+- ~~[] Shuttle~~
+- ~~[] Reminders~~
+- ~~[] Notes~~
+## 0.2.4 (2023/07/17)
+- [x] Bug fixes.
+- [x] Remove reliance on slash commands everywhere.
+- [x] Remove shuttle for now
+## 0.2.3
+- [x] Bug fixes (volume)
+- [x] Shuttle support (still broken)
+## 0.2.2 (2023/07/09 ish)
+- [x] Welcome Actions
+- [x] Play on multiple servers at once
+## 0.2.1 (2023/07/02)
+- [x] Play music from local files
+## 0.2.0
+- [x] Play music from YouTube
+- [x] Play music from Spotify (kind of...)
 
 
 <p align="center">
