@@ -40,10 +40,11 @@ pub async fn add_to_playlist(
     // // Extract playlist name and track ID from the arguments
     let guild_id_i64 = guild_id.get() as i64;
     let channel_id = ctx.channel_id().get() as i64;
-    let track = metadata
-        .track
-        .clone()
-        .ok_or(metadata.title.clone().ok_or(CrackedError::NoTrackName)?)?;
+    let track = match metadata.track.clone() {
+        Some(track) => track,
+        None => metadata.title.clone().ok_or(CrackedError::NoTrackName)?,
+    };
+    //.unwrap_or(metadata.title.clone().ok_or(CrackedError::NoTrackName)?)
     let user_id = ctx.author().id.get() as i64;
     // Database pool to execute queries
     let db_pool: PgPool = ctx
