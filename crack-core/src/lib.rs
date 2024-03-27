@@ -77,6 +77,7 @@ impl Default for CamKickConfig {
     }
 }
 
+/// Display impl for CamKickConfig
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
@@ -87,21 +88,9 @@ impl Display for CamKickConfig {
         result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
         result.push_str(&format!("channel_id: {:?}\n", self.channel_id));
         result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
-        result.push_str(&format!(
-            "send_msg
-        deafen: {}\n",
-            self.send_msg_deafen
-        ));
-        result.push_str(&format!(
-            "send_msg
-        mute: {}\n",
-            self.send_msg_mute
-        ));
-        result.push_str(&format!(
-            "send_msg
-        dc: {}\n",
-            self.send_msg_dc
-        ));
+        result.push_str(&format!("deafen: {}\n", self.send_msg_deafen));
+        result.push_str(&format!("mute: {}\n", self.send_msg_mute));
+        result.push_str(&format!("dc: {}\n", self.send_msg_dc));
 
         write!(f, "{}", result)
     }
@@ -428,7 +417,7 @@ impl EventLog {
 impl Default for DataInner {
     fn default() -> Self {
         Self {
-            phone_data: PhoneCodeData::load().unwrap(),
+            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
@@ -547,11 +536,36 @@ mod tests {
         assert!(want.iter().all(|x| got.contains(x)));
     }
 
-    // Test the creationg of a default EventLog
+    /// Test the creation of a default EventLog
     #[test]
     fn test_event_log_default() {
         let event_log = EventLog::default();
         let file = event_log.lock().unwrap();
         assert_eq!(file.metadata().unwrap().len(), 0);
+    }
+
+    /// Test the creation and printing of CamKickConfig
+    #[test]
+    fn test_display_cam_kick_config() {
+        let cam_kick = CamKickConfig::default();
+        let want = "cammed_down_timeout: 0\nguild_id: 0\nchannel_id: 0\ndc_message: \"You have been violated for being cammed down for too long.\"\ndeafen: false\nmute: false\ndc: false\n";
+        assert_eq!(cam_kick.to_string(), want);
+    }
+
+    use serde_json::json;
+    #[test]
+    fn test_with_data_inner() {
+        let data = DataInner::default();
+        let new_data = data.with_bot_settings(BotConfig::default());
+        assert_eq!(json!(new_data.bot_settings), json!(BotConfig::default()));
+
+        // let pool = sqlx::PgPool::connect_lazy("postgres://");
+        // let new_data = new_data.with_database_pool(pool);
+        // let want = sqlx::PgPool::connect_lazy("postgres://");
+        // assert_eq!(new_data.database_pool.is_some(), want.is_some());
+
+        let guild_settings = GuildSettingsMapParam::default();
+        let new_data = new_data.with_guild_settings_map(guild_settings);
+        assert!(new_data.guild_settings_map.read().unwrap().is_empty());
     }
 }

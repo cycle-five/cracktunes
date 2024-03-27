@@ -14,6 +14,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
     vec![
         "play",
         "playnext",
+        "playlog",
         "pause",
         "resume",
         "stop",
@@ -76,6 +77,7 @@ pub fn get_admin_commands() -> Vec<&'static str> {
         "create_text_channel",
         "create_voice_chaneel",
         "defean",
+        "defend",
         "deauthorize",
         "delete_channel",
         "get_active",
