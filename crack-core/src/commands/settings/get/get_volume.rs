@@ -32,7 +32,9 @@ pub async fn volume(ctx: Context<'_>) -> Result<(), Error> {
         .map(|_| ())
 }
 
+#[cfg(test)]
 mod test {
+    use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 
     #[tokio::test]
     async fn test_volume() {
@@ -49,11 +51,11 @@ mod test {
             .entry(guild_id)
             .or_insert(GuildSettings::new(guild_id, Some("!"), None));
         let (vol, old_vol) = get_volume(guild_settings_map.clone(), guild_id);
-        assert_eq!(vol, 0.1);
-        assert_eq!(old_vol, 0.1);
+        assert_eq!(vol, DEFAULT_VOLUME_LEVEL);
+        assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
 
         let (vol, old_vol) = get_volume(guild_settings_map.clone(), guild_id);
-        assert_eq!(vol, 0.1);
-        assert_eq!(old_vol, 0.1);
+        assert_eq!(vol, DEFAULT_VOLUME_LEVEL);
+        assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
     }
 }
