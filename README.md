@@ -84,7 +84,15 @@ docker run -d --env-file .env cracktunes
 ```
 
 ### ~~Roadmap~~ Change Log
-## v0.3.2 (2024/03/26)
+## v0.3.2 (2024/03/27)
+- Playlists!
+- Here are the available playlist commands
+    - `/playlist create <playlistname>` Creates a playlist with the given name
+    - `/playlist delete <playlistname>` Deletes a playlist with the given name
+    - `/playlist addto <playlistname>`  Adds the currently playing song to <playlistname>
+    - `/playlist list` List your playlists
+    - `/playlist get <playlistname>` displays the contents of <playlistname>
+    - `/playlist play <playlistname>` queues the given playlist on the bot
 - Added pl alias for playlist
 - Added /playlist list
 - Fixed Requested by Field
