@@ -146,36 +146,35 @@ impl Playlist {
     }
 
     /// Delete a playlist by playlist ID
-    pub async fn delete_playlist(pool: &PgPool, playlist_id: i32) -> Result<u64, sqlx::Error> {
-        sqlx::query!("DELETE FROM playlist WHERE id = $1", playlist_id)
-            .execute(pool)
-            .await
-            .map(|r| r.rows_affected())
-    }
-
-    /// Delete a playlist by playlist ID and user ID
-    pub async fn delete_playlist_by_id(
+    pub async fn delete_playlist(
         pool: &PgPool,
         playlist_id: i32,
-        user_id: i64,
     ) -> Result<PgQueryResult, sqlx::Error> {
         let _ = sqlx::query!(
             r#"
-        DELETE FROM playlist_track
-        WHERE playlist_id = $1"#,
+            DELETE FROM playlist_track
+            WHERE playlist_id = $1"#,
             playlist_id
         )
         .execute(pool)
         .await?;
         sqlx::query!(
             r#"
-        DELETE FROM playlist
-        WHERE id = $1 AND user_id = $2"#,
+            DELETE FROM playlist
+            WHERE id = $1"#,
             playlist_id,
-            user_id
         )
         .execute(pool)
         .await
+    }
+
+    /// Delete a playlist by playlist ID and user ID
+    pub async fn delete_playlist_by_id(
+        pool: &PgPool,
+        playlist_id: i32,
+        _user_id: i64,
+    ) -> Result<PgQueryResult, sqlx::Error> {
+        Self::delete_playlist(pool, playlist_id).await
     }
 
     /// Get all tracks in a playlist

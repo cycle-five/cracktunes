@@ -145,7 +145,7 @@ fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode
             "reverse" => Mode::Reverse,
             "shuffle" => Mode::Shuffle,
             "jump" => Mode::Jump,
-            "download" => Mode::DownloadMKV,
+            "downloadmkv" => Mode::DownloadMKV,
             "downloadmp3" => Mode::DownloadMP3,
             "search" => Mode::Search,
             _ => Mode::End,
@@ -207,7 +207,7 @@ pub async fn get_call_with_fail_msg(
                             if timeout > 0 {
                                 let premium = guild_settings.premium;
                                 handler.add_global_event(
-                                    Event::Periodic(Duration::from_secs(1), None),
+                                    Event::Periodic(Duration::from_secs(5), None),
                                     IdleHandler {
                                         http: ctx.serenity_context().http.clone(),
                                         manager: manager.clone(),

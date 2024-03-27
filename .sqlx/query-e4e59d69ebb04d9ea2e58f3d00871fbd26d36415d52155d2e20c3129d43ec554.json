@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM playlist WHERE id = $1",
+  "query": "\n            DELETE FROM playlist\n            WHERE id = $1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -10,5 +10,5 @@
     },
     "nullable": []
   },
-  "hash": "3716d76ac86a259f6d46cd124c9ad1604d2ff5cc188ec225969e8e7bcafb70aa"
+  "hash": "e4e59d69ebb04d9ea2e58f3d00871fbd26d36415d52155d2e20c3129d43ec554"
 }
