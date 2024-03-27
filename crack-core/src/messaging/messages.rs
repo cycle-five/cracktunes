@@ -62,6 +62,7 @@ pub const PLAYLIST_DELETED: &str = "❌ Deleted playlist!";
 pub const PLAYLIST_ADD: &str = "📃 Added to playlist!";
 pub const PLAYLIST_REMOVE: &str = "❌ Removed from playlist!";
 pub const PLAYLIST_LIST_EMPTY: &str = "📃 You have no playlists currently.";
+pub const PLAYLIST_EMPTY: &str = "📃 This playlist has no songs!";
 pub const PLAY_FAILED_BLOCKED_DOMAIN: &str =
     "**is either not allowed in this server or is not supported!** \n\nTo explicitely allow this domain, ask a moderator to run the `/managesources` command. [Click to see a list of supported sources.](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)";
 pub const PLAY_ALL_FAILED: &str =

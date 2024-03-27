@@ -6,7 +6,7 @@ use crate::{
     interface::{build_nav_btns, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
-        messages::{PLAYLIST_LIST_EMPTY, QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF},
+        messages::{PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE, QUEUE_PAGE_OF},
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
@@ -586,12 +586,12 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&AuxMetadata> = metadata
         .iter()
-        .skip(start_idx + 1)
+        .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
         .collect();
 
     if queue.is_empty() {
-        return String::from(QUEUE_NO_SONGS);
+        return String::from(PLAYLIST_EMPTY);
     }
 
     let mut description = String::new();
