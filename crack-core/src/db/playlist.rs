@@ -240,18 +240,22 @@ impl Playlist {
         playlist_name: String,
         user_id: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
+        struct I32Wrapper {
+            id: i32,
+        }
+        let I32Wrapper { id: playlist_id } = sqlx::query_as!(
+            I32Wrapper,
             r#"
-        DELETE FROM playlist
-        WHERE name = $1 AND user_id = $2 
-        "#,
+                SELECT id FROM playlist
+                WHERE name = $1 AND user_id = $2 
+            "#,
             playlist_name,
             user_id,
         )
-        .execute(pool)
+        .fetch_one(pool)
         .await?;
 
-        Ok(())
+        Self::delete_playlist(pool, playlist_id).await.map(|_| ())
     }
 }
 
