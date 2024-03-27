@@ -47,16 +47,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
 
 /// Playlist related commands
 pub fn get_playlist_commands() -> Vec<&'static str> {
-    vec![
-        "create", "delete", "addto", "get",
-        "list",
-        // "playlist_play",
-        // "playlist_queue",
-        // "playlist_clear",
-        // "playlist_rename",
-        // "playlist_import",
-        // "playlist_export",
-    ]
+    vec!["create", "delete", "addto", "get", "list", "play"]
 }
 
 /// Mod commands list
