@@ -47,6 +47,7 @@ pub enum CrackedMessage {
     },
     PlaylistCreated(String),
     PlaylistQueued,
+    PlaylistQueuing(String),
     PlayLog(Vec<String>),
     Premium(bool),
     PremiumPlug,
@@ -195,6 +196,7 @@ impl Display for CrackedMessage {
             Self::PlaylistCreated(name) => {
                 f.write_str(&format!("{} **{}**", PLAYLIST_CREATED, name))
             }
+            Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {

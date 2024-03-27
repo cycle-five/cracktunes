@@ -1,3 +1,5 @@
+use songbird::input::AuxMetadata;
+
 use crate::{
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
@@ -8,6 +10,21 @@ use crate::{
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "get")]
 pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<(), Error> {
+    let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
+        get_playlist_(ctx, playlist).await?;
+    let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
+
+    // Send the embed
+    send_embed_response_poise(ctx, embed).await?;
+
+    Ok(())
+}
+
+/// Get a playlist by name or id
+pub async fn get_playlist_(
+    ctx: Context<'_>,
+    playlist: String,
+) -> Result<(Vec<AuxMetadata>, String), Error> {
     let pool = ctx
         .data()
         .database_pool
@@ -35,10 +52,5 @@ pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<
         })
         .collect::<Vec<_>>();
     // playlist.print_playlist(ctx).await?;
-    let embed = build_tracks_embed_metadata(playlist, &aux_metadata, 0).await;
-
-    // Send the embed
-    send_embed_response_poise(ctx, embed).await?;
-
-    Ok(())
+    Ok((aux_metadata, playlist))
 }
