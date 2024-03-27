@@ -99,7 +99,7 @@ impl Metadata {
         let r = match get_r {
             Ok(r) => r,
             Err(_) => {
-                let r = sqlx::query_as!(
+                sqlx::query_as!(
                     MetadataRead,
                     r#"INSERT INTO
                         metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
@@ -121,8 +121,7 @@ impl Metadata {
                     )
                     .fetch_one(pool)
                     .await
-                    .map_err(CrackedError::SQLX)?;
-                r
+                    .map_err(CrackedError::SQLX)?
             }
         };
         Ok(Metadata {
