@@ -1,7 +1,5 @@
 use super::get_playlist::get_playlist_;
-use crate::errors::CrackedError;
-use crate::utils::{build_playlist_list_embed, send_embed_response_poise};
-use crate::{db::playlist::Playlist, Context, Error};
+use crate::{Context, Error};
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
