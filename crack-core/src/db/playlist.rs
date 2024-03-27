@@ -159,6 +159,14 @@ impl Playlist {
         playlist_id: i32,
         user_id: i64,
     ) -> Result<PgQueryResult, sqlx::Error> {
+        let _ = sqlx::query!(
+            r#"
+        DELETE FROM playlist_track
+        WHERE playlist_id = $1"#,
+            playlist_id
+        )
+        .execute(pool)
+        .await?;
         sqlx::query!(
             r#"
         DELETE FROM playlist
