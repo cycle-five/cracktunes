@@ -6,6 +6,7 @@ use db::TrackReaction;
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::GuildSettings;
+use guild::settings::GuildSettingsMapParam;
 use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
@@ -309,6 +310,32 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
 }
 
+impl DataInner {
+    /// Set the bot settings for the data
+    pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+        Self {
+            bot_settings,
+            ..self.clone()
+        }
+    }
+
+    /// Set the database pool for the data
+    pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
+        Self {
+            database_pool: Some(database_pool),
+            ..self.clone()
+        }
+    }
+
+    /// Set the guild settings map for the data
+    pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
+        Self {
+            guild_settings_map: guild_settings,
+            ..self.clone()
+        }
+    }
+}
+
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
 pub struct EventLog(pub Arc<Mutex<File>>);
@@ -487,6 +514,11 @@ impl Data {
             .unwrap()
             .get(&guild_id)
             .cloned()
+    }
+
+    /// Set the guild settings for a guild and return a new copy.
+    pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
+        Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))
     }
 
     // /// Get the guild settings for a guild (mutable)
