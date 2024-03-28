@@ -525,16 +525,17 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
             break;
         }
     }
+    let second_term = second.unwrap_or_default();
 
-    let admin_command = "admin".eq(first) && admin_commands.contains(&second.unwrap_or_default());
+    let admin_command = "admin".eq(first) && admin_commands.contains(second_term);
 
     let music_command = music_commands.contains(&first);
 
-    let osint_command = "osint".eq(first)
-        && (second.is_none() || osint_commands.contains(&second.unwrap_or_default()));
+    let osint_command =
+        "osint".eq(first) && (second.is_none() || osint_commands.contains(&second_term));
 
     let playlist_command = ("playlist".eq(first) || "pl".eq(first))
-        && (second.is_none() || playlist_commands.contains(&second.unwrap_or_default()));
+        && (second.is_none() || playlist_commands.contains(&second_term));
 
     CommandCategories {
         mod_command,
