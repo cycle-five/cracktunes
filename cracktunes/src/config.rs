@@ -362,7 +362,7 @@ pub async fn poise_framework(
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
-        database_pool: pool_opts.unwrap().into(),
+        database_pool: pool_opts.ok(),
         ..Default::default()
     }));
 
