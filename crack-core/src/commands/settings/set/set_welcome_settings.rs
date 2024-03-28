@@ -107,7 +107,6 @@ mod test {
     use super::set_welcome_settings;
     use crate::guild::settings::{GuildSettingsMapParam, WelcomeSettings};
     use serenity::model::id::GuildId;
-    use tokio;
 
     #[tokio::test]
     async fn test_set_welcome_settings() {

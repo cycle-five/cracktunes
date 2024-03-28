@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod test {
+    use async_trait::async_trait;
     use crack_core::db::{
         playlist::{Playlist, PlaylistTrack},
         Metadata,
     };
-
     use mockall::automock;
-
-    use async_trait::async_trait;
     use sqlx::PgPool;
+    use std::env;
+
     #[cfg_attr(test, automock)]
     #[async_trait]
     pub trait Database {
@@ -42,6 +42,16 @@ mod test {
             guild_id: i64,
             channel_id: i64,
         ) -> Result<Vec<PlaylistTrack>, sqlx::Error>;
+    }
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[test]
+    fn set_env() {
+        env::set_var(
+            "DATABASE_URL",
+            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
+        );
     }
 
     #[tokio::test]
@@ -111,8 +121,7 @@ mod test {
     }
 
     //#[tokio::test]
-    #[ignore]
-    #[sqlx::test]
+    #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_delete_playlist_by_id(pool: PgPool) {
         // Setup
         let user_id = 1; // or fetch a user id for the test
