@@ -13,7 +13,7 @@ pub fn get_volume(
     (guild_settings.volume, guild_settings.old_volume)
 }
 
-/// Get the current bot settings for this guild.
+/// Get the current `volume` and `old_volume` setting for the guild.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,

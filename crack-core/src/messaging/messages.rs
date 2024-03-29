@@ -28,6 +28,7 @@ pub const ERROR: &str = "Fatality! Something went wrong ☹️";
 pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
 pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
 pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
+///?
 pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
 pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
 pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";

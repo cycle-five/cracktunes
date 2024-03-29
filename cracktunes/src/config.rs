@@ -13,13 +13,13 @@ use crack_core::{
     },
     BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
 };
-use poise::serenity_prelude::{model::permissions::Permissions, Client};
+use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
 use poise::{
     serenity_prelude::{FullEvent, GatewayIntents, GuildId},
     CreateReply,
 };
 use songbird::serenity::SerenityInit;
-use std::sync::RwLock;
+use std::{borrow::Cow, sync::RwLock};
 use std::{
     collections::{HashMap, HashSet},
     process::exit,
@@ -94,17 +94,42 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 }
 
 /// Check if the user is authorized to use the osint commands.
-fn is_authorized_osint() -> bool {
-    // implementation of the is_authorized_osint function
-    // ...
-    true // placeholder return value
+fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<RoleId>) -> bool {
+    let member = match member {
+        Some(m) => m,
+        None => {
+            tracing::warn!("No member found");
+            return false;
+        }
+    };
+    let perms = member.permissions.unwrap_or_default();
+    let has_role = os_int_role
+        .map(|x| member.roles.contains(x.as_ref()))
+        .unwrap_or(true);
+    let is_admin = perms.contains(Permissions::ADMINISTRATOR);
+
+    is_admin || has_role
 }
 
 /// Check if the user is authorized to use the music commands.
-fn is_authorized_music() -> bool {
+fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>) -> bool {
+    let member = match member {
+        Some(m) => m,
+        None => {
+            tracing::warn!("No member found");
+            return false;
+        }
+    };
     // implementation of the is_authorized_music function
     // ...
-    true // placeholder return value
+    let perms = member.permissions.unwrap_or_default();
+    let has_role = role
+        .map(|x| member.roles.contains(x.as_ref()))
+        .unwrap_or(true);
+    let is_admin = perms.contains(Permissions::ADMINISTRATOR);
+
+    is_admin || has_role
+    // true // placeholder return value
 }
 
 /// Check if the user is authorized to use mod commands.
@@ -276,8 +301,8 @@ pub async fn poise_framework(
                     return Ok(true);
                 }
                 // If the user is an admin on the server, allow the mod commands
-                let member = ctx.author_member().await?;
-                let res = ctx.author_member().await.map_or_else(
+                let member = ctx.author_member().await;
+                let res = member.as_ref().map_or_else(
                     || {
                         tracing::info!("Author not found in guild");
                         Err(CrackedError::Other("Author not found in guild"))
@@ -311,11 +336,11 @@ pub async fn poise_framework(
                 // These need to be processed in order of most to least restrictive
 
                 if osint_command {
-                    return Ok(is_authorized_osint());
+                    return Ok(is_authorized_osint(member, None));
                 }
 
                 if music_command || playlist_command {
-                    return Ok(is_authorized_music());
+                    return Ok(is_authorized_music(member, None));
                 }
 
                 // Default case fail to be on the safe side.
@@ -695,8 +720,8 @@ mod tests {
     #[test]
     fn test_is_authorized_defaults() {
         // Just check the default return values of the authorization functions.
-        assert_eq!(is_authorized_osint(), true);
-        assert_eq!(is_authorized_music(), true);
+        assert_eq!(is_authorized_osint(None, None), true);
+        assert_eq!(is_authorized_music(None, None), true);
         assert_eq!(is_authorized_mod(), false);
         assert_eq!(is_authorized_admin(), false);
     }
