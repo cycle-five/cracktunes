@@ -29,11 +29,12 @@ use std::{
 
 use crate::{
     get_admin_commands_hashset, get_mod_commands, get_music_commands, get_osint_commands,
-    get_playlist_commands,
+    get_playlist_commands, get_settings_commands,
 };
 
 #[derive(Debug, Clone)]
 pub struct CommandCategories {
+    settings_command: bool,
     mod_command: bool,
     admin_command: bool,
     music_command: bool,
@@ -255,6 +256,7 @@ pub async fn poise_framework(
                 tracing::info!("Command: {:?}", command);
                 tracing::info!("Command Categories: {:?}", cmd_cats);
                 let CommandCategories {
+                    settings_command,
                     mod_command,
                     admin_command,
                     music_command,
@@ -285,6 +287,7 @@ pub async fn poise_framework(
                         tracing::warn!("perm {}", perms);
                         let is_admin = perms.contains(Permissions::ADMINISTRATOR);
                         tracing::warn!("is_admin: {}", is_admin);
+                        tracing::warn!("is_settings: {}", settings_command);
                         Ok(is_admin && (mod_command || admin_command))
                     },
                 );
@@ -510,6 +513,7 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
     let osint_commands = get_osint_commands();
     let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
     let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
+    let settings_commands = get_settings_commands();
 
     let clean_cmd = user_cmd.clone().trim().to_string();
     let first = clean_cmd.split_whitespace().next().unwrap_or_default();
@@ -527,6 +531,8 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
     }
     let second_term = second.unwrap_or_default();
 
+    let settings_command = "settings".eq(first) && settings_commands.contains(&second_term);
+
     let admin_command = "admin".eq(first) && admin_commands.contains(second_term);
 
     let music_command = music_commands.contains(&first);
@@ -538,6 +544,7 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
         && (second.is_none() || playlist_commands.contains(&second_term));
 
     CommandCategories {
+        settings_command,
         mod_command,
         admin_command,
         music_command,
@@ -555,6 +562,7 @@ mod test {
     #[test]
     fn test_command_categories() {
         let cmd = CommandCategories {
+            settings_command: true,
             mod_command: true,
             admin_command: false,
             music_command: false,
@@ -601,6 +609,7 @@ mod test {
     #[test]
     fn test_check_command_categories_bad_command() {
         let CommandCategories {
+            settings_command: _,
             mod_command,
             admin_command,
             music_command,
