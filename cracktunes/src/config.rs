@@ -584,7 +584,10 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 mod test {
     use crack_core::{BotConfig, EventLog};
 
-    use crate::config::CommandCategories;
+    use crate::config::{
+        is_authorized_admin, is_authorized_mod, is_authorized_music, is_authorized_osint,
+        CommandCategories,
+    };
 
     #[test]
     fn test_command_categories() {
