@@ -98,8 +98,9 @@ fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<Role
     let member = match member {
         Some(m) => m,
         None => {
-            tracing::warn!("No member found");
-            return false;
+            // FIXME: Why would this happen?
+            tracing::warn!("Member not found");
+            return true;
         }
     };
     let perms = member.permissions.unwrap_or_default();
@@ -693,29 +694,6 @@ mod test {
         assert_eq!(music_command, false);
         assert_eq!(osint_command, false);
     }
-}
-
-// impl CommandCategories {
-//     pub fn is_mod_command(&self) -> bool {
-//         self.mod_command
-//     }
-
-//     pub fn is_admin_command(&self) -> bool {
-//         self.admin_command
-//     }
-
-//     pub fn is_music_command(&self) -> bool {
-//         self.music_command
-//     }
-
-//     pub fn is_osint_command(&self) -> bool {
-//         self.osint_command
-//     }
-// }
-
-#[cfg(test)]
-mod test {
-    use super::*;
 
     #[test]
     fn test_is_authorized_defaults() {
