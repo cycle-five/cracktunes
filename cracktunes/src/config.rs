@@ -288,17 +288,17 @@ pub async fn poise_framework(
                         let is_admin = perms.contains(Permissions::ADMINISTRATOR);
                         tracing::warn!("is_admin: {}", is_admin);
                         tracing::warn!("is_settings: {}", settings_command);
-                        Ok(is_admin && (mod_command || admin_command))
+                        Ok((is_admin, (mod_command || admin_command)))
                     },
                 );
 
                 // FIXME: This is a bit of a hack
                 match res {
-                    Ok(true) => {
+                    Ok((true, _)) => {
                         tracing::info!("Author is admin");
                         return Ok(true);
                     }
-                    Ok(false) => {
+                    Ok((false, _)) => {
                         tracing::info!("Author is not admin");
                     }
                     Err(e) => {
