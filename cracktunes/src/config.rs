@@ -276,6 +276,7 @@ pub async fn poise_framework(
                     return Ok(true);
                 }
                 // If the user is an admin on the server, allow the mod commands
+                let member = ctx.author_member().await?;
                 let res = ctx.author_member().await.map_or_else(
                     || {
                         tracing::info!("Author not found in guild");
