@@ -96,3 +96,24 @@ pub async fn loadspotify(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::db::aux_metadata_to_db_structures;
+    use crate::db::playlist::Playlist;
+    use crate::db::playlist::PlaylistTrack;
+    use crate::db::Metadata;
+
+    #[test]
+    fn test_get_query_type_or_err() {
+        let ctx = Context::mock();
+        let url = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=8b1b1b1b1b1b1b1b";
+        let res = get_query_type_or_err!(ctx, url);
+        assert!(matches!(res, QueryType::KeywordList(_)));
+        assert_eq!(
+            res,
+            QueryType::KeywordList(vec!["37i9dQZF1DXcBWIGoYBM5M".to_string()])
+        );
+    }
+}
