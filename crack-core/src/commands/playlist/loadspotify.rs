@@ -74,10 +74,10 @@ pub async fn loadspotify_(
 #[poise::command(prefix_command, slash_command)]
 pub async fn loadspotify(
     ctx: Context<'_>,
-    #[description = "Name of the playlist to create and load into."] name: String,
+    #[description = "Spotify.com url to the *public* playlist."] spotifyurl: String,
     #[rest]
-    #[description = "Spotify.com url to the *public* playlist."]
-    spotifyurl: String,
+    #[description = "Name of the playlist to create and load into."]
+    name: String,
 ) -> Result<(), Error> {
     // // verify url format
 
