@@ -8,8 +8,9 @@ use crate::{
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "get")]
-pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<(), Error> {
+#[poise::command(prefix_command, slash_command, rename = "loadspotify")]
+pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result<(), Error> {
+    let url = Url::parse(spotifyurl.clone());
     let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
         get_playlist_(ctx, playlist).await?;
     let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
