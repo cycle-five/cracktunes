@@ -21,6 +21,8 @@ macro_rules! get_db_or_err {
     };
 }
 
+/// Load a Spotify playlist into the bot
+#[cfg(not(tarpaulin_include))]
 pub async fn loadspotify_(
     ctx: Context<'_>,
     name: String,
