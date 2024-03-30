@@ -8,7 +8,6 @@ use crate::{
     Context, CrackedError, Error,
 };
 use songbird::input::{AuxMetadata, Input as SongbirdInput};
-
 use url::Url;
 
 #[macro_export]
