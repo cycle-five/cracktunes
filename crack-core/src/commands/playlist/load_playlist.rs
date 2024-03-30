@@ -22,7 +22,7 @@ pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result
     };
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let channel_id = ctx.channel_id.ok_or(CrackedError::NoChannelId)?;
+    let channel_id = ctx.channel_id();
 
     let url_clean = Url::parse(&spotifyurl.clone())?;
 
@@ -41,7 +41,15 @@ pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result
         get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
     // let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
     for m in metadata {
-        let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
+        match m {
+            MyAuxMetadata::Metadata(m) => {
+                let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
+            }
+            MyAuxMetadata::AuxMetadata(m) => {
+                let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
+            }
+        }
+        //let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
     }
 
     // Send the embed
