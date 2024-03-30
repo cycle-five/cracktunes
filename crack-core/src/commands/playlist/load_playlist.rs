@@ -14,7 +14,7 @@ use url::Url;
 #[macro_export]
 macro_rules! get_query_type_or_err {
     ($ctx:expr, $url:expr) => {
-        match get_query_type_from_url($ctx, $url, None).await? {
+        match get_query_type_from_url($ctx, $url.as_ref(), None).await? {
             Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
             _ => return Err(CrackedError::Other("Bad Query Type").into()),
         }
@@ -37,11 +37,12 @@ pub async fn loadspotify(
 
     let url_clean = Url::parse(&spotifyurl.clone())?;
 
-    let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
-    {
-        Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
-        _ => return Err(CrackedError::Other("Bad Query Type").into()),
-    };
+    let query_type: QueryType = get_query_type_or_err!(ctx, url_clean);
+    // let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
+    // {
+    //     Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
+    //     _ => return Err(CrackedError::Other("Bad Query Type").into()),
+    // };
 
     // let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
     //     get_playlist_(ctx, playlist).await?;
