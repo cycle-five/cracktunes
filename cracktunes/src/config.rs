@@ -118,7 +118,7 @@ fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>) ->
         Some(m) => m,
         None => {
             tracing::warn!("No member found");
-            return false;
+            return true;
         }
     };
     // implementation of the is_authorized_music function
