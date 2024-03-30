@@ -10,7 +10,24 @@ use crate::{
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "loadspotify")]
 pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result<(), Error> {
+    // verify url format
     let url = Url::parse(spotifyurl.clone());
+
+    let query: QueryType = match url {
+        Ok(url) => {
+            if url.host_str().unwrap() == "open.spotify.com" {
+                let path = url.path();
+                let path = path.split("/").collect::<Vec<&str>>();
+                let query = path[2].to_string();
+                QueryType::Spotify(query)
+            } else {
+                QueryType::Youtube(spotifyurl)
+            }
+        }
+        Err(_) => return Err(CrackedError::InvalidUrl.into()),
+        // Err(_) => QueryType::Youtube(spotifyurl),
+    };
+
     let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
         get_playlist_(ctx, playlist).await?;
     let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
