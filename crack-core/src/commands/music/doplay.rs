@@ -1195,7 +1195,7 @@ async fn match_mode(
 
 use colored::Colorize;
 /// Matches a url (or query string) to a QueryType
-async fn get_query_type_from_url(
+pub async fn get_query_type_from_url(
     ctx: Context<'_>,
     url: &str,
     file: Option<Attachment>,

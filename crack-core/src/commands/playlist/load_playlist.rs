@@ -1,36 +1,34 @@
 use songbird::input::AuxMetadata;
 
 use crate::{
+    ::commands::{get_query_type_from_url, QueryType},
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
     Context, CrackedError, Error,
 };
+
+use 
+    url::Url,
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "loadspotify")]
 pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result<(), Error> {
     // verify url format
-    let url = Url::parse(spotifyurl.clone());
 
-    let query: QueryType = match url {
-        Ok(url) => {
-            if url.host_str().unwrap() == "open.spotify.com" {
-                let path = url.path();
-                let path = path.split("/").collect::<Vec<&str>>();
-                let query = path[2].to_string();
-                QueryType::Spotify(query)
-            } else {
-                QueryType::Youtube(spotifyurl)
-            }
-        }
-        Err(_) => return Err(CrackedError::InvalidUrl.into()),
-        // Err(_) => QueryType::Youtube(spotifyurl),
+    let url_clean = Url::parse(&spotifyurl.clone())?;
+
+    let query: QueryType = match get_query_type_from_url(ctx, &url_clean.to_string(), None).await? {
+        Some(qt) => match qt {
+            QueryType::KeywordList(v) => QueryType::KeywordList(v),
+            x => return Err(CrackedError::Other("Bad Query Type").into()),
+        },
+        x => return Err(CrackedError::Other("Bad Query Type").into()),
     };
 
-    let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
-        get_playlist_(ctx, playlist).await?;
-    let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
+    // let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
+    //     get_playlist_(ctx, playlist).await?;
+    // let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
 
     // Send the embed
     send_embed_response_poise(ctx, embed).await?;
