@@ -11,6 +11,16 @@ use songbird::input::Input as SongbirdInput;
 
 use url::Url;
 
+#[macro_export]
+macro_rules! get_query_type_or_err {
+    ($ctx:expr, $url:expr) => {
+        match get_query_type_from_url($ctx, $url, None).await? {
+            Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
+            _ => return Err(CrackedError::Other("Bad Query Type").into()),
+        }
+    };
+}
+
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "loadspotify")]
