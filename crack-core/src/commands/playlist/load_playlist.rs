@@ -11,16 +11,6 @@ use songbird::input::{AuxMetadata, Input as SongbirdInput};
 
 use url::Url;
 
-// #[macro_export]
-// macro_rules! get_query_type_or_err {
-//     ($ctx:expr, $url:expr) => {
-//         match get_query_type_from_url($ctx, $url.as_ref(), None).await? {
-//             Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
-//             _ => return Err(CrackedError::Other("Bad Query Type").into()),
-//         }
-//     };
-// }
-
 #[macro_export]
 macro_rules! get_db_or_err {
     ($ctx:expr) => {
