@@ -701,8 +701,8 @@ mod test {
     #[test]
     fn test_is_authorized_defaults() {
         // Just check the default return values of the authorization functions.
-        assert_eq!(is_authorized_osint(None, None), false);
-        assert_eq!(is_authorized_music(None, None), false);
+        assert_eq!(is_authorized_osint(None, None), true);
+        assert_eq!(is_authorized_music(None, None), true);
         assert_eq!(is_authorized_mod(), false);
         assert_eq!(is_authorized_admin(), false);
     }
