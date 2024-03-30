@@ -67,14 +67,7 @@ pub async fn loadspotify(
 
     let db_pool = get_db_or_err!(ctx);
 
-    let playls = Playlist::create(
-        db_pool,
-        &name.clone(),
-        ctx.author().id.get() as i64,
-        // guild_id.get() as i64,
-        // channel_id.get() as i64,
-    )
-    .await?;
+    let playls = Playlist::create(db_pool, &name.clone(), ctx.author().id.get() as i64).await?;
     let guild_id_i64 = guild_id.get() as i64;
     let channel_id_i64 = channel_id.get() as i64;
     for MyAuxMetadata::Data(m) in metadata {
