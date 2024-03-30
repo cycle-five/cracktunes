@@ -32,10 +32,7 @@ pub async fn loadspotify(
 
     let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
     {
-        Some(qt) => match qt {
-            QueryType::KeywordList(v) => QueryType::KeywordList(v),
-            _ => return Err(CrackedError::Other("Bad Query Type").into()),
-        },
+        Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
         _ => return Err(CrackedError::Other("Bad Query Type").into()),
     };
 
