@@ -888,6 +888,7 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     }
 }
 
+/// Checks a Result and logs the error if it's an Err.
 pub fn check_interaction(result: Result<(), Error>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
@@ -940,6 +941,7 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
 //     }
 // }
 
+/// Get the user id from a context.
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
         CrackContext::Application(ctx) => ctx.interaction.user.id,
@@ -947,12 +949,13 @@ pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     }
 }
 
-pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
-    match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.channel_id,
-        CrackContext::Prefix(ctx) => ctx.msg.channel_id,
-    }
-}
+// /// Get the channel id from a context.
+// pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
+//     match ctx {
+//         CrackContext::Application(ctx) => ctx.interaction.channel_id,
+//         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
+//     }
+// }
 
 // pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
 //     match ctx {

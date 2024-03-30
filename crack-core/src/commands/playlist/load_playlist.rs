@@ -1,24 +1,28 @@
-use songbird::input::AuxMetadata;
-use songbird::input::Input as SongbirdInput;
-
 use crate::{
-    ::commands::{get_query_type_from_url, QueryType},
-    db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
-    utils::{build_tracks_embed_metadata, send_embed_response_poise},
+    commands::{get_query_type_from_url, QueryType},
+    db::{playlist::Playlist, Metadata},
     Context, CrackedError, Error,
 };
+use songbird::input::Input as SongbirdInput;
 
 use url::Url;
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "loadspotify")]
-pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result<(), Error> {
+pub async fn loadspotify(
+    ctx: Context<'_>,
+    #[description = "Name of the playlist to create and load into."] name: String,
+    #[rest]
+    #[description = "Spotify.com url to the *public* playlist."]
+    spotifyurl: String,
+) -> Result<(), Error> {
     // verify url format
 
     use crate::{
-        commands::{get_track_source_and_metadata, MyAuxMetadata},
+        commands::{get_track_source_and_metadata, CrackedMessage, MyAuxMetadata},
         db::aux_metadata_to_db_structures,
+        utils::send_embed_response_str,
     };
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -26,70 +30,59 @@ pub async fn loadspotify(ctx: Context<'_>, #[rest] spotifyurl: String) -> Result
 
     let url_clean = Url::parse(&spotifyurl.clone())?;
 
-    let query_type: QueryType =
-        match get_query_type_from_url(ctx, &url_clean.to_string(), None).await? {
-            Some(qt) => match qt {
-                QueryType::KeywordList(v) => QueryType::KeywordList(v),
-                x => return Err(CrackedError::Other("Bad Query Type").into()),
-            },
-            x => return Err(CrackedError::Other("Bad Query Type").into()),
-        };
+    let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
+    {
+        Some(qt) => match qt {
+            QueryType::KeywordList(v) => QueryType::KeywordList(v),
+            _ => return Err(CrackedError::Other("Bad Query Type").into()),
+        },
+        _ => return Err(CrackedError::Other("Bad Query Type").into()),
+    };
 
     // let (aux_metadata, playlist_name): (Vec<AuxMetadata>, String) =
     //     get_playlist_(ctx, playlist).await?;
-    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
+    let (_source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
     // let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
-    for m in metadata {
-        match m {
-            MyAuxMetadata::Metadata(m) => {
-                let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
-            }
-            MyAuxMetadata::AuxMetadata(m) => {
-                let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
-            }
-        }
-        //let _ = aux_metadata_to_db_structures(m, guild_id, channel_id);
-    }
-
-    // Send the embed
-    send_embed_response_poise(ctx, embed).await?;
-
-    Ok(())
-}
-
-/// Get a playlist by name or id
-pub async fn get_playlist_(
-    ctx: Context<'_>,
-    playlist: String,
-) -> Result<(Vec<AuxMetadata>, String), Error> {
-    let pool = ctx
+    let db_pool = ctx
         .data()
         .database_pool
         .as_ref()
         .ok_or(CrackedError::NoDatabasePool)?;
 
-    // let metadata: Vec<Metadata> = match playlist.parse::<i32>() {
-    //     // Try to parse the playlist as an ID
-    //     Ok(playlist_id) => Playlist::get_track_metadata_for_playlist(pool, playlist_id).await?,
-    //     Err(_) => {
-    //         let user_id = ctx.author().id.get() as i64;
+    let playls = Playlist::create(
+        db_pool,
+        &name.clone(),
+        ctx.author().id.get() as i64,
+        // guild_id.get() as i64,
+        // channel_id.get() as i64,
+    )
+    .await?;
+    let guild_id_i64 = guild_id.get() as i64;
+    let channel_id_i64 = channel_id.get() as i64;
+    for MyAuxMetadata::Data(m) in metadata {
+        let res = aux_metadata_to_db_structures(&m, guild_id_i64, channel_id_i64);
+        match res {
+            Ok((in_metadata, _track)) => {
+                let metadata = Metadata::get_or_create(db_pool, &in_metadata).await?;
 
-    //         Playlist::get_track_metadata_for_playlist_name(pool, playlist.clone(), user_id).await?
-    //     }
-    // };
-
-    // Assuming you have a way to fetch the user_id of the command issuer
-    let aux_metadata = metadata
-        .iter()
-        .flat_map(|m| match aux_metadata_from_db(m) {
-            Ok(aux) => Some(aux),
+                let _res = Playlist::add_track(
+                    db_pool,
+                    playls.id,
+                    metadata.id,
+                    guild_id_i64,
+                    channel_id_i64,
+                )
+                .await?;
+            }
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);
-                None
             }
-        })
-        .collect::<Vec<_>>();
-    // playlist.print_playlist(ctx).await?;
-    Ok((aux_metadata, playlist))
+        }
+    }
+
+    // Send the embed
+    send_embed_response_str(ctx, CrackedMessage::PlaylistCreated(name).to_string()).await?;
+
+    Ok(())
 }
