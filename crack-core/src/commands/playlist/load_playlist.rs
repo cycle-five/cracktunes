@@ -23,12 +23,11 @@ macro_rules! get_query_type_or_err {
 
 #[macro_export]
 macro_rules! get_db_or_err {
-    ($db_pool:expr, $name:expr) => {
-        $db_pool
+    ($ctx:expr) => {
+        $ctx.data()
+            .database_pool
             .as_ref()
             .ok_or(CrackedError::NoDatabasePool)?
-            .get_or_create($name)
-            .await?;
     };
 }
 
@@ -59,12 +58,14 @@ pub async fn loadspotify(
     //     get_playlist_(ctx, playlist).await?;
     let (_source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
-    // let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
-    let db_pool = ctx
-        .data()
-        .database_pool
-        .as_ref()
-        .ok_or(CrackedError::NoDatabasePool)?;
+    // // let embed = build_tracks_embed_metadata(playlist_name, &aux_metadata, 0).await;
+    // let db_pool = ctx
+    //     .data()
+    //     .database_pool
+    //     .as_ref()
+    //     .ok_or(CrackedError::NoDatabasePool)?;
+
+    let db_pool = get_db_or_err!(ctx);
 
     let playls = Playlist::create(
         db_pool,
