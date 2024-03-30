@@ -1521,7 +1521,7 @@ async fn get_download_status_and_filename(
 
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
-async fn get_track_source_and_metadata(
+pub async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
 ) -> (SongbirdInput, Vec<MyAuxMetadata>) {
