@@ -21,6 +21,17 @@ macro_rules! get_query_type_or_err {
     };
 }
 
+#[macro_export]
+macro_rules! get_db_or_err {
+    ($db_pool:expr, $name:expr) => {
+        $db_pool
+            .as_ref()
+            .ok_or(CrackedError::NoDatabasePool)?
+            .get_or_create($name)
+            .await?;
+    };
+}
+
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "loadspotify")]
