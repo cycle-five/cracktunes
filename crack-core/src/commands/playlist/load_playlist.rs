@@ -1,6 +1,10 @@
 use crate::{
-    commands::{get_query_type_from_url, QueryType},
-    db::{playlist::Playlist, Metadata},
+    commands::{
+        get_query_type_from_url, get_track_source_and_metadata, CrackedMessage, MyAuxMetadata,
+        QueryType,
+    },
+    db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
+    utils::send_embed_response_str,
     Context, CrackedError, Error,
 };
 use songbird::input::Input as SongbirdInput;
@@ -18,13 +22,6 @@ pub async fn loadspotify(
     spotifyurl: String,
 ) -> Result<(), Error> {
     // verify url format
-
-    use crate::{
-        commands::{get_track_source_and_metadata, CrackedMessage, MyAuxMetadata},
-        db::aux_metadata_to_db_structures,
-        utils::send_embed_response_str,
-    };
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
