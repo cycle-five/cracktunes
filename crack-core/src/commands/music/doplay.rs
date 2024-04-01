@@ -1603,6 +1603,7 @@ pub async fn queue_aux_metadata(
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
     for metadata in search_results {
+        // metadata.build_query()
         let ytdl = YoutubeDl::new(client.clone(), metadata.clone().source_url.unwrap());
         let query_type = QueryType::NewYoutubeDl((ytdl, metadata));
         let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
