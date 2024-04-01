@@ -6,7 +6,6 @@ use crate::commands::doplay_utils::queue_keyword_list_w_offset;
 use crate::{
     commands::skip::force_skip_top_track,
     connection::get_voice_channel_for_user,
-    db::aux_metadata_to_db_structures,
     errors::{verify, CrackedError},
     guild::settings::{GuildSettings, DEFAULT_PREMIUM},
     handlers::{track_end::update_queue_messages, IdleHandler, TrackEndHandler},
@@ -48,10 +47,9 @@ use poise::{
 use reqwest::Client;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
-    tracks::{Track, TrackHandle},
+    tracks::TrackHandle,
     Call, Event, TrackEvent,
 };
-use sqlx::PgPool;
 use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
@@ -752,14 +750,14 @@ async fn match_mode(
     query_type: QueryType,
 ) -> Result<bool, Error> {
     // let is_prefix = ctx.prefix() != "/";
-    let user_id = ctx.author().id;
+    // let user_id = ctx.author().id;
     // let user_id_i64 = ctx.author().id.get() as i64;
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
 
-    let pool = ctx.data().database_pool.clone().unwrap();
+    // let pool = ctx.data().database_pool.clone().unwrap();
 
     tracing::info!("mode: {:?}", mode);
 
