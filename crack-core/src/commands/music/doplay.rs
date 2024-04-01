@@ -7,13 +7,15 @@ use crate::{
     handlers::{track_end::update_queue_messages, IdleHandler, TrackEndHandler},
     http_utils,
     interface::create_now_playing_embed,
-    messaging::message::CrackedMessage,
-    messaging::messages::{
-        PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED, TRACK_DURATION,
-        TRACK_TIME_TO_PLAY,
+    messaging::{
+        message::CrackedMessage,
+        messages::{
+            PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, SPOTIFY_AUTH_FAILED,
+            TRACK_DURATION, TRACK_TIME_TO_PLAY,
+        },
     },
     sources::{
-        spotify::{Spotify, SPOTIFY},
+        spotify::{Spotify, SpotifyTrack, SPOTIFY},
         ytdl::MyYoutubeDl,
     },
     utils::{
@@ -1363,15 +1365,18 @@ impl Default for RequestingUser {
     }
 }
 
+/// AuxMetadata wrapper and utility functions.
 #[derive(Debug, Clone)]
 pub enum MyAuxMetadata {
     Data(AuxMetadata),
 }
 
+/// Implement TypeMapKey for MyAuxMetadata.
 impl TypeMapKey for MyAuxMetadata {
     type Value = MyAuxMetadata;
 }
 
+/// Implement Default for MyAuxMetadata.
 impl Default for MyAuxMetadata {
     fn default() -> Self {
         MyAuxMetadata::Data(AuxMetadata::default())
@@ -1380,6 +1385,23 @@ impl Default for MyAuxMetadata {
 
 impl MyAuxMetadata {
     pub fn new(metadata: AuxMetadata) -> Self {
+        MyAuxMetadata::Data(metadata)
+    }
+
+    pub fn metadata(&self) -> &AuxMetadata {
+        match self {
+            MyAuxMetadata::Data(metadata) => metadata,
+        }
+    }
+
+    pub fn from_spotify_track(track: SpotifyTrack) -> Self {
+        let mut metadata = AuxMetadata::default();
+        metadata.title = Some(track.name());
+        metadata.artist = Some(track.artists_str());
+        metadata.album = Some(track.album_name());
+        metadata.duration = Some(track.duration());
+        metadata.source_url = Some(track.url);
+        metadata.thumbnail = Some(track.thumbnail);
         MyAuxMetadata::Data(metadata)
     }
 }

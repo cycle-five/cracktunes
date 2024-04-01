@@ -325,14 +325,38 @@ impl SpotifyTrack {
         self.full_track.artists.clone()
     }
 
+    /// Get the artists of the track as a string.
+    pub fn artists_str(&self) -> String {
+        self.full_track
+            .artists
+            .iter()
+            .map(|artist| artist.name.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+
     /// Get the album of the track.
     pub fn album(&self) -> rspotify::model::SimplifiedAlbum {
         self.full_track.album.clone()
     }
 
+    /// Get the album name of the track.
+    pub fn album_name(&self) -> String {
+        self.full_track.album.name.clone()
+    }
+
     /// Get the duration of the track.
-    pub fn duration(&self) -> i32 {
+    pub fn duration_seconds(&self) -> i32 {
         self.full_track.duration.num_seconds() as i32
+    }
+
+    /// Get the duration of the track as a Duration/
+    pub fn duration(&self) -> chrono::Duration {
+        self.full_track.duration
+        // match self.full_track.duration.to_std() {
+        //     Ok(duration) => duration,
+        //     Err(_) => chrono::Duration::zero().into(),
+        // }
     }
 
     /// Join the artist names into a single string.
