@@ -23,6 +23,7 @@ macro_rules! get_db_or_err {
     };
 }
 
+/// Get a Spotify playlist.
 pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, CrackedError> {
     use crate::http_utils;
 
