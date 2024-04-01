@@ -1627,10 +1627,11 @@ pub async fn queue_aux_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
             // metadata.source_url = Some(new_aux_metadata.source_url.unwrap());
-            let metadata_new = metadata
-                .clone()
-                .with_source_url(new_aux_metadata.source_url.unwrap().clone());
-            metadata_new.clone()
+            // let metadata_new = metadata
+            //    .clone()
+            //    .with_source_url(new_aux_metadata.source_url.unwrap().clone());
+            // metadata_new.clone()
+            MyAuxMetadata::Data(new_aux_metadata)
         } else {
             metadata.clone()
         };
