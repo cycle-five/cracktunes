@@ -196,8 +196,8 @@ pub async fn get_call_with_fail_msg(
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
             // TODO: Don't just return an error on failure, do something smarter.
-            let channel_id =
-                get_voice_channel_for_user(&ctx.guild().unwrap().clone(), &ctx.author().id)?;
+            let guild = ctx.guild().ok_or(CrackedError::NoGuild)?;
+            let channel_id = get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?;
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
                     {
@@ -350,6 +350,7 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    // let search_msg = send_search_message(ctx).await?;
     // FIXME: This should be generalized.
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
@@ -374,7 +375,7 @@ async fn play_internal(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    let guild_id = get_guild_id_with_fail_msg(ctx).await?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let call = get_call_with_fail_msg(ctx, guild_id).await?;
 

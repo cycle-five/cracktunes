@@ -28,5 +28,5 @@
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": false,
-    "gitdoc.enabled": false
+    "gitdoc.enabled": true
 }
