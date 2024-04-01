@@ -86,6 +86,8 @@ docker run -d --env-file .env cracktunes
 
 # ~~Roadmap~~ Change Log
 ## v0.3.3 (2024/04/??)
+- `/loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
+- voting tracking
 
 ## v0.3.2 (2024/03/27)
 - Playlists!
