@@ -1341,24 +1341,20 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
     }
 }
 
+/// Enum for the requesting user of a track.
 #[derive(Debug, Clone)]
 pub enum RequestingUser {
     UserId(UserId),
 }
 
-// impl Mentionable for RequestingUser {
-//     fn mention(&self) -> String {
-//         match self {
-//             RequestingUser::UserId(user) => user.mention(),
-//         }
-//     }
-// }
-
+/// We implement TypeMapKey for RequestingUser.
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
 }
 
+/// Default implementation for RequestingUser.
 impl Default for RequestingUser {
+    /// Defualt is UserId(1).
     fn default() -> Self {
         let user = UserId::new(1);
         RequestingUser::UserId(user)
@@ -1383,17 +1379,21 @@ impl Default for MyAuxMetadata {
     }
 }
 
+/// Implement MyAuxMetadata.
 impl MyAuxMetadata {
+    /// Create a new MyAuxMetadata from AuxMetadata.
     pub fn new(metadata: AuxMetadata) -> Self {
         MyAuxMetadata::Data(metadata)
     }
 
+    /// Get the internal metadata.
     pub fn metadata(&self) -> &AuxMetadata {
         match self {
             MyAuxMetadata::Data(metadata) => metadata,
         }
     }
 
+    /// Create new MyAuxMetadata from SpotifyTrack.
     pub fn from_spotify_track(track: SpotifyTrack) -> Self {
         MyAuxMetadata::Data(AuxMetadata {
             track: Some(track.name()),
