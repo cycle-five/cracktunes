@@ -60,6 +60,7 @@ pub enum CrackedError {
     NoSongbird,
     Serenity(SerenityError),
     Poise(Error),
+    UrlParse(url::ParseError),
     TrackFail(Error),
     UnauthorizedUser,
     UnimplementedEvent(ChannelId, &'static str),
@@ -139,10 +140,11 @@ impl Display for CrackedError {
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
             )),
+            Self::UrlParse(err) => f.write_str(&format!("{err}")),
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
-            CrackedError::RSpotifyLockError(_) => todo!(),
+            Self::RSpotifyLockError(_) => todo!(),
         }
     }
 }
@@ -235,6 +237,12 @@ impl From<SerenityError> for CrackedError {
 impl From<reqwest::Error> for CrackedError {
     fn from(err: reqwest::Error) -> Self {
         Self::Reqwest(err)
+    }
+}
+
+impl From<url::ParseError> for CrackedError {
+    fn from(err: url::ParseError) -> Self {
+        Self::UrlParse(err)
     }
 }
 

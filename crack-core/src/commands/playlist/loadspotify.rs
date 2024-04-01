@@ -4,6 +4,9 @@ use crate::{
         QueryType,
     },
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
+    errors::verify,
+    messaging::messages::SPOTIFY_AUTH_FAILED,
+    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::send_embed_response_str,
     Context, CrackedError, Error,
 };
@@ -20,6 +23,18 @@ macro_rules! get_db_or_err {
     };
 }
 
+pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, CrackedError> {
+    use crate::http_utils;
+
+    let url_clean = Url::parse(url)?;
+
+    let final_url = http_utils::resolve_final_url(&url_clean.to_string()).await?;
+    tracing::warn!("spotify: {} -> {}", url_clean, final_url);
+    let spotify = SPOTIFY.lock().await;
+    let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+    Spotify::get_playlist_tracks(spotify, &final_url).await
+}
+
 /// Load a Spotify playlist into the bot
 #[cfg(not(tarpaulin_include))]
 pub async fn loadspotify_(
@@ -27,10 +42,19 @@ pub async fn loadspotify_(
     name: String,
     spotifyurl: String,
 ) -> Result<(Vec<AuxMetadata>, SongbirdInput), Error> {
+    use crate::http_utils;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
     let url_clean = Url::parse(&spotifyurl.clone())?;
+
+    // let final_url = http_utils::resolve_final_url(url_clean).await?;
+    // tracing::warn!("spotify: {} -> {}", url_clean, final_url);
+    // let spotify = SPOTIFY.lock().await;
+    // let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+    // Some(Spotify::extract(spotify, &final_url).await?)
+
     let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
     {
         Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),

@@ -44,6 +44,11 @@ impl FromStr for MediaType {
     }
 }
 
+pub struct ParsedSpotifyUrl {
+    media_type: MediaType,
+    media_id: String,
+}
+
 type SpotifyCreds = Credentials;
 pub struct Spotify {}
 
@@ -72,10 +77,7 @@ impl Spotify {
         Ok(spotify)
     }
 
-    pub async fn extract(
-        spotify: &ClientCredsSpotify,
-        query: &str,
-    ) -> Result<QueryType, CrackedError> {
+    pub async fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
         let captures = SPOTIFY_QUERY_REGEX
             .captures(query)
             .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
@@ -92,6 +94,57 @@ impl Spotify {
             .name("media_id")
             .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
             .as_str();
+
+        Ok(ParsedSpotifyUrl {
+            media_type,
+            media_id: media_id.to_string(),
+        })
+    }
+
+    pub async fn extract_tracks(
+        spotify: &ClientCredsSpotify,
+        query: &str,
+    ) -> Result<Vec<SpotifyTrack>, CrackedError> {
+        let ParsedSpotifyUrl {
+            media_type,
+            media_id,
+        } = Self::parse_spotify_url(query).await?;
+
+        let media_id = media_id.as_str();
+
+        match media_type {
+            MediaType::Playlist => Self::get_playlist_tracks(spotify, media_id).await,
+            _ => Err(CrackedError::Other(SPOTIFY_INVALID_QUERY)),
+        }
+    }
+
+    pub async fn extract(
+        spotify: &ClientCredsSpotify,
+        query: &str,
+    ) -> Result<QueryType, CrackedError> {
+        // let captures = SPOTIFY_QUERY_REGEX
+        //     .captures(query)
+        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
+
+        // let media_type = captures
+        //     .name("media_type")
+        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
+        //     .as_str();
+
+        // let media_type = MediaType::from_str(media_type)
+        //     .map_err(|_| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
+
+        // let media_id = captures
+        //     .name("media_id")
+        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
+        //     .as_str();
+
+        let ParsedSpotifyUrl {
+            media_type,
+            media_id,
+        } = Self::parse_spotify_url(query).await?;
+
+        let media_id = media_id.as_str();
 
         match media_type {
             MediaType::Track => Self::get_track_info(spotify, media_id).await,
@@ -260,6 +313,7 @@ impl Spotify {
         Ok(QueryType::KeywordList(query_list))
     }
 
+    /// Returns a list of queries from a Spotify playlist.
     async fn get_playlist_info(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -286,6 +340,31 @@ impl Spotify {
             .collect();
 
         Ok(QueryType::KeywordList(query_list))
+    }
+
+    pub async fn get_playlist_tracks(
+        spotify: &ClientCredsSpotify,
+        id: &str,
+    ) -> Result<Vec<SpotifyTrack>, CrackedError> {
+        let playlist_id = PlaylistId::from_id(id)
+            .map_err(|_| CrackedError::Other("playlist ID contains invalid characters"))?;
+
+        let playlist = spotify
+            .playlist(playlist_id, None, None)
+            .await
+            .map_err(|_| CrackedError::Other(SPOTIFY_PLAYLIST_FAILED))?;
+
+        let query_list: Vec<SpotifyTrack> = playlist
+            .tracks
+            .items
+            .iter()
+            .filter_map(|item| match item.track.as_ref().unwrap() {
+                PlayableItem::Track(track) => Some(SpotifyTrack::new(track.clone())),
+                PlayableItem::Episode(_) => None,
+            })
+            .collect();
+
+        Ok(query_list)
     }
 
     fn build_query(artists: &str, track_name: &str) -> String {
