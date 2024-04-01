@@ -73,7 +73,15 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !tracks.is_empty() {
         let metadata = get_track_metadata(&tracks[0]).await;
-        let thumbnail = metadata.thumbnail.unwrap_or_default();
+
+        let url = metadata.thumbnail.clone().unwrap_or_default();
+        let thumbnail = match url::Url::parse(&url) {
+            Ok(url) => url.to_string(),
+            Err(e) => {
+                tracing::error!("error parsing url: {:?}", e);
+                "".to_string()
+            }
+        };
 
         let description = format!(
             "[{}]({}) • {}",
