@@ -1966,7 +1966,7 @@ mod test {
         let res = MyAuxMetadata::from_spotify_track(track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
-        assert_eq!(metadata.artist, Some(""));
+        assert_eq!(metadata.artist.unwrap(), "".to_string());
         assert_eq!(metadata.album, Some("zxcv".to_string()));
         assert_eq!(metadata.duration.unwrap(), std::time::Duration::new(60, 0));
     }
