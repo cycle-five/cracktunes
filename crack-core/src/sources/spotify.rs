@@ -355,6 +355,7 @@ impl SpotifyTrack {
         let track_secs = self.full_track.duration.num_seconds();
         let nanos = self.full_track.duration.num_nanoseconds().unwrap_or(0);
         let secs = if track_secs < 0 { 0 } else { track_secs };
+        println!("secs: {}, nanos: {}", secs, nanos);
         Duration::new(secs as u64, nanos as u32)
     }
 
