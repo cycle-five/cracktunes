@@ -29,6 +29,7 @@ pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, Cracke
     tracing::warn!("spotify: {} -> {}", url_clean, final_url);
     let spotify = SPOTIFY.lock().await;
     let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
+    tracing::warn!("Getting playlist tracks...");
     Spotify::get_playlist_tracks(spotify, &final_url).await
 }
 
@@ -49,6 +50,8 @@ pub async fn loadspotify_(
     // Some(Spotify::extract(spotify, &final_url).await?)
 
     let playlist_tracks = get_spotify_playlist(&spotifyurl).await?;
+
+    tracing::warn!("Got playlist tracks: {:?}", playlist_tracks);
 
     let metadata = playlist_tracks
         .iter()
