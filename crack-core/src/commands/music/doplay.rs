@@ -895,7 +895,7 @@ async fn match_mode(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list);
+                queue_keyword_list(ctx, call, keywords_list).await?;
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
