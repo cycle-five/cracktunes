@@ -2,7 +2,7 @@ use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
     FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_ID,
-    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, UNAUTHORIZED_USER,
+    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -43,6 +43,7 @@ pub enum CrackedError {
     NoLogChannel,
     NoUserAutoplay,
     NothingPlaying,
+    NoSongbird,
     Other(&'static str),
     InvalidIP(String),
     PlayListFail,
@@ -57,11 +58,11 @@ pub enum CrackedError {
     Serde(serde_json::Error),
     SerdeStream(serde_stream::Error),
     Songbird(Error),
-    NoSongbird,
     Serenity(SerenityError),
+    SpotifyAuth,
     Poise(Error),
-    UrlParse(url::ParseError),
     TrackFail(Error),
+    UrlParse(url::ParseError),
     UnauthorizedUser,
     UnimplementedEvent(ChannelId, &'static str),
     WrongVoiceChannel,
@@ -126,6 +127,7 @@ impl Display for CrackedError {
             Self::TrackFail(err) => f.write_str(&format!("{err}")),
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
+            Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
@@ -240,6 +242,7 @@ impl From<reqwest::Error> for CrackedError {
     }
 }
 
+/// Provides an implementation to convert a [`url::ParseError`] to a [`CrackedError`].
 impl From<url::ParseError> for CrackedError {
     fn from(err: url::ParseError) -> Self {
         Self::UrlParse(err)

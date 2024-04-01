@@ -31,7 +31,7 @@ pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, Cracke
     let final_url = http_utils::resolve_final_url(&url_clean.to_string()).await?;
     tracing::warn!("spotify: {} -> {}", url_clean, final_url);
     let spotify = SPOTIFY.lock().await;
-    let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
     Spotify::get_playlist_tracks(spotify, &final_url).await
 }
 
@@ -42,8 +42,6 @@ pub async fn loadspotify_(
     name: String,
     spotifyurl: String,
 ) -> Result<(Vec<AuxMetadata>, SongbirdInput), Error> {
-    use crate::http_utils;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
