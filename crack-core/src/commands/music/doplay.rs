@@ -903,8 +903,7 @@ async fn match_mode(
             }
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
-                let queue = //ffmpeg::from_attachment(file, Metadata::default(), &[]).await?;
-                        enqueue_track_pgwrite(ctx, &call, &QueryType::File(file)).await?;
+                let queue = enqueue_track_pgwrite(ctx, &call, &QueryType::File(file)).await?;
                 update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
             }
         },
@@ -923,9 +922,7 @@ async fn match_mode(
             // FIXME
             QueryType::PlaylistLink(_url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
-                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                //     .await
-                //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
+
                 let urls = vec!["".to_string()];
 
                 for (idx, url) in urls.into_iter().enumerate() {
