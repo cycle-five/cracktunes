@@ -27,10 +27,11 @@ pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn myplaylog(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
+    let user_id = ctx.author().id;
 
     let last_played = PlayLog::get_last_played(
         ctx.data().database_pool.as_ref().unwrap(),
-        None,
+        Some(user_id.get() as i64),
         Some(guild_id.get() as i64),
     )
     .await?;
