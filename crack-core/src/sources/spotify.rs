@@ -297,3 +297,7 @@ impl Spotify {
         artist_names.join(" ")
     }
 }
+
+pub struct SpotifyTrack {
+    pub full_track: rspotify::model::FullTrack,
+}
