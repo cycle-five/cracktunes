@@ -299,6 +299,7 @@ impl Spotify {
 }
 
 /// Wrapper for a Spotify track.
+#[derive(Debug, Clone)]
 pub struct SpotifyTrack {
     pub full_track: rspotify::model::FullTrack,
 }

@@ -4,6 +4,7 @@ pub mod clean;
 pub mod clear;
 pub mod collector;
 pub mod doplay;
+pub mod doplay_utils;
 pub mod dosearch;
 pub mod gambling;
 pub mod grab;
