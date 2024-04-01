@@ -1585,6 +1585,15 @@ pub async fn get_track_source_and_metadata(
     }
 }
 
+/// Build a query from AuxMetadata.
+pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
+    format!(
+        "{} - {}",
+        aux_metadata.artist.clone().unwrap_or_default(),
+        aux_metadata.track.clone().unwrap_or_default(),
+    )
+}
+
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
@@ -1604,7 +1613,16 @@ pub async fn queue_aux_metadata(
     let call = manager.get(guild_id).unwrap();
     for metadata in search_results {
         // metadata.build_query()
-        let ytdl = YoutubeDl::new(client.clone(), metadata.clone().source_url.unwrap());
+        let metadata_final = if metadata.source_url.is_none() {
+            let search_query = build_query_aux_metadata(&metadata);
+            let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
+            tracing::warn!("ytdl: {:?}", ytdl);
+            ytdl.aux_metadata().await?
+        } else {
+            metadata.clone()
+        };
+
+        let ytdl = YoutubeDl::new(client.clone(), metadata_final.clone().source_url.unwrap());
         let query_type = QueryType::NewYoutubeDl((ytdl, metadata));
         let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
