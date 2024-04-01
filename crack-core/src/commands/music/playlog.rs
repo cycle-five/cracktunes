@@ -7,6 +7,10 @@ use crate::{Context, Error};
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
+    playlog_(ctx).await
+}
+
+pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
     let last_played = PlayLog::get_last_played(
