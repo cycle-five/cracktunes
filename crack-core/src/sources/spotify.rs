@@ -13,7 +13,7 @@ use rspotify::{
     },
     ClientCredsSpotify, Config, Credentials,
 };
-use std::{env, str::FromStr};
+use std::{env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -351,12 +351,11 @@ impl SpotifyTrack {
     }
 
     /// Get the duration of the track as a Duration/
-    pub fn duration(&self) -> chrono::Duration {
-        self.full_track.duration
-        // match self.full_track.duration.to_std() {
-        //     Ok(duration) => duration,
-        //     Err(_) => chrono::Duration::zero().into(),
-        // }
+    pub fn duration(&self) -> Duration {
+        let track_secs = self.full_track.duration.num_seconds();
+        let nanos = self.full_track.duration.num_nanoseconds().unwrap_or(0);
+        let secs = if track_secs < 0 { 0 } else { track_secs };
+        Duration::new(secs as u64, nanos as u32)
     }
 
     /// Join the artist names into a single string.

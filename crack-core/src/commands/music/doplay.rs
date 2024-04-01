@@ -1395,14 +1395,20 @@ impl MyAuxMetadata {
     }
 
     pub fn from_spotify_track(track: SpotifyTrack) -> Self {
-        let mut metadata = AuxMetadata::default();
-        metadata.title = Some(track.name());
-        metadata.artist = Some(track.artists_str());
-        metadata.album = Some(track.album_name());
-        metadata.duration = Some(track.duration());
-        metadata.source_url = Some(track.url);
-        metadata.thumbnail = Some(track.thumbnail);
-        MyAuxMetadata::Data(metadata)
+        MyAuxMetadata::Data(AuxMetadata {
+            track: Some(track.name()),
+            artist: Some(track.artists_str()),
+            album: Some(track.album_name()),
+            date: None,
+            start_time: Some(Duration::ZERO),
+            duration: Some(track.duration()),
+            channels: Some(2),
+            channel: None,
+            sample_rate: None,
+            source_url: None,
+            thumbnail: Some(track.name()),
+            title: Some(track.name()),
+        })
     }
 }
 
