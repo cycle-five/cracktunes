@@ -101,7 +101,7 @@ pub async fn volume(
             }
         };
 
-        let new_vol = to_set.unwrap() as f32;
+        let new_vol = (to_set.unwrap() as f32) / 100.0;
         let old_vol = {
             let mut guild_settings_guard = ctx.data().guild_settings_map.write().unwrap();
             let guild_settings = guild_settings_guard
