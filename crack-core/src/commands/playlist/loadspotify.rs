@@ -5,7 +5,6 @@ use crate::{
     },
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
-    messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::send_embed_response_str,
     Context, CrackedError, Error,
@@ -13,6 +12,7 @@ use crate::{
 use songbird::input::{AuxMetadata, Input as SongbirdInput};
 use url::Url;
 
+/// Get the database pool or return an error.
 #[macro_export]
 macro_rules! get_db_or_err {
     ($ctx:expr) => {
