@@ -322,4 +322,18 @@ impl SpotifyTrack {
     pub fn album(&self) -> rspotify::model::SimplifiedAlbum {
         self.full_track.album.clone()
     }
+
+    pub fn join_artist_names(&self) -> String {
+        let artist_names: Vec<String> = self
+            .full_track
+            .artists
+            .iter()
+            .map(|artist| artist.name.clone())
+            .collect();
+        artist_names.join(" ")
+    }
+
+    pub fn build_query(&self) -> String {
+        format!("{} - {}", &self.join_artist_names(), &self.name())
+    }
 }
