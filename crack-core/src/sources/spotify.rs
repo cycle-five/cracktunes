@@ -350,7 +350,7 @@ impl SpotifyTrack {
         self.full_track.duration.num_seconds() as i32
     }
 
-    /// Get the duration of the track as a Duration/
+    /// Get the duration of the track as a Duration.
     pub fn duration(&self) -> Duration {
         let track_secs = self.full_track.duration.num_seconds();
         let nanos = self.full_track.duration.num_nanoseconds().unwrap_or(0);
