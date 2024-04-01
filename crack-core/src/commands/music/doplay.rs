@@ -1964,6 +1964,7 @@ mod test {
             duration: chrono::TimeDelta::new(60, 0).unwrap(),
         });
         println!("{:?}", track.full_track.duration);
+        println!("{:?}", track.duration());
         let res = MyAuxMetadata::from_spotify_track(track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
