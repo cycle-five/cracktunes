@@ -582,9 +582,9 @@ pub fn create_now_playing_embed_metadata(
 }
 
 /// Creates an embed for the first N metadata in the queue.
-async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> String {
+async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&AuxMetadata> = metadata
+    let queue: Vec<&MyAuxMetadata> = metadata
         .iter()
         .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
@@ -597,7 +597,7 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        //let MyAuxMetadata::Data(t) = t;
+        let MyAuxMetadata::Data(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);
@@ -673,7 +673,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
-    metadata_arr: &[AuxMetadata],
+    metadata_arr: &[MyAuxMetadata],
     page: usize,
 ) -> CreateEmbed {
     CreateEmbed::default()

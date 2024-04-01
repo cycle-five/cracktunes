@@ -1335,6 +1335,13 @@ impl MyAuxMetadata {
             title: Some(track.name()),
         })
     }
+
+    pub fn with_source_url(self, source_url: String) -> Self {
+        MyAuxMetadata::Data(AuxMetadata {
+            source_url: Some(source_url),
+            ..self.metadata().clone()
+        })
+    }
 }
 
 /// Implementation to convert `[&SpotifyTrack]` to `[MyAuxMetadata]`.
@@ -1598,7 +1605,7 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
-    aux_metadata: Vec<&mut AuxMetadata>,
+    aux_metadata: &[MyAuxMetadata],
 ) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
@@ -1612,21 +1619,27 @@ pub async fn queue_aux_metadata(
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     for metadata in search_results {
-        let source_url = metadata.source_url.as_ref();
+        let source_url = metadata.metadata().source_url.as_ref();
         // metadata.build_query()
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
-            let search_query = build_query_aux_metadata(&metadata);
+            let search_query = build_query_aux_metadata(&metadata.metadata());
             let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
-            metadata.source_url = Some(new_aux_metadata.source_url.unwrap());
-            metadata
+            // metadata.source_url = Some(new_aux_metadata.source_url.unwrap());
+            let metadata_new = metadata
+                .clone()
+                .with_source_url(new_aux_metadata.source_url.unwrap().clone());
+            metadata_new.clone()
         } else {
-            metadata
+            metadata.clone()
         };
 
-        let ytdl = YoutubeDl::new(client.clone(), metadata_final.clone().source_url.unwrap());
-        let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.clone()));
+        let ytdl = YoutubeDl::new(
+            client.clone(),
+            metadata_final.metadata().source_url.clone().unwrap(),
+        );
+        let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.metadata().clone()));
         let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }

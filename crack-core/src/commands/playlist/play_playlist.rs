@@ -11,11 +11,12 @@ pub async fn play_playlist(
     #[description = "Playlist name or id"]
     playlist: String,
 ) -> Result<(), Error> {
+    // Check for playlist Id
     let (aux_metadata, playlist_name) = get_playlist_(ctx, playlist).await?;
 
     send_response_poise(ctx, CrackedMessage::PlaylistQueuing(playlist_name), true).await?;
 
-    queue_aux_metadata(ctx, aux_metadata).await?;
+    queue_aux_metadata(ctx, aux_metadata.as_slice()).await?;
 
     send_response_poise(ctx, CrackedMessage::PlaylistQueued, true).await?;
 
