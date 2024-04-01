@@ -1610,7 +1610,7 @@ pub async fn queue_aux_metadata(
     // .await?;
     let client = reqwest::Client::new();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     for metadata in search_results {
         // metadata.build_query()
         let metadata_final = if metadata.source_url.is_none() {
