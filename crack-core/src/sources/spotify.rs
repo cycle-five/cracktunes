@@ -301,3 +301,25 @@ impl Spotify {
 pub struct SpotifyTrack {
     pub full_track: rspotify::model::FullTrack,
 }
+
+impl SpotifyTrack {
+    pub fn new(full_track: rspotify::model::FullTrack) -> Self {
+        Self { full_track }
+    }
+
+    pub fn id(&self) -> TrackId<'static> {
+        self.full_track.id.clone().unwrap()
+    }
+
+    pub fn name(&self) -> String {
+        self.full_track.name.clone()
+    }
+
+    pub fn artists(&self) -> Vec<SimplifiedArtist> {
+        self.full_track.artists.clone()
+    }
+
+    pub fn album(&self) -> rspotify::model::SimplifiedAlbum {
+        self.full_track.album.clone()
+    }
+}
