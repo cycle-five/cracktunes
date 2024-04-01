@@ -298,31 +298,44 @@ impl Spotify {
     }
 }
 
+/// Wrapper for a Spotify track.
 pub struct SpotifyTrack {
     pub full_track: rspotify::model::FullTrack,
 }
 
+/// Implementation of SpotifyTrack.
 impl SpotifyTrack {
+    /// Create a new SpotifyTrack.
     pub fn new(full_track: rspotify::model::FullTrack) -> Self {
         Self { full_track }
     }
 
+    /// Get the ID of the track
     pub fn id(&self) -> TrackId<'static> {
         self.full_track.id.clone().unwrap()
     }
 
+    /// Get the name of the track.
     pub fn name(&self) -> String {
         self.full_track.name.clone()
     }
 
+    /// Get the artists of the track.
     pub fn artists(&self) -> Vec<SimplifiedArtist> {
         self.full_track.artists.clone()
     }
 
+    /// Get the album of the track.
     pub fn album(&self) -> rspotify::model::SimplifiedAlbum {
         self.full_track.album.clone()
     }
 
+    /// Get the duration of the track.
+    pub fn duration(&self) -> i32 {
+        self.full_track.duration.num_seconds() as i32
+    }
+
+    /// Join the artist names into a single string.
     pub fn join_artist_names(&self) -> String {
         let artist_names: Vec<String> = self
             .full_track
@@ -333,6 +346,7 @@ impl SpotifyTrack {
         artist_names.join(" ")
     }
 
+    /// Build a query for searching, from the artist names and the track name.
     pub fn build_query(&self) -> String {
         format!("{} - {}", &self.join_artist_names(), &self.name())
     }
