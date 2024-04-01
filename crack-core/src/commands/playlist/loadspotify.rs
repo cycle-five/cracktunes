@@ -5,6 +5,7 @@ use crate::{
     },
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
+    http_utils,
     sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::send_embed_response_str,
     Context, CrackedError, Error,
@@ -25,8 +26,6 @@ macro_rules! get_db_or_err {
 
 /// Get a Spotify playlist.
 pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, CrackedError> {
-    use crate::http_utils;
-
     let url_clean = Url::parse(url)?;
 
     let final_url = http_utils::resolve_final_url(&url_clean.to_string()).await?;
