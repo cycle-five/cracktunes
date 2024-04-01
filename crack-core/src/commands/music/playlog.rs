@@ -40,4 +40,3 @@ pub async fn myplaylog(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
-
