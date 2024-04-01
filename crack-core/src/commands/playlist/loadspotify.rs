@@ -106,7 +106,8 @@ pub async fn loadspotify(
     #[description = "Name of the playlist to create and load into."]
     name: String,
 ) -> Result<(), Error> {
-    // // verify url format
+    tracing::warn!("Loading Spotify playlist: {}", spotifyurl);
+    tracing::warn!("Playlist name: {}", name);
 
     let metadata_vec = loadspotify_(ctx, name.to_string(), spotifyurl).await?;
 
