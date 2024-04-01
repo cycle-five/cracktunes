@@ -16,7 +16,7 @@ cracktunes.env
 cracktunes.toml
 
 # IDE config
-.vscode/
+#.vscode/
 
 # code coverage
 cobertura.xml
