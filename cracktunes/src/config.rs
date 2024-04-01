@@ -175,7 +175,7 @@ pub async fn poise_framework(
             commands::autoplay(),
             commands::clear(),
             commands::clean(),
-            commands::downvote(),
+            //commands::downvote(),
             commands::help(),
             commands::leave(),
             commands::lyrics(),
