@@ -899,7 +899,7 @@ async fn match_mode(
             }
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
-                queue_keyword_list(ctx, call, keywords_list);
+                queue_keyword_list(ctx, call, keywords_list).await?;
             }
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
@@ -1098,7 +1098,7 @@ async fn match_mode(
                 tracing::trace!(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
-                queue_keyword_list(ctx, call, keywords_list);
+                queue_keyword_list(ctx, call, keywords_list).await?;
             }
             QueryType::SpotifyTracks(tracks) => {
                 tracing::trace!(
@@ -1108,7 +1108,7 @@ async fn match_mode(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list);
+                queue_keyword_list(ctx, call, keywords_list).await?;
             }
             _ => {
                 ctx.defer().await?; // Why did I do this?
