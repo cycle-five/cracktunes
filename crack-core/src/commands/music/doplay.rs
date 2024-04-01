@@ -1814,6 +1814,8 @@ async fn rotate_tracks(
 
 #[cfg(test)]
 mod test {
+    use rspotify::model::FullTrack;
+
     use super::*;
 
     #[test]
@@ -1924,5 +1926,34 @@ mod test {
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
+    }
+
+    fn test_from_spotify_track() {
+        let track = SpotifyTrack::new(FullTrack {
+            id: "asdf".to_string(),
+            name: "asdf".to_string(),
+            artists: vec!["qwer"],
+            album: Some("zxcv"),
+            track_number: 0,
+            disc_number: 0,
+            explicit: false,
+            external_urls: HashMap::new(),
+            href: None,
+            preview_url: None,
+            popularity: None,
+            is_playable: None,
+            linked_from: None,
+            restrictions: None,
+            external_ids: None,
+            is_local: None,
+            available_markets: vec![],
+            duration: None,
+        });
+        let res = MyAuxMetadata::from_spotify_track(track);
+        let metadata = res.metadata();
+        assert_eq!(metadata.title, Some("asdf".to_string()));
+        assert_eq!(metadata.artist_str, Some("qwer".to_string()));
+        assert_eq!(metadata.album, Some("zxcv".to_string()));
+        assert_eq!(metadata.duration, None);
     }
 }
