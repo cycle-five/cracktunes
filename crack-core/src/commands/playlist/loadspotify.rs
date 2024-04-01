@@ -30,7 +30,7 @@ pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, Cracke
     let spotify = SPOTIFY.lock().await;
     let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
     tracing::warn!("Getting playlist tracks...");
-    Spotify::get_playlist_tracks(spotify, &final_url).await
+    Spotify::extract_tracks(spotify, &final_url).await
 }
 
 /// Load a Spotify playlist into the bot
