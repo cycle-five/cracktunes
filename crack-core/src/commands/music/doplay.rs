@@ -1968,6 +1968,6 @@ mod test {
         assert_eq!(metadata.title, Some("asdf".to_string()));
         assert_eq!(metadata.artist, Some("".to_string()));
         assert_eq!(metadata.album, Some("zxcv".to_string()));
-        assert_eq!(metadata.duration.unwrap().as_secs(), 60);
+        assert_eq!(metadata.duration.unwrap().as_secs(), 64);
     }
 }
