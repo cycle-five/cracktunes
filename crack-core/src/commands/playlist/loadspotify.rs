@@ -25,7 +25,7 @@ macro_rules! get_db_or_err {
 pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, CrackedError> {
     let url_clean = Url::parse(url)?;
 
-    let final_url = http_utils::resolve_final_url(&url_clean.to_string()).await?;
+    let final_url = http_utils::resolve_final_url(url_clean.as_ref()).await?;
     tracing::warn!("spotify: {} -> {}", url_clean, final_url);
     let spotify = SPOTIFY.lock().await;
     let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
@@ -52,7 +52,7 @@ pub async fn loadspotify_(
 
     let metadata = playlist_tracks
         .iter()
-        .map(|track| Into::<MyAuxMetadata>::into(track))
+        .map(Into::<MyAuxMetadata>::into)
         .collect::<Vec<_>>();
 
     // let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
