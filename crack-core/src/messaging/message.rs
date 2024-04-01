@@ -45,7 +45,7 @@ pub enum CrackedMessage {
     PlayDomainBanned {
         domain: String,
     },
-    PlaylistCreated(String),
+    PlaylistCreated(String, usize),
     PlaylistQueued,
     PlaylistQueuing(String),
     PlayLog(Vec<String>),
@@ -193,9 +193,10 @@ impl Display for CrackedMessage {
             Self::Paywall(url) => f.write_str(&format!("{}{}", ONETWOFT, url)),
             Self::PhoneNumberInfo(info) => f.write_str(info),
             Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
-            Self::PlaylistCreated(name) => {
-                f.write_str(&format!("{} **{}**", PLAYLIST_CREATED, name))
-            }
+            Self::PlaylistCreated(name, len) => f.write_str(&format!(
+                "{} **{}** with {} tracks!",
+                PLAYLIST_CREATED, name, len
+            )),
             Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),

@@ -454,3 +454,9 @@ impl SpotifyTrack {
         format!("{} - {}", &self.join_artist_names(), &self.name())
     }
 }
+
+impl From<rspotify::model::FullTrack> for SpotifyTrack {
+    fn from(track: rspotify::model::FullTrack) -> Self {
+        Self::new(track)
+    }
+}

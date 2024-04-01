@@ -922,7 +922,9 @@ async fn match_mode(
             // FIXME
             QueryType::PlaylistLink(_url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
-
+                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+                //     .await
+                //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
                 let urls = vec!["".to_string()];
 
                 for (idx, url) in urls.into_iter().enumerate() {
@@ -1316,8 +1318,8 @@ impl MyAuxMetadata {
         }
     }
 
-    /// Create new MyAuxMetadata from SpotifyTrack.
-    pub fn from_spotify_track(track: SpotifyTrack) -> Self {
+    /// Create new MyAuxMetadata from &SpotifyTrack.
+    pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
         MyAuxMetadata::Data(AuxMetadata {
             track: Some(track.name()),
             artist: Some(track.artists_str()),
@@ -1332,6 +1334,13 @@ impl MyAuxMetadata {
             thumbnail: Some(track.name()),
             title: Some(track.name()),
         })
+    }
+}
+
+/// Implementation to convert `[&SpotifyTrack]` to `[MyAuxMetadata]`.
+impl From<&SpotifyTrack> for MyAuxMetadata {
+    fn from(track: &SpotifyTrack) -> Self {
+        MyAuxMetadata::from_spotify_track(track)
     }
 }
 
@@ -1784,7 +1793,7 @@ mod test {
             available_markets: vec![],
             duration: chrono::TimeDelta::new(60, 0).unwrap(),
         });
-        let res = MyAuxMetadata::from_spotify_track(track);
+        let res = MyAuxMetadata::from_spotify_track(&track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
         assert_eq!(metadata.artist, Some("".to_string()));

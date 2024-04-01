@@ -1,8 +1,5 @@
 use crate::{
-    commands::{
-        get_query_type_from_url, get_track_source_and_metadata, CrackedMessage, MyAuxMetadata,
-        QueryType,
-    },
+    commands::{CrackedMessage, MyAuxMetadata},
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
     http_utils,
@@ -10,7 +7,7 @@ use crate::{
     utils::send_embed_response_str,
     Context, CrackedError, Error,
 };
-use songbird::input::{AuxMetadata, Input as SongbirdInput};
+use songbird::input::AuxMetadata;
 use url::Url;
 
 /// Get the database pool or return an error.
@@ -41,11 +38,9 @@ pub async fn loadspotify_(
     ctx: Context<'_>,
     name: String,
     spotifyurl: String,
-) -> Result<(Vec<AuxMetadata>, SongbirdInput), Error> {
+) -> Result<Vec<AuxMetadata>, Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
-
-    let url_clean = Url::parse(&spotifyurl.clone())?;
 
     // let final_url = http_utils::resolve_final_url(url_clean).await?;
     // tracing::warn!("spotify: {} -> {}", url_clean, final_url);
@@ -53,14 +48,21 @@ pub async fn loadspotify_(
     // let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
     // Some(Spotify::extract(spotify, &final_url).await?)
 
-    let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
-    {
-        Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
-        _ => return Err(CrackedError::Other("Bad Query Type").into()),
-    };
+    let playlist_tracks = get_spotify_playlist(&spotifyurl).await?;
 
-    let (_source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
+    let metadata = playlist_tracks
+        .iter()
+        .map(|track| Into::<MyAuxMetadata>::into(track))
+        .collect::<Vec<_>>();
+
+    // let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
+    // {
+    //     Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
+    //     _ => return Err(CrackedError::Other("Bad Query Type").into()),
+    // };
+
+    // let (_source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
+    //     get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
 
     let db_pool = get_db_or_err!(ctx);
 
@@ -88,7 +90,7 @@ pub async fn loadspotify_(
             }
         }
     }
-    Ok((metadata_vec, _source))
+    Ok(metadata_vec)
 }
 
 /// Get a playlist
@@ -103,10 +105,12 @@ pub async fn loadspotify(
 ) -> Result<(), Error> {
     // // verify url format
 
-    let (_metadata_vec, _source) = loadspotify_(ctx, name.to_string(), spotifyurl).await?;
+    let metadata_vec = loadspotify_(ctx, name.to_string(), spotifyurl).await?;
+
+    let len = metadata_vec.len();
 
     // Send the embed
-    send_embed_response_str(ctx, CrackedMessage::PlaylistCreated(name).to_string()).await?;
+    send_embed_response_str(ctx, CrackedMessage::PlaylistCreated(name, len).to_string()).await?;
 
     Ok(())
 }
