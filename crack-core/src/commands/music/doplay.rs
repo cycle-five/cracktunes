@@ -1928,6 +1928,7 @@ mod test {
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
     }
 
+    #[test]
     fn test_from_spotify_track() {
         let track = SpotifyTrack::new(FullTrack {
             id: None,
