@@ -1378,6 +1378,12 @@ impl Default for MyAuxMetadata {
     }
 }
 
+impl MyAuxMetadata {
+    pub fn new(metadata: AuxMetadata) -> Self {
+        MyAuxMetadata::Data(metadata)
+    }
+}
+
 /// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
