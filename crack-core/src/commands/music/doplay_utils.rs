@@ -4,10 +4,13 @@ use crate::{
     commands::{get_track_source_and_metadata, MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
 };
-use crate::{errors::CrackedError, get_db_or_err, Context, Error};
+use crate::{errors::CrackedError, Context, Error};
+
+use serenity::all::{ChannelId, GuildId, Http, UserId};
 use songbird::tracks::TrackHandle;
 use songbird::Call;
 use songbird::{input::Input as SongbirdInput, tracks::Track};
+use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -137,12 +140,33 @@ pub async fn enqueue_track_pgwrite(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let database_pool = get_db_or_err!(ctx);
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let channel_id = ctx.channel_id();
-    let user_id = ctx.author().id;
-    let http = ctx.http();
+    // let database_pool = get_db_or_err!(ctx);
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // let channel_id = ctx.channel_id();
+    // let user_id = ctx.author().id;
+    // let http = ctx.http();
+    enqueue_track_pgwrite_asdf(
+        ctx.data().database_pool.as_ref().unwrap(),
+        ctx.guild_id().unwrap(),
+        ctx.channel_id(),
+        ctx.author().id,
+        ctx.http(),
+        call,
+        query_type,
+    )
+    .await
+}
 
+#[cfg(not(tarpaulin_include))]
+pub async fn enqueue_track_pgwrite_asdf(
+    database_pool: &PgPool,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    user_id: UserId,
+    http: &Http,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist

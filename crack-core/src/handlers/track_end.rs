@@ -9,7 +9,10 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::{
-    commands::{enqueue_track_pgwrite, forget_skip_votes, send_now_playing, MyAuxMetadata},
+    commands::{
+        doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, send_now_playing,
+        MyAuxMetadata,
+    },
     db::PlayLog,
     errors::{verify, CrackedError},
     interface::{build_nav_btns, create_queue_embed},
@@ -143,7 +146,7 @@ impl EventHandler for TrackEndHandler {
                                 return None;
                             }
                         };
-                        let q = enqueue_track_pgwrite(
+                        let q = enqueue_track_pgwrite_asdf(
                             self.data.database_pool.as_ref().unwrap(),
                             self.guild_id,
                             chan_id,
