@@ -290,19 +290,6 @@ pub async fn set_global_handlers(
 async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     send_embed_response_poise(ctx, embed).await
-    // match get_interaction_new(ctx) {
-    //     Some(CommandOrMessageInteraction::Command(interaction)) => {
-    //         create_response_interaction(
-    //             &ctx.serenity_context().http,
-    //             &interaction,
-    //             CrackedMessage::Search.into(),
-    //             true,
-    //         )
-    //         .await
-    //     }
-    //     _ => send_response_poise_text(ctx, CrackedMessage::Search).await,
-    // }
-    //Err(CrackedError::Other("Failed to send search message.").into())
 }
 
 async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
