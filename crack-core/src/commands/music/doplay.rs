@@ -1630,7 +1630,8 @@ pub async fn queue_aux_metadata(
             msg.edit(
                 ctx,
                 EditMessage::default().content(format!("Queuing... {}", search_query)),
-            );
+            )
+            .await;
             let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
