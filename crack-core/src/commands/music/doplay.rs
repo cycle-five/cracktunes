@@ -1613,9 +1613,9 @@ pub async fn queue_aux_metadata(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
-    let client = ctx.data().http_client;
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let client = &ctx.data().http_client;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
