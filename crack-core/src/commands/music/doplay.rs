@@ -202,54 +202,55 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    {
-                        let mut handler = call.lock().await;
-                        // unregister existing events and register idle notifier
-                        handler.remove_all_global_events();
+                    set_global_handlers(ctx, call.clone()).await?;
+                    // {
+                    //     let mut handler = call.lock().await;
+                    //     // unregister existing events and register idle notifier
+                    //     handler.remove_all_global_events();
 
-                        let guild_settings_map =
-                            ctx.data().guild_settings_map.read().unwrap().clone();
+                    //     let guild_settings_map =
+                    //         ctx.data().guild_settings_map.read().unwrap().clone();
 
-                        let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
-                            let timeout = guild_settings.timeout;
-                            if timeout > 0 {
-                                let premium = guild_settings.premium;
-                                handler.add_global_event(
-                                    Event::Periodic(Duration::from_secs(5), None),
-                                    IdleHandler {
-                                        http: ctx.serenity_context().http.clone(),
-                                        manager: manager.clone(),
-                                        channel_id,
-                                        guild_id: Some(guild_id),
-                                        limit: timeout as usize,
-                                        count: Default::default(),
-                                        no_timeout: Arc::new(AtomicBool::new(premium)),
-                                    },
-                                );
-                            }
-                        });
+                    //     let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
+                    //         let timeout = guild_settings.timeout;
+                    //         if timeout > 0 {
+                    //             let premium = guild_settings.premium;
+                    //             handler.add_global_event(
+                    //                 Event::Periodic(Duration::from_secs(5), None),
+                    //                 IdleHandler {
+                    //                     http: ctx.serenity_context().http.clone(),
+                    //                     manager: manager.clone(),
+                    //                     channel_id,
+                    //                     guild_id: Some(guild_id),
+                    //                     limit: timeout as usize,
+                    //                     count: Default::default(),
+                    //                     no_timeout: Arc::new(AtomicBool::new(premium)),
+                    //                 },
+                    //             );
+                    //         }
+                    //     });
 
-                        handler.add_global_event(
-                            Event::Track(TrackEvent::End),
-                            TrackEndHandler {
-                                guild_id,
-                                http: ctx.serenity_context().http.clone(),
-                                call: call.clone(),
-                                data: ctx.data().clone(),
-                            },
-                        );
+                    //     handler.add_global_event(
+                    //         Event::Track(TrackEvent::End),
+                    //         TrackEndHandler {
+                    //             guild_id,
+                    //             http: ctx.serenity_context().http.clone(),
+                    //             call: call.clone(),
+                    //             data: ctx.data().clone(),
+                    //         },
+                    //     );
 
-                        let text = CrackedMessage::Summon {
-                            mention: channel_id.mention(),
-                        }
-                        .to_string();
-                        let msg = ctx
-                            .send(CreateReply::default().content(text).ephemeral(true))
-                            .await?
-                            .into_message()
-                            .await?;
-                        ctx.data().add_msg_to_cache(guild_id, msg);
-                    }
+                    //     let text = CrackedMessage::Summon {
+                    //         mention: channel_id.mention(),
+                    //     }
+                    //     .to_string();
+                    //     let msg = ctx
+                    //         .send(CreateReply::default().content(text).ephemeral(true))
+                    //         .await?
+                    //         .into_message()
+                    //         .await?;
+                    //     ctx.data().add_msg_to_cache(guild_id, msg);
+                    // }
                     Ok(call)
                     // Ok(manager.get(guild_id).unwrap())
                 }
@@ -263,6 +264,53 @@ pub async fn get_call_with_fail_msg(
             }
         }
     }
+}
+
+/// Set the global handlers.
+pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let channel_id = {
+        let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
+        get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
+    };
+
+    let mut handler = call.lock().await;
+    // unregister existing events and register idle notifier
+    handler.remove_all_global_events();
+
+    let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone();
+
+    let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
+        let timeout = guild_settings.timeout;
+        if timeout > 0 {
+            let premium = guild_settings.premium;
+            handler.add_global_event(
+                Event::Periodic(Duration::from_secs(5), None),
+                IdleHandler {
+                    http: ctx.serenity_context().http.clone(),
+                    manager: manager.clone(),
+                    channel_id,
+                    guild_id: Some(guild_id),
+                    limit: timeout as usize,
+                    count: Default::default(),
+                    no_timeout: Arc::new(AtomicBool::new(premium)),
+                },
+            );
+        }
+    });
+
+    handler.add_global_event(
+        Event::Track(TrackEvent::End),
+        TrackEndHandler {
+            guild_id,
+            http: ctx.serenity_context().http.clone(),
+            call: call.clone(),
+            data: ctx.data().clone(),
+        },
+    );
+
+    Ok(())
 }
 
 /// Sends the searching message after a play command is sent.
