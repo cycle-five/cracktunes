@@ -198,7 +198,7 @@ pub async fn get_call_with_fail_msg(
             // TODO: Don't just return an error on failure, do something smarter.
             let channel_id = {
                 let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
-                get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?;
+                get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
