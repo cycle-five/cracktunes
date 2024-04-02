@@ -316,6 +316,17 @@ pub async fn set_global_handlers(
         },
     );
 
+    let text = CrackedMessage::Summon {
+        mention: channel_id.mention(),
+    }
+    .to_string();
+    let msg = ctx
+        .send(CreateReply::default().content(text).ephemeral(true))
+        .await?
+        .into_message()
+        .await?;
+    data.add_msg_to_cache(guild_id, msg);
+
     Ok(())
 }
 
