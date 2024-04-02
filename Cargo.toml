@@ -14,8 +14,7 @@ authors = ["Cycle Five <cycle.five@proton.me>"]
 crack-core = { path = "crack-core", default-features = true, version = "0.3.2" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
-tungstenite = "0.21"
-async-tungstenite = "0.25"
+
 reqwest = { version = "0.11", features = ["blocking", "json", "multipart"] }
 audiopus = "0.3.0-rc.0"
 either = "1.10"
@@ -105,6 +104,8 @@ debug = 0
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
 # and we don't rely on it for debugging that much.
+tungstenite = "0.21"
+async-tungstenite = "0.25"
 debug = 0
 
 [profile.dev.package]
