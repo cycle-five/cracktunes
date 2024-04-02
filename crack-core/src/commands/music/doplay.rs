@@ -196,7 +196,7 @@ pub async fn get_call_with_fail_msg(
             // try to join a voice channel if not in one just yet
             //match summon_short(ctx).await {
             // TODO: Don't just return an error on failure, do something smarter.
-            let guild = ctx.guild().ok_or(CrackedError::NoGuild)?;
+            let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
             let channel_id = get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?;
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
