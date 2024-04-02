@@ -1,6 +1,14 @@
+
+
 [workspace]
 members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt"]
 resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+
 
 [workspace.dependencies]
 crack-core = { path = "crack-core", default-features = true, version = "0.3.2" }
@@ -86,4 +94,19 @@ features = ["macros", "rt-multi-thread", "signal"]
 
 [profile.release-with-debug]
 inherits = "release"
-debug = true
+debug = 1
+
+
+[profile.release]
+incremental = true
+# Set this to 1 or 2 to get more useful backtraces in debugger.
+debug = 0
+
+[profile.dev]
+# Disabling debug info speeds up builds a bunch,
+# and we don't rely on it for debugging that much.
+debug = 0
+
+[profile.dev.package]
+# This speeds up `cargo xtask dist`.
+miniz_oxide.opt-level = 3
