@@ -202,7 +202,7 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    let msg =
+                    let text =
                         set_global_handlers(ctx.data(), call.clone(), guild_id, channel_id).await?;
                     // {
                     //     let mut handler = call.lock().await;
