@@ -1627,7 +1627,10 @@ pub async fn queue_aux_metadata(
         // metadata.build_query()
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
             let search_query = build_query_aux_metadata(metadata.metadata());
-            msg.edit(ctx, |m| m.content(format!("Queuing... {}", search_query)));
+            msg.edit(
+                ctx,
+                EditMessage::default().content(format!("Queuing... {}", search_query)),
+            );
             let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
