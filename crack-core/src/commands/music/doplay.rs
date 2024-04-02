@@ -1616,6 +1616,10 @@ pub async fn queue_aux_metadata(
     let client = &ctx.data().http_client;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let ytdl = YoutubeDl::new(
+        client,
+        metadata_final.metadata().source_url.clone().unwrap(),
+    );
 
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
@@ -1636,10 +1640,6 @@ pub async fn queue_aux_metadata(
             metadata.clone()
         };
 
-        let ytdl = YoutubeDl::new(
-            client,
-            metadata_final.metadata().source_url.clone().unwrap(),
-        );
         let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.metadata().clone()));
         let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
