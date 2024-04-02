@@ -1608,7 +1608,7 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[MyAuxMetadata],
-    msg: Message,
+    mut msg: Message,
 ) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
