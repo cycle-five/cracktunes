@@ -288,7 +288,6 @@ pub struct DataInner {
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    //pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
@@ -297,6 +296,8 @@ pub struct DataInner {
     pub event_log: EventLog,
     #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
+    #[serde(skip)]
+    pub http_client: reqwest::Client,
 }
 
 impl DataInner {
@@ -426,6 +427,7 @@ impl Default for DataInner {
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
+            http_client: reqwest::Client::new(),
         }
     }
 }
