@@ -229,11 +229,12 @@ pub async fn get_call_with_fail_msg(
 
 /// Set the global handlers.
 pub async fn set_global_handlers(
-    data: Data,
+    ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     guild_id: GuildID,
     channel_id: ChannelId,
 ) -> Result<String, Error> {
+    let data = ctx.data();
     // pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
     //     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     //     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
