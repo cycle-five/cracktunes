@@ -202,7 +202,7 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    set_global_handlers(ctx, call.clone()).await?;
+                    set_global_handlers(ctx.data(), call.clone(), guild_id, channel_id).await?;
                     // {
                     //     let mut handler = call.lock().await;
                     //     // unregister existing events and register idle notifier
@@ -267,19 +267,25 @@ pub async fn get_call_with_fail_msg(
 }
 
 /// Set the global handlers.
-pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let channel_id = {
-        let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
-        get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
-    };
+pub async fn set_global_handlers(
+    data: Data,
+    call: Arc<Mutex<Call>>,
+    guild_id: GuildID,
+    channel_id: ChannelId,
+) -> Result<(), Error> {
+    // pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
+    //     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    //     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    //     let channel_id = {
+    //         let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
+    //         get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
+    //     };
 
     let mut handler = call.lock().await;
     // unregister existing events and register idle notifier
     handler.remove_all_global_events();
 
-    let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone();
+    let guild_settings_map = data.guild_settings_map.read().unwrap().clone();
 
     let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
         let timeout = guild_settings.timeout;
