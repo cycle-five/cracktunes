@@ -202,7 +202,8 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    set_global_handlers(ctx.data(), call.clone(), guild_id, channel_id).await?;
+                    let msg =
+                        set_global_handlers(ctx.data(), call.clone(), guild_id, channel_id).await?;
                     // {
                     //     let mut handler = call.lock().await;
                     //     // unregister existing events and register idle notifier
@@ -244,12 +245,12 @@ pub async fn get_call_with_fail_msg(
                     //         mention: channel_id.mention(),
                     //     }
                     //     .to_string();
-                    //     let msg = ctx
-                    //         .send(CreateReply::default().content(text).ephemeral(true))
-                    //         .await?
-                    //         .into_message()
-                    //         .await?;
-                    //     ctx.data().add_msg_to_cache(guild_id, msg);
+                    let msg = ctx
+                        .send(CreateReply::default().content(text).ephemeral(true))
+                        .await?
+                        .into_message()
+                        .await?;
+                    ctx.data().add_msg_to_cache(guild_id, msg);
                     // }
                     Ok(call)
                     // Ok(manager.get(guild_id).unwrap())
@@ -272,7 +273,7 @@ pub async fn set_global_handlers(
     call: Arc<Mutex<Call>>,
     guild_id: GuildID,
     channel_id: ChannelId,
-) -> Result<(), Error> {
+) -> Result<String, Error> {
     // pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
     //     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     //     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
@@ -320,14 +321,8 @@ pub async fn set_global_handlers(
         mention: channel_id.mention(),
     }
     .to_string();
-    let msg = ctx
-        .send(CreateReply::default().content(text).ephemeral(true))
-        .await?
-        .into_message()
-        .await?;
-    data.add_msg_to_cache(guild_id, msg);
 
-    Ok(())
+    Ok(text)
 }
 
 /// Sends the searching message after a play command is sent.
