@@ -41,15 +41,16 @@ poise = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
-tungstenite = { workspace = true }
-async-tungstenite = { workspace = true }
+sqlx = { workspace = true, optional = true }
+
+async-tungstenite = "0.25"
+tungstenite = "0.21"
 async-trait = { version = "0.1" }
 mockall = { version = "0.12" }
 config-file = { version = "0.2", features = ["json"] }
 dotenv = "0.15"
 colored = "2.1"
 # Figure this one out better
-sqlx = { workspace = true, optional = true }
 
 # crack-telemetry
 opentelemetry = { version = "0.22", optional = true }
