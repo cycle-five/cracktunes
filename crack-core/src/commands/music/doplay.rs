@@ -204,47 +204,7 @@ pub async fn get_call_with_fail_msg(
                 Ok(call) => {
                     let text =
                         set_global_handlers(ctx.data(), call.clone(), guild_id, channel_id).await?;
-                    // {
-                    //     let mut handler = call.lock().await;
-                    //     // unregister existing events and register idle notifier
-                    //     handler.remove_all_global_events();
 
-                    //     let guild_settings_map =
-                    //         ctx.data().guild_settings_map.read().unwrap().clone();
-
-                    //     let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
-                    //         let timeout = guild_settings.timeout;
-                    //         if timeout > 0 {
-                    //             let premium = guild_settings.premium;
-                    //             handler.add_global_event(
-                    //                 Event::Periodic(Duration::from_secs(5), None),
-                    //                 IdleHandler {
-                    //                     http: ctx.serenity_context().http.clone(),
-                    //                     manager: manager.clone(),
-                    //                     channel_id,
-                    //                     guild_id: Some(guild_id),
-                    //                     limit: timeout as usize,
-                    //                     count: Default::default(),
-                    //                     no_timeout: Arc::new(AtomicBool::new(premium)),
-                    //                 },
-                    //             );
-                    //         }
-                    //     });
-
-                    //     handler.add_global_event(
-                    //         Event::Track(TrackEvent::End),
-                    //         TrackEndHandler {
-                    //             guild_id,
-                    //             http: ctx.serenity_context().http.clone(),
-                    //             call: call.clone(),
-                    //             data: ctx.data().clone(),
-                    //         },
-                    //     );
-
-                    //     let text = CrackedMessage::Summon {
-                    //         mention: channel_id.mention(),
-                    //     }
-                    //     .to_string();
                     let msg = ctx
                         .send(CreateReply::default().content(text).ephemeral(true))
                         .await?
