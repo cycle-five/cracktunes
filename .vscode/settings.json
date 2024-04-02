@@ -27,6 +27,6 @@
         "./crack-osint/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
-    "rust-analyzer.checkOnSave": false,
+    "rust-analyzer.checkOnSave": true,
     "gitdoc.enabled": true
 }
