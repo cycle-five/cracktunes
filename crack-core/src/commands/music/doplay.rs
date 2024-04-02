@@ -1612,57 +1612,39 @@ pub async fn queue_aux_metadata(
 ) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
-    // let qt = yt_search_select(
-    //     ctx.serenity_context().clone(),
-    //     ctx.channel_id(),
-    //     search_results,
-    // )
-    // .await?;
-    let client = reqwest::Client::new();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+
+    let client = ctx.data().http_client;
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
 
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
-        // metadata.build_query()
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
             let search_query = build_query_aux_metadata(metadata.metadata());
-            msg.edit(
-                ctx,
-                EditMessage::default().content(format!("Queuing... {}", search_query)),
-            )
-            .await;
-            let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
+            let _ = msg
+                .edit(
+                    ctx,
+                    EditMessage::default().content(format!("Queuing... {}", search_query)),
+                )
+                .await;
+            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", search_query));
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
-            // metadata.source_url = Some(new_aux_metadata.source_url.unwrap());
-            // let metadata_new = metadata
-            //    .clone()
-            //    .with_source_url(new_aux_metadata.source_url.unwrap().clone());
-            // metadata_new.clone()
+
             MyAuxMetadata::Data(new_aux_metadata)
         } else {
             metadata.clone()
         };
 
         let ytdl = YoutubeDl::new(
-            client.clone(),
+            client,
             metadata_final.metadata().source_url.clone().unwrap(),
         );
         let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.metadata().clone()));
         let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }
-    // let queue = enqueue_track_pgwrite(
-    //     &pool,
-    //     guild_id,
-    //     ctx.channel_id(),
-    //     user_id,
-    //     ctx.http(),
-    //     &call,
-    //     &qt,
-    // )
-    // .await?;
+
     Ok(())
 }
 
