@@ -1608,6 +1608,7 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[MyAuxMetadata],
+    msg: Message,
 ) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
@@ -1620,11 +1621,13 @@ pub async fn queue_aux_metadata(
     let client = reqwest::Client::new();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
         // metadata.build_query()
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
             let search_query = build_query_aux_metadata(metadata.metadata());
+            ctx.update_message(msg, |m| m.content(format!("Queuing... {}", search_query)));
             let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
             tracing::warn!("ytdl: {:?}", ytdl);
             let new_aux_metadata = ytdl.aux_metadata().await?;
