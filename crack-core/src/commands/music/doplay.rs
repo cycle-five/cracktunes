@@ -202,9 +202,7 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    let text =
-                        set_global_handlers(ctx, manager, call.clone(), guild_id, channel_id)
-                            .await?;
+                    let text = set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
 
                     let msg = ctx
                         .send(CreateReply::default().content(text).ephemeral(true))
@@ -231,25 +229,21 @@ pub async fn get_call_with_fail_msg(
 /// Set the global handlers.
 pub async fn set_global_handlers(
     ctx: Context<'_>,
-    manager: Arc<Songbird>,
     call: Arc<Mutex<Call>>,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<String, Error> {
     let data = ctx.data();
-    // pub async fn set_global_handlers(ctx: Context<'_>, call: Arc<Mutex<Call>>) -> Result<(), Error> {
-    //     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    //     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    //     let channel_id = {
-    //         let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
-    //         get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
-    //     };
+
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
 
     let mut handler = call.lock().await;
     // unregister existing events and register idle notifier
     handler.remove_all_global_events();
 
-    let guild_settings_map = data.guild_settings_map.read()?.clone();
+    let guild_settings_map = data.guild_settings_map.read()?;
 
     let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
         let timeout = guild_settings.timeout;
