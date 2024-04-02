@@ -202,7 +202,9 @@ pub async fn get_call_with_fail_msg(
             };
             match manager.join(guild_id, channel_id).await {
                 Ok(call) => {
-                    let text = set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
+                    let text =
+                        set_global_handlers(ctx, manager, call.clone(), guild_id, channel_id)
+                            .await?;
 
                     let msg = ctx
                         .send(CreateReply::default().content(text).ephemeral(true))
@@ -229,8 +231,9 @@ pub async fn get_call_with_fail_msg(
 /// Set the global handlers.
 pub async fn set_global_handlers(
     ctx: Context<'_>,
+    manager: Arc<Songbird>,
     call: Arc<Mutex<Call>>,
-    guild_id: GuildID,
+    guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<String, Error> {
     let data = ctx.data();
