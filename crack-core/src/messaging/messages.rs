@@ -52,6 +52,7 @@ pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";
 pub const NO_DATABASE_POOL: &str = "⚠️ No Database Pool Found!";
+pub const NO_GUILD_CACHED: &str = "⚠️ No Cached Guild Found!";
 pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
 pub const ONETWOFT: &str = "https://12ft.io/";

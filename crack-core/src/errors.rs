@@ -1,8 +1,8 @@
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
     FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_ID,
-    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_CACHED,
+    NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -37,6 +37,7 @@ pub enum CrackedError {
     NotImplemented,
     NoTrackName,
     NoDatabasePool,
+    NoGuildCached,
     NoGuildId,
     NoGuildForChannelId(ChannelId),
     NoGuildSettings,
@@ -111,6 +112,7 @@ impl Display for CrackedError {
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
             Self::NoTrackName => f.write_str("No track name"),
             Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
+            Self::NoGuildCached => f.write_str(NO_GUILD_CACHED),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {
                 f.write_fmt(format_args!("No guild for channel id {}", channel_id))
