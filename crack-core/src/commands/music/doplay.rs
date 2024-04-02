@@ -292,11 +292,6 @@ async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
     send_embed_response_poise(ctx, embed).await
 }
 
-async fn get_guild_id_with_fail_msg(ctx: Context<'_>) -> Result<serenity::GuildId, Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    Ok(guild_id)
-}
-
 /// Play a song next
 //#[cfg(not(tarpaulin))]
 #[poise::command(
