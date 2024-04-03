@@ -171,6 +171,7 @@ impl Spotify {
         Self::extract_search_results(search_result)
     }
 
+    /// Get recommendations based on a list of tracks.
     pub async fn get_recommendations(
         spotify: &ClientCredsSpotify,
         tracks: Vec<String>,
