@@ -85,7 +85,7 @@ default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
 [workspace.dependencies.tokio]
-version = "1.36.0"
+version = "1.37.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
 [profile.release-with-debug]
