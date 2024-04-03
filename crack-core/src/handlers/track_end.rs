@@ -37,6 +37,7 @@ pub struct ModifyQueueHandler {
     pub call: Arc<Mutex<Call>>,
 }
 
+/// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
