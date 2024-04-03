@@ -1,7 +1,9 @@
-use self::serenity::{async_trait, http::Http, model::id::GuildId};
 use ::serenity::{
     all::{ChannelId, UserId},
+    async_trait,
     builder::EditMessage,
+    http::Http,
+    model::id::GuildId,
 };
 use poise::serenity_prelude::{self as serenity};
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
@@ -24,16 +26,16 @@ use crate::{
 
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
+    pub data: Data,
     pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
-    pub data: Data,
 }
 
 pub struct ModifyQueueHandler {
-    pub http: Arc<Http>,
-    pub data: Data,
-    pub call: Arc<Mutex<Call>>,
     pub guild_id: GuildId,
+    pub data: Data,
+    pub http: Arc<Http>,
+    pub call: Arc<Mutex<Call>>,
 }
 
 #[async_trait]
@@ -220,6 +222,8 @@ async fn extract_track_metadata(track: &TrackHandle) -> (MyAuxMetadata, Duration
     (my_metadata, pos)
 }
 
+/// Event handler to set the volume of the playing track to the volume
+/// set in the guild settings after a queue modification.
 #[async_trait]
 impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
