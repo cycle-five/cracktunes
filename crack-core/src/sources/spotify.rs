@@ -214,6 +214,7 @@ impl Spotify {
         Ok(query_list)
     }
 
+    /// Get track ids based on a search result.
     fn _search_result_to_track_ids(search_result: SearchResult) -> Vec<TrackId<'static>> {
         match search_result {
             SearchResult::Tracks(tracks) => {
@@ -223,6 +224,7 @@ impl Spotify {
         }
     }
 
+    /// Search results to a single track id.
     fn search_result_to_track_id(search_result: SearchResult) -> Vec<TrackId<'static>> {
         match search_result {
             SearchResult::Tracks(tracks) => tracks
@@ -235,6 +237,7 @@ impl Spotify {
         }
     }
 
+    /// SearchResult to a QueryType.
     fn extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
         match search_result {
             SearchResult::Albums(albums) => {
@@ -272,6 +275,7 @@ impl Spotify {
         }
     }
 
+    /// Get a search query as a QueryType from a spotify track id.
     async fn get_track_info(
         spotify: &ClientCredsSpotify,
         id: &str,
