@@ -3,6 +3,7 @@ members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt"]
 resolver = "2"
 
 [workspace.package]
+name = "cracktunes"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
