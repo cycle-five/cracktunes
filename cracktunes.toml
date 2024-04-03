@@ -6,3 +6,4 @@
 # prefix = "r!"
 # owners = [ ]
 database_url = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
+prefix = "t!"
