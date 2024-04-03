@@ -347,6 +347,7 @@ impl Spotify {
         Ok(QueryType::KeywordList(query_list))
     }
 
+    /// Get a list of SpotifyTracks from a Spotify playlist.
     pub async fn get_playlist_tracks(
         spotify: &ClientCredsSpotify,
         id: &str,
