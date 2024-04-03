@@ -426,7 +426,7 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
-            database_pool: None,
+            database_pool: Some(sqlx::PgPool::connect_lazy(DEFAULT_DB_URL).unwrap()),
             http_client: reqwest::Client::new(),
         }
     }
