@@ -254,7 +254,6 @@ pub async fn update_queue_messages(
         Some(cache) => cache.queue_messages.clone(),
         None => return,
     };
-    // drop(data);
 
     for (message, page_lock) in messages.iter_mut() {
         // has the page size shrunk?
