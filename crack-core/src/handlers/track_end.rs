@@ -5,7 +5,6 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
-use poise::serenity_prelude::{self as serenity};
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
