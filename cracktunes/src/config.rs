@@ -51,7 +51,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::EventHandler { error, event, .. } => match event {
             FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
-            }
+            },
             _ => {
                 tracing::warn!(
                     "{} {} {} {}",
@@ -60,7 +60,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                     " event: ".yellow(),
                     error.to_string().yellow().bold(),
                 );
-            }
+            },
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
             #[cfg(feature = "crack-metrics")]
@@ -75,21 +75,21 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                             .map(|_| ())
                             .map_err(Into::into),
                     );
-                }
+                },
                 None => {
                     check_reply(
                         ctx.send(CreateReply::default().content(&format!("{error}")))
                             .await,
                     );
-                }
+                },
             }
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
-        }
+        },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
                 tracing::error!("Error while handling error: {}", e)
             }
-        }
+        },
     }
 }
 
@@ -101,7 +101,7 @@ fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<Role
             // FIXME: Why would this happen?
             tracing::warn!("Member not found");
             return true;
-        }
+        },
     };
     let perms = member.permissions.unwrap_or_default();
     let has_role = os_int_role
@@ -119,7 +119,7 @@ fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>) ->
         None => {
             tracing::warn!("No member found");
             return true;
-        }
+        },
     };
     // implementation of the is_authorized_music function
     // ...
@@ -227,7 +227,7 @@ pub async fn poise_framework(
                         None => {
                             tracing::warn!("No guild id found");
                             GuildId::new(1)
-                        }
+                        },
                     };
                     let guild_settings_map = data.guild_settings_map.read().unwrap();
 
@@ -324,14 +324,14 @@ pub async fn poise_framework(
                     Ok((true, _)) => {
                         tracing::info!("Author is admin");
                         return Ok(true);
-                    }
+                    },
                     Ok((false, _)) => {
                         tracing::info!("Author is not admin");
-                    }
+                    },
                     Err(e) => {
                         tracing::error!("Error checking permissions: {}", e);
                         return Ok(false);
-                    }
+                    },
                 };
 
                 // These need to be processed in order of most to least restrictive
@@ -479,32 +479,30 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
-        let _ = {
-            let guilds = save_data.guild_settings_map.read().unwrap().clone();
-            let pool = save_data.database_pool.clone().ok_or({
-                tracing::error!("No database pool");
-                CrackedError::Other("No database pool")
-            });
-            let pool = match pool {
-                Ok(p) => Some(p),
-                Err(e) => {
-                    tracing::error!("Error getting database pool: {}", e);
-                    None
-                }
-            };
-            if pool.is_some() {
-                let p = pool.unwrap();
-                for (k, v) in guilds {
-                    tracing::warn!("Saving Guild: {}", k);
-                    match v.save(&p).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            tracing::error!("Error saving guild settings: {}", e);
-                        }
-                    }
+        let guilds = save_data.guild_settings_map.read().unwrap().clone();
+        let pool = save_data.database_pool.clone().ok_or({
+            tracing::error!("No database pool");
+            CrackedError::Other("No database pool")
+        });
+        let pool = match pool {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::error!("Error getting database pool: {}", e);
+                None
+            },
+        };
+        if pool.is_some() {
+            let p = pool.unwrap();
+            for (k, v) in guilds {
+                tracing::warn!("Saving Guild: {}", k);
+                match v.save(&p).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        tracing::error!("Error saving guild settings: {}", e);
+                    },
                 }
             }
-        };
+        }
 
         shard_manager.clone().shutdown_all().await;
 

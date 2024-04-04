@@ -128,12 +128,12 @@ impl EventHandler for TrackEndHandler {
                                 let msg1 =
                                     format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
                                 (rec, msg1)
-                            }
+                            },
                             Err(e) => {
                                 let msg = format!("Error: {}", e);
                                 let rec = vec![];
                                 (rec, msg)
-                            }
+                            },
                         };
                         // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
@@ -146,7 +146,7 @@ impl EventHandler for TrackEndHandler {
                                 tracing::warn!("{}", msg);
                                 // chan_id.say(&self.http, msg).await.unwrap();
                                 return None;
-                            }
+                            },
                         };
                         let tracks = enqueue_track_pgwrite_asdf(
                             self.data.database_pool.as_ref().unwrap(),
@@ -162,10 +162,10 @@ impl EventHandler for TrackEndHandler {
                         let (my_metadata, pos) = match tracks.first() {
                             Some(t) => {
                                 let (my_metadata, pos) =
-                                    extract_track_metadata(&t).await.unwrap_or_default();
+                                    extract_track_metadata(t).await.unwrap_or_default();
                                 let _ = t.set_volume(volume);
                                 (my_metadata, pos)
-                            }
+                            },
                             None => {
                                 let msg = format!("No tracks found for query: {:?}", query);
                                 tracing::warn!("{}", msg);
@@ -173,7 +173,7 @@ impl EventHandler for TrackEndHandler {
                                     MyAuxMetadata::Data(AuxMetadata::default()),
                                     Duration::from_secs(0),
                                 )
-                            }
+                            },
                         };
                         //         // match extract_track_metadata(&tracks[0]).await {
                         //         //     Ok((my_metadata, pos)) => (my_metadata, pos),
@@ -199,14 +199,14 @@ impl EventHandler for TrackEndHandler {
                         //     }
                         // };
                         (channel, my_metadata, pos)
-                    }
+                    },
                     (Some(track), _) => {
                         let _ = track.set_volume(volume);
                         let (my_metadata, pos) =
                             extract_track_metadata(&track).await.unwrap_or_default();
 
                         (channel, my_metadata, pos)
-                    }
+                    },
                 }
             };
             let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
@@ -228,7 +228,7 @@ impl EventHandler for TrackEndHandler {
             Ok(message) => {
                 self.data.add_msg_to_cache(self.guild_id, message);
                 tracing::warn!("Sent now playing message");
-            }
+            },
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         }
 
