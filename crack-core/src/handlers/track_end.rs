@@ -164,17 +164,18 @@ impl EventHandler for TrackEndHandler {
                                     let _ = t.set_volume(volume);
                                 });
                                 let (my_metadata, pos) =
-                                    match extract_track_metadata(&tracks[0]).await {
-                                        Ok((my_metadata, pos)) => (my_metadata, pos),
-                                        Err(e) => {
-                                            let msg = format!("Error: {}", e);
-                                            tracing::warn!("{}", msg);
-                                            (
-                                                MyAuxMetadata::Data(AuxMetadata::default()),
-                                                Duration::from_secs(0),
-                                            )
-                                        }
-                                    };
+                                    extract_track_metadata(&tracks[0]).await.unwrap_or_default();
+                                // match extract_track_metadata(&tracks[0]).await {
+                                //     Ok((my_metadata, pos)) => (my_metadata, pos),
+                                //     Err(e) => {
+                                //         let msg = format!("Error: {}", e);
+                                //         tracing::warn!("{}", msg);
+                                //         (
+                                //             MyAuxMetadata::Data(AuxMetadata::default()),
+                                //             Duration::from_secs(0),
+                                //         )
+                                //     }
+                                // };
                                 (my_metadata, pos)
                             }
                             Err(e) => {
