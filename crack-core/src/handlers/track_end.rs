@@ -148,7 +148,7 @@ impl EventHandler for TrackEndHandler {
                                 return None;
                             }
                         };
-                        let q = enqueue_track_pgwrite_asdf(
+                        let tracks = enqueue_track_pgwrite_asdf(
                             self.data.database_pool.as_ref().unwrap(),
                             self.guild_id,
                             chan_id,
@@ -157,37 +157,47 @@ impl EventHandler for TrackEndHandler {
                             &self.call,
                             &query,
                         )
-                        .await;
-                        let (my_metadata, pos) = match q {
-                            Ok(tracks) => {
-                                tracks.first().map(|t| {
-                                    let _ = t.set_volume(volume);
-                                });
+                        .await
+                        .unwrap_or_default();
+                        let (my_metadata, pos) = match tracks.first() {
+                            Some(t) => {
                                 let (my_metadata, pos) =
-                                    extract_track_metadata(&tracks[0]).await.unwrap_or_default();
-                                // match extract_track_metadata(&tracks[0]).await {
-                                //     Ok((my_metadata, pos)) => (my_metadata, pos),
-                                //     Err(e) => {
-                                //         let msg = format!("Error: {}", e);
-                                //         tracing::warn!("{}", msg);
-                                //         (
-                                //             MyAuxMetadata::Data(AuxMetadata::default()),
-                                //             Duration::from_secs(0),
-                                //         )
-                                //     }
-                                // };
+                                    extract_track_metadata(&t).await.unwrap_or_default();
+                                let _ = t.set_volume(volume);
                                 (my_metadata, pos)
                             }
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
+                            None => {
+                                let msg = format!("No tracks found for query: {:?}", query);
                                 tracing::warn!("{}", msg);
-
                                 (
                                     MyAuxMetadata::Data(AuxMetadata::default()),
                                     Duration::from_secs(0),
                                 )
                             }
                         };
+                        //         // match extract_track_metadata(&tracks[0]).await {
+                        //         //     Ok((my_metadata, pos)) => (my_metadata, pos),
+                        //         //     Err(e) => {
+                        //         //         let msg = format!("Error: {}", e);
+                        //         //         tracing::warn!("{}", msg);
+                        //         //         (
+                        //         //             MyAuxMetadata::Data(AuxMetadata::default()),
+                        //         //             Duration::from_secs(0),
+                        //         //         )
+                        //         //     }
+                        //         // };
+                        //         (my_metadata, pos)
+                        //     }
+                        //     Err(e) => {
+                        //         let msg = format!("Error: {}", e);
+                        //         tracing::warn!("{}", msg);
+
+                        //         (
+                        //             MyAuxMetadata::Data(AuxMetadata::default()),
+                        //             Duration::from_secs(0),
+                        //         )
+                        //     }
+                        // };
                         (channel, my_metadata, pos)
                     }
                     (Some(track), _) => {
@@ -227,7 +237,7 @@ impl EventHandler for TrackEndHandler {
 }
 
 async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
-    let pos = track.get_info().await.unwrap().position;
+    let pos = track.get_info().await?.position;
     let track_clone = track.clone();
     let mutex_guard = track_clone.typemap().read().await;
     let my_metadata = mutex_guard
