@@ -480,17 +480,14 @@ pub async fn poise_framework(
 
         tracing::warn!("Received Ctrl-C, shutting down...");
         let guilds = save_data.guild_settings_map.read().unwrap().clone();
-        let pool = save_data.database_pool.clone().ok_or({
-            tracing::error!("No database pool");
-            CrackedError::Other("No database pool")
-        });
-        let pool = match pool {
-            Ok(p) => Some(p),
-            Err(e) => {
-                tracing::error!("Error getting database pool: {}", e);
-                None
-            },
-        };
+        let pool = save_data.database_pool.clone();
+        // let pool = match pool {
+        //     Ok(p) => Some(p),
+        //     Err(e) => {
+        //         tracing::error!("Error getting database pool: {}", e);
+        //         None
+        //     },
+        // };
         if pool.is_some() {
             let p = pool.unwrap();
             for (k, v) in guilds {
