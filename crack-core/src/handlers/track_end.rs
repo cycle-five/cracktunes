@@ -20,7 +20,7 @@ use crate::{
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message},
-    Data,
+    Data, Error,
 };
 
 pub struct TrackEndHandler {
@@ -163,7 +163,18 @@ impl EventHandler for TrackEndHandler {
                                 tracks.first().map(|t| {
                                     let _ = t.set_volume(volume);
                                 });
-                                let (my_metadata, pos) = extract_track_metadata(&tracks[0]).await;
+                                let (my_metadata, pos) =
+                                    match extract_track_metadata(&tracks[0]).await {
+                                        Ok((my_metadata, pos)) => (my_metadata, pos),
+                                        Err(e) => {
+                                            let msg = format!("Error: {}", e);
+                                            tracing::warn!("{}", msg);
+                                            (
+                                                MyAuxMetadata::Data(AuxMetadata::default()),
+                                                Duration::from_secs(0),
+                                            )
+                                        }
+                                    };
                                 (my_metadata, pos)
                             }
                             Err(e) => {
@@ -180,7 +191,8 @@ impl EventHandler for TrackEndHandler {
                     }
                     (Some(track), _) => {
                         let _ = track.set_volume(volume);
-                        let (my_metadata, pos) = extract_track_metadata(&track).await;
+                        let (my_metadata, pos) =
+                            extract_track_metadata(&track).await.unwrap_or_default();
 
                         (channel, my_metadata, pos)
                     }
@@ -213,7 +225,7 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
-async fn extract_track_metadata(track: &TrackHandle) -> (MyAuxMetadata, Duration) {
+async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
     let pos = track.get_info().await.unwrap().position;
     let track_clone = track.clone();
     let mutex_guard = track_clone.typemap().read().await;
@@ -221,7 +233,7 @@ async fn extract_track_metadata(track: &TrackHandle) -> (MyAuxMetadata, Duration
         .get::<crate::commands::MyAuxMetadata>()
         .unwrap()
         .clone();
-    (my_metadata, pos)
+    Ok((my_metadata, pos))
 }
 
 /// Event handler to set the volume of the playing track to the volume
@@ -239,7 +251,7 @@ impl EventHandler for ModifyQueueHandler {
             (queue, vol)
         };
 
-        vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
+        vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
         update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
 
         None
