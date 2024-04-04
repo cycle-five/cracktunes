@@ -29,7 +29,7 @@ services:
     links:
       - crack_postgres
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8833:8833"
   # pgadmin:
   #   container_name: pgadmin
   #   image: dpage/pgadmin4:latest
