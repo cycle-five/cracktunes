@@ -1,12 +1,12 @@
 [package]
 name = "crack-core"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
 publish = true
 license = "MIT"
-keywords = ["music", "discord", "bot", "crack", "tunes"]
+keywords = ["music", "discord", "bot", "crack", "tunes", "cracktunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"

@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.3.2"
+version = "0.3.3"
 description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
 publish = true
 edition = "2021"
