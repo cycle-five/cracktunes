@@ -12,14 +12,16 @@
         }
     ],
     "rust-analyzer.cargo.cfgs": {
-        "crack-gpt": "true",
-        "crack-osint": "true",
-        "crack-core": "true",
-        "crack-telemetry": "true",
-        "crack-metrics": "true",
-        "crack-tracing": "true",
-        "db": "true",
-        "playlist": "true"
+        "crack-gpt": true,
+        "crack-osint": true,
+        "crack-core": true,
+        "crack-telemetry": true,
+        "crack-metrics": true,
+        "crack-tracing": true,
+        "db": true,
+        "playlist": true,
+        "cache": true,
+        "ignore-presence-log": true
     },
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
