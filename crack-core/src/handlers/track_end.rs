@@ -236,13 +236,14 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
+/// Extracts the metadata and position of a track.
 async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
     let pos = track.get_info().await?.position;
     let track_clone = track.clone();
     let mutex_guard = track_clone.typemap().read().await;
     let my_metadata = mutex_guard
         .get::<crate::commands::MyAuxMetadata>()
-        .unwrap()
+        .ok_or_else(|| CrackedError::Other("No metadata found"))?
         .clone();
     Ok((my_metadata, pos))
 }
