@@ -385,14 +385,20 @@ pub async fn poise_framework(
         .collect::<HashMap<GuildId, GuildSettings>>();
 
     let db_url = config.get_database_url();
-    let pool_opts = sqlx::postgres::PgPoolOptions::new().connect(&db_url).await;
+    let pool_opts = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
+        Ok(pool) => Some(pool),
+        Err(e) => {
+            tracing::error!("Error getting database pool: {}", e);
+            None
+        },
+    };
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
-        database_pool: pool_opts.ok(),
+        database_pool: pool_opts,
         ..Default::default()
     }));
 
