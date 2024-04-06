@@ -56,8 +56,10 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 
             let lock = track_handle.typemap().read().await;
             let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
-            data.title.clone().unwrap_or_default()
-        }
+            data.track
+                .clone()
+                .unwrap_or_else(|| data.title.clone().unwrap_or_default())
+        },
     };
     Ok(query)
 }
@@ -71,7 +73,7 @@ pub async fn do_lyric_query(
         Err(e) => {
             tracing::error!("lyric search failed: {}", e);
             Err(CrackedError::Anyhow(e).into())
-        }
+        },
     }?;
     let (track, artists, lyric) = match result {
         lyric_finder::LyricResult::Some {
@@ -81,7 +83,7 @@ pub async fn do_lyric_query(
         } => {
             tracing::warn!("{} by {}'s lyric:\n{}", track, artists, lyric);
             (track, artists, lyric)
-        }
+        },
         lyric_finder::LyricResult::None => {
             tracing::error!("lyric not found! query: {}", query);
             (
@@ -89,7 +91,7 @@ pub async fn do_lyric_query(
                 "Unknown".to_string(),
                 "Lyric not found!".to_string(),
             )
-        }
+        },
     };
 
     Ok((track, artists, lyric))
