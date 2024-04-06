@@ -63,7 +63,8 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
             } else if title_opt.is_some() {
                 Ok(title_opt.unwrap())
             } else {
-                Err(CrackedError::NoTrackOrTitle.into())
+                Err(CrackedError::NoTrackName.into())
+            }
         },
     }
 }
