@@ -39,6 +39,7 @@ pub async fn lyrics(
         .map_err(Into::into)
 }
 
+/// Get the current track name as either the query or the title of the current track.
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
     match query {
         Some(query) => Ok(query),
