@@ -40,8 +40,8 @@ pub async fn lyrics(
 }
 
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
-    let query = match query {
-        Some(query) => query,
+    match query {
+        Some(query) => Ok(query),
         None => {
             // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
             let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
@@ -56,12 +56,12 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 
             let lock = track_handle.typemap().read().await;
             let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
-            data.track
+            Ok(data
+                .track
                 .clone()
-                .unwrap_or_else(|| data.title.clone().unwrap_or_default())
+                .ok_or_else(|| data.title.clone().ok_or(CrackedError::NoTrackName)?))
         },
-    };
-    Ok(query)
+    }
 }
 
 pub async fn do_lyric_query(
