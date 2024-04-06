@@ -451,20 +451,23 @@ impl std::ops::Deref for Data {
 
 impl Data {
     /// Create a new Data, calls default
-    pub async fn downvote_track(&self, guild_id: GuildId, _track: &str) -> Result<(), Error> {
+    pub async fn downvote_track(
+        &self,
+        guild_id: GuildId,
+        _track: &str,
+    ) -> Result<TrackReaction, CrackedError> {
         let play_log_id = PlayLog::get_last_played_by_guild_metadata(
             self.database_pool.as_ref().unwrap(),
             guild_id.into(),
         )
         .await?;
+        let pool = self.database_pool.as_ref().unwrap();
+        let id = *play_log_id.first().unwrap() as i32;
         // let mut guild_cache_map = self.guild_cache_map.lock().unwrap();
-        TrackReaction::add_dislike(
-            self.database_pool.as_ref().unwrap(),
-            *play_log_id.first().unwrap() as i32,
-        )
-        .await?;
+        let _ = TrackReaction::insert(pool, id);
+        TrackReaction::add_dislike(pool, id).await
 
-        Ok(())
+        // Ok(())
     }
 
     /// Add a message to the cache
