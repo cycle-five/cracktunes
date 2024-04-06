@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
 
@@ -37,6 +39,13 @@ pub async fn lyrics(
     create_lyrics_embed(ctx, artists, track, lyric)
         .await
         .map_err(Into::into)
+}
+
+pub async fn get_call(ctx: Context<'_>) -> Result<Arc<Mutex<songbird::Call>>, Error> {
+    let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    Ok(call)
 }
 
 /// Get the current track name as either the query or the title of the current track.
