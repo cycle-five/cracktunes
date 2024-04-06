@@ -402,7 +402,7 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
-    let save_data = data.clone();
+    //let save_data = data.clone();
 
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::privileged()
@@ -426,8 +426,8 @@ pub async fn poise_framework(
         | GatewayIntents::AUTO_MODERATION_EXECUTION
         | GatewayIntents::MESSAGE_CONTENT;
 
-    let handler_data = data.clone();
-    let setup_data = data;
+    //let handler_data = data.clone();
+    //let setup_data = data;
     let token = config
         .credentials
         .expect("Error getting discord token")
@@ -440,20 +440,23 @@ pub async fn poise_framework(
                 .write()
                 .await
                 .insert::<GuildSettingsMap>(guild_settings_map.clone());
-            Ok(setup_data)
+            Ok(data.clone())
         })
     });
+    let serenity_handler = SerenityHandler {
+        is_loop_running: false.into(),
+        data: framework.user_data().await.clone(),
+    };
+    let data2 = framework.user_data().await.clone();
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
-        .event_handler(SerenityHandler {
-            is_loop_running: false.into(),
-            data: handler_data,
-        })
+        .event_handler(serenity_handler)
         .await
         .unwrap();
     let shard_manager = client.shard_manager.clone();
 
+    // let data2 = client.data.clone();
     tokio::spawn(async move {
         #[cfg(unix)]
         {
@@ -485,8 +488,8 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
-        let guilds = save_data.guild_settings_map.read().unwrap().clone();
-        let pool = save_data.database_pool.clone();
+        let guilds = data2.guild_settings_map.read().unwrap().clone();
+        let pool = data2.clone().database_pool.clone();
         // let pool = match pool {
         //     Ok(p) => Some(p),
         //     Err(e) => {

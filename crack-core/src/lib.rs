@@ -356,7 +356,7 @@ impl Default for EventLog {
                 // I went down this path with sink and it was a mistake.
                 File::create("/dev/null")
                     .expect("Should be able to have a file object to write too.")
-            }
+            },
         };
         Self(Arc::new(Mutex::new(log_file)))
     }
