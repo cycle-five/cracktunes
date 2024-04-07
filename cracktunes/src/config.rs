@@ -448,6 +448,7 @@ pub async fn poise_framework(
         data: framework.user_data().await.clone(),
     };
     let data2 = framework.user_data().await.clone();
+    println!("Intents: {:?}", intents);
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
