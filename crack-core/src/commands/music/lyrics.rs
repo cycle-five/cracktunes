@@ -57,11 +57,7 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
     match query {
         Some(query) => Ok(query),
         None => {
-            // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-            let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
-            let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-            let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
-
+            let call = get_call(ctx).await?;
             let handler = call.lock().await;
             let track_handle = handler
                 .queue()
