@@ -68,10 +68,10 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
             let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
             let track_opt = data.track.clone();
             let title_opt = data.title.clone();
-            if track_opt.is_some() {
-                Ok(track_opt.unwrap())
-            } else if title_opt.is_some() {
-                Ok(title_opt.unwrap())
+            if let Some(t) = track_opt {
+                Ok(t)
+            } else if let Some(t) = title_opt {
+                Ok(t)
             } else {
                 Err(CrackedError::NoTrackName.into())
             }
