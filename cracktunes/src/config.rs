@@ -444,14 +444,10 @@ pub async fn poise_framework(
             Ok(data.clone())
         })
     });
-    println!("after framework");
     let serenity_handler = SerenityHandler {
         is_loop_running: false.into(),
         data: data2.clone(),
     };
-    println!("before second framework.user_data()");
-    // let data2 = framework.user_data().await.clone();
-    println!("Intents: {:?}", intents);
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
