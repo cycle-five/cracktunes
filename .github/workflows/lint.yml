@@ -49,6 +49,7 @@ jobs:
           cargo sqlx prepare --workspace -- --tests
 
       - name: Run cargo fmt
+        if: ${{ matrix.rust-version }} == 'nightly'
         run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
