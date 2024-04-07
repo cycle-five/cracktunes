@@ -432,6 +432,7 @@ pub async fn poise_framework(
         .credentials
         .expect("Error getting discord token")
         .discord_token;
+    let data2 = data.clone();
     let framework = poise::Framework::new(options, |ctx, ready, framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
@@ -446,10 +447,10 @@ pub async fn poise_framework(
     println!("after framework");
     let serenity_handler = SerenityHandler {
         is_loop_running: false.into(),
-        data: framework.user_data().await.clone(),
+        data: data2.clone(),
     };
     println!("before second framework.user_data()");
-    let data2 = framework.user_data().await.clone();
+    // let data2 = framework.user_data().await.clone();
     println!("Intents: {:?}", intents);
     let client = Client::builder(token, intents)
         .framework(framework)
