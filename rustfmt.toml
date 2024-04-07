@@ -1,5 +1,5 @@
-imports_layout = "HorizontalVertical"
-match_arm_blocks = false
+imports_layout = "Mixed"
+match_arm_blocks = true
 match_block_trailing_comma = true
 newline_style = "Unix"
 use_field_init_shorthand = true
