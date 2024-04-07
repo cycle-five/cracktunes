@@ -1,12 +1,12 @@
 [package]
 name = "crack-core"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
 publish = true
 license = "MIT"
-keywords = ["music", "discord", "bot", "crack", "tunes"]
+keywords = ["music", "discord", "bot", "crack", "tunes", "cracktunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
@@ -59,8 +59,8 @@ songbird = { workspace = true }
 symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
-tungstenite = { workspace = true }
-async-tungstenite = { workspace = true }
+# tungstenite = { workspace = true }
+# async-tungstenite = { workspace = true }
 
 [dependencies.rspotify]
 git = "https://github.com/cycle-five/rspotify"
@@ -77,8 +77,8 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 
 [dev-dependencies]
 mockall = "0.12"
-#tungstenite = "0.21"
-#async-tungstenite = "0.25"
+tungstenite = "0.21"
+async-tungstenite = "0.25"
 sqlx = { version = "0.7.4", features = [
     "runtime-tokio",
     "tls-rustls",

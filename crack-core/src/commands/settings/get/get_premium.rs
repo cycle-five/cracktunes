@@ -9,7 +9,7 @@ pub fn get_premium(data: &Data, guild_id: GuildId) -> bool {
     guild_settings.premium
 }
 
-/// Get the current bot settings for this guild.
+/// Get the current `premium` setting for the guild.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,

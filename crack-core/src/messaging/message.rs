@@ -45,7 +45,7 @@ pub enum CrackedMessage {
     PlayDomainBanned {
         domain: String,
     },
-    PlaylistCreated(String),
+    PlaylistCreated(String, usize),
     PlaylistQueued,
     PlaylistQueuing(String),
     PlayLog(Vec<String>),
@@ -193,22 +193,23 @@ impl Display for CrackedMessage {
             Self::Paywall(url) => f.write_str(&format!("{}{}", ONETWOFT, url)),
             Self::PhoneNumberInfo(info) => f.write_str(info),
             Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
-            Self::PlaylistCreated(name) => {
-                f.write_str(&format!("{} **{}**", PLAYLIST_CREATED, name))
-            }
+            Self::PlaylistCreated(name, len) => f.write_str(&format!(
+                "{} **{}** with {} tracks!",
+                PLAYLIST_CREATED, name, len
+            )),
             Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {
                 f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
-            }
+            },
             Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
-            }
+            },
             #[cfg(feature = "crack-osint")]
             Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
             Self::Search => f.write_str(SEARCHING),
@@ -216,10 +217,10 @@ impl Display for CrackedMessage {
             Self::Resume => f.write_str(RESUMED),
             Self::RoleCreated { role_id, role_name } => {
                 f.write_str(&format!("{} {} {}", ROLE_CREATED, role_id, role_name))
-            }
+            },
             Self::RoleDeleted { role_id, role_name } => {
                 f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
-            }
+            },
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
@@ -229,13 +230,13 @@ impl Display for CrackedMessage {
             Self::SocialMediaResponse { response } => f.write_str(response),
             Self::SongQueued { title, url } => {
                 f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
-            }
+            },
             Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
             Self::SkipTo { title, url } => {
                 f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
-            }
+            },
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
             Self::TextChannelCreated {
                 channel_id,
@@ -281,22 +282,22 @@ impl Display for CrackedMessage {
             Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
             Self::UserBanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", BANNED, user, user_id))
-            }
+            },
             Self::UserUnbanned { user, user_id } => {
                 f.write_str(&format!("{} {} {}", UNBANNED, user, user_id))
-            }
+            },
             Self::UserUndeafened { user, user_id } => {
                 f.write_str(&format!("{} {} {}", UNDEAFENED, user, user_id))
-            }
+            },
             Self::UserDeafened { user, user_id } => {
                 f.write_str(&format!("{} {} {}", DEAFENED, user, user_id))
-            }
+            },
             Self::UserMuted { user, user_id } => {
                 f.write_str(&format!("{} {} {}", MUTED, user, user_id))
-            }
+            },
             Self::UserUnmuted { user, user_id } => {
                 f.write_str(&format!("{} {} {}", UNMUTED, user, user_id))
-            }
+            },
             Self::Version { current, hash } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}/tree/{})",
                 VERSION,
@@ -311,7 +312,7 @@ impl Display for CrackedMessage {
             )),
             Self::VoiceChannelCreated { channel_name } => {
                 f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
-            }
+            },
         }
     }
 }

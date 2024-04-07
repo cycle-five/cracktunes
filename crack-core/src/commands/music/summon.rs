@@ -51,7 +51,7 @@ pub async fn summon(
             } else {
                 Ok(call.clone())
             }
-        }
+        },
         None => manager.join(guild.id, channel_id).await.map_err(|e| {
             tracing::error!("Error joining channel: {:?}", e);
             CrackedError::JoinChannelError(e)
@@ -163,7 +163,7 @@ async fn get_channel_id_for_summon(
                     Err(_) => get_voice_channel_for_user_with_error(&guild, &user_id),
                 },
             }
-        }
+        },
         None => get_voice_channel_for_user_with_error(&guild, &user_id),
     }
 }
@@ -182,6 +182,6 @@ fn get_voice_channel_for_user_with_error(
                 guild.id
             );
             Err(CrackedError::WrongVoiceChannel.into())
-        }
+        },
     }
 }

@@ -44,7 +44,7 @@ impl User {
             Err(e) => {
                 println!("Failed to get user: {}", e);
                 None
-            }
+            },
         }
     }
 

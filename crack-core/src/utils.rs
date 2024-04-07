@@ -193,7 +193,7 @@ pub async fn edit_response_poise(
     match get_interaction_new(ctx) {
         Some(interaction) => {
             edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await
-        }
+        },
         None => send_embed_response_poise(ctx, embed).await,
     }
 }
@@ -299,14 +299,14 @@ pub async fn send_embed_response(
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
             create_response_interaction(&ctx.serenity_context().http, int, embed, false).await
-        }
+        },
         CommandOrMessageInteraction::Message(_interaction) => {
             tracing::warn!("CommandOrMessageInteraction::Message");
             ctx.channel_id()
                 .send_message(ctx.http(), CreateMessage::new().embed(embed))
                 .await
                 .map_err(Into::into)
-        }
+        },
     }
 }
 
@@ -371,14 +371,14 @@ pub async fn create_response_interaction(
                         .edit(http, EditMessage::default().embed(embed.clone()))
                         .await?;
                     Ok(message)
-                }
+                },
                 Err(_) => {
                     int.create_response(http, res).await?;
                     let message = int.get_response(http).await?;
                     Ok(message)
-                }
+                },
             }
-        }
+        },
         Interaction::Ping(..)
         | Interaction::Component(..)
         | Interaction::Modal(..)
@@ -443,14 +443,14 @@ pub async fn edit_embed_response(
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             edit_reponse_interaction(http, int, embed).await
-        }
+        },
         CommandOrMessageInteraction::Message(msg) => match msg {
             Some(_msg) => {
                 // Ok(CreateMessage::new().content("edit_embed_response not implemented").)
                 Ok(Message::default())
                 //    http.edit_origin, new_attachments)
                 //     msg.user.id
-            }
+            },
             _ => Ok(Message::default()),
         },
     }
@@ -489,7 +489,7 @@ pub async fn edit_embed_response_poise(
                         )
                         .await
                         .map_err(Into::into)
-                }
+                },
                 _ => Err(CrackedError::Other("not implemented").into()),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
@@ -505,7 +505,7 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
         None => {
             tracing::warn!("No user found for track: {:?}", track);
             return Err(CrackedError::NoUserAutoplay);
-        }
+        },
     };
     Ok(user)
 }
@@ -519,7 +519,7 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
                 return AuxMetadata::default();
-            }
+            },
         };
 
         match my_metadata {
@@ -556,7 +556,7 @@ pub fn create_now_playing_embed_metadata(
         None => {
             tracing::warn!("No user id");
             ("Requested By", ">>> N/A".to_string(), true)
-        }
+        },
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
@@ -582,9 +582,9 @@ pub fn create_now_playing_embed_metadata(
 }
 
 /// Creates an embed for the first N metadata in the queue.
-async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> String {
+async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&AuxMetadata> = metadata
+    let queue: Vec<&MyAuxMetadata> = metadata
         .iter()
         .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
@@ -597,7 +597,7 @@ async fn build_queue_page_metadata(metadata: &[AuxMetadata], page: usize) -> Str
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        //let MyAuxMetadata::Data(t) = t;
+        let MyAuxMetadata::Data(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);
@@ -673,7 +673,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
-    metadata_arr: &[AuxMetadata],
+    metadata_arr: &[MyAuxMetadata],
     page: usize,
 ) -> CreateEmbed {
     CreateEmbed::default()
@@ -795,7 +795,7 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
             Some(index) => {
                 next = index + cur + 1;
                 &chunk[..index]
-            }
+            },
             None => chunk,
         };
         chunks.push(chunk.to_string());
@@ -834,7 +834,7 @@ pub fn get_footer_info(url: &str) -> (String, String) {
                 "Streaming via unknown".to_string(),
                 "https://www.google.com/s2/favicons?domain=unknown".to_string(),
             )
-        }
+        },
     };
     let domain = url_data.host_str().unwrap();
 
@@ -861,7 +861,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
             } else {
                 format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
             }
-        }
+        },
         None => "∞".to_string(),
     }
 }
@@ -888,6 +888,7 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     }
 }
 
+/// Checks a Result and logs the error if it's an Err.
 pub fn check_interaction(result: Result<(), Error>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
@@ -922,7 +923,7 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
             //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
             // ),
             // CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        }
+        },
         // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
             ctx.msg.interaction.clone(),
@@ -940,6 +941,7 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
 //     }
 // }
 
+/// Get the user id from a context.
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
         CrackContext::Application(ctx) => ctx.interaction.user.id,
@@ -947,12 +949,13 @@ pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     }
 }
 
-pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
-    match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.channel_id,
-        CrackContext::Prefix(ctx) => ctx.msg.channel_id,
-    }
-}
+// /// Get the channel id from a context.
+// pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
+//     match ctx {
+//         CrackContext::Application(ctx) => ctx.interaction.channel_id,
+//         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
+//     }
+// }
 
 // pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
 //     match ctx {
@@ -989,10 +992,10 @@ pub fn count_command(command: &str, is_prefix: bool) {
     {
         Ok(metric) => {
             metric.inc();
-        }
+        },
         Err(e) => {
             tracing::error!("Failed to get metric: {}", e);
-        }
+        },
     };
     #[cfg(not(feature = "crack-metrics"))]
     tracing::warn!("crack-metrics feature not enabled");

@@ -23,7 +23,7 @@ WORKDIR "/app"
 
 COPY . .
 COPY names.txt /app/names.txt
-RUN . "$HOME/.cargo/env" && cargo build --release --locked
+RUN . "$HOME/.cargo/env" && cargo build --all-features --release --locked
 
 # Release image
 # Necessary dependencies to run CrackTunes

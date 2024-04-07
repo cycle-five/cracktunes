@@ -8,7 +8,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        rust-version: ["nightly", "stable"]
+        rust-version: ["nightly", "stable", "1.75", "1.76"]
         cache-key: [""]
     runs-on: ubuntu-latest
       # redis:
@@ -22,13 +22,14 @@ jobs:
 
       - name: "Install yt-dlp"
         run: |
-          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-master-builds/releases/download/2024.02.13.195934/yt-dlp_linux
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.03.10/yt-dlp_linux
           chmod +x /usr/local/bin/yt-dlp
         shell: bash
 
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+          rustup install nightly
           rustup default ${{ matrix.rust-version }}
           rustup update
         shell: bash

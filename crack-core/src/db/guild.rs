@@ -326,7 +326,7 @@ impl GuildEntity {
                 )
                 .fetch_one(pool)
                 .await
-            }
+            },
         }?;
         let welcome_settings = GuildEntity::get_welcome_settings(pool, self.id).await?;
         let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
@@ -427,7 +427,7 @@ impl GuildEntity {
                     .with_welcome_settings(welcome_settings)
                     .with_log_settings(log_settings);
                 (guild_entity, guild_settings)
-            }
+            },
         };
 
         Ok((guild, settings))

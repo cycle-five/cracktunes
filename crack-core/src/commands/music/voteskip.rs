@@ -88,7 +88,7 @@ pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), Err
                 .and_modify(|cache| cache.current_skip_votes = HashSet::new())
                 .or_default();
             Ok(())
-        }
+        },
         Err(e) => Err(CrackedError::PoisonError(e.to_string().into()).into()),
     }
 }

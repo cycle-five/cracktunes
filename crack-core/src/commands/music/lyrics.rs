@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
 
@@ -39,15 +42,22 @@ pub async fn lyrics(
         .map_err(Into::into)
 }
 
-pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
-    let query = match query {
-        Some(query) => query,
-        None => {
-            // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-            let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
-            let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-            let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+/// Get the current call.
+pub async fn get_call(ctx: Context<'_>) -> Result<Arc<Mutex<songbird::Call>>, Error> {
+    let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NotConnected)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    Ok(call)
+}
 
+/// Get the current track name as either the query or the title of the current track.
+pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
+    match query {
+        Some(query) => Ok(query),
+        None => {
+            let call = get_call(ctx).await?;
             let handler = call.lock().await;
             let track_handle = handler
                 .queue()
@@ -56,10 +66,17 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 
             let lock = track_handle.typemap().read().await;
             let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
-            data.title.clone().unwrap_or_default()
-        }
-    };
-    Ok(query)
+            let track_opt = data.track.clone();
+            let title_opt = data.title.clone();
+            if let Some(t) = track_opt {
+                Ok(t)
+            } else if let Some(t) = title_opt {
+                Ok(t)
+            } else {
+                Err(CrackedError::NoTrackName.into())
+            }
+        },
+    }
 }
 
 pub async fn do_lyric_query(
@@ -71,7 +88,7 @@ pub async fn do_lyric_query(
         Err(e) => {
             tracing::error!("lyric search failed: {}", e);
             Err(CrackedError::Anyhow(e).into())
-        }
+        },
     }?;
     let (track, artists, lyric) = match result {
         lyric_finder::LyricResult::Some {
@@ -81,7 +98,7 @@ pub async fn do_lyric_query(
         } => {
             tracing::warn!("{} by {}'s lyric:\n{}", track, artists, lyric);
             (track, artists, lyric)
-        }
+        },
         lyric_finder::LyricResult::None => {
             tracing::error!("lyric not found! query: {}", query);
             (
@@ -89,7 +106,7 @@ pub async fn do_lyric_query(
                 "Unknown".to_string(),
                 "Lyric not found!".to_string(),
             )
-        }
+        },
     };
 
     Ok((track, artists, lyric))

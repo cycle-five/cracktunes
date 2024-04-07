@@ -38,7 +38,7 @@ pub async fn create_text_channel(
                 true,
             )
             .await?;
-        }
+        },
         Ok(channel) => {
             // Send success message
             send_response_poise(
@@ -50,7 +50,7 @@ pub async fn create_text_channel(
                 true,
             )
             .await?;
-        }
+        },
     }
     Ok(())
 }
@@ -86,7 +86,7 @@ pub async fn create_category(
                 true,
             )
             .await?;
-        }
+        },
         Ok(channel) => {
             // Send success message
             send_response_poise(
@@ -98,7 +98,7 @@ pub async fn create_category(
                 true,
             )
             .await?;
-        }
+        },
     }
     Ok(())
 }

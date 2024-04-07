@@ -288,7 +288,6 @@ pub struct DataInner {
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    //pub guild_settings_map: Arc<Mutex<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
@@ -297,6 +296,8 @@ pub struct DataInner {
     pub event_log: EventLog,
     #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
+    #[serde(skip)]
+    pub http_client: reqwest::Client,
 }
 
 impl DataInner {
@@ -355,7 +356,7 @@ impl Default for EventLog {
                 // I went down this path with sink and it was a mistake.
                 File::create("/dev/null")
                     .expect("Should be able to have a file object to write too.")
-            }
+            },
         };
         Self(Arc::new(Mutex::new(log_file)))
     }
@@ -425,7 +426,8 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
-            database_pool: None,
+            database_pool: None, //Some(sqlx::PgPool::connect_lazy(DEFAULT_DB_URL).unwrap()),
+            http_client: reqwest::Client::new(),
         }
     }
 }
@@ -449,20 +451,20 @@ impl std::ops::Deref for Data {
 
 impl Data {
     /// Create a new Data, calls default
-    pub async fn downvote_track(&self, guild_id: GuildId, _track: &str) -> Result<(), Error> {
+    pub async fn downvote_track(
+        &self,
+        guild_id: GuildId,
+        _track: &str,
+    ) -> Result<TrackReaction, CrackedError> {
         let play_log_id = PlayLog::get_last_played_by_guild_metadata(
             self.database_pool.as_ref().unwrap(),
             guild_id.into(),
         )
         .await?;
-        // let mut guild_cache_map = self.guild_cache_map.lock().unwrap();
-        TrackReaction::add_dislike(
-            self.database_pool.as_ref().unwrap(),
-            *play_log_id.first().unwrap() as i32,
-        )
-        .await?;
-
-        Ok(())
+        let pool = self.database_pool.as_ref().unwrap();
+        let id = *play_log_id.first().unwrap() as i32;
+        let _ = TrackReaction::insert(pool, id).await;
+        TrackReaction::add_dislike(pool, id).await
     }
 
     /// Add a message to the cache

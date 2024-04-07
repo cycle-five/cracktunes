@@ -15,12 +15,12 @@ pub async fn create(
         Some(guild) => {
             let guild = guild.to_partial_guild(&ctx).await?;
             (guild.id, guild)
-        }
+        },
         None => {
             return Result::Err(
                 CrackedError::Other("This command can only be used in a guild.").into(),
             );
-        }
+        },
     };
 
     match guild
@@ -36,7 +36,7 @@ pub async fn create(
             )
             .await
             .map(|_| ())
-        }
+        },
         Ok(role) => {
             // Send success message
             send_response_poise(
@@ -49,6 +49,6 @@ pub async fn create(
             )
             .await
             .map(|_| ())
-        }
+        },
     }
 }

@@ -28,7 +28,7 @@ pub async fn skip(
                 guild_id
             );
             return Ok(());
-        }
+        },
     };
 
     let to_skip = tracks_to_skip.unwrap_or(1);
@@ -69,14 +69,14 @@ pub async fn create_skip_response(
                 },
             )
             .await
-        }
+        },
         None => {
             if tracks_to_skip > 1 {
                 send_response_poise_text(ctx, CrackedMessage::SkipAll).await
             } else {
                 send_response_poise_text(ctx, CrackedMessage::Skip).await
             }
-        }
+        },
     }
 }
 
@@ -96,7 +96,7 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
                 guild_id
             );
             return Ok(());
-        }
+        },
     };
 
     let handler = call.lock().await;

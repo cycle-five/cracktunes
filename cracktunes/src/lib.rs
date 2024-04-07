@@ -26,7 +26,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "leave",
         "lyrics",
         "volume",
-        "now_playing",
+        "nowplaying",
         "queue",
         "repeat",
         "shuffle",

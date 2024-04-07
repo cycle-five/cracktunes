@@ -54,12 +54,12 @@ pub async fn delete_channel(
                 )
                 .await?;
             }
-        }
+        },
         None => {
             return Result::Err(
                 CrackedError::Other("This command can only be used in a guild.").into(),
             );
-        }
+        },
     }
     Ok(())
 }

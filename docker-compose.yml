@@ -15,30 +15,30 @@ services:
     expose:
       - "${PUB_PORT:-5432}"
     restart: always
-  # cracktunes:
-  #   container_name: cracktunes
-  #   image: cyclefive/cracktunes:dev
-  #   volumes:
-  #     - crack_data:/data:rw
-  #     - ./.env:/home/cyclefive/app/.env:rw
-  #     - ./cracktunes.toml:/home/cyclefive/app/cracktunes.toml:rw
-  #   environment:
-  #     - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
-  #     #- PUID=1001
-  #     #- PGID=1001
-  #   links:
-  #     - crack_postgres
-  #   ports:
-  #     - "127.0.0.1:8000:8000"
-  pgadmin:
-    container_name: pgadmin
-    image: dpage/pgadmin4:latest
+  cracktunes:
+    container_name: cracktunes
+    image: cyclefive/cracktunes:dev
+    volumes:
+      - crack_data:/data:rw
+      - ./.env:/home/cyclefive/app/.env:rw
+      - ./cracktunes.toml:/home/cyclefive/app/cracktunes.toml:rw
     environment:
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL:-a@b.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW:-password}
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+      #- PUID=1001
+      #- PGID=1001
+    links:
+      - crack_postgres
     ports:
-      - "127.0.0.1:5050:80"
-    restart: always
+      - "127.0.0.1:8833:8833"
+  # pgadmin:
+  #   container_name: pgadmin
+  #   image: dpage/pgadmin4:latest
+  #   environment:
+  #     - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL:-a@b.com}
+  #     - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW:-password}
+  #   ports:
+  #     - "127.0.0.1:5050:80"
+  #   restart: always
 volumes:
   pgdata:
     external: true

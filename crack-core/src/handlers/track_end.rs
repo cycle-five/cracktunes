@@ -1,38 +1,43 @@
-use self::serenity::{async_trait, http::Http, model::id::GuildId};
 use ::serenity::{
     all::{ChannelId, UserId},
+    async_trait,
     builder::EditMessage,
+    http::Http,
+    model::id::GuildId,
 };
-use poise::serenity_prelude::{self as serenity};
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::{
-    commands::{enqueue_track_pgwrite, forget_skip_votes, send_now_playing, MyAuxMetadata},
+    commands::{
+        doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, send_now_playing,
+        MyAuxMetadata,
+    },
     db::PlayLog,
     errors::{verify, CrackedError},
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message},
-    Data,
+    Data, Error,
 };
 
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
+    pub data: Data,
     pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
-    pub data: Data,
 }
 
 pub struct ModifyQueueHandler {
-    pub http: Arc<Http>,
-    pub data: Data,
-    pub call: Arc<Mutex<Call>>,
     pub guild_id: GuildId,
+    pub data: Data,
+    pub http: Arc<Http>,
+    pub call: Arc<Mutex<Call>>,
 }
 
+/// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -123,12 +128,12 @@ impl EventHandler for TrackEndHandler {
                                 let msg1 =
                                     format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
                                 (rec, msg1)
-                            }
+                            },
                             Err(e) => {
                                 let msg = format!("Error: {}", e);
                                 let rec = vec![];
                                 (rec, msg)
-                            }
+                            },
                         };
                         // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
@@ -141,9 +146,9 @@ impl EventHandler for TrackEndHandler {
                                 tracing::warn!("{}", msg);
                                 // chan_id.say(&self.http, msg).await.unwrap();
                                 return None;
-                            }
+                            },
                         };
-                        let q = enqueue_track_pgwrite(
+                        let tracks = enqueue_track_pgwrite_asdf(
                             self.data.database_pool.as_ref().unwrap(),
                             self.guild_id,
                             chan_id,
@@ -152,31 +157,56 @@ impl EventHandler for TrackEndHandler {
                             &self.call,
                             &query,
                         )
-                        .await;
-                        let (my_metadata, pos) = match q {
-                            Ok(tracks) => {
-                                let _ = tracks[0].set_volume(volume);
-                                let (my_metadata, pos) = extract_track_metadata(&tracks[0]).await;
+                        .await
+                        .unwrap_or_default();
+                        let (my_metadata, pos) = match tracks.first() {
+                            Some(t) => {
+                                let (my_metadata, pos) =
+                                    extract_track_metadata(t).await.unwrap_or_default();
+                                let _ = t.set_volume(volume);
                                 (my_metadata, pos)
-                            }
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
+                            },
+                            None => {
+                                let msg = format!("No tracks found for query: {:?}", query);
                                 tracing::warn!("{}", msg);
-
                                 (
                                     MyAuxMetadata::Data(AuxMetadata::default()),
                                     Duration::from_secs(0),
                                 )
-                            }
+                            },
                         };
+                        //         // match extract_track_metadata(&tracks[0]).await {
+                        //         //     Ok((my_metadata, pos)) => (my_metadata, pos),
+                        //         //     Err(e) => {
+                        //         //         let msg = format!("Error: {}", e);
+                        //         //         tracing::warn!("{}", msg);
+                        //         //         (
+                        //         //             MyAuxMetadata::Data(AuxMetadata::default()),
+                        //         //             Duration::from_secs(0),
+                        //         //         )
+                        //         //     }
+                        //         // };
+                        //         (my_metadata, pos)
+                        //     }
+                        //     Err(e) => {
+                        //         let msg = format!("Error: {}", e);
+                        //         tracing::warn!("{}", msg);
+
+                        //         (
+                        //             MyAuxMetadata::Data(AuxMetadata::default()),
+                        //             Duration::from_secs(0),
+                        //         )
+                        //     }
+                        // };
                         (channel, my_metadata, pos)
-                    }
+                    },
                     (Some(track), _) => {
                         let _ = track.set_volume(volume);
-                        let (my_metadata, pos) = extract_track_metadata(&track).await;
+                        let (my_metadata, pos) =
+                            extract_track_metadata(&track).await.unwrap_or_default();
 
                         (channel, my_metadata, pos)
-                    }
+                    },
                 }
             };
             let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
@@ -198,7 +228,7 @@ impl EventHandler for TrackEndHandler {
             Ok(message) => {
                 self.data.add_msg_to_cache(self.guild_id, message);
                 tracing::warn!("Sent now playing message");
-            }
+            },
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         }
 
@@ -206,17 +236,20 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
-async fn extract_track_metadata(track: &TrackHandle) -> (MyAuxMetadata, Duration) {
-    let pos = track.get_info().await.unwrap().position;
+/// Extracts the metadata and position of a track.
+async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
+    let pos = track.get_info().await?.position;
     let track_clone = track.clone();
     let mutex_guard = track_clone.typemap().read().await;
     let my_metadata = mutex_guard
         .get::<crate::commands::MyAuxMetadata>()
-        .unwrap()
+        .ok_or_else(|| CrackedError::Other("No metadata found"))?
         .clone();
-    (my_metadata, pos)
+    Ok((my_metadata, pos))
 }
 
+/// Event handler to set the volume of the playing track to the volume
+/// set in the guild settings after a queue modification.
 #[async_trait]
 impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
@@ -230,7 +263,7 @@ impl EventHandler for ModifyQueueHandler {
             (queue, vol)
         };
 
-        vol.map(|vol| queue.first().map(|track| track.set_volume(vol)));
+        vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
         update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
 
         None
@@ -251,7 +284,6 @@ pub async fn update_queue_messages(
         Some(cache) => cache.queue_messages.clone(),
         None => return,
     };
-    // drop(data);
 
     for (message, page_lock) in messages.iter_mut() {
         // has the page size shrunk?

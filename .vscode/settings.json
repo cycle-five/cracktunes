@@ -1,0 +1,34 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "127.0.0.1",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "local",
+            "database": "postgres",
+            "username": "postgres",
+            "password": "mysecretpassword"
+        }
+    ],
+    "rust-analyzer.cargo.cfgs": {
+        "crack-gpt": true,
+        "crack-osint": true,
+        "crack-core": true,
+        "crack-telemetry": true,
+        "crack-metrics": true,
+        "crack-tracing": true,
+        "db": true,
+        "playlist": true,
+        "cache": true,
+        "ignore-presence-log": true
+    },
+    "rust-analyzer.linkedProjects": [
+        "./crack-core/Cargo.toml",
+        "./crack-gpt/Cargo.toml",
+        "./crack-osint/Cargo.toml"
+    ],
+    "sqltools.useNodeRuntime": null,
+    "rust-analyzer.checkOnSave": true,
+    "gitdoc.enabled": true,
+}

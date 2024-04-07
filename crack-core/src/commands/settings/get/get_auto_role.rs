@@ -4,7 +4,7 @@ use serenity::model::id::RoleId;
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise};
 use crate::{Context, Data, Error};
 
-/// Get the current bot settings for this guild.
+/// Get the auto role for the server.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,

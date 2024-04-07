@@ -58,7 +58,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             interaction
                 .get_response(&ctx.serenity_context().http)
                 .await?
-        }
+        },
         _ => {
             let reply = ctx
                 .send(
@@ -68,7 +68,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 )
                 .await?;
             reply.into_message().await?
-        }
+        },
     };
 
     ctx.data().add_msg_to_cache(guild_id, message.clone());

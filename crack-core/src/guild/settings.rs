@@ -396,10 +396,17 @@ impl GuildSettings {
         }
     }
 
+    /// Create a new GuildSettings with the given guild id.
+    pub fn new_gid(guild_id: GuildId) -> GuildSettings {
+        GuildSettings::new(guild_id, None, None)
+    }
+
+    /// Get the prefix in uppercase.
     pub fn get_prefix_up(&self) -> String {
         self.prefix.to_ascii_uppercase()
     }
 
+    /// Load the guild settings from the database or create them if they don't exist.
     pub async fn load_or_create(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
         let guild_id = self.guild_id.get() as i64;
         let name = self.guild_name.clone();

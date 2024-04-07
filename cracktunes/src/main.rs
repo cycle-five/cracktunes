@@ -70,11 +70,11 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
             for (guild_id, guild_settings) in guild_settings_map.iter() {
                 tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
             }
-        }
+        },
         None => {
             tracing::info!("No guild settings found");
             data_global.insert::<GuildSettingsMap>(HashMap::default());
-        }
+        },
     }
     data_global.insert::<GuildCacheMap>(HashMap::default());
 
@@ -126,7 +126,7 @@ fn load_key(k: String) -> Result<String, Error> {
         Err(_) => {
             tracing::warn!("{} not found in environment.", &k);
             Err(format!("{} not found in environment.", &k).into())
-        }
+        },
     }
 }
 
@@ -145,7 +145,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         Err(error) => {
             tracing::warn!("Using default config: {:?}", error);
             BotConfig::default()
-        }
+        },
     };
     let config_with_creds = config.set_credentials(BotCredentials {
         discord_token,
@@ -198,14 +198,14 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
             //let xyz: tracing_subscriber::fmt::Layer<Registry> =
             //.with_writer(Box::make_writer(&Box::new(Mutex::new(file))));
             tracing_subscriber::fmt::layer().with_writer(file)
-        }
+        },
         Err(error) => {
             println!("warning: no log file available for output! {:?}", error);
             // let sink: std::io::Sink = std::io::sink();
             // let writer = Arc::new(sink);
             let sink = std::fs::File::open("/dev/null").unwrap();
             tracing_subscriber::fmt::layer().with_writer(sink)
-        }
+        },
     }
 }
 

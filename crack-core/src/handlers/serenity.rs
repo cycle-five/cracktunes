@@ -105,14 +105,14 @@ impl EventHandler for SerenityHandler {
             None => {
                 tracing::error!("Guild settings not found for guild {}", guild_id);
                 return;
-            }
+            },
         };
 
         tracing::trace!("welcome: {:?}", welcome);
 
         match (welcome.message, welcome.channel_id) {
-            (None, _) => {}
-            (_, None) => {}
+            (None, _) => {},
+            (_, None) => {},
             (Some(message), Some(channel)) => {
                 let channel = serenity::ChannelId::new(channel);
                 let x = channel
@@ -132,7 +132,7 @@ impl EventHandler for SerenityHandler {
                     )
                     .await;
                 tracing::info!("x: {:?}", x.unwrap());
-            }
+            },
         };
 
         if let Some(role_id) = welcome.auto_role {
@@ -141,10 +141,10 @@ impl EventHandler for SerenityHandler {
             match new_member.add_role(&ctx.http, role_id).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
-                }
+                },
                 Err(err) => {
                     tracing::error!("Error adding role: {}", err);
-                }
+                },
             }
         }
     }
@@ -401,7 +401,7 @@ impl SerenityHandler {
                 None => {
                     tracing::error!("Guild not found in cache");
                     continue;
-                }
+                },
             };
             tracing::info!(
                 "Loading guild settings for {}, {}",
@@ -447,7 +447,7 @@ impl SerenityHandler {
                 None => {
                     tracing::error!("Guild not found in cache");
                     continue;
-                }
+                },
             };
             tracing::info!(
                 "Loading guild settings for {}, {}",
@@ -489,10 +489,10 @@ impl SerenityHandler {
                 Some(&mut ref guild_settings) => {
                     tracing::info!("loaded guild from db {}...", guild_settings);
                     guild_settings_list.push(guild_settings.clone());
-                }
+                },
                 None => {
                     tracing::error!("Guild not found in settings map");
-                }
+                },
             }
         }
 
@@ -567,7 +567,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
         None => {
             tracing::error!("Guild not found in cache");
             return vec![];
-        }
+        },
     };
 
     // let voice_states = &guild.voice_states;
@@ -581,7 +581,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 Err(err) => {
                     tracing::error!("Error getting user: {}", err);
                     continue;
-                }
+                },
             };
             let channel_name = match channel_id.to_channel(&ctx).await {
                 Ok(channel) => match channel {
@@ -597,7 +597,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                         err
                     );
                     "MISSING_ACCESS".to_string()
-                }
+                },
             };
 
             let info = MyVoiceUserInfo {
@@ -657,10 +657,10 @@ async fn check_delete_old_messages(
     for msg in to_delete {
         tracing::error!("Deleting old message: {:#?}", msg);
         match msg.delete(ctx.clone()).await {
-            Ok(_) => {}
+            Ok(_) => {},
             Err(err) => {
                 tracing::error!("Error deleting message: {}", err);
-            }
+            },
         }
     }
     Ok(())
@@ -781,10 +781,10 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                             // if state == "disconnect" {
                                             //     cam_status.remove(&cam.key());
                                             // }
-                                        }
+                                        },
                                         Err(err) => {
                                             tracing::error!("Error violating user: {}", err);
-                                        }
+                                        },
                                     }
                                 }
                             }
@@ -872,7 +872,7 @@ pub fn voice_state_diff_str(
                 "Member joined voice channel\n{} joined {}",
                 user_name, channel_mention
             );
-        }
+        },
     };
     let user = if premium {
         if old.member.is_none() {
