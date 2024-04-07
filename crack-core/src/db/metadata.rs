@@ -122,7 +122,7 @@ impl Metadata {
                     .fetch_one(pool)
                     .await
                     .map_err(CrackedError::SQLX)?
-            }
+            },
         };
         Ok(Metadata {
             id: r.id,

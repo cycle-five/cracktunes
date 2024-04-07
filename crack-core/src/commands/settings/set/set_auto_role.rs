@@ -14,7 +14,7 @@ pub async fn auto_role(
         Err(e) => {
             ctx.say(format!("Failed to parse role id: {}", e)).await?;
             return Ok(());
-        }
+        },
     };
 
     let res = ctx

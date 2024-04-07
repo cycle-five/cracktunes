@@ -35,7 +35,7 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
             send_embed_response_poise(ctx, embed).await?;
             return Ok(());
-        }
+        },
     };
     let handler = call.lock().await;
     let queue = handler.queue();

@@ -24,7 +24,7 @@ pub async fn volume(
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
             let _ = send_embed_response_poise(ctx, embed).await?;
             return Ok(());
-        }
+        },
     };
     tracing::error!("guild_id: {:?}", guild_id);
     let embed = {
@@ -38,7 +38,7 @@ pub async fn volume(
                 let msg = send_embed_response_poise(ctx, embed).await?;
                 ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
-            }
+            },
         };
         let call = match manager.get(guild_id) {
             Some(call) => call,
@@ -49,7 +49,7 @@ pub async fn volume(
                 let msg = send_embed_response_poise(ctx, embed).await?;
                 ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
-            }
+            },
         };
 
         let handler = call.lock().await;
@@ -98,7 +98,7 @@ pub async fn volume(
                 let msg = send_embed_response_poise(ctx, embed).await?;
                 ctx.data().add_msg_to_cache(guild_id, msg);
                 return Ok(());
-            }
+            },
         };
 
         let new_vol = (to_set.unwrap() as f32) / 100.0;
@@ -139,7 +139,7 @@ pub async fn volume(
                 return send_embed_response_poise(ctx, embed).await.map(|m| {
                     ctx.data().add_msg_to_cache(guild_id, m);
                 })
-            }
+            },
         };
 
         track_handle.set_volume(new_vol).unwrap();

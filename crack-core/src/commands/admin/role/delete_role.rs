@@ -64,12 +64,12 @@ pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<
                 )
                 .await?;
             }
-        }
+        },
         None => {
             return Result::Err(
                 CrackedError::Other("This command can only be used in a guild.").into(),
             );
-        }
+        },
     }
     Ok(())
 }

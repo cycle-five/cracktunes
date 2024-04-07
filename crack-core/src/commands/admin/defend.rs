@@ -204,7 +204,7 @@ async fn get_members_by_role(
                     tracing::error!("{} is in the role {}", member.user.name, role.name);
                     attackers.push(member);
                 }
-            }
+            },
             Err(_err) => continue,
         }
     }

@@ -219,7 +219,7 @@ impl Spotify {
         match search_result {
             SearchResult::Tracks(tracks) => {
                 tracks.items.iter().flat_map(|x| x.id.clone()).collect()
-            }
+            },
             _ => Vec::new(),
         }
     }
@@ -245,33 +245,33 @@ impl Spotify {
                 let artist_names = Self::join_artist_names(&album.artists);
                 let query = Self::build_query(&artist_names, &album.name);
                 Ok(QueryType::Keywords(query))
-            }
+            },
             SearchResult::Artists(artists) => {
                 let artist = artists.items[0].clone();
                 let query = artist.name;
                 Ok(QueryType::Keywords(query))
-            }
+            },
             SearchResult::Playlists(playlists) => {
                 let playlist = playlists.items[0].clone();
                 let query = playlist.name;
                 Ok(QueryType::Keywords(query))
-            }
+            },
             SearchResult::Tracks(tracks) => {
                 let track = tracks.items[0].clone();
                 let artist_names = Self::join_artist_names(&track.artists);
                 let query = Self::build_query(&artist_names, &track.name);
                 Ok(QueryType::Keywords(query))
-            }
+            },
             SearchResult::Shows(shows) => {
                 let show = shows.items[0].clone();
                 let query = show.name;
                 Ok(QueryType::Keywords(query))
-            }
+            },
             SearchResult::Episodes(episodes) => {
                 let episode = episodes.items[0].clone();
                 let query = episode.name;
                 Ok(QueryType::Keywords(query))
-            }
+            },
         }
     }
 
@@ -339,7 +339,7 @@ impl Spotify {
                 PlayableItem::Track(track) => {
                     let artist_names = Self::join_artist_names(&track.album.artists);
                     Some(Self::build_query(&artist_names, &track.name))
-                }
+                },
                 PlayableItem::Episode(_) => None,
             })
             .collect();

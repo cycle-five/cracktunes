@@ -135,7 +135,7 @@ impl VoiceEventHandler for Receiver {
                         "stopped"
                     },
                 );
-            }
+            },
             Ctx::RtpPacket(data) => {
                 // FIXME: update this to the new library
                 // An event which fires for every received audio packet,
@@ -166,12 +166,12 @@ impl VoiceEventHandler for Receiver {
                 //     println!("RTP packet, but no audio. Driver may not be configured to decode.");
                 // }
                 tracing::trace!("RTP packet received: {:?}", data.packet);
-            }
+            },
             Ctx::RtcpPacket(data) => {
                 // An event which fires for every received rtcp packet,
                 // containing the call statistics and reporting information.
                 tracing::trace!("RTCP packet received: {:?}", data.packet);
-            }
+            },
             Ctx::ClientDisconnect(ClientDisconnect { user_id, .. }) => {
                 // You can implement your own logic here to handle a user who has left the
                 // voice channel e.g., finalise processing of statistics etc.
@@ -179,11 +179,11 @@ impl VoiceEventHandler for Receiver {
                 // first speaking.
 
                 tracing::warn!("Client disconnected: user {:?}", user_id);
-            }
+            },
             _ => {
                 // We won't be registering this struct for any more event classes.
                 unimplemented!()
-            }
+            },
         }
 
         None

@@ -37,7 +37,7 @@ pub async fn get_playlist_(
             let user_id = ctx.author().id.get() as i64;
 
             Playlist::get_track_metadata_for_playlist_name(pool, playlist.clone(), user_id).await?
-        }
+        },
     };
     // Assuming you have a way to fetch the user_id of the command issuer
     let aux_metadata = metadata
@@ -47,7 +47,7 @@ pub async fn get_playlist_(
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);
                 None
-            }
+            },
         })
         .collect::<Vec<_>>();
     // playlist.print_playlist(ctx).await?;

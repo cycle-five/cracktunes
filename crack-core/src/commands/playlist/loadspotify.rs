@@ -87,10 +87,10 @@ pub async fn loadspotify_(
                     channel_id_i64,
                 )
                 .await?;
-            }
+            },
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);
-            }
+            },
         }
     }
     Ok(metadata_vec)

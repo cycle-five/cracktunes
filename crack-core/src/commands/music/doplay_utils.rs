@@ -186,7 +186,7 @@ pub async fn enqueue_track_pgwrite_asdf(
             Err(e) => {
                 tracing::error!("aux_metadata_to_db_structures error: {}", e);
                 return Err(CrackedError::Other("aux_metadata_to_db_structures error"));
-            }
+            },
         };
         let updated_metadata =
             match crate::db::metadata::Metadata::get_or_create(database_pool, &metadata).await {
@@ -194,7 +194,7 @@ pub async fn enqueue_track_pgwrite_asdf(
                 Err(e) => {
                     tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
                     metadata.clone()
-                }
+                },
             };
 
         // Get the username (string) of the user.
@@ -203,16 +203,16 @@ pub async fn enqueue_track_pgwrite_asdf(
             Err(e) => {
                 tracing::error!("http.get_user error: {}", e);
                 "Unknown".to_string()
-            }
+            },
         };
 
         match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
             Ok(_) => {
                 tracing::info!("Users::insert_or_update");
-            }
+            },
             Err(e) => {
                 tracing::error!("Users::insert_or_update error: {}", e);
-            }
+            },
         };
         match PlayLog::create(
             database_pool,
@@ -224,10 +224,10 @@ pub async fn enqueue_track_pgwrite_asdf(
         {
             Ok(x) => {
                 tracing::info!("PlayLog::create: {:?}", x);
-            }
+            },
             Err(e) => {
                 tracing::error!("PlayLog::create error: {}", e);
-            }
+            },
         };
         metadata
     };

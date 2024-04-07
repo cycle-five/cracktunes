@@ -69,12 +69,12 @@ pub async fn send_now_playing(
                 create_now_playing_embed(&track_handle).await
             };
             CreateMessage::new().embed(embed)
-        }
+        },
         None => {
             tracing::warn!("track handle not found, dropping mutex guard");
             drop(mutex_guard);
             CreateMessage::new().content("Nothing playing")
-        }
+        },
     };
     tracing::warn!("sending message: {:?}", msg);
     channel

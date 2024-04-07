@@ -88,11 +88,11 @@ impl Display for CrackedError {
             Self::AudioStream(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
-            }
+            },
             Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
             Self::AlreadyConnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
-            }
+            },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
@@ -100,7 +100,7 @@ impl Display for CrackedError {
             )),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
-            }
+            },
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),
@@ -116,7 +116,7 @@ impl Display for CrackedError {
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {
                 f.write_fmt(format_args!("No guild for channel id {}", channel_id))
-            }
+            },
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
             Self::NoUserAutoplay => f.write_str("(auto)"),
@@ -162,13 +162,13 @@ impl PartialEq for CrackedError {
             (Self::Other(l0), Self::Other(r0)) => l0 == r0,
             (Self::NotInRange(l0, l1, l2, l3), Self::NotInRange(r0, r1, r2, r3)) => {
                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
-            }
+            },
             (Self::AuthorDisconnected(l0), Self::AuthorDisconnected(r0)) => {
                 l0.to_string() == r0.to_string()
-            }
+            },
             (Self::AlreadyConnected(l0), Self::AlreadyConnected(r0)) => {
                 l0.to_string() == r0.to_string()
-            }
+            },
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
@@ -230,7 +230,7 @@ impl From<SerenityError> for CrackedError {
         match err {
             SerenityError::NotInRange(param, value, lower, upper) => {
                 Self::NotInRange(param, value as isize, lower as isize, upper as isize)
-            }
+            },
             SerenityError::Other(msg) => Self::Other(msg),
             _ => Self::Serenity(err),
         }

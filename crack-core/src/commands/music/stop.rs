@@ -15,10 +15,10 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let res = cancel_autoplay(ctx.data(), guild_id).await;
     match res {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(e) => {
             tracing::error!("Failed to cancel autoplay: {}", e);
-        }
+        },
     }
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();

@@ -110,7 +110,7 @@ fn parse_duration(input: &str) -> Result<Duration, CrackedError> {
                     d.to_string(),
                     u.to_string(),
                 ));
-            }
+            },
         };
         match u {
             "s" => total += Duration::from_secs(d),

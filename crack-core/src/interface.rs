@@ -80,7 +80,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
             Err(e) => {
                 tracing::error!("error parsing url: {:?}", e);
                 "".to_string()
-            }
+            },
         };
 
         let description = format!(
@@ -134,7 +134,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
         Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
             ("Requested By", ">>> N/A".to_string(), true)
-        }
+        },
     };
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();

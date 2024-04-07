@@ -34,7 +34,7 @@ pub async fn add_to_playlist(
             )
             .await
             .map(|_| ())
-        }
+        },
     };
 
     // // Extract playlist name and track ID from the arguments
@@ -62,7 +62,7 @@ pub async fn add_to_playlist(
                 tracing::error!("Error getting playlist: {:?}", e);
                 tracing::info!("Creating playlist: {:?}", playlist_name);
                 Playlist::create(&db_pool, &playlist_name, user_id).await
-            }
+            },
         }?;
 
     let (in_metadata, _playlist_track) =

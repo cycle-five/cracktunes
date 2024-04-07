@@ -97,7 +97,7 @@ pub async fn set_welcome_settings(
                 None => tracing::warn!("No database pool to save welcome settings"),
             }
             Ok(welcome_settings.to_string())
-        }
+        },
         None => Err(CrackedError::Other("Welcome settings failed to update?!?")),
     }
 }
