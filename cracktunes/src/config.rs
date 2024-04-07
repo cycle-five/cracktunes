@@ -443,6 +443,7 @@ pub async fn poise_framework(
             Ok(data.clone())
         })
     });
+    println!("after framework");
     let serenity_handler = SerenityHandler {
         is_loop_running: false.into(),
         data: framework.user_data().await.clone(),
