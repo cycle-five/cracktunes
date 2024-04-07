@@ -433,6 +433,7 @@ pub async fn poise_framework(
         .expect("Error getting discord token")
         .discord_token;
     let data2 = data.clone();
+    // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
     let framework = poise::Framework::new(options, |ctx, ready, framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
