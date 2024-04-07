@@ -448,6 +448,7 @@ pub async fn poise_framework(
         is_loop_running: false.into(),
         data: framework.user_data().await.clone(),
     };
+    println!("before second framework.user_data()");
     let data2 = framework.user_data().await.clone();
     println!("Intents: {:?}", intents);
     let client = Client::builder(token, intents)
