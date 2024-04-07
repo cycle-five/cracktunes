@@ -23,6 +23,7 @@ jobs:
           rustup default ${{ matrix.rust-version }}
           rustup update
           rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
+          rustup component add rustfmt clippy --toolchain nightly
         shell: bash
       - 
         uses: ikalnytskyi/action-setup-postgres@v4
