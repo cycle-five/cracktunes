@@ -1,4 +1,5 @@
-use std::sync::Mutex;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
@@ -41,9 +42,12 @@ pub async fn lyrics(
         .map_err(Into::into)
 }
 
+/// Get the current call.
 pub async fn get_call(ctx: Context<'_>) -> Result<Arc<Mutex<songbird::Call>>, Error> {
     let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NotConnected)?;
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     Ok(call)
 }
