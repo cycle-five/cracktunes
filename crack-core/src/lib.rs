@@ -464,7 +464,7 @@ impl Data {
         let pool = self.database_pool.as_ref().unwrap();
         let id = *play_log_id.first().unwrap() as i32;
         // let mut guild_cache_map = self.guild_cache_map.lock().unwrap();
-        let _ = TrackReaction::insert(pool, id);
+        let _ = TrackReaction::insert(pool, id).await;
         TrackReaction::add_dislike(pool, id).await
 
         // Ok(())
