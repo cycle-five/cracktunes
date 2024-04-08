@@ -215,6 +215,7 @@ pub async fn poise_framework(
             // commands::boop(),
             // all ai commands
             // commands::chatgpt(),
+            commands::music::vote(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),

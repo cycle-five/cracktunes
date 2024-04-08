@@ -12,16 +12,16 @@
         }
     ],
     "rust-analyzer.cargo.cfgs": {
-        "crack-gpt": true,
-        "crack-osint": true,
-        "crack-core": true,
-        "crack-telemetry": true,
-        "crack-metrics": true,
-        "crack-tracing": true,
-        "db": true,
-        "playlist": true,
-        "cache": true,
-        "ignore-presence-log": true
+        "crack-gpt": "",
+        "crack-osint": "",
+        "crack-core": "",
+        "crack-telemetry": "",
+        "crack-metrics": "",
+        "crack-tracing": "",
+        "db": "",
+        "playlist": "",
+        "cache": "",
+        "ignore-presence-log": ""
     },
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
@@ -30,5 +30,5 @@
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": true,
-    "gitdoc.enabled": false,
+    "gitdoc.enabled": false
 }

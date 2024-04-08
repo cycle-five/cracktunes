@@ -100,9 +100,7 @@ pub async fn get_call_with_fail_msg(
                         .into_message()
                         .await?;
                     ctx.data().add_msg_to_cache(guild_id, msg);
-                    // }
                     Ok(call)
-                    // Ok(manager.get(guild_id).unwrap())
                 },
                 Err(_) => {
                     // FIXME: Do something smarter here also.

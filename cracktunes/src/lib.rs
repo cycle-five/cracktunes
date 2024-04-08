@@ -42,6 +42,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "autoplay",
         // we're putting other random commands under music for now to get them treated correctly by the perms system
         "ping",
+        "vote",
         // "uptime",
     ]
 }
