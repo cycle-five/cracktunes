@@ -139,6 +139,8 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
     let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY".to_string()).ok();
 
+    let env_db_url = load_key("DATABASE_URL".to_string()).ok();
+
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
         Ok(config) => config,
@@ -147,7 +149,14 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
             BotConfig::default()
         },
     };
-    let config_with_creds = config.set_credentials(BotCredentials {
+
+    let config = if let Some(db_url) = env_db_url {
+        config.set_database_url(db_url)
+    } else {
+        &mut config
+    };
+
+    let config = config.set_credentials(BotCredentials {
         discord_token,
         discord_app_id,
         spotify_client_id,
@@ -156,7 +165,7 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
         virustotal_api_key,
     });
 
-    Ok(config_with_creds.clone())
+    Ok(config.clone())
 }
 
 // fn combine_log_layers(

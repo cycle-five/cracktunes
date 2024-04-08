@@ -210,6 +210,11 @@ impl BotConfig {
             .cloned()
             .unwrap_or(DEFAULT_DB_URL.to_string())
     }
+
+    pub fn set_database_url(&mut self, url: String) -> &mut Self {
+        self.database_url = Some(url);
+        self
+    }
 }
 
 /// Phone code data for the osint commands
