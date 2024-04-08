@@ -16,7 +16,7 @@
         "crack-osint": true,
         "crack-core": true,
         "crack-telemetry": true,
-        "crack-metrics": true,
+        "crack-metrics": "",
         "crack-tracing": true,
         "db": true,
         "playlist": true,
