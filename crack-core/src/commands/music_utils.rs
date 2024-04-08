@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 use super::CrackedMessage;
 
 /// Set the global handlers.
+#[cfg(not(tarpaulin_include))]
 pub async fn set_global_handlers(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -73,6 +74,7 @@ pub async fn set_global_handlers(
 
 /// Get the call handle for songbird.
 // FIXME: Does this need to take the GuildId?
+#[cfg(not(tarpaulin_include))]
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
     guild_id: GuildId,
