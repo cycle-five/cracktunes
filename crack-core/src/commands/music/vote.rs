@@ -1,4 +1,7 @@
-use crate::{messaging::messages::VOTE_TOPGG, Context, Error};
+use crate::{
+    messaging::messages::{VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL},
+    Context, Error,
+};
 use poise::serenity_prelude::GuildId;
 
 /// Vote link for cracktunes on top.gg
@@ -7,7 +10,12 @@ use poise::serenity_prelude::GuildId;
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: Option<GuildId> = ctx.guild_id();
 
-    let reply_handle = ctx.reply(VOTE_TOPGG).await?;
+    let reply_handle = ctx
+        .reply(format!(
+            "{}[{}]({})",
+            VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
+        ))
+        .await?;
 
     let msg = reply_handle.into_message().await?;
 

@@ -7,8 +7,8 @@ use crate::{
     messaging::{
         message::CrackedMessage,
         messages::{
-            INVITE_LINK_SHORT, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE, QUEUE_PAGE_OF,
-            VOTE_TOPGG_SHORT,
+            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
+            QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
     Context as CrackContext, CrackedError, Data, Error,
@@ -831,7 +831,10 @@ pub fn create_page_getter_newline(
 }
 
 pub fn get_footer_info(url: &str) -> (String, String, String) {
-    let vanity = format!("• {} • {}", VOTE_TOPGG_SHORT, INVITE_LINK_SHORT);
+    let vanity = format!(
+        "• [{}]({}) • [{}]({})",
+        VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
+    );
     let url_data = match Url::parse(url) {
         Ok(url_data) => url_data,
         Err(_) => {
