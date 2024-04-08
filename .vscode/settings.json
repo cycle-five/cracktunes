@@ -11,18 +11,7 @@
             "password": "mysecretpassword"
         }
     ],
-    "rust-analyzer.cargo.cfgs": {
-        "crack-gpt": true,
-        "crack-osint": true,
-        "crack-core": true,
-        "crack-telemetry": true,
-        "crack-metrics": "",
-        "crack-tracing": true,
-        "db": true,
-        "playlist": true,
-        "cache": true,
-        "ignore-presence-log": true
-    },
+    "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",
