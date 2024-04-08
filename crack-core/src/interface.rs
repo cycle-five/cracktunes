@@ -139,15 +139,14 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
-    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
-
+    let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
+    let footer_text = format!("{} • {}", footer_text, vanity);
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
         .title(title.clone())
         .url(source_url)
         .field(progress_field.0, progress_field.1, progress_field.2)
         .field(channel_field.0, channel_field.1, channel_field.2)
-        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
         .thumbnail(
             url::Url::parse(&thumbnail)
                 .map(|x| x.to_string())
