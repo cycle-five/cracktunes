@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"name": "cracktunes",
+			"path": "../.."
+		}
+	],
+	"settings": {
+		"rust-analyzer.cargo.cfgs": {
+			"crack-gpt": "",
+			"crack-osint": "",
+			"crack-core": "",
+			"playlist": ""
+		},
+		"rust-analyzer.linkedProjects": [
+			"./crack-core/Cargo.toml",
+			"./crack-gpt/Cargo.toml",
+			"./crack-osint/Cargo.toml",
+			"./crack-osint/Cargo.toml"
+		],
+		"rust-analyzer.checkOnSave": false,
+		"gitdoc.enabled": false
+	}
+}
