@@ -564,7 +564,6 @@ pub fn create_now_playing_embed_metadata(
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
-    let footer_text = format!("{}{}", footer_text, vanity);
 
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
@@ -582,6 +581,7 @@ pub fn create_now_playing_embed_metadata(
                 })
                 .unwrap_or_default(),
         )
+        .description(vanity)
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
@@ -832,7 +832,7 @@ pub fn create_page_getter_newline(
 
 pub fn get_footer_info(url: &str) -> (String, String, String) {
     let vanity = format!(
-        "• [{}]({}) • [{}]({})",
+        "[{}]({}) • [{}]({})",
         VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
     );
     let url_data = match Url::parse(url) {

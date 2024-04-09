@@ -140,7 +140,6 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
-    let footer_text = format!("{} • {}", footer_text, vanity);
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
         .title(title.clone())
@@ -156,6 +155,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
                 })
                 .unwrap_or_default(),
         )
+        .description(vanity)
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
