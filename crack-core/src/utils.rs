@@ -341,6 +341,8 @@ pub async fn edit_reponse_interaction(
     }
 }
 
+/// Create a response to an interaction.
+#[cfg(not(tarpaulin_include))]
 pub async fn create_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
