@@ -43,12 +43,6 @@ pub async fn loadspotify_(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
-    // let final_url = http_utils::resolve_final_url(url_clean).await?;
-    // tracing::warn!("spotify: {} -> {}", url_clean, final_url);
-    // let spotify = SPOTIFY.lock().await;
-    // let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
-    // Some(Spotify::extract(spotify, &final_url).await?)
-
     let playlist_tracks = get_spotify_playlist(&spotifyurl).await?;
 
     tracing::warn!("Got playlist tracks: {:?}", playlist_tracks);
@@ -57,15 +51,6 @@ pub async fn loadspotify_(
         .iter()
         .map(Into::<MyAuxMetadata>::into)
         .collect::<Vec<_>>();
-
-    // let query_type: QueryType = match get_query_type_from_url(ctx, url_clean.as_ref(), None).await?
-    // {
-    //     Some(QueryType::KeywordList(v)) => QueryType::KeywordList(v),
-    //     _ => return Err(CrackedError::Other("Bad Query Type").into()),
-    // };
-
-    // let (_source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-    //     get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
 
     let db_pool = get_db_or_err!(ctx);
 
