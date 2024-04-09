@@ -37,11 +37,13 @@ tasks:
                   cargo +nightly fmt --all -- --check
         - lint: |
                   export DATABASE_URL=postgresql://XXX
+                  export SQLX_OFFLINE=true
                   . "$HOME/.cargo/env"
                   cd cracktunes
                   cargo +nightly clippy --all-features --all -- -D clippy::all -D warnings
         - test: |
                   export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
+                  export SQLX_OFFLINE=true
                   export DATABASE_URL=postgresql://XXX
                   . "$HOME/.cargo/env"
                   cd cracktunes
