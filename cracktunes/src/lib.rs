@@ -82,6 +82,7 @@ pub fn get_admin_commands() -> Vec<&'static str> {
         "deauthorize",
         "delete_channel",
         "get_active",
+        "invite",
         "kick",
         "move_users",
         "set_vc_size",
