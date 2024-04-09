@@ -8,11 +8,11 @@ license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.2" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3.4-rc.0" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 
-reqwest = { version = "0.11", features = ["blocking", "json", "multipart"] }
+reqwest = { version = "0.11.27", features = ["blocking", "json", "multipart"] }
 audiopus = "0.3.0-rc.0"
 either = "1.10"
 serde = { version = "1.0", features = ["derive"] }
