@@ -1057,7 +1057,7 @@ checksum = "658bd65b1cf4c852a3cc96f18a8ce7b5640f6b703f905c7d74532294c2a63984"
 [[package]]
 name = "ffprobe"
 version = "0.4.0"
-source = "git+https://github.com/cycle-five/ffprobe-rs#dfe52763be21f6e3e3895ce485165c8a4cba2881"
+source = "git+https://github.com/cycle-five/ffprobe-rs#7c9f163a812df62799d5e6286d244e66781b67a2"
 dependencies = [
  "serde",
  "serde_json",
