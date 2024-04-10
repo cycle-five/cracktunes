@@ -587,12 +587,32 @@ pub async fn handle_event(
                 event_name
             )
         },
-        // event_log.write_log_obj(event_name, &(new, old_data_if_available)),
         FullEvent::GuildScheduledEventCreate { event } => {
-            event_log.write_log_obj(event_name, event)
+            // event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_create,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUpdate { event } => {
-            event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventDelete { event } => {
             event_log.write_log_obj(event_name, event)

@@ -10,7 +10,7 @@ use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
     CurrentUser, Guild, GuildChannel, GuildId, Http, Member, Message, MessageId,
-    MessageUpdateEvent, Presence, Role, RoleId,
+    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent,
 };
 use std::{
     collections::HashMap,
@@ -33,6 +33,40 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         .blue()
     );
     Ok(())
+}
+
+/// Log a guild scheduled event create event.
+pub async fn log_guild_scheduled_event_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ScheduledEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!(
+        "Guild Scheduled Event Create: {}",
+        event.creator_id.unwrap_or_default()
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .unwrap_or_default()
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.creator_id.map(|x| x.to_string()).unwrap_or_default(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 type RwGuildSettingsMap = RwLock<HashMap<GuildId, GuildSettings>>;
@@ -157,6 +191,40 @@ pub async fn log_automod_rule_update(
         &channel_id,
         http,
         &log_data.creator_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild scheduled event create event.
+pub async fn log_guild_scheduled_event_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ScheduledEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!(
+        "Guild Scheduled Event Create: {}",
+        event.creator_id.unwrap_or_default()
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .unwrap_or_default()
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.creator_id.map(|x| x.to_string()).unwrap_or_default(),
         &title,
         &description,
         &avatar_url,
