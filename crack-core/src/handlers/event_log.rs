@@ -615,13 +615,43 @@ pub async fn handle_event(
             )
         },
         FullEvent::GuildScheduledEventDelete { event } => {
-            event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_delete,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUserAdd { subscribed } => {
-            event_log.write_log_obj(event_name, subscribed)
+            let log_data = subscribed;
+            log_event!(
+                log_guild_scheduled_event_user_add,
+                guild_settings,
+                event_in,
+                &log_data,
+                &subscribed.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUserRemove { unsubscribed } => {
-            event_log.write_log_obj(event_name, unsubscribed)
+            let log_data = unsubscribed;
+            log_event!(
+                log_guild_scheduled_event_user_remove,
+                guild_settings,
+                event_in,
+                &log_data,
+                &unsubscribed.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildStickersUpdate {
             guild_id,
