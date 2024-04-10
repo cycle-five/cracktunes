@@ -1056,8 +1056,8 @@ checksum = "658bd65b1cf4c852a3cc96f18a8ce7b5640f6b703f905c7d74532294c2a63984"
 
 [[package]]
 name = "ffprobe"
-version = "0.3.3"
-source = "git+https://github.com/cycle-five/ffprobe-rs#0faf58e9b346881cabf67015c7e38e50d721c527"
+version = "0.4.0"
+source = "git+https://github.com/cycle-five/ffprobe-rs#dfe52763be21f6e3e3895ce485165c8a4cba2881"
 dependencies = [
  "serde",
  "serde_json",
@@ -2990,7 +2990,6 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls 0.24.1",
- "tokio-socks",
  "tokio-util",
  "tower-service",
  "url",
@@ -3036,6 +3035,7 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-native-tls",
+ "tokio-socks",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -3156,12 +3156,13 @@ dependencies = [
 
 [[package]]
 name = "rspotify"
-version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efe9fecaed050e72eefa9a07702c3734abb0e82b70d7c867b32789e6f8fb5663"
 dependencies = [
  "async-stream",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.0",
  "chrono",
  "futures",
  "getrandom",
@@ -3179,26 +3180,29 @@ dependencies = [
 
 [[package]]
 name = "rspotify-http"
-version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "612220388516c12ab0fc23917dd02a6693488dbb5ac615436ff60e7e88130ec1"
 dependencies = [
  "async-trait",
  "log",
  "maybe-async",
- "reqwest 0.11.27",
+ "reqwest 0.12.3",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
 name = "rspotify-macros"
-version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6396935068e8615651966a7e44f1dbcfab7be02544862fb3ae65f1e086ad9a93"
 
 [[package]]
 name = "rspotify-model"
-version = "0.12.0"
-source = "git+https://github.com/cycle-five/rspotify?branch=no-oldtime#0c674c51f367dd78d857b887e755164bfcd790da"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b94f104ee213b5cb53e6d797efc7e1825bb42981213265a2db7268efd51ecaff"
 dependencies = [
  "chrono",
  "enum_dispatch",

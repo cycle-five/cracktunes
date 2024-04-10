@@ -63,8 +63,7 @@ poise = { workspace = true }
 # async-tungstenite = { workspace = true }
 
 [dependencies.rspotify]
-git = "https://github.com/cycle-five/rspotify"
-branch = "no-oldtime"
+version = "0.13.1"
 
 # To get additional codecs, you *must* add Symphonia yourself.
 # # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
