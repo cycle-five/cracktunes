@@ -6,7 +6,10 @@ use crate::{
     interface::{build_nav_btns, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
-        messages::{PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE, QUEUE_PAGE_OF},
+        messages::{
+            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
+            QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
+        },
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
@@ -338,6 +341,8 @@ pub async fn edit_reponse_interaction(
     }
 }
 
+/// Create a response to an interaction.
+#[cfg(not(tarpaulin_include))]
 pub async fn create_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
@@ -560,7 +565,7 @@ pub fn create_now_playing_embed_metadata(
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
-    let (footer_text, footer_icon_url) = get_footer_info(&source_url);
+    let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
 
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
@@ -578,6 +583,7 @@ pub fn create_now_playing_embed_metadata(
                 })
                 .unwrap_or_default(),
         )
+        .description(vanity)
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
@@ -826,13 +832,18 @@ pub fn create_page_getter_newline(
     }
 }
 
-pub fn get_footer_info(url: &str) -> (String, String) {
+pub fn get_footer_info(url: &str) -> (String, String, String) {
+    let vanity = format!(
+        "[{}]({}) • [{}]({})",
+        VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
+    );
     let url_data = match Url::parse(url) {
         Ok(url_data) => url_data,
         Err(_) => {
             return (
                 "Streaming via unknown".to_string(),
                 "https://www.google.com/s2/favicons?domain=unknown".to_string(),
+                vanity,
             )
         },
     };
@@ -844,6 +855,7 @@ pub fn get_footer_info(url: &str) -> (String, String) {
     (
         format!("Streaming via {}", domain),
         format!("https://www.google.com/s2/favicons?domain={}", domain),
+        vanity,
     )
 }
 
@@ -1061,9 +1073,10 @@ mod test {
 
     #[test]
     fn test_get_footer_info() {
-        let (text, icon_url) = get_footer_info("https://www.rust-lang.org/");
+        let (text, icon_url, vanity) = get_footer_info("https://www.rust-lang.org/");
         assert_eq!(text, "Streaming via rust-lang.org");
         assert!(icon_url.contains("rust-lang.org"));
+        assert!(vanity.contains("vote"));
     }
 
     #[test]

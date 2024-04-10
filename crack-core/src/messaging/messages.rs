@@ -120,3 +120,13 @@ pub const VERSION: &str = "Version";
 pub const VERSION_LATEST_HASH: &str = "Build hash [here]";
 pub const VOLUME: &str = "🔊 Volume";
 pub const VOICE_CHANNEL_CREATED: &str = "🔊 Created voice channel!";
+
+pub const VOTE_TOPGG_TEXT: &str = "✅ Vote for Crack Tunes on";
+pub const VOTE_TOPGG_LINK_TEXT: &str = "top.gg!";
+pub const VOTE_TOPGG_LINK_TEXT_SHORT: &str = "vote";
+pub const VOTE_TOPGG_URL: &str = "https://top.gg/bot/1115229568006103122/vote";
+
+pub const INVITE_TEXT: &str = "🔗 ";
+pub const INVITE_LINK_TEXT: &str = "Invite Crack Tunes to your server!";
+pub const INVITE_LINK_TEXT_SHORT: &str = "invite";
+pub const INVITE_URL: &str = "https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands";

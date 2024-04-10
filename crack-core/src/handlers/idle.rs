@@ -8,6 +8,7 @@ use std::sync::{
 
 use crate::messaging::messages::IDLE_ALERT;
 
+/// Handler for the idle event.
 pub struct IdleHandler {
     pub http: Arc<Http>,
     pub manager: Arc<Songbird>,
@@ -18,6 +19,8 @@ pub struct IdleHandler {
     pub no_timeout: Arc<AtomicBool>,
 }
 
+/// Implement handler for the idle event.
+#[cfg(not(tarpaulin_include))]
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {

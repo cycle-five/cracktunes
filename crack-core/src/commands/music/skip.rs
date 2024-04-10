@@ -84,20 +84,11 @@ pub async fn create_skip_response(
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
+    use crate::commands::get_call_with_fail_msg;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            tracing::warn!(
-                "Not in voice channel: manager.get({}) returned None",
-                guild_id
-            );
-            return Ok(());
-        },
-    };
+
+    let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
     let handler = call.lock().await;
     let queue = handler.queue();

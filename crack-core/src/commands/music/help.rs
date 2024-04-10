@@ -39,7 +39,7 @@ use crate::{Context, Error};
 pub async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]
-    //#[autocomplete = "poise::builtins::autocomplete_command"]
+    // #[autocomplete = "poise::builtins::autocomplete_command"]
     #[rest]
     mut command: Option<String>,
 ) -> Result<(), Error> {

@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.3"
+version = "0.3.4-rc.0"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
