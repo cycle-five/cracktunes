@@ -775,7 +775,19 @@ pub async fn handle_event(
                 event_name
             )
         },
-        FullEvent::InviteDelete { data } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteDelete { data } => {
+            let log_data = data;
+            log_event!(
+                log_invite_delete,
+                guild_settings,
+                event_in,
+                data,
+                &data.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,
@@ -803,7 +815,31 @@ pub async fn handle_event(
             old_if_available,
             new,
             event,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
+        } => {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+                || old_if_available
+                    .as_ref()
+                    .map(|x| x.author.bot)
+                    .unwrap_or(false)
+            {
+                return Ok(());
+            }
+            let log_data: (
+                &Option<serenity::model::prelude::Message>,
+                &Option<serenity::model::prelude::Message>,
+                &serenity::model::prelude::MessageUpdateEvent,
+            ) = (old_if_available, new, event);
+            log_event!(
+                log_message_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,

@@ -7,6 +7,7 @@ use crate::{
 };
 use colored::Colorize;
 use serde::Serialize;
+use serenity::all::InviteDeleteEvent;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
     CurrentUser, Guild, GuildChannel, GuildId, GuildScheduledEventUserAddEvent,
@@ -41,7 +42,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 pub async fn log_invite_delete(
     channel_id: ChannelId,
     http: &Arc<Http>,
-    log_data: &InviteCreateEvent,
+    log_data: &InviteDeleteEvent,
 ) -> Result<(), Error> {
     let invite_create_event = log_data.clone();
     let guild_id = invite_create_event.guild_id.unwrap_or_default();
