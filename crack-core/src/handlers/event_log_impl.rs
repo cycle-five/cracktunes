@@ -45,7 +45,7 @@ pub async fn log_invite_delete(
 ) -> Result<(), Error> {
     let invite_create_event = log_data.clone();
     let guild_id = invite_create_event.guild_id.unwrap_or_default();
-    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id).await?;
@@ -71,7 +71,7 @@ pub async fn log_invite_create(
 ) -> Result<(), Error> {
     let invite_create_event = log_data.clone();
     let guild_id = invite_create_event.guild_id.unwrap_or_default();
-    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id).await?;
