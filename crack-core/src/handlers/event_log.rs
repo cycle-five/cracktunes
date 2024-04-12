@@ -688,23 +688,67 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-        }, //event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        },
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
             new_data,
-        } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        } => {
+            let log_data = (old_data_if_available, new_data);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new_data.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::IntegrationCreate { integration } => {
-            event_log.write_log_obj(event_name, integration)
+            let log_data = integration;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &integration.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::IntegrationUpdate { integration } => {
-            event_log.write_log_obj(event_name, integration)
+            let log_data = integration;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &integration.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
-        } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
+        } => {
+            let log_data = &(integration_id, guild_id, application_id);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::InteractionCreate { interaction } => {
             event_log.write_log_obj(event_name, interaction)
         },
