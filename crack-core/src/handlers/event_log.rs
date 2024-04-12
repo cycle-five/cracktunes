@@ -721,13 +721,13 @@ pub async fn handle_event(
             multiple_deleted_messages_ids,
             guild_id,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
-        #[cfg(feature = "cache")]
+        #[cfg(not(feature = "cache"))]
         FullEvent::MessageUpdate {
             old_if_available,
             new,
             event,
         } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
-        #[cfg(not(feature = "cache"))]
+        #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,
             new,

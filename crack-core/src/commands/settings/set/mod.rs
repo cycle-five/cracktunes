@@ -28,9 +28,8 @@ pub use set_welcome_settings::*;
         "premium",
         "volume",
         "auto_role",
-        "idle_timeout"
-        // "welcome",
-        // "self_deafen",
+        "idle_timeout",
+        "welcome_settings",
         // "log_all",
         // "log_guild"
     ),
