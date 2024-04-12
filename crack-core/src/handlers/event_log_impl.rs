@@ -56,7 +56,7 @@ pub async fn log_invite_delete(
         &guild_id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -82,7 +82,7 @@ pub async fn log_invite_create(
         &guild_id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
@@ -95,7 +95,7 @@ pub async fn log_guild_stickers_update(
     http: &Arc<Http>,
     log_data: &(&GuildId, &HashMap<StickerId, Sticker>),
 ) -> Result<(), Error> {
-    let (guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = log_data.clone();
+    let (guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = *log_data;
     let title = format!("Guild Stickers Update for guild {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -107,7 +107,7 @@ pub async fn log_guild_stickers_update(
         &guild_id.to_string(),
         &title,
         &description,
-        &avatar_url,
+        avatar_url,
     )
     .await
     .map(|_| ())
