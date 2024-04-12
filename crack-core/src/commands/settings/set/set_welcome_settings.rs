@@ -35,6 +35,8 @@ pub async fn welcome_settings(
     Ok(())
 }
 
+/// Set the welcome settings for a given guild.
+#[cfg(not(tarpaulin_include))]
 pub async fn set_welcome_settings(
     data: Data,
     guild_id: GuildId,
