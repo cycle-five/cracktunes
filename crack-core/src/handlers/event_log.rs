@@ -776,7 +776,6 @@ pub async fn handle_event(
             )
         },
         FullEvent::InviteDelete { data } => {
-            let log_data = data;
             log_event!(
                 log_invite_delete,
                 guild_settings,
