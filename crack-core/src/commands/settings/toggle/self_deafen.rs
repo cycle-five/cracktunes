@@ -49,6 +49,6 @@ pub async fn toggle_self_deafen(
                 .clone()
         })
         .clone();
-    let _ = res.save(&pool).await?;
+    res.save(&pool).await?;
     Ok(res)
 }
