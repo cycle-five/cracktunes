@@ -656,7 +656,19 @@ pub async fn handle_event(
         FullEvent::GuildStickersUpdate {
             guild_id,
             current_state,
-        } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
+        } => {
+            let log_data = (guild_id, current_state);
+            log_event!(
+                log_guild_stickers_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
             event_log.write_log_obj(event_name, &(entry, guild_id))
         },
@@ -680,7 +692,6 @@ pub async fn handle_event(
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
-
             new_data,
         } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
         FullEvent::IntegrationCreate { integration } => {

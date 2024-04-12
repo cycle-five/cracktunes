@@ -11,7 +11,7 @@ use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
     CurrentUser, Guild, GuildChannel, GuildId, GuildScheduledEventUserAddEvent,
     GuildScheduledEventUserRemoveEvent, Http, Member, Message, MessageId, MessageUpdateEvent,
-    Presence, Role, RoleId, ScheduledEvent,
+    Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
 use std::{
     collections::HashMap,
@@ -34,6 +34,30 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         .blue()
     );
     Ok(())
+}
+
+/// Log Guild Stickers Update Event.
+pub async fn log_guild_stickers_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildId, &HashMap<StickerId, Sticker>),
+) -> Result<(), Error> {
+    let (guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = log_data.clone();
+    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Log a guild scheduled event create event.
