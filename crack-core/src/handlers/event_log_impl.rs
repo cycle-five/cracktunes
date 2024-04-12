@@ -36,7 +36,35 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+use serenity::all::InviteCreateEvent;
+/// Log Invite Create Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_invite_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &InviteCreateEvent,
+) -> Result<(), Error> {
+    let invite_create_event = log_data.clone();
+    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Log Guild Stickers Update Event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_stickers_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -61,6 +89,7 @@ pub async fn log_guild_stickers_update(
 }
 
 /// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_delete(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -95,6 +124,7 @@ pub async fn log_guild_scheduled_event_delete(
 }
 
 /// Log a guild scheduled user add event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_add(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -125,6 +155,7 @@ pub async fn log_guild_scheduled_event_user_add(
 }
 
 /// Log a guild scheduled user remove event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_remove(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -155,6 +186,7 @@ pub async fn log_guild_scheduled_event_user_remove(
 }
 
 /// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -191,6 +223,7 @@ pub async fn log_guild_scheduled_event_update(
 type RwGuildSettingsMap = RwLock<HashMap<GuildId, GuildSettings>>;
 
 /// Logs a guild create event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -240,6 +273,7 @@ pub async fn log_guild_create(
 }
 
 /// Logs a guild role cteate event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -263,6 +297,7 @@ pub async fn log_guild_role_create(
 }
 
 /// Logs a guild role delete.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_delete(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -289,6 +324,7 @@ pub async fn log_guild_role_delete(
 }
 
 /// Log an automod rule update event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -319,6 +355,7 @@ pub async fn log_automod_rule_update(
 }
 
 /// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -354,6 +391,7 @@ pub async fn log_guild_scheduled_event_create(
 
 use serenity::model::guild::automod::Rule;
 /// Log a automod rule create event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -383,6 +421,7 @@ pub async fn log_automod_rule_create(
 }
 
 /// Log a automod command exec
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_command_execution(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -411,6 +450,8 @@ pub async fn log_automod_command_execution(
     .map(|_| ())
 }
 
+/// Log a command permissions update event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_command_permissions_update(
     channel_id: ChannelId,
     http: &Arc<Http>,

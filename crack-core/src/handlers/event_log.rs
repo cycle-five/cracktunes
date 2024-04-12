@@ -765,11 +765,11 @@ pub async fn handle_event(
         FullEvent::InviteCreate { data } => {
             let log_data = data;
             log_event!(
-                log_unimplemented_event,
+                log_invite_create,
                 guild_settings,
                 event_in,
                 &log_data,
-                &GuildId::new(1),
+                &data.guild_id.unwrap_or_default(),
                 &ctx.http,
                 event_log,
                 event_name
