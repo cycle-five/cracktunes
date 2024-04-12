@@ -762,7 +762,19 @@ pub async fn handle_event(
                 event_name
             )
         },
-        FullEvent::InviteCreate { data } => event_log.write_log_obj(event_name, data),
+        FullEvent::InviteCreate { data } => {
+            let log_data = data;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &GuildId::new(1),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::InviteDelete { data } => event_log.write_log_obj(event_name, data),
         FullEvent::MessageDelete {
             channel_id,
