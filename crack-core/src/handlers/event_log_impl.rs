@@ -10,8 +10,8 @@ use serde::Serialize;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
     CurrentUser, Guild, GuildChannel, GuildId, GuildScheduledEventUserAddEvent,
-    GuildScheduledEventUserRemoveEvent, Http, Member, Message, MessageId, MessageUpdateEvent,
-    Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
+    GuildScheduledEventUserRemoveEvent, Http, InviteCreateEvent, Member, Message, MessageId,
+    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
 use std::{
     collections::HashMap,
@@ -36,7 +36,32 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
-use serenity::all::InviteCreateEvent;
+/// Log Invite Create Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_invite_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &InviteCreateEvent,
+) -> Result<(), Error> {
+    let invite_create_event = log_data.clone();
+    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Log Invite Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_invite_create(
