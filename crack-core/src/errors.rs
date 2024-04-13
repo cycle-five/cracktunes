@@ -9,6 +9,7 @@ use crate::Error;
 use audiopus::error::Error as AudiopusError;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
+use rusty_ytdl::VideoError;
 use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
@@ -68,6 +69,7 @@ pub enum CrackedError {
     UrlParse(url::ParseError),
     UnauthorizedUser,
     UnimplementedEvent(ChannelId, &'static str),
+    VideoError(VideoError),
     WrongVoiceChannel,
 }
 
@@ -151,6 +153,7 @@ impl Display for CrackedError {
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
+            Self::VideoError(err) => f.write_str(&format!("{err}")),
             Self::RSpotifyLockError(_) => todo!(),
         }
     }
@@ -258,6 +261,12 @@ impl From<url::ParseError> for CrackedError {
 impl From<RSpotifyClientError> for CrackedError {
     fn from(err: RSpotifyClientError) -> CrackedError {
         CrackedError::RSpotify(err)
+    }
+}
+
+impl From<VideoError> for CrackedError {
+    fn from(err: VideoError) -> CrackedError {
+        CrackedError::VideoError(err)
     }
 }
 

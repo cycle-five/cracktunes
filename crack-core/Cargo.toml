@@ -29,6 +29,7 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
+rusty_ytdl = "0.7.1"
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1"
 colored = "2.1"
