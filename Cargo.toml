@@ -49,7 +49,7 @@ features = [
   "client",
   "framework",
   "http",
-  "standard_framework",
+  #"standard_framework",
   "gateway",
   "model",
   "utils",
