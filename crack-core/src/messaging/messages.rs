@@ -34,6 +34,8 @@ pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
 pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";
 pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
 pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
+pub const FAIL_NO_VIRUSTOTAL_API_KEY: &str =
+    "⚠️ The VIRUS_TOTAL_API_KEY environment variable is not set!";
 pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
 pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
 pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";

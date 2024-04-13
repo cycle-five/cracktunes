@@ -1,8 +1,9 @@
 use crate::messaging::messages::{
     FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
-    FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_CACHED,
-    NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
+    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL,
+    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED,
+    UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -45,6 +46,7 @@ pub enum CrackedError {
     NoUserAutoplay,
     NothingPlaying,
     NoSongbird,
+    NoVirusTotalApiKey,
     Other(&'static str),
     InvalidIP(String),
     PlayListFail,
@@ -139,6 +141,7 @@ impl Display for CrackedError {
             Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
+            Self::NoVirusTotalApiKey => f.write_str(FAIL_NO_VIRUSTOTAL_API_KEY),
             Self::Poise(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(

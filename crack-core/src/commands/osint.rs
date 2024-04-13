@@ -54,8 +54,8 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     ctx.reply("Scanning...").await?;
     tracing::info!("Scanning URL: {}", url);
-    let api_key = std::env::var("VIRUSTOTAL_API_KEY")
-        .map_err(|_| crate::CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
+    let api_key =
+        std::env::var("VIRUSTOTAL_API_KEY").map_err(|_| crate::CrackedError::NoVirusTotalApiKey)?;
     let channel_id = ctx.channel_id();
     tracing::info!("channel_id: {}", channel_id);
     let client = VirusTotalClient::new(&api_key);
