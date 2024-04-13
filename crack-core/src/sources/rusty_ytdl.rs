@@ -51,7 +51,6 @@ impl RustyYoutubeClient {
     }
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
-    #[must_use]
     pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
         let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
             client: Some(client.clone()),
