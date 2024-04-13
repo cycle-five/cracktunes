@@ -85,6 +85,7 @@ pub enum QueryType {
     File(serenity::Attachment),
     NewYoutubeDl((YoutubeDl, AuxMetadata)),
     YoutubeSearch(String),
+    None,
 }
 
 /// Get the guild name.
@@ -805,6 +806,14 @@ async fn match_mode(
                 let queue = enqueue_track_pgwrite(ctx, &call, &QueryType::File(file)).await?;
                 update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
             },
+            QueryType::None => {
+                tracing::trace!("Mode::End, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
+            },
         },
         Mode::Next => match query_type.clone() {
             QueryType::Keywords(_)
@@ -863,6 +872,14 @@ async fn match_mode(
             QueryType::YoutubeSearch(_) => {
                 tracing::trace!("Mode::Next, QueryType::YoutubeSearch");
                 return Err(CrackedError::Other("Not implemented yet!").into());
+            },
+            QueryType::None => {
+                tracing::trace!("Mode::Next, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
             },
         },
         Mode::Jump => match query_type.clone() {
@@ -974,6 +991,14 @@ async fn match_mode(
                     )
                     .await;
                 }
+            },
+            QueryType::None => {
+                tracing::trace!("Mode::Next, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
             },
         },
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
@@ -1408,6 +1433,7 @@ async fn get_download_status_and_filename(
             let status = output.status.success();
             Ok((status, file_name))
         },
+        QueryType::None => Err(Box::new(CrackedError::Other("No query provided!"))),
     }
 }
 
@@ -1488,6 +1514,7 @@ pub async fn get_track_source_and_metadata(
             let my_metadata = MyAuxMetadata::Data(metdata);
             (ytdl.into(), vec![my_metadata])
         },
+        QueryType::None => unimplemented!(),
     }
 }
 
