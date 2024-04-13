@@ -60,9 +60,9 @@ impl RustyYoutubeClient {
         Ok(Self { rusty_ytdl, client })
     }
 
-    pub fn search_result_to_aux_metadata(res: SearchResult) -> AuxMetadata {
+    pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
         let mut metadata = AuxMetadata::default();
-        match res {
+        match res.clone() {
             SearchResult::Video(video) => {
                 metadata.track = Some(video.title.clone());
                 metadata.artist = None;

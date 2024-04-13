@@ -1534,6 +1534,8 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
 ) -> Result<(), CrackedError> {
+    use crate::sources::rusty_ytdl::RustyYoutubeClient;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
@@ -1551,9 +1553,13 @@ pub async fn queue_aux_metadata(
                     EditMessage::default().content(format!("Queuing... {}", search_query)),
                 )
                 .await;
-            let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let new_aux_metadata = ytdl.aux_metadata().await?;
+            // let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
+            // tracing::warn!("ytdl: {:?}", ytdl);
+            // let new_aux_metadata = ytdl.aux_metadata().await?;
+            let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+            let res = ytdl.one_shot(search_query).await?;
+            let res = res.first().ok_or(CrackedError::Other("No results found"))?;
+            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(res);
 
             MyAuxMetadata::Data(new_aux_metadata)
         } else {
