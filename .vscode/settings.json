@@ -23,6 +23,7 @@
         "cache": "",
         "ignore-presence-log": ""
     },
+    "rust-analyzer.cargo.allTargets": true,
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",
