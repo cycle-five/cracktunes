@@ -23,7 +23,7 @@
         "cache": "",
         "ignore-presence-log": ""
     },
-    "rust-analyzer.cargo.allTargets": true,
+    "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",
@@ -31,5 +31,5 @@
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": true,
-    "gitdoc.enabled": true
+    "gitdoc.enabled": false
 }
