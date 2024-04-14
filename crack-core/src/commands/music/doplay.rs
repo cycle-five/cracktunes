@@ -2,7 +2,7 @@ use super::doplay_utils::enqueue_track_pgwrite;
 use super::doplay_utils::insert_track;
 use super::doplay_utils::queue_keyword_list;
 
-use crate::commands::doplay_utils::queue_keyword_list_w_offset;
+use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::{
@@ -105,84 +105,6 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Get the play mode.
-fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
-    let opt_mode = mode.clone();
-    if is_prefix {
-        let asdf2 = msg
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default();
-        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
-        let mode = if asdf.starts_with("next") {
-            Mode::Next
-        } else if asdf.starts_with("all") {
-            Mode::All
-        } else if asdf.starts_with("shuffle") {
-            Mode::Shuffle
-        } else if asdf.starts_with("reverse") {
-            Mode::Reverse
-        } else if asdf.starts_with("jump") {
-            Mode::Jump
-        } else if asdf.starts_with("downloadmkv") {
-            Mode::DownloadMKV
-        } else if asdf.starts_with("downloadmp3") {
-            Mode::DownloadMP3
-        } else if asdf.starts_with("search") {
-            Mode::Search
-        } else {
-            Mode::End
-        };
-        if mode != Mode::End {
-            let s = msg.clone().unwrap_or_default();
-            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
-            (mode, s2.to_string())
-        } else {
-            (Mode::End, msg.unwrap_or_default())
-        }
-    } else {
-        let mode = match opt_mode
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default()
-            .as_str()
-        {
-            "next" => Mode::Next,
-            "all" => Mode::All,
-            "reverse" => Mode::Reverse,
-            "shuffle" => Mode::Shuffle,
-            "jump" => Mode::Jump,
-            "downloadmkv" => Mode::DownloadMKV,
-            "downloadmp3" => Mode::DownloadMP3,
-            "search" => Mode::Search,
-            _ => Mode::End,
-        };
-        (mode, msg.unwrap_or_default())
-    }
-}
-
-/// Parses the msg variable from the parameters to the play command.
-/// Due to the way that the way the poise library works with auto filling them
-/// based on types, it could be kind of mangled if the prefix version of the
-/// command is used.
-fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
-    let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
-    if is_prefix {
-        match (mode
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or("".to_string())
-            + " "
-            + &step1.unwrap_or("".to_string()))
-            .trim()
-        {
-            "" => None,
-            x => Some(x.to_string()),
-        }
-    } else {
-        step1
-    }
-}
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
 async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
@@ -1598,6 +1520,7 @@ pub async fn queue_aux_metadata(
 }
 
 /// Rotates the queue by `n` tracks to the right.
+#[cfg(not(tarpaulin_include))]
 async fn rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,
@@ -1622,117 +1545,9 @@ async fn rotate_tracks(
 mod test {
     use rspotify::model::{FullTrack, SimplifiedAlbum};
 
+    use crate::commands::doplay_utils::get_mode;
+
     use super::*;
-
-    #[test]
-    fn test_get_mode() {
-        let is_prefix = true;
-        let x = "asdf".to_string();
-        let msg = Some(x.clone());
-        let mode = Some("".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let x = "".to_string();
-        let is_prefix = true;
-        let msg = None;
-        let mode = Some(x.clone());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = true;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = false;
-        let msg = Some(x.clone());
-        let mode = Some("next".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmkv".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMKV, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmp3".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMP3, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x));
-    }
-
-    #[test]
-    fn test_get_msg() {
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = None;
-        let query_or_url = Some("".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = None;
-        let query_or_url = None;
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
-
-        let mode = None;
-        let query_or_url = Some("".to_string());
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
-
-        let mode = None;
-        let query_or_url = None;
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = None;
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = None;
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode: Option<String> = None;
-        let query_or_url = Some("asdf asdf asdf asd f".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
-    }
 
     #[test]
     fn test_from_spotify_track() {
