@@ -7,7 +7,12 @@ use poise::CreateReply;
 
 /// Set the idle timeout for the bot in vc.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral, aliases("set_idle_timeout"))]
+#[poise::command(
+    prefix_command,
+    ephemeral,
+    aliases("set_idle_timeout"),
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn idle_timeout(
     ctx: Context<'_>,
     #[description = "Idle timeout for the bot in minutes."] timeout: u32,

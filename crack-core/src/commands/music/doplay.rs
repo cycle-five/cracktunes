@@ -4,6 +4,7 @@ use super::doplay_utils::queue_keyword_list;
 
 use crate::commands::doplay_utils::queue_keyword_list_w_offset;
 use crate::commands::get_call_with_fail_msg;
+use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
@@ -42,6 +43,8 @@ use ::serenity::{
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
+use rusty_ytdl::search::SearchOptions;
+use rusty_ytdl::search::SearchType;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::TrackHandle,
@@ -1485,11 +1488,27 @@ pub async fn get_track_source_and_metadata(
         },
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
-            let mut ytdl = YoutubeDl::new(client, url);
+            let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+            let search_options = SearchOptions {
+                limit: 100,
+                search_type: SearchType::Playlist,
+                ..Default::default()
+            };
+
+            let res = rytdl
+                .rusty_ytdl
+                .search(&url, Some(&search_options))
+                .await
+                .unwrap();
+            let mut metadata = Vec::with_capacity(res.len());
+            for r in res {
+                metadata.push(MyAuxMetadata::Data(
+                    RustyYoutubeClient::search_result_to_aux_metadata(&r),
+                ));
+            }
+            let ytdl = YoutubeDl::new(client.clone(), url);
             tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            (ytdl.into(), metadata)
         },
         QueryType::SpotifyTracks(tracks) => {
             tracing::warn!("In KeywordList");
@@ -1534,8 +1553,6 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
 ) -> Result<(), CrackedError> {
-    use crate::sources::rusty_ytdl::RustyYoutubeClient;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 

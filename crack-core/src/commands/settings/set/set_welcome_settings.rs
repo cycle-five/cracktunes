@@ -7,7 +7,7 @@ use crate::{
 use serenity::all::{Channel, GuildId};
 
 /// Set the welcome settings for the server.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
 #[cfg(not(tarpaulin_include))]
 pub async fn welcome_settings(
     ctx: Context<'_>,

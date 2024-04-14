@@ -2,7 +2,7 @@ use std::{fmt::Display, time::Duration};
 
 use crate::{commands::QueryType, errors::CrackedError};
 use rusty_ytdl::{
-    search::{SearchOptions, SearchResult, YouTube},
+    search::{Playlist, SearchOptions, SearchResult, YouTube},
     RequestOptions,
 };
 use songbird::input::AuxMetadata;
@@ -11,8 +11,8 @@ use songbird::input::AuxMetadata;
 //TODO expand to go beyond search
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeClient {
-    rusty_ytdl: YouTube,
-    client: reqwest::Client,
+    pub rusty_ytdl: YouTube,
+    pub client: reqwest::Client,
 }
 
 impl Display for RustyYoutubeClient {
@@ -57,6 +57,11 @@ impl RustyYoutubeClient {
             ..Default::default()
         })?;
         Ok(Self { rusty_ytdl, client })
+    }
+
+    pub async fn get_playlist(&self, url: String) -> Result<Playlist, CrackedError> {
+        let playlist = Playlist::get(&url, None).await?;
+        Ok(playlist)
     }
 
     pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
