@@ -1440,6 +1440,7 @@ async fn get_download_status_and_filename(
     }
 }
 
+use colored;
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
@@ -1447,7 +1448,7 @@ pub async fn get_track_source_and_metadata(
     query_type: QueryType,
 ) -> (SongbirdInput, Vec<MyAuxMetadata>) {
     let client = reqwest::Client::new();
-    tracing::warn!("query_type: {:?}", query_type);
+    tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
     match query_type {
         QueryType::YoutubeSearch(query) => {
             tracing::error!("In YoutubeSearch");
