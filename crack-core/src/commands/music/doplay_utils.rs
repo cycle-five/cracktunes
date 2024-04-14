@@ -273,7 +273,11 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
 /// Due to the way that the way the poise library works with auto filling them
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
-fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
+pub fn get_msg(
+    mode: Option<String>,
+    query_or_url: Option<String>,
+    is_prefix: bool,
+) -> Option<String> {
     let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
     if is_prefix {
         match (mode
@@ -297,59 +301,6 @@ mod test {
     //    use rspotify::model::{FullTrack, SimplifiedAlbum};
 
     use super::*;
-
-    #[test]
-    fn test_get_mode() {
-        let is_prefix = true;
-        let x = "asdf".to_string();
-        let msg = Some(x.clone());
-        let mode = Some("".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let x = "".to_string();
-        let is_prefix = true;
-        let msg = None;
-        let mode = Some(x.clone());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = true;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = false;
-        let msg = Some(x.clone());
-        let mode = Some("next".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmkv".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMKV, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmp3".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMP3, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x));
-    }
 
     #[test]
     fn test_get_mode() {

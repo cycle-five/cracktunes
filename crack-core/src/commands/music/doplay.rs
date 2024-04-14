@@ -1543,11 +1543,8 @@ async fn rotate_tracks(
 
 #[cfg(test)]
 mod test {
-    use rspotify::model::{FullTrack, SimplifiedAlbum};
-
-    use crate::commands::doplay_utils::get_mode;
-
     use super::*;
+    use rspotify::model::{FullTrack, SimplifiedAlbum};
 
     #[test]
     fn test_from_spotify_track() {
