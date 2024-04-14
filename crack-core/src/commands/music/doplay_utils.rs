@@ -1,5 +1,6 @@
 use super::{Mode, QueryType};
 use crate::db::Metadata;
+use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
 use crate::{
     commands::{get_track_source_and_metadata, MyAuxMetadata, RequestingUser},
@@ -51,8 +52,6 @@ pub async fn insert_track(
     query_type: &QueryType,
     idx: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::errors::verify;
-
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
@@ -296,10 +295,30 @@ pub fn get_msg(
     }
 }
 
+/// Rotates the queue by `n` tracks to the right.
+#[cfg(not(tarpaulin_include))]
+pub async fn rotate_tracks(
+    call: &Arc<Mutex<Call>>,
+    n: usize,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let handler = call.lock().await;
+
+    verify(
+        handler.queue().len() > 2,
+        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
+    )?;
+
+    handler.queue().modify_queue(|queue| {
+        let mut not_playing = queue.split_off(1);
+        not_playing.rotate_right(n);
+        queue.append(&mut not_playing);
+    });
+
+    Ok(handler.queue().current_queue())
+}
+
 #[cfg(test)]
 mod test {
-    //    use rspotify::model::{FullTrack, SimplifiedAlbum};
-
     use super::*;
 
     #[test]

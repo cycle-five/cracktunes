@@ -1,7 +1,10 @@
+use colored;
+
 use super::doplay_utils::enqueue_track_pgwrite;
 use super::doplay_utils::insert_track;
 use super::doplay_utils::queue_keyword_list;
 
+use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
@@ -54,7 +57,6 @@ use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
-    error::Error as StdError,
     path::Path,
     process::Output,
     sync::Arc,
@@ -1023,10 +1025,17 @@ pub async fn get_query_type_from_url(
                     }
                 }
 
-                //YouTube::extract(url)
-                let mut yt = YoutubeDl::new(reqwest::Client::new(), url.to_string());
-                let metadata = yt.aux_metadata().await?;
-                Some(QueryType::NewYoutubeDl((yt, metadata)))
+                // Handle youtube playlist
+                if url.contains("list=") {
+                    tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
+                    Some(QueryType::PlaylistLink(url.to_string()))
+                } else {
+                    //YouTube::extract(url)
+                    tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                    let mut yt = YoutubeDl::new(reqwest::Client::new(), url.to_string());
+                    let metadata = yt.aux_metadata().await?;
+                    Some(QueryType::NewYoutubeDl((yt, metadata)))
+                }
             },
             None => {
                 // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?
@@ -1362,7 +1371,6 @@ async fn get_download_status_and_filename(
     }
 }
 
-use colored;
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
@@ -1517,28 +1525,6 @@ pub async fn queue_aux_metadata(
     }
 
     Ok(())
-}
-
-/// Rotates the queue by `n` tracks to the right.
-#[cfg(not(tarpaulin_include))]
-async fn rotate_tracks(
-    call: &Arc<Mutex<Call>>,
-    n: usize,
-) -> Result<Vec<TrackHandle>, Box<dyn StdError>> {
-    let handler = call.lock().await;
-
-    verify(
-        handler.queue().len() > 2,
-        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
-    )?;
-
-    handler.queue().modify_queue(|queue| {
-        let mut not_playing = queue.split_off(1);
-        not_playing.rotate_right(n);
-        queue.append(&mut not_playing);
-    });
-
-    Ok(handler.queue().current_queue())
 }
 
 #[cfg(test)]
