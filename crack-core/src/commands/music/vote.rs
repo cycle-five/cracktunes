@@ -12,7 +12,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     let reply_handle = ctx
         .reply(format!(
-            "{}[{}]({})",
+            "{} [{}]({})",
             VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
         ))
         .await?;
