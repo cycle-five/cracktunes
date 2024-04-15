@@ -2,6 +2,7 @@ use super::{Mode, QueryType};
 use crate::db::Metadata;
 use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
+use crate::http_utils;
 use crate::{
     commands::{get_track_source_and_metadata, MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
@@ -186,13 +187,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     let track: Track = source.into();
 
     // Get the username (string) of the user.
-    let username = match http.get_user(user_id).await {
-        Ok(x) => x.name,
-        Err(e) => {
-            tracing::error!("http.get_user error: {}", e);
-            "Unknown".to_string()
-        },
-    };
+    let username = http_utils::http_to_username_or_default(http, user_id).await;
 
     let MyAuxMetadata::Data(aux_metadata) = res.clone();
 
