@@ -177,7 +177,12 @@ pub async fn enqueue_track_pgwrite_asdf(
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(http, query_type.clone()).await?;
-    let res = metadata.first().unwrap().clone();
+    let res = match metadata.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
     let track: Track = source.into();
 
     // Get the username (string) of the user.

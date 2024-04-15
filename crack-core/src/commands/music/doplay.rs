@@ -1371,6 +1371,17 @@ async fn get_download_status_and_filename(
     }
 }
 
+pub async fn search_query_to_source_and_metadata_ytdl(
+    client: reqwest::Client,
+    query: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let mut ytdl = YoutubeDl::new(client, query);
+    let metadata = ytdl.aux_metadata().await?;
+    let my_metadata = MyAuxMetadata::Data(metadata);
+
+    Ok((ytdl.into(), vec![my_metadata]))
+}
+
 pub async fn search_query_to_source_and_metadata(
     client: reqwest::Client,
     query: String,
@@ -1391,10 +1402,6 @@ pub async fn search_query_to_source_and_metadata(
     let my_metadata = MyAuxMetadata::Data(metadata.clone());
 
     Ok((ytdl.into(), vec![my_metadata]))
-    // let mut ytdl = YoutubeDl::new(client, query);
-    // let metadata = ytdl.aux_metadata().await.unwrap();
-    // let my_metadata = MyAuxMetadata::Data(metadata);
-    // (ytdl.into(), vec![my_metadata])
 }
 
 // FIXME: Do you want to have a reqwest client we keep around and pass into
