@@ -186,7 +186,6 @@ pub async fn enqueue_track_pgwrite_asdf(
     };
     let track: Track = source.into();
 
-    // Get the username (string) of the user.
     let username = http_utils::http_to_username_or_default(http, user_id).await;
 
     let MyAuxMetadata::Data(aux_metadata) = res.clone();
