@@ -176,7 +176,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(http, query_type.clone()).await;
+        get_track_source_and_metadata(http, query_type.clone()).await?;
     let res = metadata.first().unwrap().clone();
     let track: Track = source.into();
 

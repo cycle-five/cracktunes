@@ -1,9 +1,9 @@
 use crate::messaging::messages::{
-    FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
-    FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
-    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL,
-    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED,
-    UNAUTHORIZED_USER,
+    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
+    FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY,
+    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY,
+    SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -30,6 +30,7 @@ pub enum CrackedError {
     CrackGPT(Error),
     CommandFailed(String, ExitStatus, String),
     DurationParseError(String, String),
+    EmptySearchResult,
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
@@ -105,6 +106,7 @@ impl Display for CrackedError {
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
+            Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),

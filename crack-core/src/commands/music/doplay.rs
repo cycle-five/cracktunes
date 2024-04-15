@@ -1371,12 +1371,38 @@ async fn get_download_status_and_filename(
     }
 }
 
+pub async fn search_query_to_source_and_metadata(
+    client: reqwest::Client,
+    query: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+    let results = rytdl.one_shot(query).await?;
+    // FIXME: Fallback to yt-dlp
+    let result = match results.first() {
+        Some(r) => r,
+        None => return Err(CrackedError::EmptySearchResult),
+    };
+    let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
+    let source_url = match metadata.clone().source_url {
+        Some(url) => url.clone(),
+        None => "".to_string(),
+    };
+    let ytdl = YoutubeDl::new(client, source_url);
+    let my_metadata = MyAuxMetadata::Data(metadata.clone());
+
+    Ok((ytdl.into(), vec![my_metadata]))
+    // let mut ytdl = YoutubeDl::new(client, query);
+    // let metadata = ytdl.aux_metadata().await.unwrap();
+    // let my_metadata = MyAuxMetadata::Data(metadata);
+    // (ytdl.into(), vec![my_metadata])
+}
+
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
-) -> (SongbirdInput, Vec<MyAuxMetadata>) {
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let client = reqwest::Client::new();
     tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
     match query_type {
@@ -1384,45 +1410,46 @@ pub async fn get_track_source_and_metadata(
             tracing::error!("In YoutubeSearch");
             let mut ytdl = YoutubeDl::new_search(client, query);
             let mut res = Vec::new();
-            let asdf = ytdl.search(None).await.unwrap_or_default();
+            let asdf = ytdl.search(None).await?;
             for metadata in asdf {
                 let my_metadata = MyAuxMetadata::Data(metadata);
                 res.push(my_metadata);
             }
-            (ytdl.into(), res)
+            Ok((ytdl.into(), res))
         },
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
             let mut ytdl = YoutubeDl::new(client, query);
             tracing::warn!("ytdl: {:?}", ytdl);
-            let metadata = ytdl.aux_metadata().await.unwrap_or_default();
+            let metadata = ytdl.aux_metadata().await?;
             let my_metadata = MyAuxMetadata::Data(metadata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
-            let results = rytdl.one_shot(query).await.unwrap();
-            let result = results.first().unwrap();
-            let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
-            let source_url = match metadata.clone().source_url {
-                Some(url) => url.clone(),
-                None => "".to_string(),
-            };
-            let ytdl = YoutubeDl::new(client, source_url);
-            let my_metadata = MyAuxMetadata::Data(metadata.clone());
-            (ytdl.into(), vec![my_metadata])
+            search_query_to_source_and_metadata(client.clone(), query).await
+            // let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+            // let results = rytdl.one_shot(query).await.unwrap();
+            // let result = results.first().unwrap();
+            // let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
+            // let source_url = match metadata.clone().source_url {
+            //     Some(url) => url.clone(),
+            //     None => "".to_string(),
+            // };
+            // let ytdl = YoutubeDl::new(client, source_url);
+            // let my_metadata = MyAuxMetadata::Data(metadata.clone());
+            // (ytdl.into(), vec![my_metadata])
         },
         QueryType::File(file) => {
             tracing::warn!("In File");
-            (
+            Ok((
                 HttpRequest::new(client, file.url.to_owned()).into(),
                 vec![MyAuxMetadata::default()],
-            )
+            ))
         },
         QueryType::NewYoutubeDl(ytdl) => {
             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
-            (ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)])
+            Ok((ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)]))
         },
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
@@ -1446,7 +1473,7 @@ pub async fn get_track_source_and_metadata(
             }
             let ytdl = YoutubeDl::new(client.clone(), url);
             tracing::warn!("ytdl: {:?}", ytdl);
-            (ytdl.into(), metadata)
+            Ok((ytdl.into(), metadata))
         },
         QueryType::SpotifyTracks(tracks) => {
             tracing::warn!("In KeywordList");
@@ -1461,7 +1488,7 @@ pub async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::KeywordList(keywords_list) => {
             tracing::warn!("In KeywordList");
@@ -1469,7 +1496,7 @@ pub async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::None => unimplemented!(),
     }
