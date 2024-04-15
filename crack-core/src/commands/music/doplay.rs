@@ -1401,9 +1401,16 @@ pub async fn get_track_source_and_metadata(
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
-            let metdata = ytdl.aux_metadata().await.unwrap_or_default();
-            let my_metadata = MyAuxMetadata::Data(metdata);
+            let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+            let results = rytdl.one_shot(query).await.unwrap();
+            let result = results.first().unwrap();
+            let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
+            let source_url = match metadata.clone().source_url {
+                Some(url) => url.clone(),
+                None => "".to_string(),
+            };
+            let ytdl = YoutubeDl::new(client, source_url);
+            let my_metadata = MyAuxMetadata::Data(metadata.clone());
             (ytdl.into(), vec![my_metadata])
         },
         QueryType::File(file) => {

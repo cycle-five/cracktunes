@@ -472,7 +472,9 @@ pub async fn handle_event(
             let mut title: String = String::from("");
 
             if let Some(old) = old_if_available {
-                if old.user.avatar.is_none() || old.user.avatar.unwrap() != new.user.avatar.unwrap()
+                if old.user.avatar.is_none()
+                    || new.user.avatar.is_none()
+                    || old.user.avatar.unwrap() != new.user.avatar.unwrap()
                 {
                     title = format!("Avatar Updated: {}", new.user.name);
                 }
