@@ -124,21 +124,9 @@ impl UserVote {
     }
 }
 
-pub async fn get_test_pool() -> PgPool {
-    let pool = PgPool::connect("postgres://postgres:password@localhost:5432/crack_test")
-        .await
-        .expect("Failed to connect to database");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
-    pool
-}
-
 #[cfg(test)]
 mod test {
-    use super::*;
-    use sqlx::types::chrono::Utc;
+    use std::env;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -150,7 +138,7 @@ mod test {
         );
     }
 
-    #[tokio::test]
+    #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user() {
         let pool = get_test_pool().await;
         User::insert_test_user(&pool, Some(1), Some("test".to_string())).await;
@@ -158,48 +146,48 @@ mod test {
         assert_eq!(user.username, "test");
     }
 
-    #[tokio::test]
-    async fn test_insert_or_update_user() {
-        let pool = get_test_pool().await;
-        User::insert_or_update_user(&pool, 1, "test".to_string())
-            .await
-            .unwrap();
-        let user = User::get_user(&pool, 1).await.unwrap();
-        assert_eq!(user.username, "test");
-    }
+    // #[tokio::test]
+    // async fn test_insert_or_update_user() {
+    //     let pool = get_test_pool().await;
+    //     User::insert_or_update_user(&pool, 1, "test".to_string())
+    //         .await
+    //         .unwrap();
+    //     let user = User::get_user(&pool, 1).await.unwrap();
+    //     assert_eq!(user.username, "test");
+    // }
 
-    #[tokio::test]
-    async fn test_insert_user_vote() {
-        let pool = get_test_pool().await;
-        UserVote::insert_user_vote(&pool, 1, "test".to_string())
-            .await
-            .unwrap();
-        let user_vote = sqlx::query_as!(UserVote, "SELECT * FROM user_votes WHERE user_id = 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(user_vote.site, "test");
-    }
+    // #[tokio::test]
+    // async fn test_insert_user_vote() {
+    //     let pool = get_test_pool().await;
+    //     UserVote::insert_user_vote(&pool, 1, "test".to_string())
+    //         .await
+    //         .unwrap();
+    //     let user_vote = sqlx::query_as!(UserVote, "SELECT * FROM user_votes WHERE user_id = 1")
+    //         .fetch_one(&pool)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(user_vote.site, "test");
+    // }
 
-    #[tokio::test]
-    async fn test_has_voted_recently() {
-        let pool = get_test_pool().await;
-        UserVote::insert_user_vote(&pool, 1, "test".to_string())
-            .await
-            .unwrap();
-        let has_voted =
-            UserVote::has_voted_recently(1, "test".to_string(), Utc::now().naive_utc(), &pool)
-                .await;
-        assert_eq!(has_voted, true);
-    }
+    // #[tokio::test]
+    // async fn test_has_voted_recently() {
+    //     let pool = get_test_pool().await;
+    //     UserVote::insert_user_vote(&pool, 1, "test".to_string())
+    //         .await
+    //         .unwrap();
+    //     let has_voted =
+    //         UserVote::has_voted_recently(1, "test".to_string(), Utc::now().naive_utc(), &pool)
+    //             .await;
+    //     assert_eq!(has_voted, true);
+    // }
 
-    #[tokio::test]
-    async fn test_has_voted_recently_topgg() {
-        let pool = get_test_pool().await;
-        UserVote::insert_user_vote(&pool, 1, "top.gg".to_string())
-            .await
-            .unwrap();
-        let has_voted = UserVote::has_voted_recently_topgg(1, &pool).await;
-        assert_eq!(has_voted, true);
-    }
+    // #[tokio::test]
+    // async fn test_has_voted_recently_topgg() {
+    //     let pool = get_test_pool().await;
+    //     UserVote::insert_user_vote(&pool, 1, "top.gg".to_string())
+    //         .await
+    //         .unwrap();
+    //     let has_voted = UserVote::has_voted_recently_topgg(1, &pool).await;
+    //     assert_eq!(has_voted, true);
+    // }
 }

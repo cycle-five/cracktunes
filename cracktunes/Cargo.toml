@@ -86,7 +86,7 @@ warp = { version = "0.3", features = ["tls"], optional = true }
 async-tungstenite = "0.25"
 tungstenite = "0.21"
 sqlx = { version = "0.7.4", features = [
-    "runtime-tokio",
+    "runtime-tokio-rustls",
     "tls-rustls",
     "macros",
     "postgres",
