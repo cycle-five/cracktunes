@@ -128,6 +128,7 @@ impl UserVote {
 mod test {
     use std::env;
 
+    use chrono::Utc;
     use sqlx::PgPool;
 
     use crate::db::User;
