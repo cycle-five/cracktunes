@@ -1,3 +1,4 @@
+use ::chrono::Duration;
 use sqlx::{
     types::chrono::{self},
     PgPool,
@@ -13,6 +14,14 @@ pub struct User {
     pub created_at: chrono::NaiveDate,
     pub updated_at: chrono::NaiveDate,
     pub last_seen: chrono::NaiveDate,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct UserVote {
+    pub id: i64,
+    pub user_id: i64,
+    pub site: String,
+    pub timestamp: chrono::NaiveDateTime,
 }
 
 impl User {
@@ -65,5 +74,52 @@ impl User {
         )
         .fetch_one(pool)
         .await
+    }
+}
+
+impl UserVote {
+    pub async fn insert_user_vote(
+        pool: &PgPool,
+        user_id: i64,
+        site: String,
+    ) -> Result<UserVote, sqlx::Error> {
+        sqlx::query_as!(
+            UserVote,
+            r#"INSERT INTO user_votes (user_id, site, timestamp)
+            VALUES ($1, $2, now())
+            RETURNING id, user_id, site, timestamp
+            "#,
+            user_id,
+            site,
+        )
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn has_voted_recently(
+        user_id: i64,
+        site_name: String,
+        duration: chrono::NaiveDateTime,
+        pool: &PgPool,
+    ) -> bool {
+        let result = sqlx::query_as!(
+            UserVote,
+            "SELECT * FROM user_votes WHERE user_id = $1 AND timestamp > $2 AND site = $3",
+            user_id,
+            duration,
+            site_name
+        )
+        .fetch_optional(pool)
+        .await
+        .expect("Failed to execute query");
+
+        result.is_some()
+    }
+
+    pub async fn has_voted_recently_topgg(user_id: i64, pool: &PgPool) -> bool {
+        let twelve_hours_ago = chrono::Utc::now().naive_utc() - Duration::hours(12);
+        let site_name = "top.gg".to_string(); // Define the site you are checking for votes from
+
+        Self::has_voted_recently(user_id, site_name, twelve_hours_ago, pool).await
     }
 }
