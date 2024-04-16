@@ -132,6 +132,8 @@ mod test {
 
     use crate::db::User;
 
+    use super::UserVote;
+
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[test]
