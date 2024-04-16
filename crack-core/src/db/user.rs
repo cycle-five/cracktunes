@@ -128,6 +128,10 @@ impl UserVote {
 mod test {
     use std::env;
 
+    use sqlx::PgPool;
+
+    use crate::db::User;
+
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[test]
@@ -139,8 +143,7 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_insert_user() {
-        let pool = get_test_pool().await;
+    async fn test_insert_user(pool: PgPool) {
         User::insert_test_user(&pool, Some(1), Some("test".to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
         assert_eq!(user.username, "test");
