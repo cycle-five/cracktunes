@@ -31,26 +31,26 @@ crack-osint = ["dep:crack-osint"]
 [dependencies]
 rusty_ytdl = "0.7.1"
 audiopus = "0.3.0-rc.0"
-async-trait = "0.1"
-colored = "2.1"
-lazy_static = "1.4"
-lyric_finder = "0.1"
-rand = "0.8"
-regex = "1.10"
-serde_json = "1.0"
-serde_with = "3.7"
-url = "2.5"
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_stream = { version = "1.0", features = ["tokio"] }
-sys-info = "0.9"
-prometheus = { version = "0.13", features = ["process"], optional = true }
-anyhow = "1.0"
-proc-macro2 = "1.0"
-typemap_rev = "0.3"
-chatgpt_rs = { version = "1.2", optional = true }
-either = "1.10"
-chrono = { version = "0.4", features = ["serde"] }
-topgg-rs = "0.3.0"
+async-trait = "0.1.80"
+colored = "2.1.0"
+lazy_static = "1.4.0"
+lyric_finder = "0.1.6"
+rand = "0.8.5"
+regex = "1.10.4"
+serde_json = "1.0.116"
+serde_with = "3.7.0"
+url = "2.5.0"
+serde = { version = "1.0.198", features = ["derive", "rc"] }
+serde_stream = { version = "1.0.1", features = ["tokio"] }
+sys-info = "0.9.1"
+prometheus = { version = "0.13.3", features = ["process"], optional = true }
+anyhow = "1.0.82"
+proc-macro2 = "1.0.81"
+typemap_rev = "0.3.0"
+chatgpt_rs = { version = "1.2.3", optional = true }
+either = "1.11.0"
+chrono = { version = "0.4.38", features = ["serde"] }
+topgg = "1.4.1"
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
