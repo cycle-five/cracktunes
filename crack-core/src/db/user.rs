@@ -138,9 +138,18 @@ impl UserVote {
 }
 
 #[cfg(test)]
-mod test {
+#[ctor::ctor]
+fn set_env() {
     use std::env;
 
+    env::set_var(
+        "DATABASE_URL",
+        "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
+    );
+}
+
+#[cfg(test)]
+mod test {
     use chrono::{Duration, Utc};
     use sqlx::PgPool;
 
@@ -149,14 +158,6 @@ mod test {
     use super::UserVote;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
-
-    #[test]
-    fn set_env() {
-        env::set_var(
-            "DATABASE_URL",
-            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
-        );
-    }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user(pool: PgPool) {
