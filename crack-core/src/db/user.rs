@@ -141,7 +141,7 @@ impl UserVote {
 mod test {
     use std::env;
 
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
     use sqlx::PgPool;
 
     use crate::db::User;
@@ -189,9 +189,16 @@ mod test {
         UserVote::insert_user_vote(&pool, 1, "test".to_string())
             .await
             .unwrap();
-        let has_voted =
-            UserVote::has_voted_recently(1, "test".to_string(), Duration::from_secs(5 * 60), &pool)
-                .await;
+        let has_voted = UserVote::has_voted_recently(
+            1,
+            "test".to_string(),
+            Utc::now()
+                .naive_utc()
+                .checked_add_signed(Duration::seconds(-5 * 60))
+                .unwrap(),
+            &pool,
+        )
+        .await;
         assert_eq!(has_voted, true);
     }
 
