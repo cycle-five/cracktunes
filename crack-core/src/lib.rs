@@ -325,7 +325,7 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("event_log: {:?}\n", self.event_log));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
-        result.push_str(&format!("topgg_client: <skipped>"));
+        result.push_str("topgg_client: <skipped>\n");
         write!(f, "{}", result)
     }
 }
