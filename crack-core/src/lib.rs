@@ -278,7 +278,7 @@ impl PhoneCodeData {
 }
 
 /// User data, which is stored and accessible in all command invocations
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
     #[serde(skip)]
     pub phone_data: PhoneCodeData,
@@ -298,6 +298,32 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
+    #[serde(skip)]
+    pub topgg_client: topgg::Client,
+}
+
+impl std::fmt::Debug for DataInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result = String::new();
+        result.push_str(&format!("phone_data: {:?}\n", self.phone_data));
+        result.push_str(&format!("up_prefix: {:?}\n", self.up_prefix));
+        result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
+        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
+        result.push_str(&format!(
+            "guild_settings_map: {:?}\n",
+            self.guild_settings_map
+        ));
+        result.push_str(&format!(
+            "guild_msg_cache_ordered: {:?}\n",
+            self.guild_msg_cache_ordered
+        ));
+        result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
+        result.push_str(&format!("event_log: {:?}\n", self.event_log));
+        result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
+        result.push_str(&format!("http_client: {:?}\n", self.http_client));
+        result.push_str(&format!("topgg_client: <skipped>"));
+        write!(f, "{}", result)
+    }
 }
 
 impl DataInner {
@@ -417,6 +443,7 @@ impl EventLog {
 
 impl Default for DataInner {
     fn default() -> Self {
+        let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
         Self {
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
@@ -426,8 +453,9 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
-            database_pool: None, //Some(sqlx::PgPool::connect_lazy(DEFAULT_DB_URL).unwrap()),
+            database_pool: None,
             http_client: reqwest::Client::new(),
+            topgg_client: topgg::Client::new(topgg_token),
         }
     }
 }

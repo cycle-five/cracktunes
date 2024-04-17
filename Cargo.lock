@@ -5627,8 +5627,7 @@ dependencies = [
 [[package]]
 name = "topgg"
 version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21e7b39a34700ba76d805371c5dac90e20d24390555938b2f7f4740df31418b3"
+source = "git+https://github.com/cycle-five/topgg?branch=main#c80d8ed24af8401a3b35ed4d30a18d80376276d9"
 dependencies = [
  "cfg-if",
  "chrono",

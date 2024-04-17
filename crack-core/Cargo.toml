@@ -50,7 +50,7 @@ typemap_rev = "0.3.0"
 chatgpt_rs = { version = "1.2.3", optional = true }
 either = "1.11.0"
 chrono = { version = "0.4.38", features = ["serde"] }
-topgg = "1.4.1"
+topgg = { git = "https://github.com/cycle-five/topgg", branch = "main" }
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
