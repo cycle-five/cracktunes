@@ -38,3 +38,21 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
 //     Ok(())
 // }
+
+async fn has_voted_recently(user_id: i64, pool: &PgPool) -> bool {
+    let twelve_hours_ago = Utc::now().naive_utc() - Duration::hours(12);
+    let site_name = "Top.gg"; // Define the site you are checking for votes from
+
+    let result = sqlx::query_as!(
+        UserVote,
+        "SELECT * FROM user_votes WHERE user_id = $1 AND timestamp > $2 AND site = $3",
+        user_id,
+        twelve_hours_ago,
+        site_name
+    )
+    .fetch_optional(pool)
+    .await
+    .expect("Failed to execute query");
+
+    result.is_some()
+}
