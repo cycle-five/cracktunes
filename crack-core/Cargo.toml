@@ -50,6 +50,7 @@ typemap_rev = "0.3"
 chatgpt_rs = { version = "1.2", optional = true }
 either = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
+topgg-rs = "0.3.0"
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
