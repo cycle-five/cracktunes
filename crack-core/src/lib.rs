@@ -298,8 +298,12 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    #[serde(skip)]
+    #[serde(skip, default = "default_topgg_client")]
     pub topgg_client: topgg::Client,
+}
+
+fn default_topgg_client() -> topgg::Client {
+    topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
 }
 
 impl std::fmt::Debug for DataInner {
