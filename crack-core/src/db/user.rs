@@ -96,6 +96,18 @@ impl UserVote {
         .await
     }
 
+    /// Get the votes for a user.
+    pub async fn get_user_votes(user_id: i64, pool: &PgPool) -> Result<Vec<UserVote>, sqlx::Error> {
+        sqlx::query_as!(
+            UserVote,
+            r#"SELECT * FROM user_votes WHERE user_id = $1"#,
+            user_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Check if the user has voted on a site in the last `duration`.
     pub async fn has_voted_recently(
         user_id: i64,
         site_name: String,
@@ -116,6 +128,7 @@ impl UserVote {
         result.is_some()
     }
 
+    /// Check if the user has voted on top.gg in the last 12 hours.
     pub async fn has_voted_recently_topgg(user_id: i64, pool: &PgPool) -> bool {
         let twelve_hours_ago = chrono::Utc::now().naive_utc() - Duration::hours(12);
         let site_name = "top.gg".to_string(); // Define the site you are checking for votes from
@@ -166,11 +179,9 @@ mod test {
         UserVote::insert_user_vote(&pool, 1, "test".to_string())
             .await
             .unwrap();
-        let user_vote = sqlx::query_as!(UserVote, "SELECT * FROM user_votes WHERE user_id = 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(user_vote.site, "test");
+        let user_votes = UserVote::get_user_votes(1, &pool).await.unwrap();
+        assert_eq!(user_votes.len(), 1);
+        assert_eq!(user_votes.first().unwrap().site, "test");
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
