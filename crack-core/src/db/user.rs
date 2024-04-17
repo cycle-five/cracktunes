@@ -190,7 +190,7 @@ mod test {
             .await
             .unwrap();
         let has_voted =
-            UserVote::has_voted_recently(1, "test".to_string(), Utc::now().naive_utc(), &pool)
+            UserVote::has_voted_recently(1, "test".to_string(), Duration::from_secs(5 * 60), &pool)
                 .await;
         assert_eq!(has_voted, true);
     }
