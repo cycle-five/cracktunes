@@ -100,26 +100,28 @@ pub async fn rename_all(
         }
         let r = rand::random::<usize>() % names.len();
         let mut random_name = names.remove(r).clone();
-        let new_name = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
-            if cur_nick.contains("&amp;") {
-                random_name = cur_nick.replace("&amp;", "&");
-            }
+        let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
+            // if cur_nick.contains("&amp;") {
+            //     random_name = cur_nick.replace("&amp;", "&");
+            // }
             let emoji = cur_nick.chars().next().unwrap_or('⚔');
             if !emoji.is_ascii() && !emoji.eq(&'🧪') {
-                format!("{} {}", emoji, random_name)
+                //format!("{} {}", emoji, random_name)
+                (emoji.to_string(), random_name)
             } else {
-                format!("{} {}", "⚔", random_name)
+                //format!("{} {}", "⚔", random_name)
+                ("⚔".to_string(), random_name)
             }
         } else {
-            random_name
+            ("⚔".to_string(), random_name)
         };
         if dry {
-            tracing::info!("{} -> {}", member.user.name, new_name);
+            tracing::info!("{} -> {} {}", member.user.name, emoji, new_name);
             continue;
         }
-        let _until =
-            DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
-                .unwrap();
+        // let _until =
+        //     DateTime::from_timestamp((Utc::now() + Duration::from_secs(60)).timestamp(), 0)
+        //         .unwrap();
         if let Err(e) = guild
             .edit_member(
                 &ctx,
