@@ -103,7 +103,7 @@ pub async fn summon(
                     let premium = guild_settings.premium;
 
                     handler.add_global_event(
-                        Event::Periodic(Duration::from_secs(1), None),
+                        Event::Periodic(Duration::from_secs(5), None),
                         IdleHandler {
                             http: ctx.serenity_context().http.clone(),
                             manager: manager.clone(),
