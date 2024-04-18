@@ -4,6 +4,7 @@ use crate::{
     Context, Error,
 };
 use poise::serenity_prelude::GuildId;
+use topgg::Client;
 
 /// Vote link for cracktunes on top.gg
 #[cfg(not(tarpaulin_include))]
@@ -13,11 +14,15 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     let user_id = ctx.author().id;
 
-    let has_voted = UserVote::has_voted_recently_topgg(
-        user_id.get() as i64,
-        ctx.data().database_pool.as_ref().unwrap(),
-    )
-    .await;
+    // Check if they have voted with the topgg library.
+    let client: Client = ctx.data().topgg_client.clone();
+    let has_voted = client.has_voted(user_id.get().to_string()).await?;
+
+    // let has_voted = UserVote::has_voted_recently_topgg(
+    //     user_id.get() as i64,
+    //     ctx.data().database_pool.as_ref().unwrap(),
+    // )
+    // .await;
 
     let msg_str = if has_voted {
         "Thank you for voting! Here is the link to vote again:"
