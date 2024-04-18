@@ -77,6 +77,7 @@ pub async fn rename_all(
     let mut names: Vec<String> = read_lines("names.txt")
         .iter()
         .map(|s| s.to_string().trim().to_string())
+        .filter(|s| s.len() <= 32)
         .collect::<Vec<String>>();
     // let n = names.len();
     if !dry {
