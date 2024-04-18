@@ -3,8 +3,6 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use chrono::DateTime;
-use chrono::Utc;
 use serenity::all::Mentionable;
 use serenity::all::UserId;
 use serenity::builder::EditMember;
