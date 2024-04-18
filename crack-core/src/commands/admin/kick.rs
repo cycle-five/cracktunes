@@ -81,6 +81,7 @@ pub async fn rename_all(
         .collect::<Vec<String>>();
     // let n = names.len();
     let phrase = "To the Armory!";
+    let fail_phrase = "It's jammed!";
     if !dry {
         ctx.say(phrase).await?;
     } else {
@@ -131,23 +132,15 @@ pub async fn rename_all(
             tokio::time::sleep(backoff).await;
             backoff *= 2;
             // Handle error, send error message
-            ctx.say(format!(
-                "No cocaine in the lab! {}: {}",
-                member.mention(),
-                e
-            ))
-            .await?;
+            ctx.say(format!("{} {}: {}", fail_phrase, member.mention(), e))
+                .await?;
         } else {
             if backoff > Duration::from_secs(1) {
                 backoff /= 2;
             }
             tokio::time::sleep(sleep).await;
             // Send success message
-            ctx.say(format!(
-                "Be careful of loose electrons, {}!",
-                member.mention()
-            ))
-            .await?;
+            ctx.say(format!(", {}!", member.mention())).await?;
         }
     }
     Ok(())
