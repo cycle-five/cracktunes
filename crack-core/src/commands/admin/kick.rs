@@ -64,8 +64,11 @@ fn read_lines(filename: &str) -> Vec<String> {
 pub async fn rename_all(
     ctx: Context<'_>,
     #[flag]
-    #[description = "Don't actually change the names or print anything, just log"]
+    #[description = "Don't actually change the names or print anything, just log."]
     dry: bool,
+    #[flag]
+    #[description = "Don't call out the changes, just log."]
+    quiet: bool,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     // let reply_with_embed = ctx
