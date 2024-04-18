@@ -1,9 +1,11 @@
 use colored;
+use rusty_ytdl::search::Playlist;
 
 use super::doplay_utils::enqueue_track_pgwrite;
 use super::doplay_utils::insert_track;
 use super::doplay_utils::queue_keyword_list;
 
+use crate::commands::doplay_utils::queue_yt_playlist;
 use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
@@ -22,10 +24,7 @@ use crate::{
             TRACK_DURATION, TRACK_TIME_TO_PLAY,
         },
     },
-    sources::{
-        spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        ytdl::MyYoutubeDl,
-    },
+    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::{
         compare_domains, edit_response_poise, get_guild_name, get_human_readable_timestamp,
         get_interaction, get_track_metadata, send_embed_response_poise, send_response_poise_text,
@@ -219,13 +218,13 @@ async fn play_internal(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let msg = send_search_message(ctx).await?;
+    let mut msg = send_search_message(ctx).await?;
 
     ctx.data().add_msg_to_cache(guild_id, msg.clone());
 
     tracing::warn!("search response msg: {:?}", msg);
     // FIXME: Super hacky, fix this shit.
-    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
+    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut msg).await?;
 
     if !move_on {
         return Ok(());
@@ -570,11 +569,12 @@ async fn send_search_response(
     send_embed_response_poise(ctx, embed).await
 }
 
-async fn match_mode(
+async fn match_mode<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
+    search_msg: &'a mut Message,
 ) -> Result<bool, Error> {
     // let is_prefix = ctx.prefix() != "/";
     // let user_id = ctx.author().id;
@@ -588,12 +588,12 @@ async fn match_mode(
 
     tracing::info!("mode: {:?}", mode);
 
+    let reqwest_client = ctx.data().http_client.clone();
     match mode {
         Mode::Search => {
             // let search_results = match query_type.clone() {
             match query_type.clone() {
                 QueryType::Keywords(keywords) => {
-                    let reqwest_client = reqwest::Client::new();
                     let search_results = YoutubeDl::new_search(reqwest_client, keywords)
                         .search(None)
                         .await?;
@@ -616,7 +616,7 @@ async fn match_mode(
                     // send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 },
                 QueryType::YoutubeSearch(query) => {
-                    let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
+                    let search_results = YoutubeDl::new(reqwest_client, query.clone())
                         .search(None)
                         .await?;
                     let qt = yt_search_select(
@@ -697,25 +697,10 @@ async fn match_mode(
             // FIXME
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
-                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                //     .await
-                //     .ok_or(CrackedError::PlayListFail)?;
-                // let client = reqwest::Client::new();
-                let mut my_ytdl = MyYoutubeDl::new(url);
-                let urls = my_ytdl.get_playlist().await?;
-
-                for url in urls.iter() {
-                    let queue =
-                        enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(url.to_string()))
-                            .await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                // Let's use the new YouTube rust library for this
+                let rusty_ytdl = RustyYoutubeClient::new()?;
+                let playlist: Playlist = rusty_ytdl.get_playlist(url).await?;
+                queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 let keywords_list = tracks
@@ -1409,11 +1394,11 @@ pub async fn video_info_to_source_and_metadata(
     url: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-    let ytdl = YoutubeDl::new(client, url.clone());
-    let video_info = rytdl.get_video_info(url).await?;
+    let video_info = rytdl.get_video_info(url.clone()).await?;
     let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
     let my_metadata = MyAuxMetadata::Data(metadata);
 
+    let ytdl = YoutubeDl::new(client, url);
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
@@ -1545,9 +1530,7 @@ pub async fn queue_aux_metadata(
                     EditMessage::default().content(format!("Queuing... {}", search_query)),
                 )
                 .await;
-            // let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
-            // tracing::warn!("ytdl: {:?}", ytdl);
-            // let new_aux_metadata = ytdl.aux_metadata().await?;
+
             let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
             let res = ytdl.one_shot(search_query).await?;
             let res = res.first().ok_or(CrackedError::Other("No results found"))?;

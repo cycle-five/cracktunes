@@ -9,7 +9,8 @@ use crate::{
 };
 use crate::{errors::CrackedError, Context, Error};
 
-use serenity::all::{ChannelId, GuildId, Http, UserId};
+use rusty_ytdl::search::Playlist as YTPlaylist;
+use serenity::all::{ChannelId, CreateEmbed, EditMessage, GuildId, Http, Message, UserId};
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use songbird::Call;
@@ -17,6 +18,74 @@ use songbird::{input::Input as SongbirdInput, tracks::Track};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_yt_playlist<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    guild_id: GuildId,
+    playlist: YTPlaylist,
+    search_msg: &'a mut Message,
+) -> Result<(), Error> {
+    let n = playlist.videos.len() as f32;
+    let mut i: f32 = 0.0 as f32;
+    for video in playlist.videos {
+        // Update the search message with what's queuing right now.
+        search_msg
+            .edit(
+                ctx.http(),
+                EditMessage::new().embed(CreateEmbed::default().description(format!(
+                    "Queuing: [{}]({})\n{}% Done...",
+                    video.title,
+                    video.url,
+                    (i / n) * 100.0
+                ))),
+            )
+            .await?;
+        i += 1.0;
+        let queue_res =
+            enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(video.url.to_string())).await;
+        let queue = match queue_res {
+            Ok(q) => q,
+            Err(e) => {
+                tracing::error!("Error: {}", e);
+                continue;
+            },
+        };
+        update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    }
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // let http = ctx.http();
+    // let user_id = ctx.author().id;
+    // let username = http_utils::http_to_username_or_default(http, user_id).await;
+    // let database_pool = ctx.data().database_pool.as_ref().unwrap();
+    // let playlist = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(
+    //     reqwest::Client::new(),
+    // )
+    // .unwrap()
+    // .get_playlist(&playlist_url)
+    // .await?;
+    // let playlist_tracks = playlist.tracks;
+    // for (idx, track) in playlist_tracks.into_iter().enumerate() {
+    //     let source = track.into();
+    //     let metadata = track.metadata;
+    //     let returned_metadata = write_metadata_pg(
+    //         database_pool,
+    //         metadata,
+    //         user_id,
+    //         username.clone(),
+    //         guild_id,
+    //         ctx.channel_id(),
+    //     )
+    //     .await?;
+    //     let mut handler = call.lock().await;
+    //     let track_handle = handler.enqueue(source.into()).await;
+    //     let mut map = track_handle.typemap().write().await;
+    //     map.insert::<MyAuxMetadata>(MyAuxMetadata::Data(metadata));
+    //     map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+    // }
+    Ok(())
+}
 
 /// Queue a list of keywords to be played
 #[cfg(not(tarpaulin_include))]
@@ -37,8 +106,23 @@ pub async fn queue_keyword_list_w_offset(
     offset: usize,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let mut failed: usize = 0;
     for (idx, keywords) in keyword_list.into_iter().enumerate() {
-        let queue = insert_track(ctx, &call, &QueryType::Keywords(keywords), idx + offset).await?;
+        let queue = match insert_track(
+            ctx,
+            &call,
+            &QueryType::Keywords(keywords),
+            idx + offset - failed,
+        )
+        .await
+        {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("insert_track error: {}", e);
+                failed += 1;
+                continue;
+            },
+        };
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }
 

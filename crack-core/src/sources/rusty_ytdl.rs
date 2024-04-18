@@ -104,7 +104,7 @@ impl RustyYoutubeClient {
 
         metadata.channels = Some(2);
         metadata.channel = Some(details.owner_channel_name.clone());
-        metadata.duration = Some(Duration::from_millis(
+        metadata.duration = Some(Duration::from_secs(
             details.length_seconds.parse::<u64>().unwrap_or_default(),
         ));
         metadata.sample_rate = Some(48000);
