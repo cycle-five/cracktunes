@@ -3,9 +3,9 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use serenity::all::Mentionable;
-use serenity::all::UserId;
+use serenity::all::{Mentionable, UserId};
 use serenity::builder::EditMember;
+use std::fs::read_to_string;
 use std::time::Duration;
 
 /// Kick command to kick a user from the server based on their ID
@@ -42,8 +42,6 @@ pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
     }
     Ok(())
 }
-
-use std::fs::read_to_string;
 
 /// Read lines from a file
 fn read_lines(filename: &str) -> Vec<String> {
