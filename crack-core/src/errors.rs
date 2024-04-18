@@ -323,3 +323,95 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
         Err(err)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn test_verify() {
+        let ok = verify(true, CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(true));
+
+        let err = verify(false, CrackedError::NoGuildCached);
+        assert_eq!(err, Err(CrackedError::NoGuildCached));
+
+        let ok = verify(Some(1), CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(1));
+
+        let x: Option<i32> = None;
+        let err = verify(x, CrackedError::NoGuildCached);
+        assert_eq!(err, Err(CrackedError::NoGuildCached));
+
+        let ok = verify(Ok::<i32>(1), CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(1));
+
+        let err = verify(
+            Err(io::Error::new(io::ErrorKind::Other, "test")),
+            CrackedError::NoGuildCached,
+        );
+        assert_eq!(err, Err(CrackedError::NoGuildCached));
+    }
+
+    #[test]
+    fn test_cracked_error_display() {
+        let err = CrackedError::NoGuildCached;
+        assert_eq!(format!("{}", err), NO_GUILD_CACHED);
+
+        let err = CrackedError::NoGuildId;
+        assert_eq!(format!("{}", err), NO_GUILD_ID);
+
+        // let err = CrackedError::NoGuildForChannelId(ChannelId(1));
+        // assert_eq!(format!("{}", err), "No guild for channel id 1");
+
+        let err = CrackedError::NoGuildSettings;
+        assert_eq!(format!("{}", err), NO_GUILD_SETTINGS);
+
+        let err = CrackedError::NoLogChannel;
+        assert_eq!(format!("{}", err), "No log channel");
+
+        let err = CrackedError::NoUserAutoplay;
+        assert_eq!(format!("{}", err), "(auto)");
+
+        let err = CrackedError::WrongVoiceChannel;
+        assert_eq!(format!("{}", err), FAIL_WRONG_CHANNEL);
+
+        let err = CrackedError::NothingPlaying;
+        assert_eq!(format!("{}", err), FAIL_NOTHING_PLAYING);
+
+        let err = CrackedError::PlayListFail;
+        assert_eq!(format!("{}", err), FAIL_PLAYLIST_FETCH);
+
+        let err = CrackedError::ParseTimeFail;
+        assert_eq!(format!("{}", err), FAIL_PARSE_TIME);
+
+        // let err = CrackedError::PoisonError(PoisonError::Other("test"));
+        // assert_eq!(format!("{}", err), "No guild id");
+
+        // let err = CrackedError::TrackFail(Error::Other("test"));
+        // assert_eq!(format!("{}", err), "No guild id");
+
+        let err = CrackedError::Serenity(SerenityError::Other("test"));
+        assert_eq!(format!("{}", err), "test");
+
+        let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
+        assert_eq!(format!("{}", err), "Row not found");
+
+        let err = CrackedError::SpotifyAuth;
+        assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
+
+        // let response = reqwest::get("http://notreallol").await;
+        // let err = CrackedError::Reqwest(response.unwrap_err());
+        // assert_eq!(format!("{}", err), "test");
+
+        // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
+        // assert_eq!(format!("{}", err), "Unauthorized");
+
+        let err = CrackedError::UnauthorizedUser;
+        assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
+
+        let err = CrackedError::IO(io::Error::new(io::ErrorKind::Other, "test"));
+        assert_eq!(format!("{}", err), "test");
+    }
+}
