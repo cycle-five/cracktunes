@@ -140,7 +140,7 @@ pub async fn rename_all(
             ctx.say(format!("{} {}: {}", fail_phrase, member.mention(), e))
                 .await?;
         } else {
-            if backoff > Duration::from_secs(1) {
+            if backoff > Duration::from_secs(2) {
                 backoff /= 2;
             }
             tokio::time::sleep(sleep).await;
