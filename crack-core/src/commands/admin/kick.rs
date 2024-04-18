@@ -80,10 +80,11 @@ pub async fn rename_all(
         .filter(|s| s.len() <= 32)
         .collect::<Vec<String>>();
     // let n = names.len();
+    let phrase = "To the Armory!";
     if !dry {
-        ctx.say("Chemical Compounds Abound!").await?;
+        ctx.say(phrase).await?;
     } else {
-        tracing::info!("Chemical Compounds Abound!");
+        tracing::info!(phrase);
     }
     let guild = guild_id.to_partial_guild(&ctx).await?;
     let members = guild.members(&ctx, None, None).await?;
