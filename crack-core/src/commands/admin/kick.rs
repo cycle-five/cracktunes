@@ -137,8 +137,12 @@ pub async fn rename_all(
             tokio::time::sleep(backoff).await;
             backoff *= 2;
             // Handle error, send error message
-            ctx.say(format!("{} {}: {}", fail_phrase, member.mention(), e))
-                .await?;
+            if !quiet {
+                ctx.say(format!("{} {}: {}", fail_phrase, member.user.mention(), e))
+                    .await?;
+            } else {
+                tracing::info!("{} {}: {}", fail_phrase, member.user.mention(), e);
+            }
         } else {
             if backoff > Duration::from_secs(2) {
                 backoff /= 2;
