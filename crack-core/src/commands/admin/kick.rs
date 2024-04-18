@@ -98,11 +98,11 @@ pub async fn rename_all(
         let r = rand::random::<usize>() % names.len();
         let random_name = names.remove(r).clone();
         let new_name = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
-            let emoji = cur_nick.chars().next().unwrap_or('🧪');
+            let emoji = cur_nick.chars().next().unwrap_or('⚔');
             if !emoji.is_ascii() {
                 format!("{} {}", emoji, random_name)
             } else {
-                format!("{} {}", "🧪", random_name)
+                format!("{} {}", "⚔", random_name)
             }
         } else {
             random_name
