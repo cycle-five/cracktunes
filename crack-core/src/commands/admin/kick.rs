@@ -83,12 +83,13 @@ pub async fn rename_all(
         .filter(|s| s.len() <= 32)
         .collect::<Vec<String>>();
     // let n = names.len();
-    let phrase = "To the Armory!";
-    let fail_phrase = "It's jammed!";
+    let call_to_action = "To the Armory!";
+    let exhasperation = "It's jammed!";
+    let celebration = "The deed is done!";
     if !dry {
-        ctx.say(phrase).await?;
+        ctx.say(call_to_action).await?;
     } else {
-        tracing::info!(phrase);
+        tracing::info!(call_to_action);
     }
     let guild = guild_id.to_partial_guild(&ctx).await?;
     let members = guild.members(&ctx, None, None).await?;
@@ -137,11 +138,10 @@ pub async fn rename_all(
             tokio::time::sleep(backoff).await;
             backoff *= 2;
             // Handle error, send error message
+            let msg_str = format!("{} {}! {}", exhasperation, member.user.mention(), e);
+            tracing::info!("{}", msg_str);
             if !quiet {
-                ctx.say(format!("{} {}: {}", fail_phrase, member.user.mention(), e))
-                    .await?;
-            } else {
-                tracing::info!("{} {}: {}", fail_phrase, member.user.mention(), e);
+                ctx.say(msg_str).await?;
             }
         } else {
             if backoff > Duration::from_secs(2) {
@@ -149,7 +149,11 @@ pub async fn rename_all(
             }
             tokio::time::sleep(sleep).await;
             // Send success message
-            ctx.say(format!(", {}!", member.mention())).await?;
+            let msg_str = format!("{}, {}!", celebration, member.user.mention(),);
+            tracing::info!("{}", msg_str);
+            if !quiet {
+                ctx.say(msg_str).await?;
+            }
         }
     }
     Ok(())
