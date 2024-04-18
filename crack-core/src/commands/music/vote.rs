@@ -24,7 +24,9 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await;
 
-    if has_voted && !has_voted_db {
+    let record_vote = has_voted && !has_voted_db;
+
+    if record_vote {
         UserVote::insert_user_vote(
             ctx.data().database_pool.as_ref().unwrap(),
             user_id.get() as i64,
@@ -34,9 +36,9 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     let msg_str = if has_voted {
-        "Thank you for voting! Here is the link to vote again:"
+        "Thank you for voting! Remember to vote again in 12 hours!"
     } else {
-        "You haven't voted recently. Here is the link to vote:"
+        "You haven't voted recently! Here is the link to vote :)"
     };
 
     let reply_handle = ctx
@@ -52,18 +54,3 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
-
-// /// Check when the calling user last voted for cracktunes.
-// #[cfg(not(tarpaulin_include))]
-// #[poise::command(slash_command, prefix_command)]
-// pub async fn check_last_vote(ctx: Context<'_>) -> Result<(), Error> {
-//     let guild_id: Option<GuildId> = ctx.guild_id();
-
-//     let reply_handle = ctx.reply(VOTE_TOPGG).await?;
-
-//     let msg = reply_handle.into_message().await?;
-
-//     guild_id.map(|id| ctx.data().add_msg_to_cache(id, msg));
-
-//     Ok(())
-// }
