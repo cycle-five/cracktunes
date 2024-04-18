@@ -1404,6 +1404,19 @@ pub async fn search_query_to_source_and_metadata(
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
+pub async fn video_info_to_source_and_metadata(
+    client: reqwest::Client,
+    url: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+    let ytdl = YoutubeDl::new(client, url.clone());
+    let video_info = rytdl.get_video_info(url).await?;
+    let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
+    let my_metadata = MyAuxMetadata::Data(metadata);
+
+    Ok((ytdl.into(), vec![my_metadata]))
+}
+
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
@@ -1426,26 +1439,16 @@ pub async fn get_track_source_and_metadata(
         },
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
-            let mut ytdl = YoutubeDl::new(client, query);
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let metadata = ytdl.aux_metadata().await?;
-            let my_metadata = MyAuxMetadata::Data(metadata);
-            Ok((ytdl.into(), vec![my_metadata]))
+            video_info_to_source_and_metadata(client.clone(), query).await
+            // let mut ytdl = YoutubeDl::new(client, query);
+            // tracing::warn!("ytdl: {:?}", ytdl);
+            // let metadata = ytdl.aux_metadata().await?;
+            // let my_metadata = MyAuxMetadata::Data(metadata);
+            // Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
             search_query_to_source_and_metadata(client.clone(), query).await
-            // let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
-            // let results = rytdl.one_shot(query).await.unwrap();
-            // let result = results.first().unwrap();
-            // let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
-            // let source_url = match metadata.clone().source_url {
-            //     Some(url) => url.clone(),
-            //     None => "".to_string(),
-            // };
-            // let ytdl = YoutubeDl::new(client, source_url);
-            // let my_metadata = MyAuxMetadata::Data(metadata.clone());
-            // (ytdl.into(), vec![my_metadata])
         },
         QueryType::File(file) => {
             tracing::warn!("In File");

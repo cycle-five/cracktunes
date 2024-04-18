@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Duration};
 use crate::{commands::QueryType, errors::CrackedError};
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
-    RequestOptions,
+    RequestOptions, Video, VideoInfo, VideoOptions,
 };
 use songbird::input::AuxMetadata;
 
@@ -59,11 +59,13 @@ impl RustyYoutubeClient {
         Ok(Self { rusty_ytdl, client })
     }
 
+    /// Get a Playlist from a URL.
     pub async fn get_playlist(&self, url: String) -> Result<Playlist, CrackedError> {
         let playlist = Playlist::get(&url, None).await?;
         Ok(playlist)
     }
 
+    /// Convert a `SearchResult` to `AuxMetadata`.
     pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
         let mut metadata = AuxMetadata::default();
         match res.clone() {
@@ -90,6 +92,40 @@ impl RustyYoutubeClient {
             _ => {},
         };
         metadata
+    }
+
+    pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
+        let mut metadata = AuxMetadata::default();
+        let details = &video.video_details;
+        metadata.track = Some(details.title.clone());
+        metadata.artist = None;
+        metadata.album = None;
+        metadata.date = Some(details.publish_date.clone());
+
+        metadata.channels = Some(2);
+        metadata.channel = Some(details.owner_channel_name.clone());
+        metadata.duration = Some(Duration::from_millis(
+            details.length_seconds.parse::<u64>().unwrap_or_default(),
+        ));
+        metadata.sample_rate = Some(48000);
+        metadata.source_url = Some(details.video_url.clone());
+        metadata.title = Some(details.title.clone());
+        metadata.thumbnail = Some(details.thumbnails.first().unwrap().url.clone());
+
+        metadata
+    }
+
+    /// Get a video from a URL.
+    pub async fn get_video_info(&self, url: String) -> Result<VideoInfo, CrackedError> {
+        let vid_options = VideoOptions {
+            request_options: RequestOptions {
+                client: Some(self.client.clone()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let video = Video::new_with_options(&url, vid_options)?;
+        video.get_basic_info().await.map_err(|e| e.into())
     }
 
     // Search youtube
