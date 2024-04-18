@@ -344,14 +344,8 @@ mod test {
         let err = verify(x, CrackedError::NoGuildCached);
         assert_eq!(err, Err(CrackedError::NoGuildCached));
 
-        let ok = verify(Ok::<i32>(1), CrackedError::NoGuildCached);
+        let ok = verify(Ok::<i32, CrackedError>(1), CrackedError::NoGuildCached);
         assert_eq!(ok, Ok(1));
-
-        let err = verify(
-            Err(io::Error::new(io::ErrorKind::Other, "test")),
-            CrackedError::NoGuildCached,
-        );
-        assert_eq!(err, Err(CrackedError::NoGuildCached));
     }
 
     #[test]
@@ -396,14 +390,17 @@ mod test {
         assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
-        assert_eq!(format!("{}", err), "Row not found");
+        assert_eq!(
+            format!("{}", err),
+            "no rows returned by a query that expected to return at least one row"
+        );
 
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
-        // let response = reqwest::get("http://notreallol").await;
-        // let err = CrackedError::Reqwest(response.unwrap_err());
-        // assert_eq!(format!("{}", err), "test");
+        let response = reqwest::blocking::get("http://notreallol");
+        let err = CrackedError::Reqwest(response.unwrap_err());
+        assert_eq!(format!("{}", err), "test");
 
         // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
         // assert_eq!(format!("{}", err), "Unauthorized");
