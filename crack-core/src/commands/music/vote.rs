@@ -18,11 +18,20 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     let client: Client = ctx.data().topgg_client.clone();
     let has_voted = client.has_voted(user_id.get().to_string()).await?;
 
-    // let has_voted = UserVote::has_voted_recently_topgg(
-    //     user_id.get() as i64,
-    //     ctx.data().database_pool.as_ref().unwrap(),
-    // )
-    // .await;
+    let has_voted_db = UserVote::has_voted_recently_topgg(
+        user_id.get() as i64,
+        ctx.data().database_pool.as_ref().unwrap(),
+    )
+    .await;
+
+    if has_voted && !has_voted_db {
+        UserVote::insert_user_vote(
+            ctx.data().database_pool.as_ref().unwrap(),
+            user_id.get() as i64,
+            "top.gg".to_string(),
+        )
+        .await?;
+    }
 
     let msg_str = if has_voted {
         "Thank you for voting! Here is the link to vote again:"
