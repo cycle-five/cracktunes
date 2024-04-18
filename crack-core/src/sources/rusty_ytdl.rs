@@ -96,8 +96,8 @@ impl RustyYoutubeClient {
 
     pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
         let mut metadata = AuxMetadata::default();
+        tracing::warn!("{:?}", video.video_details);
         let details = &video.video_details;
-        metadata.track = Some(details.title.clone());
         metadata.artist = None;
         metadata.album = None;
         metadata.date = Some(details.publish_date.clone());
