@@ -105,7 +105,7 @@ pub async fn rename_all(
                 random_name = cur_nick.replace("&amp;", "&");
             }
             let emoji = cur_nick.chars().next().unwrap_or('⚔');
-            if !emoji.is_ascii() {
+            if !emoji.is_ascii() && !emoji.eq(&'🧪') {
                 format!("{} {}", emoji, random_name)
             } else {
                 format!("{} {}", "⚔", random_name)
