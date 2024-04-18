@@ -99,7 +99,7 @@ pub async fn rename_all(
             continue;
         }
         let r = rand::random::<usize>() % names.len();
-        let mut random_name = names.remove(r).clone();
+        let random_name = names.remove(r).clone();
         let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
             // if cur_nick.contains("&amp;") {
             //     random_name = cur_nick.replace("&amp;", "&");
