@@ -71,6 +71,6 @@ mod test {
     async fn test_topgg_api() {
         let client = Client::new(std::env::var("TOPGG_TOKEN").unwrap());
 
-        let has_voted = client.has_voted(123456789).await.unwrap();
+        let has_voted = client.has_voted(285219649921220608).await.unwrap();
     }
 }

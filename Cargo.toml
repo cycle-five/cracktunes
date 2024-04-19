@@ -92,8 +92,8 @@ debug = 1
 
 [profile.release]
 incremental = true
+debug = 0
 # Set this to 1 or 2 to get more useful backtraces in debugger.
-# debug = 0
 
 # [profile.dev]
 # # Disabling debug info speeds up builds a bunch,
