@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE guild_settings\n            set banned_domains = $2\n            WHERE guild_id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cd2f5620dd64f98db218842a27632df77b4f83adeb4c54c9d4318a002b3fea7f"
+}

@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select metadata.id, title, artist, album, track, date, channels, channel, start_time, duration, sample_rate, source_url, thumbnail\n            from play_log \n            join metadata on \n            play_log.metadata_id = metadata.id \n            where guild_id = $1 order by created_at desc limit 5\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "artist",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "album",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "track",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 6,
+        "name": "channels",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 7,
+        "name": "channel",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "start_time",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "duration",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "sample_rate",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "source_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "thumbnail",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "dd00c051149a6cd41760e6d8c4d42cc26d31879966ce0f5e079d225e28fb527c"
+}
