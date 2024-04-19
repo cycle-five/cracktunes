@@ -82,5 +82,7 @@ mod test {
         let client = Client::new(std::env::var("TOPGG_TOKEN").unwrap());
 
         let has_voted = client.has_voted(285219649921220608).await.unwrap();
+
+        assert!(has_voted);
     }
 }
