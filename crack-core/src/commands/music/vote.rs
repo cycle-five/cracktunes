@@ -67,6 +67,16 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 mod test {
     use super::*;
 
+    // #[ctor::ctor]
+    // fn set_env() {
+    //     use std::env;
+
+    //     env::set_var(
+    //         "TOPGG_TOKEN",
+    //         "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
+    //     );
+    // }
+
     #[tokio::test]
     async fn test_topgg_api() {
         let client = Client::new(std::env::var("TOPGG_TOKEN").unwrap());
