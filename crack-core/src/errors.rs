@@ -329,6 +329,7 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::io::{Error as StdError, ErrorKind};
 
     #[test]
     fn test_verify() {
@@ -409,7 +410,7 @@ mod test {
         let err = CrackedError::UnauthorizedUser;
         assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
 
-        let err = CrackedError::IO(std::io::Error::new(std::io::ErrorKind::Other, "test"));
+        let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
         assert_eq!(format!("{}", err), "test");
     }
 
