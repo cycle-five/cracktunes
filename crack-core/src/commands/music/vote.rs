@@ -22,7 +22,8 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
         user_id.get() as i64,
         ctx.data().database_pool.as_ref().unwrap(),
     )
-    .await;
+    .await
+    .unwrap_or(false);
 
     let record_vote = has_voted && !has_voted_db;
 

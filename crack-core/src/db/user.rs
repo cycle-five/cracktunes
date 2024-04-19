@@ -4,6 +4,8 @@ use sqlx::{
     PgPool,
 };
 
+use crate::errors::CrackedError;
+
 #[derive(Debug, Default)]
 pub struct User {
     pub id: i64,
@@ -113,8 +115,8 @@ impl UserVote {
         site_name: String,
         duration: chrono::NaiveDateTime,
         pool: &PgPool,
-    ) -> bool {
-        let result = sqlx::query_as!(
+    ) -> Result<bool, CrackedError> {
+        sqlx::query_as!(
             UserVote,
             "SELECT * FROM user_votes WHERE user_id = $1 AND timestamp > $2 AND site = $3",
             user_id,
@@ -123,13 +125,15 @@ impl UserVote {
         )
         .fetch_optional(pool)
         .await
-        .expect("Failed to execute query");
-
-        result.is_some()
+        .map(|vote| vote.is_some())
+        .map_err(|e| CrackedError::from(e))
     }
 
     /// Check if the user has voted on top.gg in the last 12 hours.
-    pub async fn has_voted_recently_topgg(user_id: i64, pool: &PgPool) -> bool {
+    pub async fn has_voted_recently_topgg(
+        user_id: i64,
+        pool: &PgPool,
+    ) -> Result<bool, CrackedError> {
         let twelve_hours_ago = chrono::Utc::now().naive_utc() - Duration::hours(12);
         let site_name = "top.gg".to_string(); // Define the site you are checking for votes from
 
@@ -199,7 +203,8 @@ mod test {
                 .unwrap(),
             &pool,
         )
-        .await;
+        .await
+        .unwrap();
         assert_eq!(has_voted, true);
     }
 
@@ -208,7 +213,7 @@ mod test {
         UserVote::insert_user_vote(&pool, 1, "top.gg".to_string())
             .await
             .unwrap();
-        let has_voted = UserVote::has_voted_recently_topgg(1, &pool).await;
+        let has_voted = UserVote::has_voted_recently_topgg(1, &pool).await.unwrap();
         assert_eq!(has_voted, true);
     }
 }
