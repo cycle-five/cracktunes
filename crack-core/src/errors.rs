@@ -329,7 +329,7 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::{io, ptr::copy};
+    use std::io;
 
     #[test]
     fn test_verify() {
@@ -463,8 +463,8 @@ mod test {
 
         let response1 = reqwest::blocking::get("http://notreallol");
         let response2 = reqwest::blocking::get("http://notreallol");
-        let err = CrackedError::Reqwest(response);
-        assert_eq!(err, CrackedError::Reqwest(response));
+        let err = CrackedError::Reqwest(response1.unwrap_err());
+        assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
 
         let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
         assert_eq!(
