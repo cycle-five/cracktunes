@@ -20,13 +20,10 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     // Check if they have voted with the topgg library.
     let client: Client = ctx.data().topgg_client.clone();
-    let has_voted = client
-        .has_voted(user_id.get().to_string())
-        .await
-        .map_err(|e| {
-            tracing::error!("Error checking if user has voted: {:?}", e);
-            CrackedError::InvalidTopGGToken
-        })?;
+    let has_voted = client.has_voted(user_id.get()).await.map_err(|e| {
+        tracing::error!("Error checking if user has voted: {:?}", e);
+        CrackedError::InvalidTopGGToken
+    })?;
 
     let has_voted_db = UserVote::has_voted_recently_topgg(
         user_id.get() as i64,
