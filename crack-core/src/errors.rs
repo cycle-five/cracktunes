@@ -402,7 +402,7 @@ mod test {
 
         let response = reqwest::blocking::get("http://notreallol");
         let err = CrackedError::Reqwest(response.unwrap_err());
-        assert_eq!(format!("{}", err), "test");
+        assert_eq!(format!("{}", err), "error sending request for url (http://notreallol/): error trying to connect: dns error: failed to lookup address information: Name or service not known");
 
         // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
         // assert_eq!(format!("{}", err), "Unauthorized");
