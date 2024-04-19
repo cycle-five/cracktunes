@@ -14,6 +14,8 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     let user_id = ctx.author().id;
 
+    tracing::warn!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
+
     // Check if they have voted with the topgg library.
     let client: Client = ctx.data().topgg_client.clone();
     let has_voted = client.has_voted(user_id.get().to_string()).await?;
