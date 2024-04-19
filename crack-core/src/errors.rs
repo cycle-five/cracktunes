@@ -329,7 +329,7 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io;
+    use std::{io, ptr::copy};
 
     #[test]
     fn test_verify() {
@@ -412,5 +412,64 @@ mod test {
 
         let err = CrackedError::IO(io::Error::new(io::ErrorKind::Other, "test"));
         assert_eq!(format!("{}", err), "test");
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        let err = CrackedError::NoGuildCached;
+        assert_eq!(err, CrackedError::NoGuildCached);
+
+        let err = CrackedError::NoGuildId;
+        assert_eq!(err, CrackedError::NoGuildId);
+
+        let err = CrackedError::NoGuildForChannelId(ChannelId::new(1));
+        assert_eq!(err, CrackedError::NoGuildForChannelId(ChannelId::new(1)));
+
+        let err = CrackedError::NoGuildSettings;
+        assert_eq!(err, CrackedError::NoGuildSettings);
+
+        let err = CrackedError::NoLogChannel;
+        assert_eq!(err, CrackedError::NoLogChannel);
+
+        let err = CrackedError::NoUserAutoplay;
+        assert_eq!(err, CrackedError::NoUserAutoplay);
+
+        let err = CrackedError::WrongVoiceChannel;
+        assert_eq!(err, CrackedError::WrongVoiceChannel);
+
+        let err = CrackedError::NothingPlaying;
+        assert_eq!(err, CrackedError::NothingPlaying);
+
+        let err = CrackedError::PlayListFail;
+        assert_eq!(err, CrackedError::PlayListFail);
+
+        let err = CrackedError::ParseTimeFail;
+        assert_eq!(err, CrackedError::ParseTimeFail);
+
+        let err = CrackedError::PoisonError(Error::from("test"));
+        assert_eq!(err, CrackedError::PoisonError(Error::from("test")));
+
+        let err = CrackedError::TrackFail(Error::from("test"));
+        assert_eq!(err, CrackedError::TrackFail(Error::from("test")));
+
+        let err = CrackedError::Serenity(SerenityError::Other("test"));
+        assert_eq!(err, CrackedError::Serenity(SerenityError::Other("test")));
+
+        let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
+        assert_eq!(err, CrackedError::SQLX(sqlx::Error::RowNotFound));
+
+        let err = CrackedError::SpotifyAuth;
+        assert_eq!(err, CrackedError::SpotifyAuth);
+
+        let response1 = reqwest::blocking::get("http://notreallol");
+        let response2 = reqwest::blocking::get("http://notreallol");
+        let err = CrackedError::Reqwest(response);
+        assert_eq!(err, CrackedError::Reqwest(response));
+
+        let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+        assert_eq!(
+            err,
+            CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+        );
     }
 }
