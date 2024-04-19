@@ -302,6 +302,7 @@ pub struct DataInner {
     pub topgg_client: topgg::Client,
 }
 
+/// Get the default topgg client
 fn default_topgg_client() -> topgg::Client {
     topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
 }
