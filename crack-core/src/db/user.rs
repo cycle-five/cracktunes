@@ -126,7 +126,7 @@ impl UserVote {
         .fetch_optional(pool)
         .await
         .map(|vote| vote.is_some())
-        .map_err(|e| CrackedError::from(e))
+        .map_err(CrackedError::from)
     }
 
     /// Check if the user has voted on top.gg in the last 12 hours.

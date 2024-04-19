@@ -28,7 +28,7 @@ pub async fn queue_yt_playlist<'a>(
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
     let n = playlist.videos.len() as f32;
-    let mut i: f32 = 0.0 as f32;
+    let mut i: f32 = 0.0_f32;
     for video in playlist.videos {
         // Update the search message with what's queuing right now.
         search_msg
