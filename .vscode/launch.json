@@ -21,7 +21,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         },
         {
             "type": "lldb",
@@ -39,7 +44,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         },
         {
             "type": "lldb",
@@ -58,7 +68,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         },
         {
             "type": "lldb",
@@ -77,7 +92,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         },
         {
             "type": "lldb",
@@ -96,7 +116,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         },
         {
             "type": "lldb",
@@ -115,7 +140,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
+                "TOPGG_TOKEN": "mytopggtoken",
+            }
         }
     ]
 }
