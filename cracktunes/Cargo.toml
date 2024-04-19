@@ -66,14 +66,7 @@ opentelemetry_sdk = { version = "0.22", features = [
 opentelemetry-semantic-conventions = { version = "0.14", optional = true }
 # tonic = { version = "0.11", optional = true }
 
-tracing = { workspace = true }
-tracing-opentelemetry = { version = "0.23.0", optional = true }
-tracing-bunyan-formatter = { version = "0.3.9", optional = true }
-tracing-appender = { version = "0.2", optional = true }
-tracing-subscriber = { version = "0.3", features = [
-    "env-filter",
-], optional = true }
-tracing-futures = { version = "0.2", optional = true }
+tracing-futures = { version = "0.2.5", optional = true }
 
 # crack-metrics
 prometheus = { version = "0.13", features = ["process"], optional = true }
@@ -95,3 +88,10 @@ sqlx = { version = "0.7.4", features = [
     "migrate",
     "json",
 ] }
+tracing = { workspace = true }
+tracing-opentelemetry = { version = "0.23.0", optional = true }
+tracing-bunyan-formatter = { version = "0.3.9", optional = true }
+tracing-appender = { version = "0.2.3", optional = true }
+tracing-subscriber = { version = "0.3.18", features = [
+    "env-filter",
+], optional = true }
