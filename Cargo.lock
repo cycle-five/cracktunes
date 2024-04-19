@@ -686,6 +686,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "command_attr"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32f08c85a02e066b7b4f7dcb60eee6ae0793ef7d6452a3547d1f19665df070a9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "config-file"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2312,6 +2323,12 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 dependencies = [
  "spin 0.5.2",
 ]
+
+[[package]]
+name = "levenshtein"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
 
 [[package]]
 name = "libc"
@@ -4453,10 +4470,12 @@ dependencies = [
  "bitflags 2.5.0",
  "bytes",
  "chrono",
+ "command_attr",
  "dashmap",
  "flate2",
  "futures",
  "fxhash",
+ "levenshtein",
  "mime_guess",
  "mini-moka",
  "parking_lot 0.12.1",
@@ -4465,6 +4484,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "static_assertions",
  "time",
  "tokio",
  "tokio-tungstenite 0.21.0",
@@ -4472,6 +4492,7 @@ dependencies = [
  "typemap_rev",
  "typesize",
  "url",
+ "uwl",
 ]
 
 [[package]]
@@ -5631,9 +5652,12 @@ source = "git+https://github.com/cycle-five/topgg?branch=main#c80d8ed24af8401a3b
 dependencies = [
  "cfg-if",
  "chrono",
+ "paste",
  "reqwest 0.12.3",
  "serde",
  "serde_json",
+ "serenity",
+ "urlencoding",
 ]
 
 [[package]]
@@ -6111,6 +6135,12 @@ checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
 dependencies = [
  "getrandom",
 ]
+
+[[package]]
+name = "uwl"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4bf03e0ca70d626ecc4ba6b0763b934b6f2976e8c744088bb3c1d646fbb1ad0"
 
 [[package]]
 name = "validators"
