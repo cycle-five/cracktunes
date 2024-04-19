@@ -62,3 +62,15 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_topgg_api() {
+        let client = Client::new(std::env::var("TOPGG_TOKEN").unwrap());
+
+        let has_voted = client.has_voted(123456789).await.unwrap();
+    }
+}
