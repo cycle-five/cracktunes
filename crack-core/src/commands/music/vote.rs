@@ -5,32 +5,30 @@ use crate::{
     messaging::messages::{VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL},
     Context, Error,
 };
-use poise::serenity_prelude::GuildId;
-use serenity::all::Http;
-use topgg::Client;
+use serenity::all::{GuildId, UserId};
 
 /// Vote link for cracktunes on top.gg
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::errors::CrackedError;
-
     let guild_id: Option<GuildId> = ctx.guild_id();
 
-    let user_id = ctx.author().id;
+    let user_id: UserId = ctx.author().id;
 
     tracing::warn!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
 
-    // Check if they have voted with the topgg library.
-    let client: Client = ctx.data().topgg_client.clone();
-    let has_voted = client.has_voted(user_id.get()).await.map_err(|e| {
-        tracing::error!("Error checking if user has voted: {:?}", e);
-        CrackedError::InvalidTopGGToken
-    })?;
+    let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
+    let has_voted: bool =
+        has_voted_bot_id(ctx.data().http_client.clone(), bot_id.into(), user_id.get())
+            .await
+            .unwrap_or(false);
 
-    let has_voted_db = has_voted_bot_id(ctx.data().http_client.clone(), ctx.http(), user_id.get())
-        .await
-        .unwrap_or(false);
+    let has_voted_db = UserVote::has_voted_recently_topgg(
+        user_id.get() as i64,
+        ctx.data().database_pool.as_ref().unwrap(),
+    )
+    .await
+    .unwrap_or(false);
 
     let record_vote = has_voted && !has_voted_db;
 
@@ -67,13 +65,13 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 pub struct CheckResponse {
     voted: u8,
 }
+
 /// Check if the user has voted on top.gg in the last 12 hours.
 pub async fn has_voted_bot_id(
     reqwest_client: reqwest::Client,
-    http: &Http,
+    bot_id: u64,
     user_id: u64,
 ) -> Result<bool, CrackedError> {
-    let bot_id = http_utils::get_bot_id(http).await?;
     let url = format!(
         "https://top.gg/api/bots/{}/check?userId={}",
         bot_id, user_id
