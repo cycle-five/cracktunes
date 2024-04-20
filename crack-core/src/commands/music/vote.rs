@@ -98,13 +98,11 @@ mod test {
     fn set_env() {
         use std::env;
 
-        env::set_var("TOPGG_TOKEN", "XXXX");
-        env::set_var("TOPGG_TOKEN", "XXXX");
+        env::set_var("TOPGG_TOKEN", "");
     }
 
     #[tokio::test]
     async fn test_topgg_api() {
-        let token = std::env::var("TOPGG_TOKEN").unwrap();
         let bot_id = 1115229568006103122;
         let my_id = 285219649921220608;
         let client = reqwest::Client::new();
