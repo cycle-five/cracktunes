@@ -71,15 +71,14 @@ mod test {
     fn set_env() {
         use std::env;
 
-        env::set_var(
-            "TOPGG_TOKEN",
-            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
-        );
+        env::set_var("TOPGG_TOKEN", "XXXX");
     }
 
     #[tokio::test]
     async fn test_topgg_api() {
-        let client = Client::new(std::env::var("TOPGG_TOKEN").unwrap());
+        let token = std::env::var("TOPGG_TOKEN").unwrap();
+        println!("Token: {}", token);
+        let client = Client::new(token);
 
         let has_voted = client.has_voted(285219649921220608).await.unwrap();
 

@@ -5657,7 +5657,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serenity",
- "urlencoding",
+ "tokio",
 ]
 
 [[package]]
