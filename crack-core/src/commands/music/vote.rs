@@ -1,4 +1,5 @@
 use crate::db::UserVote;
+use crate::errors::CrackedError;
 use crate::{
     messaging::messages::{VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL},
     Context, Error,
@@ -63,6 +64,32 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+pub struct CheckResponse {
+    voted: bool,
+    error: Option<String>,
+}
+/// Check if the user has voted on top.gg in the last 12 hours.
+pub async fn has_voted_bot_id(
+    reqwest_client: reqwest::Client,
+    bot_id: u64,
+    user_id: u64,
+) -> Result<bool, CrackedError> {
+    let url = format!(
+        "https://top.gg/api/bots/{}/check?userId={}",
+        bot_id, user_id
+    );
+    let token = std::env::var("TOPGG_TOKEN").map_err(|_| CrackedError::InvalidTopGGToken)?;
+    let response = reqwest_client
+        .get(&url)
+        .header("Authorization", token)
+        .send()
+        .await?
+        .json::<CheckResponse>()
+        .await?;
+    Ok(response.voted)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -72,15 +99,17 @@ mod test {
         use std::env;
 
         env::set_var("TOPGG_TOKEN", "XXXX");
+        env::set_var("TOPGG_TOKEN", "XXXX");
     }
 
     #[tokio::test]
     async fn test_topgg_api() {
         let token = std::env::var("TOPGG_TOKEN").unwrap();
-        println!("Token: {}", token);
-        let client = Client::new(token);
+        let bot_id = 1115229568006103122;
+        let my_id = 285219649921220608;
+        let client = reqwest::Client::new();
 
-        let has_voted = client.has_voted(285219649921220608).await.unwrap();
+        let has_voted = has_voted_bot_id(client, bot_id, my_id).await.unwrap();
 
         assert!(has_voted);
     }
