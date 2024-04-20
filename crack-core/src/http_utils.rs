@@ -1,6 +1,12 @@
 use crate::errors::CrackedError;
 use serenity::all::{ChannelId, GuildId, Http, UserId};
 
+/// Get the bot's user ID.
+#[cfg(not(tarpaulin_include))]
+pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
+    Ok(http.get_current_user().await?.id)
+}
+
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
 pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String {
