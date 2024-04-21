@@ -15,6 +15,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "play",
         "playnext",
         "playlog",
+        "optplay",
         "pause",
         "resume",
         "stop",
