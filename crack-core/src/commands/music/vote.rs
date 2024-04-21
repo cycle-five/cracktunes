@@ -2,7 +2,10 @@ use crate::db;
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::{
-    messaging::messages::{VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL},
+    messaging::messages::{
+        VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL,
+        VOTE_TOPGG_VOTED,
+    },
     Context, Error,
 };
 use serenity::all::{GuildId, UserId};
@@ -18,19 +21,23 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
 
     let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
+    tracing::warn!("bot_id: {:?}", bot_id);
     let has_voted: bool =
         has_voted_bot_id(ctx.data().http_client.clone(), bot_id.get(), user_id.get()).await?;
+    tracing::warn!("has_voted: {:?}", has_voted);
 
     let has_voted_db = db::UserVote::has_voted_recently_topgg(
         user_id.get() as i64,
         ctx.data().database_pool.as_ref().unwrap(),
     )
     .await?;
+    tracing::warn!("has_voted_db: {:?}", has_voted_db);
 
     let record_vote = has_voted && !has_voted_db;
 
     if record_vote {
         let username = ctx.author().name.clone();
+        tracing::warn!("username: {:?}", username);
         db::User::insert_or_update_user(
             ctx.data().database_pool.as_ref().unwrap(),
             user_id.get() as i64,
@@ -46,9 +53,9 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     let msg_str = if has_voted {
-        "Thank you for voting! Remember to vote again in 12 hours!"
+        VOTE_TOPGG_VOTED
     } else {
-        "You haven't voted recently! Here is the link to vote :)"
+        VOTE_TOPGG_NOT_VOTED
     };
 
     let reply_handle = ctx

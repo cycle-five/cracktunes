@@ -150,6 +150,8 @@ pub enum CrackedMessage {
         current: String,
         hash: String,
     },
+    VoteTopggVoted,
+    VoteTopggNotVoted,
     VoteSkip {
         mention: Mention,
         missing: usize,
@@ -313,6 +315,8 @@ impl Display for CrackedMessage {
             Self::VoiceChannelCreated { channel_name } => {
                 f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
             },
+            Self::VoteTopggVoted => f.write_str(VOTE_TOPGG_VOTED),
+            Self::VoteTopggNotVoted => f.write_str(VOTE_TOPGG_NOT_VOTED),
         }
     }
 }

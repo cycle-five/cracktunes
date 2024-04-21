@@ -130,6 +130,8 @@ pub const VOTE_TOPGG_TEXT: &str = "✅ Vote for Crack Tunes on";
 pub const VOTE_TOPGG_LINK_TEXT: &str = "top.gg!";
 pub const VOTE_TOPGG_LINK_TEXT_SHORT: &str = "vote";
 pub const VOTE_TOPGG_URL: &str = "https://top.gg/bot/1115229568006103122/vote";
+pub const VOTE_TOPGG_VOTED: &str = "Thank you for voting within the last 12 hours! Remember to vote again to get free premium features and support the bot.";
+pub const VOTE_TOPGG_NOT_VOTED: &str = "You haven't voted recently! Here is the link to vote :)";
 
 pub const INVITE_TEXT: &str = "🔗 ";
 pub const INVITE_LINK_TEXT: &str = "Invite Crack Tunes to your server!";
