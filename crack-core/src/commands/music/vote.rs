@@ -19,9 +19,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 
     let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
     let has_voted: bool =
-        has_voted_bot_id(ctx.data().http_client.clone(), bot_id.into(), user_id.get())
-            .await
-            .unwrap_or(false);
+        has_voted_bot_id(ctx.data().http_client.clone(), bot_id.get(), user_id.get()).await?;
 
     let has_voted_db = UserVote::has_voted_recently_topgg(
         user_id.get() as i64,

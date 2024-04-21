@@ -3,6 +3,15 @@ use serenity::all::{ChannelId, GuildId, Http, UserId};
 
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
+#[cfg(feature = "iamcrackbot")]
+pub async fn get_bot_id(_http: &Http) -> Result<UserId, CrackedError> {
+    Ok(_http.get_current_user().await?.id)
+    //Ok(UserId::new(1115229568006103122))
+}
+
+/// Get the bot's user ID.
+#[cfg(not(tarpaulin_include))]
+#[cfg(not(feature = "iamcrackbot"))]
 pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
     Ok(http.get_current_user().await?.id)
 }

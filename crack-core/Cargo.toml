@@ -20,10 +20,12 @@ default = [
     "crack-gpt",
     "crack-osint",
     "crack-metrics",
+    "iamcrackbot",
 ]
 playlist = []
 shuttle = []
 ignore-presence-log = []
+iamcrackbot = []
 cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
