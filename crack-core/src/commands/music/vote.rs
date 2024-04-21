@@ -1,4 +1,4 @@
-use crate::db::UserVote;
+use crate::db;
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::{
@@ -21,17 +21,23 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     let has_voted: bool =
         has_voted_bot_id(ctx.data().http_client.clone(), bot_id.get(), user_id.get()).await?;
 
-    let has_voted_db = UserVote::has_voted_recently_topgg(
+    let has_voted_db = db::UserVote::has_voted_recently_topgg(
         user_id.get() as i64,
         ctx.data().database_pool.as_ref().unwrap(),
     )
-    .await
-    .unwrap_or(false);
+    .await?;
 
     let record_vote = has_voted && !has_voted_db;
 
     if record_vote {
-        UserVote::insert_user_vote(
+        let username = ctx.author().name.clone();
+        db::User::insert_or_update_user(
+            ctx.data().database_pool.as_ref().unwrap(),
+            user_id.get() as i64,
+            username,
+        )
+        .await?;
+        db::UserVote::insert_user_vote(
             ctx.data().database_pool.as_ref().unwrap(),
             user_id.get() as i64,
             "top.gg".to_string(),
@@ -87,22 +93,23 @@ pub async fn has_voted_bot_id(
 
 #[cfg(test)]
 mod test {
+    use super::*;
 
-    // #[ctor::ctor]
-    // fn set_env() {
-    //     use std::env;
+    #[ctor::ctor]
+    fn set_env() {
+        use std::env;
 
-    //     env::set_var("TOPGG_TOKEN", "");
-    // }
+        env::set_var("TOPGG_TOKEN", "");
+    }
 
-    // #[tokio::test]
-    // async fn test_topgg_api() {
-    //     let bot_id = 1115229568006103122;
-    //     let my_id = 285219649921220608;
-    //     let client = reqwest::Client::new();
+    #[tokio::test]
+    async fn test_fail() {
+        let bot_id = 1115229568006103122;
+        let my_id = 285219649921220608;
+        let client = reqwest::Client::new();
 
-    //     let has_voted = has_voted_bot_id(client, bot_id, my_id).await.unwrap();
+        let has_voted = has_voted_bot_id(client, bot_id, my_id).await;
 
-    //     assert!(has_voted);
-    // }
+        assert!(has_voted.is_err());
+    }
 }
