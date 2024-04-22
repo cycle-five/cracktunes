@@ -27,7 +27,10 @@ pub async fn mute(
         true,
     )
     .await?;
-    send_response_poise(ctx, crack_msg, true).await.map(|_| ())
+    send_response_poise(ctx, crack_msg, true)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
 }
 
 /// Unmute a user.

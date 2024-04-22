@@ -56,4 +56,5 @@ pub async fn unmute_impl(
         )
         .await
     }
+    .map_err(Into::into)
 }

@@ -50,7 +50,7 @@ pub async fn build_log_embed(
     title: &str,
     description: &str,
     avatar_url: &str,
-) -> Result<CreateEmbed, Error> {
+) -> Result<CreateEmbed, CrackedError> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let footer = CreateEmbedFooter::new(now_time_str);
     Ok(CreateEmbed::default()
@@ -68,7 +68,7 @@ pub async fn build_log_embed_thumb(
     id: &str,
     description: &str,
     avatar_url: &str,
-) -> Result<CreateEmbed, Error> {
+) -> Result<CreateEmbed, CrackedError> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
     let footer = CreateEmbedFooter::new(footer_str);
@@ -90,7 +90,7 @@ pub async fn send_log_embed_thumb(
     title: &str,
     description: &str,
     avatar_url: &str,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
@@ -106,7 +106,7 @@ pub async fn send_log_embed(
     title: &str,
     description: &str,
     avatar_url: &str,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = build_log_embed(title, description, avatar_url).await?;
 
     channel
@@ -129,7 +129,7 @@ pub struct SendMessageParams {
 pub async fn send_channel_message(
     http: Arc<&Http>,
     params: SendMessageParams,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let channel = params.channel;
     // let http = params.http;
     let content = format!("{}", params.msg);
@@ -148,7 +148,7 @@ pub async fn send_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
     as_embed: bool,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     if as_embed {
         let embed = CreateEmbed::default().description(format!("{message}"));
         send_embed_response_poise(ctx, embed).await
@@ -157,11 +157,12 @@ pub async fn send_response_poise(
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Sends a reply response as text
 pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let message_str = format!("{message}");
 
     send_embed_response_str(ctx, message_str).await
@@ -172,7 +173,7 @@ pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
     send_embed_response(ctx, interaction, embed).await
 }
@@ -182,7 +183,7 @@ pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     content: &str,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
     send_embed_response(ctx, interaction, embed).await
 }
@@ -190,7 +191,7 @@ pub async fn create_response_text(
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction_new(ctx) {
@@ -205,7 +206,7 @@ pub async fn edit_response(
     http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
     edit_embed_response(http, interaction, embed).await
 }
@@ -214,7 +215,7 @@ pub async fn edit_response_text(
     http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     content: &str,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
 }
@@ -224,7 +225,7 @@ pub async fn edit_response_text(
 pub async fn send_embed_response_str(
     ctx: CrackContext<'_>,
     message_str: String,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     ctx.send(
         CreateReply::default()
             .embed(CreateEmbed::new().description(message_str))
@@ -242,8 +243,7 @@ pub async fn send_embed_response_str(
 pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
-    tracing::warn!("create_embed_response_poise");
+) -> Result<Message, CrackedError> {
     ctx.send(
         CreateReply::default()
             .embed(embed)
@@ -253,10 +253,7 @@ pub async fn send_embed_response_poise(
     .await?
     .into_message()
     .await
-    .map_err(|e| {
-        tracing::error!("error: {:?}", e);
-        e.into()
-    })
+    .map_err(Into::into)
 }
 
 /// Sends a regular reply response.
@@ -264,8 +261,7 @@ pub async fn send_embed_response_poise(
 pub async fn send_nonembed_response_poise(
     ctx: CrackContext<'_>,
     text: String,
-) -> Result<Message, Error> {
-    tracing::warn!("create_embed_response_poise");
+) -> Result<Message, CrackedError> {
     ctx.send(
         CreateReply::default()
             .content(text)
@@ -275,16 +271,13 @@ pub async fn send_nonembed_response_poise(
     .await?
     .into_message()
     .await
-    .map_err(|e| {
-        tracing::error!("error: {:?}", e);
-        e.into()
-    })
+    .map_err(Into::into)
 }
 
 pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     ctx.send(CreateReply::default().embed(embed))
         .await
         .unwrap()
@@ -297,7 +290,7 @@ pub async fn send_embed_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
@@ -317,7 +310,7 @@ pub async fn edit_reponse_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
             .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
@@ -348,7 +341,7 @@ pub async fn create_response_interaction(
     interaction: &Interaction,
     embed: CreateEmbed,
     _defer: bool,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => {
             // Is this "acknowledging" the interaction?
@@ -387,7 +380,7 @@ pub async fn create_response_interaction(
         Interaction::Ping(..)
         | Interaction::Component(..)
         | Interaction::Modal(..)
-        | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented").into()),
+        | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented")),
         _ => todo!(),
     }
 }
@@ -397,7 +390,7 @@ pub async fn defer_response_interaction(
     http: &Arc<Http>,
     interaction: &Interaction,
     embed: CreateEmbed,
-) -> Result<(), Error> {
+) -> Result<(), CrackedError> {
     match interaction {
         Interaction::Command(int) => int
             .create_response(
@@ -444,7 +437,7 @@ pub async fn edit_embed_response(
     http: &Arc<Http>,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             edit_reponse_interaction(http, int, embed).await
@@ -481,7 +474,7 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match get_interaction_new(ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => match interaction2 {
@@ -767,10 +760,8 @@ pub async fn create_paged_embed(
     message
         .edit(
             &ctx.serenity_context().http,
-            EditMessage::default().embed(
-                CreateEmbed::default()
-                    .description("Lryics timed out, run the command again to see them."),
-            ),
+            EditMessage::default()
+                .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
         )
         .await
         .unwrap();

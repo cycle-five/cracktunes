@@ -45,10 +45,11 @@ pub async fn authorize(
             settings
         })
         .clone();
-    let pool = ctx.data().database_pool.clone().ok_or({
-        tracing::error!("No database pool");
-        CrackedError::Other("No database pool")
-    })?;
+    let pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
     guild_settings.save(&pool).await?;
 
     let user_id = UserId::new(id);
@@ -76,4 +77,5 @@ pub async fn authorize(
     .await
     .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
     .map(|_| ())
+    .map_err(Into::into)
 }

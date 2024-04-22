@@ -61,6 +61,8 @@ pub const NO_GUILD_CACHED: &str = "⚠️ No Cached Guild Found!";
 pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
 pub const ONETWOFT: &str = "https://12ft.io/";
+pub const PAGINATION_COMPLETE: &str =
+    "🔚 Dynamic message timed out! Run the command again to see updates.";
 pub const PASSWORD_PWNED: &str = "⚠️ This password has been pwned!";
 pub const PASSWORD_SAFE: &str = "🔒 This password is safe!";
 pub const PAUSED: &str = "⏸️ Paused!";
@@ -126,7 +128,7 @@ pub const VERSION_LATEST_HASH: &str = "Build hash [here]";
 pub const VOLUME: &str = "🔊 Volume";
 pub const VOICE_CHANNEL_CREATED: &str = "🔊 Created voice channel!";
 
-pub const VOTE_TOPGG_TEXT: &str = "✅ Vote for Crack Tunes on";
+pub const VOTE_TOPGG_TEXT: &str = "✅ Vote for CrackTunes on";
 pub const VOTE_TOPGG_LINK_TEXT: &str = "top.gg!";
 pub const VOTE_TOPGG_LINK_TEXT_SHORT: &str = "vote";
 pub const VOTE_TOPGG_URL: &str = "https://top.gg/bot/1115229568006103122/vote";
