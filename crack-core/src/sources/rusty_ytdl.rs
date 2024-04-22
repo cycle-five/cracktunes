@@ -46,7 +46,7 @@ impl Display for RustyYoutubeSearch {
 impl RustyYoutubeClient {
     // Create a new `RustyYoutubeClient`.
     pub fn new() -> Result<Self, CrackedError> {
-        let client = http_utils::new_reqwest_client();
+        let client = http_utils::get_client();
         RustyYoutubeClient::new_with_client(client.clone())
     }
 
@@ -164,7 +164,7 @@ mod test {
     #[tokio::test]
     async fn test_ytdl() {
         // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let client = http_utils::new_reqwest_client().clone();
+        let client = http_utils::get_client().clone();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         let playlist = ytdl
@@ -205,7 +205,7 @@ mod test {
             "Oh Shit I'm Feeling It",
         ];
         let mut res_all = Vec::with_capacity(searches.len());
-        let client = http_utils::new_reqwest_client();
+        let client = http_utils::get_client();
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = &mut ytdl.search(Some(1)).await.unwrap();

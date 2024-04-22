@@ -60,7 +60,7 @@ pub async fn queue_yt_playlist<'a>(
     // let username = http_utils::http_to_username_or_default(http, user_id).await;
     // let database_pool = ctx.data().database_pool.as_ref().unwrap();
     // let playlist = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(
-    //     http_utils::new_reqwest_client(),
+    //     http_utils::get_client(),
     // )
     // .unwrap()
     // .get_playlist(&playlist_url)

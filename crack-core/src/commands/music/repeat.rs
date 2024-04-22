@@ -8,9 +8,11 @@ use songbird::tracks::{LoopState, TrackHandle};
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NoSongbird)?;
 
     let handler = call.lock().await;
     let track = handler.queue().current().unwrap();
