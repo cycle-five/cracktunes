@@ -90,7 +90,7 @@ pub async fn send_log_embed_thumb(
     title: &str,
     description: &str,
     avatar_url: &str,
-) -> Result<Message, CrackedError> {
+) -> Result<Message, Error> {
     let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel

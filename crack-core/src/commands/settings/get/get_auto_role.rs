@@ -35,6 +35,7 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
         )
         .await
         .map(|_| ())
+        .map_err(Into::into)
 }
 
 /// Get the auto role for the server.

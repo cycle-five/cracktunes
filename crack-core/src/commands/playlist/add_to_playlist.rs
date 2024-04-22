@@ -3,7 +3,6 @@ use crate::{
     db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, Playlist},
     errors::CrackedError,
-    utils::send_embed_response_str,
     Context, Error,
 };
 use sqlx::PgPool;
@@ -28,12 +27,7 @@ pub async fn add_to_playlist(
     let metadata = match typemap.get::<MyAuxMetadata>() {
         Some(MyAuxMetadata::Data(meta)) => meta,
         None => {
-            return send_embed_response_str(
-                ctx,
-                "Failed to get metadata for the current track".to_string(),
-            )
-            .await
-            .map(|_| ())
+            return Err(CrackedError::Other("Failed to get metadata for track.").into());
         },
     };
 
