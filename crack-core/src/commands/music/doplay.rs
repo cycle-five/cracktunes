@@ -93,7 +93,7 @@ pub enum QueryType {
 }
 
 /// Get the guild name.
-#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let _id = ctx.serenity_context().shard_id;
@@ -108,13 +108,14 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
-async fn send_search_message(ctx: Context<'_>) -> Result<Message, CrackedError> {
+#[cfg(not(tarpaulin_include))]
+pub async fn send_search_message(ctx: Context<'_>) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     send_embed_response_poise(ctx, embed).await
 }
 
 /// Play a song next
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -131,7 +132,7 @@ pub async fn playnext(
 }
 
 /// Search interactively for a song
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
 pub async fn search(
     ctx: Context<'_>,
@@ -143,7 +144,7 @@ pub async fn search(
 }
 
 /// Play a song.
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
@@ -155,7 +156,7 @@ pub async fn play(
 }
 
 /// Play a song with more options
-// #[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
 pub async fn optplay(
     ctx: Context<'_>,
@@ -169,6 +170,7 @@ pub async fn optplay(
 }
 
 /// Does the actual playing of the song, all the other commands use this.
+#[cfg(not(tarpaulin_include))]
 async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -317,6 +319,8 @@ async fn play_internal(
         .map(|_| ())
 }
 
+/// Edit the embed response of the given message.
+#[cfg(not(tarpaulin_include))]
 async fn edit_embed_response(
     ctx: Context<'_>,
     embed: CreateEmbed,
