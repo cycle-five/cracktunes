@@ -488,7 +488,7 @@ pub async fn edit_embed_response_poise(
                         .await
                         .map_err(Into::into)
                 },
-                _ => Err(CrackedError::Other("not implemented").into()),
+                _ => Err(CrackedError::Other("not implemented")),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
