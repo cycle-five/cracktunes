@@ -22,7 +22,6 @@
         "playlist": "",
         "cache": "",
         "ignore-presence-log": "",
-        "iamcrackbot": "",
     },
     "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [

@@ -20,12 +20,10 @@ default = [
     "crack-gpt",
     "crack-osint",
     "crack-metrics",
-    "iamcrackbot",
 ]
 playlist = []
 shuttle = []
 ignore-presence-log = []
-iamcrackbot = []
 cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
@@ -53,10 +51,6 @@ typemap_rev = "0.3.0"
 chatgpt_rs = { version = "1.2.3", optional = true }
 either = "1.11.0"
 chrono = { version = "0.4.38", features = ["serde"] }
-topgg = { git = "https://github.com/cycle-five/topgg", branch = "main", features = [
-    "autoposter",
-    "serenity-cached",
-] }
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }

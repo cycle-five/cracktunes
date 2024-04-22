@@ -298,14 +298,14 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    #[serde(skip, default = "default_topgg_client")]
-    pub topgg_client: topgg::Client,
+    // #[serde(skip, default = "default_topgg_client")]
+    // pub topgg_client: topgg::Client,
 }
 
-/// Get the default topgg client
-fn default_topgg_client() -> topgg::Client {
-    topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
-}
+// /// Get the default topgg client
+// fn default_topgg_client() -> topgg::Client {
+//     topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
+// }
 
 impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -448,7 +448,7 @@ impl EventLog {
 
 impl Default for DataInner {
     fn default() -> Self {
-        let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
+        // let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
         Self {
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
@@ -460,7 +460,7 @@ impl Default for DataInner {
             event_log: EventLog::default(),
             database_pool: None,
             http_client: reqwest::Client::new(),
-            topgg_client: topgg::Client::new(topgg_token),
+            // topgg_client: topgg::Client::new(topgg_token),
         }
     }
 }
