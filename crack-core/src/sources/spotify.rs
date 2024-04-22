@@ -50,9 +50,13 @@ pub struct ParsedSpotifyUrl {
 }
 
 type SpotifyCreds = Credentials;
+
+/// Spotify source.
 pub struct Spotify {}
 
+/// Implementation of Spotify source.
 impl Spotify {
+    /// Authenticate with Spotify.
     pub async fn auth(opt_creds: Option<SpotifyCreds>) -> Result<ClientCredsSpotify, CrackedError> {
         let spotify_client_id = match opt_creds.clone() {
             Some(creds) => creds.id,
@@ -77,6 +81,7 @@ impl Spotify {
         Ok(spotify)
     }
 
+    /// Parse a Spotify URL.
     pub async fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
         let captures = SPOTIFY_QUERY_REGEX
             .captures(query)
@@ -101,6 +106,7 @@ impl Spotify {
         })
     }
 
+    /// Extract tracks from a Spotify query.
     pub async fn extract_tracks(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -118,27 +124,11 @@ impl Spotify {
         }
     }
 
+    /// Extract a `QueryType` from a Spotify query.
     pub async fn extract(
         spotify: &ClientCredsSpotify,
         query: &str,
     ) -> Result<QueryType, CrackedError> {
-        // let captures = SPOTIFY_QUERY_REGEX
-        //     .captures(query)
-        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
-
-        // let media_type = captures
-        //     .name("media_type")
-        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
-        //     .as_str();
-
-        // let media_type = MediaType::from_str(media_type)
-        //     .map_err(|_| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
-
-        // let media_id = captures
-        //     .name("media_id")
-        //     .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?
-        //     .as_str();
-
         let ParsedSpotifyUrl {
             media_type,
             media_id,
@@ -153,6 +143,7 @@ impl Spotify {
         }
     }
 
+    /// Search Spotify for a query.
     pub async fn search(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -294,6 +285,7 @@ impl Spotify {
         Ok(QueryType::Keywords(query))
     }
 
+    /// Get the info of a Spotify album as a `QueryType`.
     async fn get_album_info(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -373,10 +365,12 @@ impl Spotify {
         Ok(query_list)
     }
 
+    /// Build a query for searching, from the artist names and the track name.
     fn build_query(artists: &str, track_name: &str) -> String {
         format!("{} - {}", artists, track_name)
     }
 
+    /// Join the artist names into a single string.
     fn join_artist_names(artists: &[SimplifiedArtist]) -> String {
         let artist_names: Vec<String> = artists.iter().map(|artist| artist.name.clone()).collect();
         artist_names.join(" ")
@@ -461,6 +455,7 @@ impl SpotifyTrack {
     }
 }
 
+/// Implementation of From for SpotifyTrack.
 impl From<rspotify::model::FullTrack> for SpotifyTrack {
     fn from(track: rspotify::model::FullTrack) -> Self {
         Self::new(track)
