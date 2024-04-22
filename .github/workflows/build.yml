@@ -51,7 +51,7 @@ jobs:
 
       - name: Migrate database
         env:
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
         run: |
@@ -63,12 +63,18 @@ jobs:
         if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
         env:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: cargo test --all-features --workspace
 
       - name: Run Release Unit Tests
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
         env:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: cargo test --all-features --release --locked
 
       # - name: Build Binary
@@ -77,4 +83,9 @@ jobs:
 
       - name: Build Release Binary
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+        env:
+          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
         run: cargo build --all-features --release --locked
