@@ -176,6 +176,7 @@ async fn play_internal(
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
     // let search_msg = send_search_message(ctx).await?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
@@ -202,11 +203,11 @@ async fn play_internal(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let mut msg = send_search_message(ctx).await?;
+    let mut search_msg = send_search_message(ctx).await?;
 
-    tracing::warn!("search response msg: {:?}", msg);
+    ctx.data().add_msg_to_cache(guild_id, search_msg.clone());
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    tracing::debug!("search response msg: {:?}", search_msg);
 
     let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
@@ -223,7 +224,7 @@ async fn play_internal(
     tracing::warn!("query_type: {:?}", query_type);
 
     // FIXME: Super hacky, fix this shit.
-    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut msg).await?;
+    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
 
     if !move_on {
         return Ok(());
@@ -241,6 +242,7 @@ async fn play_internal(
         guild_settings.volume
     };
 
+    // let queue = call.lock().await.queue().current_queue().clone();
     // tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
@@ -310,7 +312,7 @@ async fn play_internal(
         },
     };
 
-    edit_embed_response(ctx, embed, msg.clone())
+    edit_embed_response(ctx, embed, search_msg.clone())
         .await
         .map(|_| ())
 }

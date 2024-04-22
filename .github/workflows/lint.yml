@@ -33,6 +33,7 @@ jobs:
           database: postgres
           port: 5432
         id: postgres
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.cache-key }}
