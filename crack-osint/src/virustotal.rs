@@ -203,9 +203,7 @@ impl VirusTotalClient {
 }
 
 #[cfg(test)]
-mod tests {
-    //use super::json;
-
+mod test {
     use serde_json::json;
 
     // Example JSON response (simplified for brevity)

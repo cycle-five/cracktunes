@@ -496,15 +496,11 @@ pub async fn handle_event(
                     } else if !title.is_empty() {
                         title = format!("Member Updated: {}", new.user.name);
                     };
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
-                    tracing::warn!(title);
                 },
                 (Some(_), None) => {
                     title = format!("Member Updated: {}", new.user.name);
                 },
-                (None, None) => {
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
-                },
+                _ => {},
             }
             match maybe_log_channel {
                 Some(channel_id) => {
@@ -520,7 +516,8 @@ pub async fn handle_event(
                     .await?;
                 },
                 None => {
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
+                    tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
+                    tracing::debug!(title);
                 },
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))

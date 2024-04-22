@@ -14,30 +14,35 @@ use serenity::all::{GuildId, UserId};
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
+    vote_(ctx).await
+}
+
+/// Internal vote function without the #command macro
+pub async fn vote_(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: Option<GuildId> = ctx.guild_id();
 
     let user_id: UserId = ctx.author().id;
 
-    tracing::warn!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
+    tracing::info!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
 
     let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
-    tracing::warn!("bot_id: {:?}", bot_id);
+    tracing::info!("bot_id: {:?}", bot_id);
     let has_voted: bool =
         has_voted_bot_id(ctx.data().http_client.clone(), bot_id.get(), user_id.get()).await?;
-    tracing::warn!("has_voted: {:?}", has_voted);
+    tracing::info!("has_voted: {:?}", has_voted);
 
     let has_voted_db = db::UserVote::has_voted_recently_topgg(
         user_id.get() as i64,
         ctx.data().database_pool.as_ref().unwrap(),
     )
     .await?;
-    tracing::warn!("has_voted_db: {:?}", has_voted_db);
+    tracing::info!("has_voted_db: {:?}", has_voted_db);
 
     let record_vote = has_voted && !has_voted_db;
 
     if record_vote {
         let username = ctx.author().name.clone();
-        tracing::warn!("username: {:?}", username);
+        tracing::info!("username: {:?}", username);
         db::User::insert_or_update_user(
             ctx.data().database_pool.as_ref().unwrap(),
             user_id.get() as i64,

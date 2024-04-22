@@ -1,20 +1,19 @@
-use std::sync::Arc;
-use std::sync::RwLock;
-
 use serenity::all::GuildId;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use crate::db::GuildEntity;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
 use crate::utils::send_response_poise;
-use crate::Context;
-use crate::Error;
+use crate::{Context, Error};
 
+/// Convenience type for readability.
 type TSGuildSettingsMap = Arc<RwLock<HashMap<GuildId, GuildSettings>>>;
 
-/// Set the premium status of the guild.
+/// Do the actual settings of the premium status internally.
 pub async fn do_set_premium(
     guild_id: serenity::model::id::GuildId,
     guild_name: String,
@@ -35,9 +34,9 @@ pub async fn do_set_premium(
     Ok(settings.clone())
 }
 
-/// Set the premium status of the guild.
+/// Internal set premium function without #command macro.
 #[cfg(not(tarpaulin_include))]
-pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<GuildSettings, Error> {
+pub async fn set_premium_(ctx: Context<'_>, premium: bool) -> Result<GuildSettings, Error> {
     let guild_id = ctx.guild_id().unwrap();
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
     let prefix = ctx.data().bot_settings.get_prefix();
@@ -67,13 +66,11 @@ pub async fn premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] premium: bool,
 ) -> Result<(), Error> {
-    set_premium_internal(ctx, premium).await?;
-
-    Ok(())
+    set_premium_(ctx, premium).await.map(|_| ())
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     /// Test setting premium of the Guild settings structure

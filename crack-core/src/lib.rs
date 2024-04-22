@@ -41,8 +41,8 @@ pub mod utils;
 
 //pub extern crate osint;
 
-#[cfg(test)]
-pub mod test;
+// #[cfg(test)]
+// pub mod test;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
@@ -521,8 +521,8 @@ impl Data {
             .insert(ts, msg)
     }
 
-    /// Get and remove a message from the cache
-    pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    /// Remove and return a message from the cache based on the guild_id and timestamp.
+    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
             .get_mut(&guild_id)
@@ -552,7 +552,7 @@ impl Data {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

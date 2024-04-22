@@ -1,11 +1,11 @@
+use crate::errors::CrackedError;
 use ::chrono::Duration;
 use sqlx::{
     types::chrono::{self},
     PgPool,
 };
 
-use crate::errors::CrackedError;
-
+/// The base db struct for a discord user.
 #[derive(Debug, Default)]
 pub struct User {
     pub id: i64,
@@ -18,6 +18,7 @@ pub struct User {
     pub last_seen: chrono::NaiveDate,
 }
 
+/// UserVote is a struct that represents a vote from a user for the bot on a toplist site.
 #[derive(sqlx::FromRow)]
 pub struct UserVote {
     pub id: i64,
@@ -26,7 +27,9 @@ pub struct UserVote {
     pub timestamp: chrono::NaiveDateTime,
 }
 
+/// Implementations for the User struct.
 impl User {
+    /// Insert a test user into the database.
     pub async fn insert_test_user(pool: &PgPool, user_id: Option<i64>, username: Option<String>) {
         let user = username.unwrap_or("test".to_string());
         let user_id = user_id.unwrap_or(1);
@@ -45,6 +48,7 @@ impl User {
         }
     }
 
+    /// Get a user from the database by user_id.
     pub async fn get_user(pool: &PgPool, user_id: i64) -> Option<User> {
         let result = sqlx::query_as!(User, r#"SELECT * FROM public.user WHERE id = $1"#, user_id)
             .fetch_optional(pool)
@@ -59,6 +63,7 @@ impl User {
         }
     }
 
+    /// Insert a user into the database if it's new, update the username and lastseen otherwise.
     pub async fn insert_or_update_user(
         pool: &PgPool,
         user_id: i64,
@@ -79,7 +84,9 @@ impl User {
     }
 }
 
+/// Implementations for the UserVote db actions.
 impl UserVote {
+    /// Insert a user vote into the database.
     pub async fn insert_user_vote(
         pool: &PgPool,
         user_id: i64,
@@ -142,26 +149,25 @@ impl UserVote {
 }
 
 #[cfg(test)]
-#[ctor::ctor]
-fn set_env() {
-    use std::env;
-
-    env::set_var(
-        "DATABASE_URL",
-        "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
-    );
-}
-
-#[cfg(test)]
 mod test {
+    use super::UserVote;
+    use crate::db::User;
     use chrono::{Duration, Utc};
     use sqlx::PgPool;
 
-    use crate::db::User;
-
-    use super::UserVote;
-
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    /// Make sure the DATABASE_URL is set before running tests.
+    #[cfg(test)]
+    #[ctor::ctor]
+    fn set_env() {
+        use std::env;
+
+        env::set_var(
+            "DATABASE_URL",
+            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
+        );
+    }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user(pool: PgPool) {

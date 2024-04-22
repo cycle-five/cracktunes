@@ -3,17 +3,18 @@ use serenity::all::{ChannelId, GuildId, Http, UserId};
 
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
-#[cfg(feature = "iamcrackbot")]
-pub async fn get_bot_id(_http: &Http) -> Result<UserId, CrackedError> {
-    Ok(_http.get_current_user().await?.id)
-    //Ok(UserId::new(1115229568006103122))
-}
-
-/// Get the bot's user ID.
-#[cfg(not(tarpaulin_include))]
-#[cfg(not(feature = "iamcrackbot"))]
 pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
-    Ok(http.get_current_user().await?.id)
+    let tune_titan_id = UserId::new(1124707756750934159);
+    let rusty_bot_id = UserId::new(1111844110597374042);
+    let cracktunes_id = UserId::new(1115229568006103122);
+    let bot_id = http.get_current_user().await?.id;
+
+    // If the bot is tune titan or rusty bot, return cracktunes ID
+    if bot_id == tune_titan_id || bot_id == rusty_bot_id {
+        Ok(cracktunes_id)
+    } else {
+        Ok(bot_id)
+    }
 }
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
