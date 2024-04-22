@@ -5,13 +5,14 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use regex::Regex;
+use rspotify::model::FullPlaylist;
 use rspotify::{
     clients::BaseClient,
     model::{
         AlbumId, Country, Market, PlayableItem, PlaylistId, Recommendations, SearchResult,
         SimplifiedArtist, TrackId,
     },
-    ClientCredsSpotify, Config, Credentials,
+    ClientCredsSpotify, ClientResult, Config, Credentials,
 };
 use std::{env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
@@ -24,13 +25,37 @@ lazy_static! {
             .unwrap();
 }
 
-#[derive(Clone, Copy)]
+pub struct CrackClientCredsSpotify(ClientCredsSpotify);
+
+impl CrackClientCredsSpotify {
+    pub async fn new(opt_creds: Option<SpotifyCreds>) -> Result<Self, CrackedError> {
+        let creds = Spotify::auth(opt_creds).await?;
+        Ok(Self(creds))
+    }
+
+    pub async fn get(&self) -> Result<&ClientCredsSpotify, CrackedError> {
+        Ok(&self.0)
+    }
+
+    pub async fn playlist(
+        &self,
+        playlist_id: PlaylistId<'_>,
+        fields: Option<&str>,
+        market: Option<rspotify::model::Market>,
+    ) -> ClientResult<FullPlaylist> {
+        self.0.playlist(playlist_id, fields, market).await
+    }
+}
+
+/// Media type for Spotify.
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MediaType {
     Track,
     Album,
     Playlist,
 }
 
+/// Implementation of FromStr for MediaType.
 impl FromStr for MediaType {
     type Err = ();
 
@@ -460,4 +485,82 @@ impl From<rspotify::model::FullTrack> for SpotifyTrack {
     fn from(track: rspotify::model::FullTrack) -> Self {
         Self::new(track)
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // // Mock ClientCredsSpotify
+    // struct MockClientCredsSpotify {}
+
+    // /// Mock
+
+    // #[tokio::test]
+    // async fn test_auth() {
+    //     let creds = Credentials::new("id", "secret");
+    //     let spotify = Spotify::auth(Some(creds)).await;
+    //     assert!(spotify.is_ok());
+    // }
+
+    #[tokio::test]
+    async fn test_parse_spotify_url_fail() {
+        let url = "https://open.spotify.com/trak/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await;
+        assert!(parsed.is_err());
+
+        let url = "https://open.spoify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await;
+        assert!(parsed.is_err());
+
+        let url = "https://open.spotify.com/playlis/";
+        let parsed = Spotify::parse_spotify_url(url).await;
+        assert!(parsed.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_parse_spotify_url() {
+        let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Track);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+
+        let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Album);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+
+        let url = "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Playlist);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+
+        let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Track);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+
+        let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Album);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+
+        let url =
+            "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
+        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        assert_eq!(parsed.media_type, MediaType::Playlist);
+        assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
+    }
+
+    // #[tokio::test]
+    // async fn test_extract_tracks() {
+    //     let spotify = Spotify::auth(None).await.unwrap();
+    //     let tracks = Spotify::extract_tracks(
+    //         &spotify,
+    //         "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC",
+    //     )
+    //     .await
+    //     .unwrap();
+    //     assert_eq!(tracks.len(), 50);
+    // }
 }
