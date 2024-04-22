@@ -184,7 +184,11 @@ mod test {
             "Nightwish I Wish I had an Angel",
             "Oh Shit I'm Feeling It",
         ];
-        let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new().unwrap();
+        let client = reqwest::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
+        let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         let mut all_res = Vec::new();
         for search in searches {
