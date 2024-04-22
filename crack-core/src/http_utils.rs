@@ -1,6 +1,26 @@
 use crate::errors::CrackedError;
 use serenity::all::{ChannelId, GuildId, Http, UserId};
 
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+    println!("Creating a new client..."); // Optional: for demonstration
+    reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+});
+
+pub fn get_client() -> &'static Client {
+    &CLIENT
+}
+
+/// Get a new reqwest client with consistent settings.
+pub fn new_reqwest_client() -> &'static Client {
+    &CLIENT
+}
+
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
@@ -33,7 +53,8 @@ pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String
 pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // FIXME: This is definitely not efficient, we want ot reuse this client.
     // Make a GET request, which will follow redirects by default
-    let response = reqwest::get(url).await?;
+    let client = new_reqwest_client();
+    let response = client.get(url).send().await?;
 
     // Extract the final URL after following all redirects
     let final_url = response.url().clone();

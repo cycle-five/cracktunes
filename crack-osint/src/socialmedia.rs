@@ -39,8 +39,9 @@ pub async fn fetch_social_media_info(email: &str) -> Result<SocialMediaResponse,
     // Construct the URL for the hypothetical API request
     let api_url = format!("http://hypothetical-api.com/search?email={}", email);
 
+    let client = reqwest::ClientBuild::new().use_rustls_tls().build()?;
     // Send the API request
-    let response: SocialMediaResponse = reqwest::get(&api_url).await?.json().await?;
+    let response: SocialMediaResponse = client.get(&api_url).send().await?.json().await?;
 
     Ok(response)
 }
@@ -62,7 +63,7 @@ pub async fn socialmedia(
             )
             .await?;
             Ok(())
-        }
+        },
         Err(e) => Err(e),
     }
 }

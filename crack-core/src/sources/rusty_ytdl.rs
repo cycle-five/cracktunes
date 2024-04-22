@@ -1,6 +1,6 @@
 use std::{fmt::Display, time::Duration};
 
-use crate::{commands::QueryType, errors::CrackedError};
+use crate::{commands::QueryType, errors::CrackedError, http_utils};
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
     RequestOptions, Video, VideoInfo, VideoOptions,
@@ -46,8 +46,8 @@ impl Display for RustyYoutubeSearch {
 impl RustyYoutubeClient {
     // Create a new `RustyYoutubeClient`.
     pub fn new() -> Result<Self, CrackedError> {
-        let client = reqwest::Client::new();
-        RustyYoutubeClient::new_with_client(client)
+        let client = http_utils::new_reqwest_client();
+        RustyYoutubeClient::new_with_client(client.clone())
     }
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
@@ -157,14 +157,14 @@ impl RustyYoutubeClient {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
+    use crate::http_utils;
     use songbird::input::YoutubeDl;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_ytdl() {
         // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let client = reqwest::Client::new();
+        let client = http_utils::new_reqwest_client().clone();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         let playlist = ytdl
@@ -205,7 +205,7 @@ mod test {
             "Oh Shit I'm Feeling It",
         ];
         let mut res_all = Vec::with_capacity(searches.len());
-        let client = reqwest::Client::new();
+        let client = http_utils::new_reqwest_client();
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = &mut ytdl.search(Some(1)).await.unwrap();

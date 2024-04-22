@@ -11,8 +11,10 @@ pub async fn fetch_wayback_snapshot(url: &str) -> Result<String, Error> {
         url
     );
 
+    let client = reqwest::ClientBuilder::new().use_rustls_tls().build()?;
+
     // Send the API request
-    let response: Vec<Vec<String>> = reqwest::get(&api_url).await?.json().await?;
+    let response: Vec<Vec<String>> = client.get(&api_url).send().await?.json().await?;
 
     // The first item in the response is the field names, so we get the second item for the first snapshot
     let snapshot = &response.get(1).ok_or("No snapshots found")?;
@@ -34,7 +36,7 @@ pub async fn wayback(
             // Send the snapshot URL as the command's response
             send_response_poise(ctx, CrackedMessage::WaybackSnapshot { url: snapshot_url }).await?;
             Ok(())
-        }
+        },
         Err(e) => Err(e),
     }
 }

@@ -52,13 +52,15 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
+    use crate::http_utils;
+
     ctx.reply("Scanning...").await?;
     tracing::info!("Scanning URL: {}", url);
     let api_key =
         std::env::var("VIRUSTOTAL_API_KEY").map_err(|_| crate::CrackedError::NoVirusTotalApiKey)?;
     let channel_id = ctx.channel_id();
     tracing::info!("channel_id: {}", channel_id);
-    let client = VirusTotalClient::new(&api_key);
+    let client = VirusTotalClient::new(&api_key, http_utils::get_client().clone());
 
     tracing::info!("client: {:?}", client);
 
@@ -90,12 +92,14 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error> {
+    use crate::http_utils;
+
     ctx.reply("Scanning...").await?;
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
         .map_err(|_| crate::CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
     let channel_id = ctx.channel_id();
     tracing::info!("channel_id: {}", channel_id);
-    let client = VirusTotalClient::new(&api_key);
+    let client = VirusTotalClient::new(&api_key, http_utils::get_client().clone());
 
     tracing::info!("client: {:?}", client);
 

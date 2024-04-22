@@ -111,14 +111,16 @@ mod test {
     fn set_env() {
         use std::env;
 
-        env::set_var("TOPGG_TOKEN", "");
+        if env::var("TOPGG_TOKEN").is_err() {
+            env::set_var("TOPGG_TOKEN", "FAKE_TOKEN");
+        }
     }
 
     #[tokio::test]
     async fn test_fail() {
         let bot_id = 1115229568006103122;
         let my_id = 285219649921220608;
-        let client = reqwest::Client::new();
+        let client = http_utils::new_reqwest_client().clone();
 
         let has_voted = has_voted_bot_id(client, bot_id, my_id).await;
 

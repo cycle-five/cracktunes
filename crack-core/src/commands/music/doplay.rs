@@ -358,9 +358,12 @@ async fn print_queue(queue: Vec<TrackHandle>) {
 
 /// Download a file and upload it as an mp3.
 async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
-    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
-        .aux_metadata()
-        .await?;
+    let metadata = YoutubeDl::new(
+        reqwest::ClientBuilder::new().use_rustls_tls().build()?,
+        url.to_string(),
+    )
+    .aux_metadata()
+    .await?;
 
     let args = [
         "--extract-audio",
@@ -389,7 +392,7 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
         return download_file_ytdlp_mp3(url).await;
     }
 
-    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
+    let metadata = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string())
         .aux_metadata()
         .await?;
 
@@ -682,9 +685,10 @@ async fn match_mode<'a>(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-                let res = YoutubeDl::new_search(reqwest::Client::new(), query.clone())
-                    .search(None)
-                    .await?;
+                let res =
+                    YoutubeDl::new_search(http_utils::new_reqwest_client().clone(), query.clone())
+                        .search(None)
+                        .await?;
                 let user_id = ctx.author().id;
                 send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
             },
@@ -917,7 +921,7 @@ async fn match_mode<'a>(
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
                 // FIXME
-                let mut src = YoutubeDl::new(reqwest::Client::new(), url);
+                let mut src = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url);
                 let metadata = src.aux_metadata().await?;
                 enqueue_track_pgwrite(ctx, &call, &QueryType::NewYoutubeDl((src, metadata)))
                     .await?;
@@ -1017,7 +1021,8 @@ pub async fn get_query_type_from_url(
                 } else {
                     //YouTube::extract(url)
                     tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
-                    let mut yt = YoutubeDl::new(reqwest::Client::new(), url.to_string());
+                    let mut yt =
+                        YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string());
                     let metadata = yt.aux_metadata().await?;
                     Some(QueryType::NewYoutubeDl((yt, metadata)))
                 }
@@ -1246,7 +1251,7 @@ async fn get_download_status_and_filename(
     // FIXME: Don't hardcode this.
     let prefix = "/data/downloads";
     let extension = if mp3 { "mp3" } else { "webm" };
-    let client = reqwest::Client::new();
+    let client = http_utils::new_reqwest_client().clone();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
         QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
@@ -1408,7 +1413,7 @@ pub async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    let client = reqwest::Client::new();
+    let client = http_utils::new_reqwest_client().clone();
     tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
     match query_type {
         QueryType::YoutubeSearch(query) => {

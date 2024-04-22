@@ -781,6 +781,7 @@ dependencies = [
  "lazy_static",
  "lyric_finder",
  "mockall",
+ "once_cell",
  "poise",
  "proc-macro2",
  "prometheus",

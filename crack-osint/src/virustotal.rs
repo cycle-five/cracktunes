@@ -1,5 +1,5 @@
 //use poise::serenity_prelude::json::hashmap_to_json_map;
-use reqwest::Error;
+use reqwest::{Client, Error};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -108,8 +108,7 @@ pub struct VirusTotalClient {
 }
 
 impl VirusTotalClient {
-    pub fn new(api_key: &str) -> Self {
-        let client = reqwest::Client::new();
+    pub fn new(api_key: &str, client: Client) -> Self {
         let api_url = "https://www.virustotal.com/api/v3/urls".to_string();
         Self {
             client,

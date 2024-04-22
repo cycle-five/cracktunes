@@ -12,7 +12,6 @@ use guild::settings::{
     DEFAULT_VOLUME_LEVEL,
 };
 use poise::serenity_prelude::GuildId;
-use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use serenity::all::Message;
 use std::fs;
@@ -258,7 +257,10 @@ impl PhoneCodeData {
         url: &str,
         file_name: &str,
     ) -> Result<HashMap<String, String>, CrackedError> {
-        let response = get(url).map_err(CrackedError::Reqwest)?;
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()?;
+        let response = client.get(url).send().map_err(CrackedError::Reqwest)?;
         let content = response.text().map_err(CrackedError::Reqwest)?;
 
         // Save to local file
@@ -459,7 +461,7 @@ impl Default for DataInner {
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
-            http_client: reqwest::Client::new(),
+            http_client: http_utils::new_reqwest_client().clone(),
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }
