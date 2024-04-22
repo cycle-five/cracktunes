@@ -122,6 +122,7 @@ mod test {
         let my_id = 285219649921220608;
         let client = http_utils::get_client().clone();
 
+
         let has_voted = has_voted_bot_id(client, bot_id, my_id).await;
 
         assert!(has_voted.is_err());

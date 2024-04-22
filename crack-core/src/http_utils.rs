@@ -53,6 +53,7 @@ pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String
 pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // FIXME: This is definitely not efficient, we want ot reuse this client.
     // Make a GET request, which will follow redirects by default
+
     let client = get_client();
     let response = client.get(url).send().await?;
 

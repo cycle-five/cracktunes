@@ -62,8 +62,6 @@ songbird = { workspace = true }
 symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
-# tungstenite = { workspace = true }
-# async-tungstenite = { workspace = true }
 
 [dependencies.rspotify]
 version = "0.13.1"

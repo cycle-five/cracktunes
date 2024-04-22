@@ -686,6 +686,7 @@ async fn match_mode<'a>(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+
                 let res = YoutubeDl::new_search(http_utils::get_client().clone(), query.clone())
                     .search(None)
                     .await?;

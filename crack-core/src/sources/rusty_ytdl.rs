@@ -184,6 +184,7 @@ mod test {
             "Nightwish I Wish I had an Angel",
             "Oh Shit I'm Feeling It",
         ];
+
         let client = reqwest::ClientBuilder::new()
             .use_rustls_tls()
             .build()
