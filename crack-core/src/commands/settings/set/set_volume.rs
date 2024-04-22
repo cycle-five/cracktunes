@@ -25,7 +25,7 @@ pub fn set_volume(
 
 /// Set the volume for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
 pub async fn volume(
     ctx: Context<'_>,
     #[description = "Volume to set the bot settings to"] volume: f32,

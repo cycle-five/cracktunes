@@ -5,7 +5,7 @@ use serenity::all::{Channel, GuildId};
 use serenity::model::id::ChannelId;
 
 /// Set a log channel for a specific guild.
-#[poise::command(prefix_command, owners_only)]
+#[poise::command(prefix_command, required_permissions = "ADMINISTRATOR")]
 pub async fn log_channel_for_guild(
     ctx: Context<'_>,
     #[description = "GuildId to set logging for"] guild_id: GuildId,

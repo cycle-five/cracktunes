@@ -7,10 +7,12 @@ use crate::{
 };
 use colored::Colorize;
 use serde::Serialize;
+use serenity::all::InviteDeleteEvent;
 use serenity::all::{
     ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
-    CurrentUser, Guild, GuildChannel, GuildId, Http, Member, Message, MessageId,
-    MessageUpdateEvent, Presence, Role, RoleId,
+    CurrentUser, Guild, GuildChannel, GuildId, GuildScheduledEventUserAddEvent,
+    GuildScheduledEventUserRemoveEvent, Http, InviteCreateEvent, Member, Message, MessageId,
+    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
 use std::{
     collections::HashMap,
@@ -35,9 +37,219 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
+/// Log Invite Create Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_invite_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &InviteDeleteEvent,
+) -> Result<(), Error> {
+    let invite_create_event = log_data.clone();
+    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let title = format!("Guild Invite Create {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log Invite Create Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_invite_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &InviteCreateEvent,
+) -> Result<(), Error> {
+    let invite_create_event = log_data.clone();
+    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let title = format!("Guild Invite Create {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log Guild Stickers Update Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_stickers_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &(&GuildId, &HashMap<StickerId, Sticker>),
+) -> Result<(), Error> {
+    let (guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = *log_data;
+    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_scheduled_event_delete(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ScheduledEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!(
+        "Guild Scheduled Event Delete: {}",
+        event.creator_id.unwrap_or_default()
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .unwrap_or_default()
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.creator_id.map(|x| x.to_string()).unwrap_or_default(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild scheduled user add event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_scheduled_event_user_add(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &GuildScheduledEventUserAddEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!("Guild Scheduled Event User Add: {}", event.user_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .user_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.user_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild scheduled user remove event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_scheduled_event_user_remove(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &GuildScheduledEventUserRemoveEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!("Guild Scheduled Event User Remove: {}", event.user_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .user_id
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.user_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_scheduled_event_update(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ScheduledEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!(
+        "Guild Scheduled Event Create: {}",
+        event.creator_id.unwrap_or_default()
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .unwrap_or_default()
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.creator_id.map(|x| x.to_string()).unwrap_or_default(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 type RwGuildSettingsMap = RwLock<HashMap<GuildId, GuildSettings>>;
 
 /// Logs a guild create event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -87,6 +299,7 @@ pub async fn log_guild_create(
 }
 
 /// Logs a guild role cteate event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -110,6 +323,7 @@ pub async fn log_guild_role_create(
 }
 
 /// Logs a guild role delete.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_delete(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -136,6 +350,7 @@ pub async fn log_guild_role_delete(
 }
 
 /// Log an automod rule update event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -165,8 +380,44 @@ pub async fn log_automod_rule_update(
     .map(|_| ())
 }
 
+/// Log a guild scheduled event create event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_scheduled_event_create(
+    channel_id: ChannelId,
+    http: &Arc<Http>,
+    log_data: &ScheduledEvent,
+) -> Result<(), Error> {
+    let event = log_data.clone();
+    let title = format!(
+        "Guild Scheduled Event Create: {}",
+        event.creator_id.unwrap_or_default()
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = log_data
+        .creator_id
+        .unwrap_or_default()
+        .to_user(http)
+        .await
+        .unwrap_or_default()
+        .avatar_url()
+        .unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &event.creator_id.map(|x| x.to_string()).unwrap_or_default(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
 use serenity::model::guild::automod::Rule;
 /// Log a automod rule create event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -196,6 +447,7 @@ pub async fn log_automod_rule_create(
 }
 
 /// Log a automod command exec
+#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_command_execution(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -224,6 +476,8 @@ pub async fn log_automod_command_execution(
     .map(|_| ())
 }
 
+/// Log a command permissions update event
+#[cfg(not(tarpaulin_include))]
 pub async fn log_command_permissions_update(
     channel_id: ChannelId,
     http: &Arc<Http>,

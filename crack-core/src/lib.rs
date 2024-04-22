@@ -12,7 +12,6 @@ use guild::settings::{
     DEFAULT_VOLUME_LEVEL,
 };
 use poise::serenity_prelude::GuildId;
-use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use serenity::all::Message;
 use std::fs;
@@ -41,8 +40,8 @@ pub mod utils;
 
 //pub extern crate osint;
 
-#[cfg(test)]
-pub mod test;
+// #[cfg(test)]
+// pub mod test;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
@@ -258,7 +257,10 @@ impl PhoneCodeData {
         url: &str,
         file_name: &str,
     ) -> Result<HashMap<String, String>, CrackedError> {
-        let response = get(url).map_err(CrackedError::Reqwest)?;
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()?;
+        let response = client.get(url).send().map_err(CrackedError::Reqwest)?;
         let content = response.text().map_err(CrackedError::Reqwest)?;
 
         // Save to local file
@@ -278,7 +280,7 @@ impl PhoneCodeData {
 }
 
 /// User data, which is stored and accessible in all command invocations
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
     #[serde(skip)]
     pub phone_data: PhoneCodeData,
@@ -298,6 +300,37 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
+    // #[serde(skip, default = "default_topgg_client")]
+    // pub topgg_client: topgg::Client,
+}
+
+// /// Get the default topgg client
+// fn default_topgg_client() -> topgg::Client {
+//     topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
+// }
+
+impl std::fmt::Debug for DataInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result = String::new();
+        result.push_str(&format!("phone_data: {:?}\n", self.phone_data));
+        result.push_str(&format!("up_prefix: {:?}\n", self.up_prefix));
+        result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
+        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
+        result.push_str(&format!(
+            "guild_settings_map: {:?}\n",
+            self.guild_settings_map
+        ));
+        result.push_str(&format!(
+            "guild_msg_cache_ordered: {:?}\n",
+            self.guild_msg_cache_ordered
+        ));
+        result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
+        result.push_str(&format!("event_log: {:?}\n", self.event_log));
+        result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
+        result.push_str(&format!("http_client: {:?}\n", self.http_client));
+        result.push_str("topgg_client: <skipped>\n");
+        write!(f, "{}", result)
+    }
 }
 
 impl DataInner {
@@ -417,6 +450,7 @@ impl EventLog {
 
 impl Default for DataInner {
     fn default() -> Self {
+        // let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
         Self {
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
@@ -426,8 +460,9 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
-            database_pool: None, //Some(sqlx::PgPool::connect_lazy(DEFAULT_DB_URL).unwrap()),
-            http_client: reqwest::Client::new(),
+            database_pool: None,
+            http_client: http_utils::new_reqwest_client().clone(),
+            // topgg_client: topgg::Client::new(topgg_token),
         }
     }
 }
@@ -488,8 +523,8 @@ impl Data {
             .insert(ts, msg)
     }
 
-    /// Get and remove a message from the cache
-    pub fn get_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    /// Remove and return a message from the cache based on the guild_id and timestamp.
+    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
             .get_mut(&guild_id)
@@ -519,7 +554,7 @@ impl Data {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

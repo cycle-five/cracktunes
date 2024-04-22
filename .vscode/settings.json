@@ -21,8 +21,9 @@
         "db": "",
         "playlist": "",
         "cache": "",
-        "ignore-presence-log": ""
+        "ignore-presence-log": "",
     },
+    "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",

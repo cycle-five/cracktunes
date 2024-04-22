@@ -1,6 +1,7 @@
 use crate::messaging::messages::{
-    FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_NOTHING_PLAYING,
-    FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
+    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
+    FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
+    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_CACHED,
     NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
@@ -8,6 +9,7 @@ use crate::Error;
 use audiopus::error::Error as AudiopusError;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
+use rusty_ytdl::VideoError;
 use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
@@ -28,9 +30,14 @@ pub enum CrackedError {
     CrackGPT(Error),
     CommandFailed(String, ExitStatus, String),
     DurationParseError(String, String),
+    EmptySearchResult,
+    EmptyVector(&'static str),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
+    InvalidIP(String),
+    InvalidTopGGToken,
+    IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
     NotConnected,
@@ -45,12 +52,12 @@ pub enum CrackedError {
     NoUserAutoplay,
     NothingPlaying,
     NoSongbird,
+    NoVirusTotalApiKey,
     Other(&'static str),
-    InvalidIP(String),
     PlayListFail,
     ParseTimeFail,
     PoisonError(Error),
-    IO(std::io::Error),
+    Poise(Error),
     QueueEmpty,
     Reqwest(reqwest::Error),
     RSpotify(RSpotifyClientError),
@@ -61,11 +68,11 @@ pub enum CrackedError {
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
-    Poise(Error),
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
     UnimplementedEvent(ChannelId, &'static str),
+    VideoError(VideoError),
     WrongVoiceChannel,
 }
 
@@ -101,10 +108,17 @@ impl Display for CrackedError {
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
+            Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
+            Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
+            Self::IO(err) => f.write_str(&format!("{err}")),
+            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
+            Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),
-            Self::Other(msg) => f.write_str(msg),
+            Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
+                "No log channel set for {event_name} in {guild_id}",
+            )),
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),
@@ -120,35 +134,33 @@ impl Display for CrackedError {
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
             Self::NoUserAutoplay => f.write_str("(auto)"),
-            Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),
-
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
+            Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
+            Self::NoVirusTotalApiKey => f.write_str(FAIL_NO_VIRUSTOTAL_API_KEY),
+            Self::Other(msg) => f.write_str(msg),
+
             Self::PlayListFail => f.write_str(FAIL_PLAYLIST_FETCH),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),
+            Self::Poise(err) => f.write_str(&format!("{err}")),
             Self::PoisonError(err) => f.write_str(&format!("{err}")),
-            Self::TrackFail(err) => f.write_str(&format!("{err}")),
-            Self::Serenity(err) => f.write_str(&format!("{err}")),
-            Self::SQLX(err) => f.write_str(&format!("{err}")),
-            Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
+            Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
-            Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
-            Self::IO(err) => f.write_str(&format!("{err}")),
-            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
+            Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
             Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
-            Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
-            Self::Poise(err) => f.write_str(&format!("{err}")),
-            Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
-            Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
-                "No log channel set for {event_name} in {guild_id}",
-            )),
+            Self::Serenity(err) => f.write_str(&format!("{err}")),
+            Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
+            Self::SQLX(err) => f.write_str(&format!("{err}")),
+            Self::TrackFail(err) => f.write_str(&format!("{err}")),
+            Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::UrlParse(err) => f.write_str(&format!("{err}")),
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
-            Self::RSpotifyLockError(_) => todo!(),
+            Self::VideoError(err) => f.write_str(&format!("{err}")),
+            Self::WrongVoiceChannel => f.write_str(FAIL_WRONG_CHANNEL),
         }
     }
 }
@@ -258,6 +270,12 @@ impl From<RSpotifyClientError> for CrackedError {
     }
 }
 
+impl From<VideoError> for CrackedError {
+    fn from(err: VideoError) -> CrackedError {
+        CrackedError::VideoError(err)
+    }
+}
+
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.
 pub trait Verifiable<T> {
@@ -305,5 +323,153 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
         Ok(verifiable.unpack())
     } else {
         Err(err)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::{Error as StdError, ErrorKind};
+
+    #[test]
+    fn test_verify() {
+        let ok = verify(true, CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(true));
+
+        let err = verify(false, CrackedError::NoGuildCached);
+        assert_eq!(err, Err(CrackedError::NoGuildCached));
+
+        let ok = verify(Some(1), CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(1));
+
+        let x: Option<i32> = None;
+        let err = verify(x, CrackedError::NoGuildCached);
+        assert_eq!(err, Err(CrackedError::NoGuildCached));
+
+        let ok = verify(Ok::<i32, CrackedError>(1), CrackedError::NoGuildCached);
+        assert_eq!(ok, Ok(1));
+    }
+
+    #[test]
+    fn test_cracked_error_display() {
+        let err = CrackedError::NoGuildCached;
+        assert_eq!(format!("{}", err), NO_GUILD_CACHED);
+
+        let err = CrackedError::NoGuildId;
+        assert_eq!(format!("{}", err), NO_GUILD_ID);
+
+        // let err = CrackedError::NoGuildForChannelId(ChannelId(1));
+        // assert_eq!(format!("{}", err), "No guild for channel id 1");
+
+        let err = CrackedError::NoGuildSettings;
+        assert_eq!(format!("{}", err), NO_GUILD_SETTINGS);
+
+        let err = CrackedError::NoLogChannel;
+        assert_eq!(format!("{}", err), "No log channel");
+
+        let err = CrackedError::NoUserAutoplay;
+        assert_eq!(format!("{}", err), "(auto)");
+
+        let err = CrackedError::WrongVoiceChannel;
+        assert_eq!(format!("{}", err), FAIL_WRONG_CHANNEL);
+
+        let err = CrackedError::NothingPlaying;
+        assert_eq!(format!("{}", err), FAIL_NOTHING_PLAYING);
+
+        let err = CrackedError::PlayListFail;
+        assert_eq!(format!("{}", err), FAIL_PLAYLIST_FETCH);
+
+        let err = CrackedError::ParseTimeFail;
+        assert_eq!(format!("{}", err), FAIL_PARSE_TIME);
+
+        // let err = CrackedError::PoisonError(PoisonError::Other("test"));
+        // assert_eq!(format!("{}", err), "No guild id");
+
+        // let err = CrackedError::TrackFail(Error::Other("test"));
+        // assert_eq!(format!("{}", err), "No guild id");
+
+        let err = CrackedError::Serenity(SerenityError::Other("test"));
+        assert_eq!(format!("{}", err), "test");
+
+        let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
+        assert_eq!(
+            format!("{}", err),
+            "no rows returned by a query that expected to return at least one row"
+        );
+
+        let err = CrackedError::SpotifyAuth;
+        assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
+
+        let response = reqwest::blocking::get("http://notreallol");
+        let err = CrackedError::Reqwest(response.unwrap_err());
+        assert!(format!("{}", err).starts_with("error sending request for url"));
+
+        // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
+        // assert_eq!(format!("{}", err), "Unauthorized");
+
+        let err = CrackedError::UnauthorizedUser;
+        assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
+
+        let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
+        assert_eq!(format!("{}", err), "test");
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        let err = CrackedError::NoGuildCached;
+        assert_eq!(err, CrackedError::NoGuildCached);
+
+        let err = CrackedError::NoGuildId;
+        assert_eq!(err, CrackedError::NoGuildId);
+
+        let err = CrackedError::NoGuildForChannelId(ChannelId::new(1));
+        assert_eq!(err, CrackedError::NoGuildForChannelId(ChannelId::new(1)));
+
+        let err = CrackedError::NoGuildSettings;
+        assert_eq!(err, CrackedError::NoGuildSettings);
+
+        let err = CrackedError::NoLogChannel;
+        assert_eq!(err, CrackedError::NoLogChannel);
+
+        let err = CrackedError::NoUserAutoplay;
+        assert_eq!(err, CrackedError::NoUserAutoplay);
+
+        let err = CrackedError::WrongVoiceChannel;
+        assert_eq!(err, CrackedError::WrongVoiceChannel);
+
+        let err = CrackedError::NothingPlaying;
+        assert_eq!(err, CrackedError::NothingPlaying);
+
+        let err = CrackedError::PlayListFail;
+        assert_eq!(err, CrackedError::PlayListFail);
+
+        let err = CrackedError::ParseTimeFail;
+        assert_eq!(err, CrackedError::ParseTimeFail);
+
+        let err = CrackedError::PoisonError(Error::from("test"));
+        assert_eq!(err, CrackedError::PoisonError(Error::from("test")));
+
+        let err = CrackedError::TrackFail(Error::from("test"));
+        assert_eq!(err, CrackedError::TrackFail(Error::from("test")));
+
+        let err = CrackedError::Serenity(SerenityError::Other("test"));
+        assert_eq!(err, CrackedError::Serenity(SerenityError::Other("test")));
+
+        let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
+        assert_eq!(err, CrackedError::SQLX(sqlx::Error::RowNotFound));
+
+        let err = CrackedError::SpotifyAuth;
+        assert_eq!(err, CrackedError::SpotifyAuth);
+
+        let response1 = reqwest::blocking::get("http://notreallol");
+        let response2 = reqwest::blocking::get("http://notreallol");
+        let err = CrackedError::Reqwest(response1.unwrap_err());
+        assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
+
+        let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+        assert_eq!(
+            err,
+            CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+        );
     }
 }

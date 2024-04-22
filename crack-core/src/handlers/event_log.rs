@@ -472,7 +472,9 @@ pub async fn handle_event(
             let mut title: String = String::from("");
 
             if let Some(old) = old_if_available {
-                if old.user.avatar.is_none() || old.user.avatar.unwrap() != new.user.avatar.unwrap()
+                if old.user.avatar.is_none()
+                    || new.user.avatar.is_none()
+                    || old.user.avatar.unwrap() != new.user.avatar.unwrap()
                 {
                     title = format!("Avatar Updated: {}", new.user.name);
                 }
@@ -494,15 +496,11 @@ pub async fn handle_event(
                     } else if !title.is_empty() {
                         title = format!("Member Updated: {}", new.user.name);
                     };
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
-                    tracing::warn!(title);
                 },
                 (Some(_), None) => {
                     title = format!("Member Updated: {}", new.user.name);
                 },
-                (None, None) => {
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
-                },
+                _ => {},
             }
             match maybe_log_channel {
                 Some(channel_id) => {
@@ -518,7 +516,8 @@ pub async fn handle_event(
                     .await?;
                 },
                 None => {
-                    tracing::warn!("No join/leave log channel set for guild {}", new.guild_id);
+                    tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
+                    tracing::debug!(title);
                 },
             }
             event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
@@ -587,26 +586,88 @@ pub async fn handle_event(
                 event_name
             )
         },
-        // event_log.write_log_obj(event_name, &(new, old_data_if_available)),
         FullEvent::GuildScheduledEventCreate { event } => {
-            event_log.write_log_obj(event_name, event)
+            // event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_create,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUpdate { event } => {
-            event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventDelete { event } => {
-            event_log.write_log_obj(event_name, event)
+            let log_data = event;
+            log_event!(
+                log_guild_scheduled_event_delete,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUserAdd { subscribed } => {
-            event_log.write_log_obj(event_name, subscribed)
+            let log_data = subscribed;
+            log_event!(
+                log_guild_scheduled_event_user_add,
+                guild_settings,
+                event_in,
+                &log_data,
+                &subscribed.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildScheduledEventUserRemove { unsubscribed } => {
-            event_log.write_log_obj(event_name, unsubscribed)
+            let log_data = unsubscribed;
+            log_event!(
+                log_guild_scheduled_event_user_remove,
+                guild_settings,
+                event_in,
+                &log_data,
+                &unsubscribed.guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::GuildStickersUpdate {
             guild_id,
             current_state,
-        } => event_log.write_log_obj(event_name, &(guild_id, current_state)),
+        } => {
+            let log_data = (guild_id, current_state);
+            log_event!(
+                log_guild_stickers_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
             event_log.write_log_obj(event_name, &(entry, guild_id))
         },
@@ -626,29 +687,105 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-        }, //event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        },
         #[cfg(not(feature = "cache"))]
         FullEvent::GuildUpdate {
             old_data_if_available,
-
             new_data,
-        } => event_log.write_log_obj(event_name, &(old_data_if_available, new_data)),
+        } => {
+            let log_data = (old_data_if_available, new_data);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &new_data.id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::IntegrationCreate { integration } => {
-            event_log.write_log_obj(event_name, integration)
+            let log_data = integration;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &integration.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::IntegrationUpdate { integration } => {
-            event_log.write_log_obj(event_name, integration)
+            let log_data = integration;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &integration.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
         FullEvent::IntegrationDelete {
             integration_id,
             guild_id,
             application_id,
-        } => event_log.write_log_obj(event_name, &(integration_id, guild_id, application_id)),
-        FullEvent::InteractionCreate { interaction } => {
-            event_log.write_log_obj(event_name, interaction)
+        } => {
+            let log_data = &(integration_id, guild_id, application_id);
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx.http,
+                event_log,
+                event_name
+            )
         },
-        FullEvent::InviteCreate { data } => event_log.write_log_obj(event_name, data),
-        FullEvent::InviteDelete { data } => event_log.write_log_obj(event_name, data),
+        FullEvent::InteractionCreate { interaction } => {
+            let log_data = interaction;
+            log_event!(
+                log_unimplemented_event,
+                guild_settings,
+                event_in,
+                &log_data,
+                &GuildId::new(1),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
+        FullEvent::InviteCreate { data } => {
+            let log_data = data;
+            log_event!(
+                log_invite_create,
+                guild_settings,
+                event_in,
+                &log_data,
+                &data.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
+        FullEvent::InviteDelete { data } => {
+            log_event!(
+                log_invite_delete,
+                guild_settings,
+                event_in,
+                data,
+                &data.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,
@@ -671,13 +808,37 @@ pub async fn handle_event(
             multiple_deleted_messages_ids,
             guild_id,
         } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
-        #[cfg(feature = "cache")]
+        #[cfg(not(feature = "cache"))]
         FullEvent::MessageUpdate {
             old_if_available,
             new,
             event,
-        } => event_log.write_log_obj(event_name, &(old_if_available, new, event)),
-        #[cfg(not(feature = "cache"))]
+        } => {
+            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+                || old_if_available
+                    .as_ref()
+                    .map(|x| x.author.bot)
+                    .unwrap_or(false)
+            {
+                return Ok(());
+            }
+            let log_data: (
+                &Option<serenity::model::prelude::Message>,
+                &Option<serenity::model::prelude::Message>,
+                &serenity::model::prelude::MessageUpdateEvent,
+            ) = (old_if_available, new, event);
+            log_event!(
+                log_message_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &event.guild_id.unwrap_or_default(),
+                &ctx.http,
+                event_log,
+                event_name
+            )
+        },
+        #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,
             new,

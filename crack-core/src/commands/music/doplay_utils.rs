@@ -1,12 +1,17 @@
-use super::QueryType;
+use super::{Mode, QueryType};
+use crate::db::Metadata;
+use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
+use crate::http_utils;
 use crate::{
     commands::{get_track_source_and_metadata, MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
 };
 use crate::{errors::CrackedError, Context, Error};
 
-use serenity::all::{ChannelId, GuildId, Http, UserId};
+use rusty_ytdl::search::Playlist as YTPlaylist;
+use serenity::all::{ChannelId, CreateEmbed, EditMessage, GuildId, Http, Message, UserId};
+use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use songbird::Call;
 use songbird::{input::Input as SongbirdInput, tracks::Track};
@@ -14,6 +19,86 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_yt_playlist<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    guild_id: GuildId,
+    playlist: YTPlaylist,
+    search_msg: &'a mut Message,
+) -> Result<(), Error> {
+    let n = playlist.videos.len() as f32;
+    let mut i: f32 = 0.0_f32;
+    for video in playlist.videos {
+        // Update the search message with what's queuing right now.
+        search_msg
+            .edit(
+                ctx.http(),
+                EditMessage::new().embed(CreateEmbed::default().description(format!(
+                    "Queuing: [{}]({})\n{}% Done...",
+                    video.title,
+                    video.url,
+                    (i / n) * 100.0
+                ))),
+            )
+            .await?;
+        i += 1.0;
+        let queue_res =
+            enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(video.url.to_string())).await;
+        let queue = match queue_res {
+            Ok(q) => q,
+            Err(e) => {
+                tracing::error!("Error: {}", e);
+                continue;
+            },
+        };
+        update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    }
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // let http = ctx.http();
+    // let user_id = ctx.author().id;
+    // let username = http_utils::http_to_username_or_default(http, user_id).await;
+    // let database_pool = ctx.data().database_pool.as_ref().unwrap();
+    // let playlist = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(
+    //     http_utils::new_reqwest_client(),
+    // )
+    // .unwrap()
+    // .get_playlist(&playlist_url)
+    // .await?;
+    // let playlist_tracks = playlist.tracks;
+    // for (idx, track) in playlist_tracks.into_iter().enumerate() {
+    //     let source = track.into();
+    //     let metadata = track.metadata;
+    //     let returned_metadata = write_metadata_pg(
+    //         database_pool,
+    //         metadata,
+    //         user_id,
+    //         username.clone(),
+    //         guild_id,
+    //         ctx.channel_id(),
+    //     )
+    //     .await?;
+    //     let mut handler = call.lock().await;
+    //     let track_handle = handler.enqueue(source.into()).await;
+    //     let mut map = track_handle.typemap().write().await;
+    //     map.insert::<MyAuxMetadata>(MyAuxMetadata::Data(metadata));
+    //     map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+    // }
+    Ok(())
+}
+
+/// Queue a list of keywords to be played
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_keyword_list(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    keyword_list: Vec<String>,
+) -> Result<(), Error> {
+    queue_keyword_list_w_offset(ctx, call, keyword_list, 0).await
+}
+
+/// Queue a list of keywords to be played with an offset.
+#[cfg(not(tarpaulin_include))]
 pub async fn queue_keyword_list_w_offset(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -21,92 +106,37 @@ pub async fn queue_keyword_list_w_offset(
     offset: usize,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let mut failed: usize = 0;
     for (idx, keywords) in keyword_list.into_iter().enumerate() {
-        let queue = insert_track(ctx, &call, &QueryType::Keywords(keywords), idx + offset).await?;
+        let queue = match insert_track(
+            ctx,
+            &call,
+            &QueryType::Keywords(keywords),
+            idx + offset - failed,
+        )
+        .await
+        {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("insert_track error: {}", e);
+                failed += 1;
+                continue;
+            },
+        };
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }
 
     Ok(())
 }
 
-#[cfg(not(tarpaulin_include))]
-/// Queue a list of keywords to be played
-pub async fn queue_keyword_list(
-    ctx: Context<'_>,
-    call: Arc<Mutex<Call>>,
-    keyword_list: Vec<String>,
-) -> Result<(), Error> {
-    queue_keyword_list_w_offset(ctx, call, keyword_list, 0).await
-    // let pool = get_db_or_err!(ctx);
-    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    // let user_id = ctx.author().id;
-    // for keywords in keyword_list.iter() {
-    //     let queue = enqueue_track_pgwrite(
-    //         // &pool,
-    //         // guild_id,
-    //         // ctx.channel_id(),
-    //         // user_id,
-    //         // ctx.http(),
-    //         ctx,
-    //         &call,
-    //         &QueryType::Keywords(keywords.to_string()),
-    //     )
-    //     .await?;
-    //     update_queue_messages(&Arc::new(ctx.http()), ctx.data(), &queue, guild_id).await;
-    // }
-
-    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    // let channel_id = ctx.channel_id();
-
-    // let query_type = QueryType::KeywordList(keyword_list);
-
-    // let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-    //     get_track_source_and_metadata(ctx.http(), query_type.clone()).await;
-
-    // let db_pool = get_db_or_err!(ctx);
-
-    // let metadata_vec: Vec<AuxMetadata> = Vec::new();
-    // let playls = Playlist::create(db_pool, &name.clone(), ctx.author().id.get() as i64).await?;
-    // let guild_id_i64 = guild_id.get() as i64;
-    // let channel_id_i64 = channel_id.get() as i64;
-    // for MyAuxMetadata::Data(m) in metadata {
-    //     let res = aux_metadata_to_db_structures(&m, guild_id_i64, channel_id_i64);
-    //     match res {
-    //         Ok((in_metadata, _track)) => {
-    //             let metadata = Metadata::get_or_create(db_pool, &in_metadata).await?;
-
-    //             let _res = Playlist::add_track(
-    //                 db_pool,
-    //                 playls.id,
-    //                 metadata.id,
-    //                 guild_id_i64,
-    //                 channel_id_i64,
-    //             )
-    //             .await?;
-    //         }
-    //         Err(e) => {
-    //             tracing::error!("Error converting metadata to aux metadata: {}", e);
-    //         }
-    //     }
-    // }
-    // Ok((metadata_vec, source))
-}
-
 /// Inserts a track into the queue at the specified index.
 #[cfg(not(tarpaulin_include))]
 pub async fn insert_track(
-    // pool: &PgPool,
-    // guild_id: GuildId,
-    // channel_id: ChannelId,
-    // user_id: UserId,
-    // http: &Http,
     ctx: Context<'_>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
     idx: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::errors::verify;
-
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
@@ -133,7 +163,7 @@ pub async fn insert_track(
     Ok(handler.queue().current_queue())
 }
 
-/// Enqueues a track and adds metadata to the database.
+/// Enqueues a track and adds metadata to the database. (concise parameters)
 #[cfg(not(tarpaulin_include))]
 pub async fn enqueue_track_pgwrite(
     ctx: Context<'_>,
@@ -157,28 +187,19 @@ pub async fn enqueue_track_pgwrite(
     .await
 }
 
+/// Writes metadata to the database for a playing track.
 #[cfg(not(tarpaulin_include))]
-pub async fn enqueue_track_pgwrite_asdf(
+pub async fn write_metadata_pg(
     database_pool: &PgPool,
+    aux_metadata: AuxMetadata,
+    user_id: UserId,
+    username: String,
     guild_id: GuildId,
     channel_id: ChannelId,
-    user_id: UserId,
-    http: &Http,
-    call: &Arc<Mutex<Call>>,
-    query_type: &QueryType,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    tracing::info!("query_type: {:?}", query_type);
-    // is this comment still relevant to this section of code?
-    // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(http, query_type.clone()).await;
-    let res = metadata.first().unwrap().clone();
-    let track: Track = source.into();
-
-    let MyAuxMetadata::Data(res2) = res.clone();
+) -> Result<Metadata, CrackedError> {
     let returned_metadata = {
         let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
-            &res2,
+            &aux_metadata,
             guild_id.get() as i64,
             channel_id.get() as i64,
         ) {
@@ -196,15 +217,6 @@ pub async fn enqueue_track_pgwrite_asdf(
                     metadata.clone()
                 },
             };
-
-        // Get the username (string) of the user.
-        let username = match http.get_user(user_id).await {
-            Ok(x) => x.name,
-            Err(e) => {
-                tracing::error!("http.get_user error: {}", e);
-                "Unknown".to_string()
-            },
-        };
 
         match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
             Ok(_) => {
@@ -231,6 +243,46 @@ pub async fn enqueue_track_pgwrite_asdf(
         };
         metadata
     };
+    Ok(returned_metadata)
+}
+
+/// Enqueues a track and adds metadata to the database. (parameters broken out)
+#[cfg(not(tarpaulin_include))]
+pub async fn enqueue_track_pgwrite_asdf(
+    database_pool: &PgPool,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    user_id: UserId,
+    http: &Http,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    tracing::info!("query_type: {:?}", query_type);
+    // is this comment still relevant to this section of code?
+    // safeguard against ytdl dying on a private/deleted video and killing the playlist
+    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
+        get_track_source_and_metadata(http, query_type.clone()).await?;
+    let res = match metadata.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
+    let track: Track = source.into();
+
+    let username = http_utils::http_to_username_or_default(http, user_id).await;
+
+    let MyAuxMetadata::Data(aux_metadata) = res.clone();
+
+    let returned_metadata = write_metadata_pg(
+        database_pool,
+        aux_metadata,
+        user_id,
+        username,
+        guild_id,
+        channel_id,
+    )
+    .await?;
 
     tracing::info!("returned_metadata: {:?}", returned_metadata);
 
@@ -241,4 +293,224 @@ pub async fn enqueue_track_pgwrite_asdf(
     map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
 
     Ok(handler.queue().current_queue())
+}
+
+/// Get the play mode and the message from the parameters to the play command.
+pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
+    let opt_mode = mode.clone();
+    if is_prefix {
+        let asdf2 = msg
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or_default();
+        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        let mode = if asdf.starts_with("next") {
+            Mode::Next
+        } else if asdf.starts_with("all") {
+            Mode::All
+        } else if asdf.starts_with("shuffle") {
+            Mode::Shuffle
+        } else if asdf.starts_with("reverse") {
+            Mode::Reverse
+        } else if asdf.starts_with("jump") {
+            Mode::Jump
+        } else if asdf.starts_with("downloadmkv") {
+            Mode::DownloadMKV
+        } else if asdf.starts_with("downloadmp3") {
+            Mode::DownloadMP3
+        } else if asdf.starts_with("search") {
+            Mode::Search
+        } else {
+            Mode::End
+        };
+        if mode != Mode::End {
+            let s = msg.clone().unwrap_or_default();
+            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
+            (mode, s2.to_string())
+        } else {
+            (Mode::End, msg.unwrap_or_default())
+        }
+    } else {
+        let mode = match opt_mode
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or_default()
+            .as_str()
+        {
+            "next" => Mode::Next,
+            "all" => Mode::All,
+            "reverse" => Mode::Reverse,
+            "shuffle" => Mode::Shuffle,
+            "jump" => Mode::Jump,
+            "downloadmkv" => Mode::DownloadMKV,
+            "downloadmp3" => Mode::DownloadMP3,
+            "search" => Mode::Search,
+            _ => Mode::End,
+        };
+        (mode, msg.unwrap_or_default())
+    }
+}
+
+/// Parses the msg variable from the parameters to the play command.
+/// Due to the way that the way the poise library works with auto filling them
+/// based on types, it could be kind of mangled if the prefix version of the
+/// command is used.
+pub fn get_msg(
+    mode: Option<String>,
+    query_or_url: Option<String>,
+    is_prefix: bool,
+) -> Option<String> {
+    let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
+    if is_prefix {
+        match (mode
+            .clone()
+            .map(|s| s.replace("query_or_url:", ""))
+            .unwrap_or("".to_string())
+            + " "
+            + &step1.unwrap_or("".to_string()))
+            .trim()
+        {
+            "" => None,
+            x => Some(x.to_string()),
+        }
+    } else {
+        step1
+    }
+}
+
+/// Rotates the queue by `n` tracks to the right.
+#[cfg(not(tarpaulin_include))]
+pub async fn rotate_tracks(
+    call: &Arc<Mutex<Call>>,
+    n: usize,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let handler = call.lock().await;
+
+    verify(
+        handler.queue().len() > 2,
+        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
+    )?;
+
+    handler.queue().modify_queue(|queue| {
+        let mut not_playing = queue.split_off(1);
+        not_playing.rotate_right(n);
+        queue.append(&mut not_playing);
+    });
+
+    Ok(handler.queue().current_queue())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_get_mode() {
+        let is_prefix = true;
+        let x = "asdf".to_string();
+        let msg = Some(x.clone());
+        let mode = Some("".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
+
+        let x = "".to_string();
+        let is_prefix = true;
+        let msg = None;
+        let mode = Some(x.clone());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
+
+        let is_prefix = true;
+        let msg = None;
+        let mode = None;
+
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
+
+        let is_prefix = false;
+        let msg = Some(x.clone());
+        let mode = Some("next".to_string());
+
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = Some("downloadmkv".to_string());
+
+        assert_eq!(
+            get_mode(is_prefix, msg, mode),
+            (Mode::DownloadMKV, x.clone())
+        );
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = Some("downloadmp3".to_string());
+
+        assert_eq!(
+            get_mode(is_prefix, msg, mode),
+            (Mode::DownloadMP3, x.clone())
+        );
+
+        let is_prefix = false;
+        let msg = None;
+        let mode = None;
+
+        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x));
+    }
+
+    #[test]
+    fn test_get_msg() {
+        let mode = Some("".to_string());
+        let query_or_url = Some("".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = None;
+        let query_or_url = Some("".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = None;
+        let query_or_url = None;
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = Some("".to_string());
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("".to_string()));
+
+        let mode = None;
+        let query_or_url = Some("".to_string());
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("".to_string()));
+
+        let mode = None;
+        let query_or_url = None;
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = None;
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode = Some("".to_string());
+        let query_or_url = None;
+        let is_prefix = false;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, None);
+
+        let mode: Option<String> = None;
+        let query_or_url = Some("asdf asdf asdf asd f".to_string());
+        let is_prefix = true;
+        let res = get_msg(mode, query_or_url, is_prefix);
+        assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
+    }
 }

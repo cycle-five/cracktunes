@@ -3,7 +3,7 @@ use crate::{
 };
 
 /// Set the auto role for the server.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
 pub async fn auto_role(
     ctx: Context<'_>,
     #[description = "The role to assign to new users"] auto_role_id_str: String,

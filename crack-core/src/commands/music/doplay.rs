@@ -1,9 +1,15 @@
+use colored;
+use rusty_ytdl::search::Playlist;
+
 use super::doplay_utils::enqueue_track_pgwrite;
 use super::doplay_utils::insert_track;
 use super::doplay_utils::queue_keyword_list;
 
-use crate::commands::doplay_utils::queue_keyword_list_w_offset;
+use crate::commands::doplay_utils::queue_yt_playlist;
+use crate::commands::doplay_utils::rotate_tracks;
+use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
+use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
@@ -18,10 +24,7 @@ use crate::{
             TRACK_DURATION, TRACK_TIME_TO_PLAY,
         },
     },
-    sources::{
-        spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        ytdl::MyYoutubeDl,
-    },
+    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::{
         compare_domains, edit_response_poise, get_guild_name, get_human_readable_timestamp,
         get_interaction, get_track_metadata, send_embed_response_poise, send_response_poise_text,
@@ -42,6 +45,8 @@ use ::serenity::{
 };
 use poise::serenity_prelude::{self as serenity, Attachment, Http};
 use reqwest::Client;
+use rusty_ytdl::search::SearchOptions;
+use rusty_ytdl::search::SearchType;
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::TrackHandle,
@@ -51,7 +56,6 @@ use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
-    error::Error as StdError,
     path::Path,
     process::Output,
     sync::Arc,
@@ -85,6 +89,7 @@ pub enum QueryType {
     File(serenity::Attachment),
     NewYoutubeDl((YoutubeDl, AuxMetadata)),
     YoutubeSearch(String),
+    None,
 }
 
 /// Get the guild name.
@@ -101,84 +106,6 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Get the play mode.
-fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
-    let opt_mode = mode.clone();
-    if is_prefix {
-        let asdf2 = msg
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default();
-        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
-        let mode = if asdf.starts_with("next") {
-            Mode::Next
-        } else if asdf.starts_with("all") {
-            Mode::All
-        } else if asdf.starts_with("shuffle") {
-            Mode::Shuffle
-        } else if asdf.starts_with("reverse") {
-            Mode::Reverse
-        } else if asdf.starts_with("jump") {
-            Mode::Jump
-        } else if asdf.starts_with("downloadmkv") {
-            Mode::DownloadMKV
-        } else if asdf.starts_with("downloadmp3") {
-            Mode::DownloadMP3
-        } else if asdf.starts_with("search") {
-            Mode::Search
-        } else {
-            Mode::End
-        };
-        if mode != Mode::End {
-            let s = msg.clone().unwrap_or_default();
-            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
-            (mode, s2.to_string())
-        } else {
-            (Mode::End, msg.unwrap_or_default())
-        }
-    } else {
-        let mode = match opt_mode
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default()
-            .as_str()
-        {
-            "next" => Mode::Next,
-            "all" => Mode::All,
-            "reverse" => Mode::Reverse,
-            "shuffle" => Mode::Shuffle,
-            "jump" => Mode::Jump,
-            "downloadmkv" => Mode::DownloadMKV,
-            "downloadmp3" => Mode::DownloadMP3,
-            "search" => Mode::Search,
-            _ => Mode::End,
-        };
-        (mode, msg.unwrap_or_default())
-    }
-}
-
-/// Parses the msg variable from the parameters to the play command.
-/// Due to the way that the way the poise library works with auto filling them
-/// based on types, it could be kind of mangled if the prefix version of the
-/// command is used.
-fn get_msg(mode: Option<String>, query_or_url: Option<String>, is_prefix: bool) -> Option<String> {
-    let step1 = query_or_url.clone().map(|s| s.replace("query_or_url:", ""));
-    if is_prefix {
-        match (mode
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or("".to_string())
-            + " "
-            + &step1.unwrap_or("".to_string()))
-            .trim()
-        {
-            "" => None,
-            x => Some(x.to_string()),
-        }
-    } else {
-        step1
-    }
-}
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
 async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
@@ -291,13 +218,13 @@ async fn play_internal(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let msg = send_search_message(ctx).await?;
+    let mut msg = send_search_message(ctx).await?;
 
     ctx.data().add_msg_to_cache(guild_id, msg.clone());
 
     tracing::warn!("search response msg: {:?}", msg);
     // FIXME: Super hacky, fix this shit.
-    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone()).await?;
+    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut msg).await?;
 
     if !move_on {
         return Ok(());
@@ -431,9 +358,12 @@ async fn print_queue(queue: Vec<TrackHandle>) {
 
 /// Download a file and upload it as an mp3.
 async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
-    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
-        .aux_metadata()
-        .await?;
+    let metadata = YoutubeDl::new(
+        reqwest::ClientBuilder::new().use_rustls_tls().build()?,
+        url.to_string(),
+    )
+    .aux_metadata()
+    .await?;
 
     let args = [
         "--extract-audio",
@@ -462,7 +392,7 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
         return download_file_ytdlp_mp3(url).await;
     }
 
-    let metadata = YoutubeDl::new(reqwest::Client::new(), url.to_string())
+    let metadata = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string())
         .aux_metadata()
         .await?;
 
@@ -642,11 +572,12 @@ async fn send_search_response(
     send_embed_response_poise(ctx, embed).await
 }
 
-async fn match_mode(
+async fn match_mode<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
+    search_msg: &'a mut Message,
 ) -> Result<bool, Error> {
     // let is_prefix = ctx.prefix() != "/";
     // let user_id = ctx.author().id;
@@ -660,12 +591,12 @@ async fn match_mode(
 
     tracing::info!("mode: {:?}", mode);
 
+    let reqwest_client = ctx.data().http_client.clone();
     match mode {
         Mode::Search => {
             // let search_results = match query_type.clone() {
             match query_type.clone() {
                 QueryType::Keywords(keywords) => {
-                    let reqwest_client = reqwest::Client::new();
                     let search_results = YoutubeDl::new_search(reqwest_client, keywords)
                         .search(None)
                         .await?;
@@ -688,7 +619,7 @@ async fn match_mode(
                     // send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 },
                 QueryType::YoutubeSearch(query) => {
-                    let search_results = YoutubeDl::new(reqwest::Client::new(), query.clone())
+                    let search_results = YoutubeDl::new(reqwest_client, query.clone())
                         .search(None)
                         .await?;
                     let qt = yt_search_select(
@@ -754,9 +685,10 @@ async fn match_mode(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-                let res = YoutubeDl::new_search(reqwest::Client::new(), query.clone())
-                    .search(None)
-                    .await?;
+                let res =
+                    YoutubeDl::new_search(http_utils::new_reqwest_client().clone(), query.clone())
+                        .search(None)
+                        .await?;
                 let user_id = ctx.author().id;
                 send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
             },
@@ -769,25 +701,10 @@ async fn match_mode(
             // FIXME
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
-                // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-                //     .await
-                //     .ok_or(CrackedError::PlayListFail)?;
-                // let client = reqwest::Client::new();
-                let mut my_ytdl = MyYoutubeDl::new(url);
-                let urls = my_ytdl.get_playlist().await?;
-
-                for url in urls.iter() {
-                    let queue =
-                        enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(url.to_string()))
-                            .await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                // Let's use the new YouTube rust library for this
+                let rusty_ytdl = RustyYoutubeClient::new()?;
+                let playlist: Playlist = rusty_ytdl.get_playlist(url).await?;
+                queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 let keywords_list = tracks
@@ -804,6 +721,14 @@ async fn match_mode(
                 tracing::trace!("Mode::End, QueryType::File");
                 let queue = enqueue_track_pgwrite(ctx, &call, &QueryType::File(file)).await?;
                 update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
+            },
+            QueryType::None => {
+                tracing::trace!("Mode::End, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
             },
         },
         Mode::Next => match query_type.clone() {
@@ -863,6 +788,14 @@ async fn match_mode(
             QueryType::YoutubeSearch(_) => {
                 tracing::trace!("Mode::Next, QueryType::YoutubeSearch");
                 return Err(CrackedError::Other("Not implemented yet!").into());
+            },
+            QueryType::None => {
+                tracing::trace!("Mode::Next, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
             },
         },
         Mode::Jump => match query_type.clone() {
@@ -975,12 +908,20 @@ async fn match_mode(
                     .await;
                 }
             },
+            QueryType::None => {
+                tracing::trace!("Mode::Next, QueryType::None");
+                let embed = CreateEmbed::default()
+                    .description(format!("{}", CrackedError::Other("No query provided!")))
+                    .footer(CreateEmbedFooter::new("No query provided!"));
+                send_embed_response_poise(ctx, embed).await?;
+                return Ok(false);
+            },
         },
         Mode::All | Mode::Reverse | Mode::Shuffle => match query_type.clone() {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
                 // FIXME
-                let mut src = YoutubeDl::new(reqwest::Client::new(), url);
+                let mut src = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url);
                 let metadata = src.aux_metadata().await?;
                 enqueue_track_pgwrite(ctx, &call, &QueryType::NewYoutubeDl((src, metadata)))
                     .await?;
@@ -1073,10 +1014,18 @@ pub async fn get_query_type_from_url(
                     }
                 }
 
-                //YouTube::extract(url)
-                let mut yt = YoutubeDl::new(reqwest::Client::new(), url.to_string());
-                let metadata = yt.aux_metadata().await?;
-                Some(QueryType::NewYoutubeDl((yt, metadata)))
+                // Handle youtube playlist
+                if url.contains("list=") {
+                    tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
+                    Some(QueryType::PlaylistLink(url.to_string()))
+                } else {
+                    //YouTube::extract(url)
+                    tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                    let mut yt =
+                        YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string());
+                    let metadata = yt.aux_metadata().await?;
+                    Some(QueryType::NewYoutubeDl((yt, metadata)))
+                }
             },
             None => {
                 // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?
@@ -1302,7 +1251,7 @@ async fn get_download_status_and_filename(
     // FIXME: Don't hardcode this.
     let prefix = "/data/downloads";
     let extension = if mp3 { "mp3" } else { "webm" };
-    let client = reqwest::Client::new();
+    let client = http_utils::new_reqwest_client().clone();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
         QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
@@ -1408,7 +1357,54 @@ async fn get_download_status_and_filename(
             let status = output.status.success();
             Ok((status, file_name))
         },
+        QueryType::None => Err(Box::new(CrackedError::Other("No query provided!"))),
     }
+}
+
+pub async fn search_query_to_source_and_metadata_ytdl(
+    client: reqwest::Client,
+    query: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let mut ytdl = YoutubeDl::new(client, query);
+    let metadata = ytdl.aux_metadata().await?;
+    let my_metadata = MyAuxMetadata::Data(metadata);
+
+    Ok((ytdl.into(), vec![my_metadata]))
+}
+
+pub async fn search_query_to_source_and_metadata(
+    client: reqwest::Client,
+    query: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+    let results = rytdl.one_shot(query).await?;
+    // FIXME: Fallback to yt-dlp
+    let result = match results {
+        Some(r) => r,
+        None => return Err(CrackedError::EmptySearchResult),
+    };
+    let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
+    let source_url = match metadata.clone().source_url {
+        Some(url) => url.clone(),
+        None => "".to_string(),
+    };
+    let ytdl = YoutubeDl::new(client, source_url);
+    let my_metadata = MyAuxMetadata::Data(metadata.clone());
+
+    Ok((ytdl.into(), vec![my_metadata]))
+}
+
+pub async fn video_info_to_source_and_metadata(
+    client: reqwest::Client,
+    url: String,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+    let video_info = rytdl.get_video_info(url.clone()).await?;
+    let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
+    let my_metadata = MyAuxMetadata::Data(metadata);
+
+    let ytdl = YoutubeDl::new(client, url);
+    Ok((ytdl.into(), vec![my_metadata]))
 }
 
 // FIXME: Do you want to have a reqwest client we keep around and pass into
@@ -1416,54 +1412,68 @@ async fn get_download_status_and_filename(
 pub async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
-) -> (SongbirdInput, Vec<MyAuxMetadata>) {
-    let client = reqwest::Client::new();
-    tracing::warn!("query_type: {:?}", query_type);
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let client = http_utils::new_reqwest_client().clone();
+    tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
     match query_type {
         QueryType::YoutubeSearch(query) => {
             tracing::error!("In YoutubeSearch");
             let mut ytdl = YoutubeDl::new_search(client, query);
             let mut res = Vec::new();
-            let asdf = ytdl.search(None).await.unwrap_or_default();
+            let asdf = ytdl.search(None).await?;
             for metadata in asdf {
                 let my_metadata = MyAuxMetadata::Data(metadata);
                 res.push(my_metadata);
             }
-            (ytdl.into(), res)
+            Ok((ytdl.into(), res))
         },
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
-            let mut ytdl = YoutubeDl::new(client, query);
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let metadata = ytdl.aux_metadata().await.unwrap_or_default();
-            let my_metadata = MyAuxMetadata::Data(metadata);
-            (ytdl.into(), vec![my_metadata])
+            video_info_to_source_and_metadata(client.clone(), query).await
+            // let mut ytdl = YoutubeDl::new(client, query);
+            // tracing::warn!("ytdl: {:?}", ytdl);
+            // let metadata = ytdl.aux_metadata().await?;
+            // let my_metadata = MyAuxMetadata::Data(metadata);
+            // Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
-            let metdata = ytdl.aux_metadata().await.unwrap_or_default();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            search_query_to_source_and_metadata(client.clone(), query).await
         },
         QueryType::File(file) => {
             tracing::warn!("In File");
-            (
+            Ok((
                 HttpRequest::new(client, file.url.to_owned()).into(),
                 vec![MyAuxMetadata::default()],
-            )
+            ))
         },
         QueryType::NewYoutubeDl(ytdl) => {
             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
-            (ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)])
+            Ok((ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)]))
         },
         QueryType::PlaylistLink(url) => {
             tracing::warn!("In PlaylistLink");
-            let mut ytdl = YoutubeDl::new(client, url);
+            let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+            let search_options = SearchOptions {
+                limit: 100,
+                search_type: SearchType::Playlist,
+                ..Default::default()
+            };
+
+            let res = rytdl
+                .rusty_ytdl
+                .search(&url, Some(&search_options))
+                .await
+                .unwrap();
+            let mut metadata = Vec::with_capacity(res.len());
+            for r in res {
+                metadata.push(MyAuxMetadata::Data(
+                    RustyYoutubeClient::search_result_to_aux_metadata(&r),
+                ));
+            }
+            let ytdl = YoutubeDl::new(client.clone(), url);
             tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), metadata))
         },
         QueryType::SpotifyTracks(tracks) => {
             tracing::warn!("In KeywordList");
@@ -1478,7 +1488,7 @@ pub async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), vec![my_metadata]))
         },
         QueryType::KeywordList(keywords_list) => {
             tracing::warn!("In KeywordList");
@@ -1486,8 +1496,9 @@ pub async fn get_track_source_and_metadata(
             tracing::warn!("ytdl: {:?}", ytdl);
             let metdata = ytdl.aux_metadata().await.unwrap();
             let my_metadata = MyAuxMetadata::Data(metdata);
-            (ytdl.into(), vec![my_metadata])
+            Ok((ytdl.into(), vec![my_metadata]))
         },
+        QueryType::None => unimplemented!(),
     }
 }
 
@@ -1524,9 +1535,11 @@ pub async fn queue_aux_metadata(
                     EditMessage::default().content(format!("Queuing... {}", search_query)),
                 )
                 .await;
-            let mut ytdl = YoutubeDl::new(client.clone(), format!("ytsearch:{}", search_query));
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let new_aux_metadata = ytdl.aux_metadata().await?;
+
+            let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+            let res = ytdl.one_shot(search_query).await?;
+            let res = res.ok_or(CrackedError::Other("No results found"))?;
+            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
             MyAuxMetadata::Data(new_aux_metadata)
         } else {
@@ -1546,142 +1559,10 @@ pub async fn queue_aux_metadata(
     Ok(())
 }
 
-/// Rotates the queue by `n` tracks to the right.
-async fn rotate_tracks(
-    call: &Arc<Mutex<Call>>,
-    n: usize,
-) -> Result<Vec<TrackHandle>, Box<dyn StdError>> {
-    let handler = call.lock().await;
-
-    verify(
-        handler.queue().len() > 2,
-        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
-    )?;
-
-    handler.queue().modify_queue(|queue| {
-        let mut not_playing = queue.split_off(1);
-        not_playing.rotate_right(n);
-        queue.append(&mut not_playing);
-    });
-
-    Ok(handler.queue().current_queue())
-}
-
 #[cfg(test)]
 mod test {
-    use rspotify::model::{FullTrack, SimplifiedAlbum};
-
     use super::*;
-
-    #[test]
-    fn test_get_mode() {
-        let is_prefix = true;
-        let x = "asdf".to_string();
-        let msg = Some(x.clone());
-        let mode = Some("".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let x = "".to_string();
-        let is_prefix = true;
-        let msg = None;
-        let mode = Some(x.clone());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = true;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
-
-        let is_prefix = false;
-        let msg = Some(x.clone());
-        let mode = Some("next".to_string());
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmkv".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMKV, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = Some("downloadmp3".to_string());
-
-        assert_eq!(
-            get_mode(is_prefix, msg, mode),
-            (Mode::DownloadMP3, x.clone())
-        );
-
-        let is_prefix = false;
-        let msg = None;
-        let mode = None;
-
-        assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x));
-    }
-
-    #[test]
-    fn test_get_msg() {
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = None;
-        let query_or_url = Some("".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = None;
-        let query_or_url = None;
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
-
-        let mode = None;
-        let query_or_url = Some("".to_string());
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
-
-        let mode = None;
-        let query_or_url = None;
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = None;
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode = Some("".to_string());
-        let query_or_url = None;
-        let is_prefix = false;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, None);
-
-        let mode: Option<String> = None;
-        let query_or_url = Some("asdf asdf asdf asd f".to_string());
-        let is_prefix = true;
-        let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
-    }
+    use rspotify::model::{FullTrack, SimplifiedAlbum};
 
     #[test]
     fn test_from_spotify_track() {

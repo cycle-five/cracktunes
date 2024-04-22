@@ -15,6 +15,7 @@ pub fn get_music_commands() -> Vec<&'static str> {
         "play",
         "playnext",
         "playlog",
+        "optplay",
         "pause",
         "resume",
         "stop",
@@ -49,7 +50,15 @@ pub fn get_music_commands() -> Vec<&'static str> {
 
 /// Playlist related commands
 pub fn get_playlist_commands() -> Vec<&'static str> {
-    vec!["create", "delete", "addto", "get", "list", "play"]
+    vec![
+        "create",
+        "delete",
+        "addto",
+        "get",
+        "list",
+        "play",
+        "loadspotify",
+    ]
 }
 
 /// Mod commands list
