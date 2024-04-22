@@ -1379,11 +1379,11 @@ pub async fn search_query_to_source_and_metadata(
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
     let results = rytdl.one_shot(query).await?;
     // FIXME: Fallback to yt-dlp
-    let result = match results.first() {
+    let result = match results {
         Some(r) => r,
         None => return Err(CrackedError::EmptySearchResult),
     };
-    let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(result);
+    let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
     let source_url = match metadata.clone().source_url {
         Some(url) => url.clone(),
         None => "".to_string(),
@@ -1538,8 +1538,8 @@ pub async fn queue_aux_metadata(
 
             let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
             let res = ytdl.one_shot(search_query).await?;
-            let res = res.first().ok_or(CrackedError::Other("No results found"))?;
-            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(res);
+            let res = res.ok_or(CrackedError::Other("No results found"))?;
+            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
             MyAuxMetadata::Data(new_aux_metadata)
         } else {

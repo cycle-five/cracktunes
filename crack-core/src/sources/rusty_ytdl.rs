@@ -144,12 +144,12 @@ impl RustyYoutubeClient {
     }
 
     // Do a one-shot search
-    pub async fn one_shot(&self, query: String) -> Result<Vec<SearchResult>, CrackedError> {
+    pub async fn one_shot(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
         let opts = SearchOptions {
             limit: 1,
             ..Default::default()
         };
-        let search_results = self.rusty_ytdl.search(&query, Some(&opts)).await?;
+        let search_results = self.rusty_ytdl.search_one(&query, Some(&opts)).await?;
         println!("{:?}", search_results);
         Ok(search_results)
     }
@@ -189,8 +189,8 @@ mod test {
         let mut all_res = Vec::new();
         for search in searches {
             let res = ytdl.one_shot(search.to_string()).await.unwrap();
-            assert!(res.len() > 0);
-            all_res.push(res.first().unwrap().clone());
+            assert!(res.is_some());
+            all_res.push(res.unwrap().clone());
         }
         println!("{:?}", all_res);
     }
