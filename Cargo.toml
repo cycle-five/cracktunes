@@ -54,8 +54,9 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-git = "https://github.com/serenity-rs/songbird"
-branch = "current"
+# git = "https://github.com/serenity-rs/songbird"
+# branch = "current"
+path = "/home/lothrop/src/songbird"
 version = "0.4.1"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
@@ -64,7 +65,12 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 [workspace.dependencies.symphonia]
 version = "0.5.4"
 default-features = false
-features = ["all", "all-codecs", "all-formats"]
+features = ["all", "opt-simd", "all-codecs", "all-formats"]
+
+[workspace.dependencies.symphonia-metadata]
+version = "0.5.4"
+default-features = false
+features = ["all"]
 
 [workspace.dependencies.poise]
 git = "https://github.com/cycle-five/poise"
@@ -75,6 +81,7 @@ features = ["cache", "chrono", "handle_panics"]
 [workspace.dependencies.tokio]
 version = "1.37.0"
 features = ["macros", "rt-multi-thread", "signal"]
+# features = ["full"]
 
 [profile.release-with-debug]
 inherits = "release"

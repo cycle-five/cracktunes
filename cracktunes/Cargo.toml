@@ -18,7 +18,7 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 crack-tracing = ["tracing-subscriber", "tracing-futures"]
-crack-metrics = ["prometheus", "warp"]
+crack-metrics = [] # ["prometheus", "warp"]
 crack-telemetry = [
     "opentelemetry",
     "opentelemetry-otlp",
@@ -58,7 +58,6 @@ opentelemetry-otlp = { version = "0.15", features = [
     "logs",
     "metrics",
     "trace",
-    #    "grpc-tonic",
 ], optional = true }
 #
 # which one of these is best?
@@ -79,15 +78,17 @@ tracing-subscriber = { version = "0.3.18", features = [
 tracing-futures = { version = "0.2.5", optional = true }
 
 # crack-metrics
-prometheus = { version = "0.13.3", features = ["process"], optional = true }
-warp = { version = "0.3.7", features = ["tls"], optional = true }
+# prometheus = { version = "0.13.3", features = ["process"], optional = true }
+# warp = { version = "0.3.7", features = ["tls"], optional = true }
 
 # # Is this even needed? What did I add it for?
 # This is needed for the tests to run in the IDE
 
 [dev-dependencies]
-async-tungstenite = "0.25"
-tungstenite = "0.21"
+async-tungstenite = { version = "0.25", features = [
+    "tokio-rustls-webpki-roots",
+] }
+# tungstenite = { version = "0.21", features = ["tokio-rustls-webpki-roots"] }
 sqlx = { version = "0.7.4", features = [
     "runtime-tokio-rustls",
     "tls-rustls",

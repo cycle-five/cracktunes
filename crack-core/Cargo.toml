@@ -25,12 +25,13 @@ playlist = []
 shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
-crack-metrics = ["prometheus"]
+crack-metrics = [] # ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
-rusty_ytdl = { version = "0.7.1", default-features = false, features = [
+#rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main", features = [
+rusty_ytdl = { path = "/home/lothrop/src/rusty_ytdl", features = [
     "live",
     "rustls-tls",
     "search",
