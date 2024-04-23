@@ -8,7 +8,7 @@ license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.5-rc.0" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3.5" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 
@@ -19,18 +19,19 @@ reqwest = { version = "0.11.27", default-features = false, features = [
   "rustls-tls",
 ] }
 audiopus = "0.3.0-rc.0"
-either = "1.10"
+either = "1.11.0"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tracing = "0.1"
+serde_json = "1.0.116"
+tracing = "0.1.40"
 uuid = "1.8.0"
+rustls = "0.23.5"
 
 
 [workspace.dependencies.sqlx]
 version = "0.7.4"
 default-features = false
 features = [
-  "runtime-tokio",
+  "runtime-tokio-rustls",
   "tls-rustls",
   "macros",
   "postgres",
@@ -40,10 +41,7 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-#version = "0.12.0-rc2"
 version = "0.12.1"
-# git = "https://github.com/serenity-rs/serenity"
-# branch = "next"
 default-features = false
 features = [
   "builder",
@@ -72,17 +70,11 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 [workspace.dependencies.symphonia]
 version = "0.5.4"
 default-features = false
-features = ["all"]
+features = ["all", "all-codecs", "all-formats"]
 
 [workspace.dependencies.poise]
-# version = "0.5.6"
-# version = "0.5.5"
-# path = "../poise"
 git = "https://github.com/cycle-five/poise"
 branch = "current"
-# git = "https://github.com/serenity-rs/poise"
-# branch = "serenity-next"
-# path = "../../src/poise"
 default-features = true
 features = ["cache", "chrono", "handle_panics"]
 
@@ -90,15 +82,18 @@ features = ["cache", "chrono", "handle_panics"]
 version = "1.37.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
+[workspace.dependencies.tokio-rustls]
+version = "0.26.0"
+features = []
+
 [profile.release-with-debug]
 inherits = "release"
 debug = 1
 
-
 [profile.release]
 incremental = true
-debug = 0
 # Set this to 1 or 2 to get more useful backtraces in debugger.
+debug = 0
 
 # [profile.dev]
 # # Disabling debug info speeds up builds a bunch,

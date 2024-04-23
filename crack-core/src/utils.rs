@@ -3,6 +3,7 @@ use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
     commands::{music::doplay::RequestingUser, MyAuxMetadata},
     db::Playlist,
+    interface::create_now_playing_embed,
     interface::{build_nav_btns, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
@@ -32,15 +33,18 @@ use poise::{
     CreateReply, ReplyHandle,
 };
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
+use std::sync::Arc;
 use std::{
     cmp::{max, min},
     fmt::Write,
     ops::Add,
-    sync::Arc,
     time::Duration,
 };
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use url::Url;
+
+use songbird::Call;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 
@@ -82,6 +86,7 @@ pub async fn build_log_embed_thumb(
 }
 
 /// Send a log message as a embed with a thumbnail.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &serenity::ChannelId,
@@ -100,6 +105,7 @@ pub async fn send_log_embed_thumb(
 }
 
 /// Create and sends an log message as an embed.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
     http: &Arc<Http>,
@@ -126,6 +132,7 @@ pub struct SendMessageParams {
 }
 
 /// Sends a message to a channel.
+#[cfg(not(tarpaulin_include))]
 pub async fn send_channel_message(
     http: Arc<&Http>,
     params: SendMessageParams,
@@ -169,6 +176,7 @@ pub async fn send_response_poise_text(
 }
 
 /// Create an embed to send as a response.
+#[cfg(not(tarpaulin_include))]
 pub async fn create_response(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -179,6 +187,7 @@ pub async fn create_response(
 }
 
 /// Create an embed to send as a response.
+#[cfg(not(tarpaulin_include))]
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     interaction: &CommandOrMessageInteraction,
@@ -236,6 +245,47 @@ pub async fn send_embed_response_str(
     .into_message()
     .await
     .map_err(Into::into)
+}
+
+/// Send the current track information as an ebmed to the given channel.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_now_playing(
+    channel: ChannelId,
+    http: Arc<Http>,
+    call: Arc<Mutex<Call>>,
+    cur_position: Option<Duration>,
+    metadata: Option<AuxMetadata>,
+) -> Result<Message, Error> {
+    tracing::warn!("locking mutex");
+    let mutex_guard = call.lock().await;
+    tracing::warn!("mutex locked");
+    let msg: CreateMessage = match mutex_guard.queue().current() {
+        Some(track_handle) => {
+            tracing::warn!("track handle found, dropping mutex guard");
+            drop(mutex_guard);
+            let requesting_user = get_requesting_user(&track_handle).await;
+            let embed = if let Some(metadata2) = metadata {
+                create_now_playing_embed_metadata(
+                    requesting_user.ok(),
+                    cur_position,
+                    crate::commands::MyAuxMetadata::Data(metadata2),
+                )
+            } else {
+                create_now_playing_embed(&track_handle).await
+            };
+            CreateMessage::new().embed(embed)
+        },
+        None => {
+            tracing::warn!("track handle not found, dropping mutex guard");
+            drop(mutex_guard);
+            CreateMessage::new().content("Nothing playing")
+        },
+    };
+    tracing::warn!("sending message: {:?}", msg);
+    channel
+        .send_message(Arc::clone(&http), msg)
+        .await
+        .map_err(|e| e.into())
 }
 
 /// Sends a reply response with an embed.
