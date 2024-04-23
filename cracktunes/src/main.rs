@@ -40,7 +40,7 @@ async fn main() -> Result<(), Error> {
     //     .build()
     //     .unwrap();
 
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     // rt.block_on(async {
     //     init_telemetry("").await;
     //     main_async(event_log).await

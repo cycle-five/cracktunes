@@ -12,19 +12,13 @@ crack-core = { path = "crack-core", default-features = true, version = "0.3.5" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 
-reqwest = { version = "0.11.27", default-features = false, features = [
+reqwest = { version = "0.12.4", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
   "rustls-tls",
 ] }
-audiopus = "0.3.0-rc.0"
-either = "1.11.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.116"
 tracing = "0.1.40"
-uuid = "1.8.0"
-rustls = "0.23.5"
 
 
 [workspace.dependencies.sqlx]
@@ -82,10 +76,6 @@ features = ["cache", "chrono", "handle_panics"]
 version = "1.37.0"
 features = ["macros", "rt-multi-thread", "signal"]
 
-[workspace.dependencies.tokio-rustls]
-version = "0.26.0"
-features = []
-
 [profile.release-with-debug]
 inherits = "release"
 debug = 1
@@ -94,12 +84,3 @@ debug = 1
 incremental = true
 # Set this to 1 or 2 to get more useful backtraces in debugger.
 debug = 0
-
-# [profile.dev]
-# # Disabling debug info speeds up builds a bunch,
-# # and we don't rely on it for debugging that much.
-# debug = 0
-
-[profile.dev.package]
-# This speeds up `cargo xtask dist`.
-miniz_oxide.opt-level = 3
