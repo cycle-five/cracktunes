@@ -16,9 +16,12 @@ use {
     opentelemetry::global::set_text_map_propagator,
     opentelemetry_sdk::propagation::TraceContextPropagator,
     poise::serenity_prelude as serenity,
-    prometheus::{Encoder, TextEncoder},
     std::sync::Arc,
     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+};
+#[cfg(feature = "crack-metrics")]
+use {
+    prometheus::{Encoder, TextEncoder},
     warp::Filter,
 };
 

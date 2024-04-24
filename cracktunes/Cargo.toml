@@ -25,8 +25,6 @@ crack-telemetry = [
     "opentelemetry-semantic-conventions",
     "tracing-opentelemetry",
     "tracing-bunyan-formatter",
-    # "tonic",
-    # "warp",
 ]
 
 [dependencies]
@@ -43,8 +41,10 @@ songbird = { workspace = true }
 symphonia = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
-async-tungstenite = "0.25"
-tungstenite = "0.21"
+async-tungstenite = { version = "0.25", features = [
+    "tokio-rustls-webpki-roots",
+] }
+# tungstenite = "0.21"
 async-trait = { version = "0.1.80" }
 mockall = { version = "0.12.1" }
 config-file = { version = "0.2.3", features = ["json"] }

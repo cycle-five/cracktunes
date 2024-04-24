@@ -690,6 +690,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "command_attr"
+version = "0.5.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "config-file"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -798,7 +807,7 @@ dependencies = [
  "serde_json",
  "serde_stream",
  "serde_with",
- "serenity",
+ "serenity 0.12.1",
  "songbird",
  "sqlx",
  "symphonia",
@@ -862,7 +871,6 @@ dependencies = [
  "tracing-futures",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "tungstenite 0.21.0",
 ]
 
 [[package]]
@@ -2302,6 +2310,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "levenshtein"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
+
+[[package]]
 name = "libc"
 version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3184,7 +3198,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "poise_macros",
  "regex",
- "serenity",
+ "serenity 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "tracing",
 ]
@@ -4318,6 +4332,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_cow"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64e84ce5596a72f0c4c60759a10ff8c22d5eaf227b0dc2789c8746193309058b"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.198"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4419,6 +4442,42 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.1"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "base64 0.22.0",
+ "bitflags 2.5.0",
+ "bytes",
+ "chrono",
+ "command_attr",
+ "dashmap",
+ "flate2",
+ "futures",
+ "fxhash",
+ "levenshtein",
+ "mime_guess",
+ "mini-moka",
+ "parking_lot 0.12.1",
+ "percent-encoding",
+ "reqwest 0.12.4",
+ "secrecy",
+ "serde",
+ "serde_cow",
+ "serde_json",
+ "static_assertions",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tracing",
+ "typemap_rev",
+ "typesize",
+ "url",
+ "uwl",
+]
+
+[[package]]
+name = "serenity"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c64da29158bb55d70677cacd4f4f8eab1acef005fb830d9c3bea411b090e96a9"
 dependencies = [
@@ -4433,7 +4492,6 @@ dependencies = [
  "futures",
  "fxhash",
  "mime_guess",
- "mini-moka",
  "parking_lot 0.12.1",
  "percent-encoding",
  "reqwest 0.11.27",
@@ -4599,7 +4657,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
- "serenity",
+ "serenity 0.12.1",
  "serenity-voice-model",
  "socket2",
  "streamcatcher",
@@ -6067,6 +6125,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwl"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4bf03e0ca70d626ecc4ba6b0763b934b6f2976e8c744088bb3c1d646fbb1ad0"
+
+[[package]]
 name = "validators"
 version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6323,11 +6387,11 @@ checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
 
 [[package]]
 name = "winapi-util"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f29e6f9198ba0d26b4c9f07dbe6f9ed633e1f3d5b8b414090084349e46a52596"
+checksum = "134306a13c5647ad6453e8deaec55d3a44d6021970129e6188735e74bf546697"
 dependencies = [
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

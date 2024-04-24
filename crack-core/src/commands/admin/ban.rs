@@ -29,11 +29,15 @@ pub async fn ban(
     #[description = "Reason to the ban."]
     reason: Option<String>,
 ) -> Result<(), Error> {
+    let uid = user.id;
     let dmd = dmd.unwrap_or(0);
     let reason = reason.unwrap_or("No reason provided".to_string());
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
-    if let Err(e) = guild.ban_with_reason(&ctx, user.clone(), dmd, reason).await {
+    if let Err(e) = guild
+        .ban_with_reason(&ctx, user.id.clone(), dmd, reason)
+        .await
+    {
         // Handle error, send error message
         send_response_poise(
             ctx,

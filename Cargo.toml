@@ -35,7 +35,8 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-version = "0.12.1"
+# version = "0.12.1"
+path = "/home/lothrop/src/serenity"
 default-features = false
 features = [
   "builder",
