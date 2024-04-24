@@ -798,7 +798,7 @@ dependencies = [
  "serde_json",
  "serde_stream",
  "serde_with",
- "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
+ "serenity",
  "songbird",
  "sqlx",
  "symphonia",
@@ -3175,7 +3175,7 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#9aae3032db5eeae0577a0cc68b02f28bc185b5bd"
+source = "git+https://github.com/cycle-five/poise?branch=current#6b6cc546e300062cdeb2958890fe2106c2f61e67"
 dependencies = [
  "async-trait",
  "derivative",
@@ -3183,7 +3183,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "poise_macros",
  "regex",
- "serenity 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serenity",
  "tokio",
  "tracing",
 ]
@@ -3191,7 +3191,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#9aae3032db5eeae0577a0cc68b02f28bc185b5bd"
+source = "git+https://github.com/cycle-five/poise?branch=current#6b6cc546e300062cdeb2958890fe2106c2f61e67"
 dependencies = [
  "darling 0.20.8",
  "proc-macro2",
@@ -3609,7 +3609,6 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
- "mime_guess",
  "native-tls",
  "once_cell",
  "percent-encoding",
@@ -3624,12 +3623,10 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls 0.24.1",
- "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams",
  "web-sys",
  "webpki-roots 0.25.4",
  "winreg 0.50.0",
@@ -4068,9 +4065,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecd36cc4259e3e4514335c4a138c6b43171a8d61d8f5c9348f9fc7529416f247"
+checksum = "beb461507cee2c2ff151784c52762cf4d9ff6a61f3e80968600ed24fa837fa54"
 
 [[package]]
 name = "rustls-webpki"
@@ -4427,45 +4424,14 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c64da29158bb55d70677cacd4f4f8eab1acef005fb830d9c3bea411b090e96a9"
-dependencies = [
- "arrayvec",
- "async-trait",
- "base64 0.21.7",
- "bitflags 2.5.0",
- "bytes",
- "chrono",
- "dashmap",
- "flate2",
- "futures",
- "fxhash",
- "mime_guess",
- "parking_lot 0.12.1",
- "percent-encoding",
- "reqwest 0.11.27",
- "secrecy",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tokio-tungstenite 0.21.0",
- "tracing",
- "typemap_rev",
- "typesize",
- "url",
-]
-
-[[package]]
-name = "serenity"
-version = "0.12.1"
-source = "git+https://github.com/CycleFive/serenity?branch=current#8ddb138a252093117559711074a98f00a5e18477"
+source = "git+https://github.com/CycleFive/serenity?branch=current#190d4eaee6fa96f82174fd73e1aa71fd660187f8"
 dependencies = [
  "arrayvec",
  "async-trait",
  "base64 0.22.0",
  "bitflags 2.5.0",
  "bytes",
+ "chrono",
  "dashmap",
  "flate2",
  "futures",
@@ -4615,7 +4581,7 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.4.1"
-source = "git+https://github.com/cycle-five/songbird?branch=current#cba7d6cf73fb238b4dbeca7fd5d19f9d9ead6652"
+source = "git+https://github.com/cycle-five/songbird?branch=current#75c42b2b4243f6429e7e0116008628339002e457"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -4639,7 +4605,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
- "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
+ "serenity",
  "serenity-voice-model",
  "socket2",
  "streamcatcher",
@@ -6727,9 +6693,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "525b4ec142c6b68a2d10f01f7bbf6755599ca3f81ea53b8431b7dd348f5fdb2d"
+checksum = "63381fa6624bf92130a6b87c0d07380116f80b565c42cf0d754136f0238359ef"
 
 [[package]]
 name = "zerovec"

@@ -12,10 +12,18 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["db", "crack-gpt", "crack-osint", "crack-tracing"]
+default = [
+    "crack-gpt",
+    "crack-osint",
+    "crack-tracing",
+    "crack-telemetry",
+    "db",
+    "ignore-presence-log",
+]
 db = ["crack-core/sqlx", "sqlx"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
+ignore-presence-log = []
 
 crack-tracing = ["tracing-subscriber", "tracing-futures"]
 crack-metrics = [] # ["prometheus", "warp"]

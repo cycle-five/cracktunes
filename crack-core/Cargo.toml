@@ -19,7 +19,6 @@ default = [
     "ignore-presence-log",
     "crack-gpt",
     "crack-osint",
-    "crack-metrics",
 ]
 playlist = []
 shuttle = []

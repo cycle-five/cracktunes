@@ -9,20 +9,20 @@ use std::collections::HashMap;
 use std::env;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
-#[cfg(feature = "crack-telemetry")]
+#[cfg(feature = "crack-metrics")]
 use {
-    // opentelemetry_otlp::WithExportConfig,
     crack_core::metrics::REGISTRY,
     opentelemetry::global::set_text_map_propagator,
     opentelemetry_sdk::propagation::TraceContextPropagator,
     poise::serenity_prelude as serenity,
-    std::sync::Arc,
-    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
-};
-#[cfg(feature = "crack-metrics")]
-use {
     prometheus::{Encoder, TextEncoder},
     warp::Filter,
+};
+#[cfg(feature = "crack-telemetry")]
+use {
+    // opentelemetry_otlp::WithExportConfig,
+    std::sync::Arc,
+    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
 };
 
 #[cfg(feature = "crack-telemetry")]
@@ -309,7 +309,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     let stdout_formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
-    #[cfg(feature = "crack-telemetry")]
+    #[cfg(feature = "crack-metrics")]
     set_text_map_propagator(TraceContextPropagator::new());
 
     #[cfg(feature = "crack-tracing")]

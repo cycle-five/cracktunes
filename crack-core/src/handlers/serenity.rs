@@ -1,5 +1,6 @@
 use crate::{
     db::GuildEntity,
+    errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig, CamKickConfig, Data,
@@ -850,28 +851,50 @@ async fn server_mute_member(
         .await
 }
 
-pub fn voice_state_diff_str(
+pub async fn voice_state_diff_str(
     old: &Option<VoiceState>,
     new: &VoiceState,
-    cache: impl AsRef<serenity::Cache>,
-) -> String {
+    // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
+    cache: Arc<impl serenity::CacheHttp>,
+) -> Result<String, CrackedError> {
+    let channel = new.channel_id.unwrap().to_channel(cache.clone()).await?;
     let premium = true; //DEFAULT_PREMIUM;
     let old = match old {
         Some(old) => old,
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
             // let user_id = new.user_id;
-            let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id
-                .to_channel_cached(cache.as_ref())
-                .unwrap()
-                .mention();
+            // let channel_id = new.channel_id.unwrap();
+            // let guild_id = new.guild_id.unwrap();
+            // // cache
+            //     .as_ref()
+            //     .guild(guild_id)
+            //     .unwrap()
+            //     .channels(channel_id)
+            //     .unwrap()
+            // //     .mention();
+            // let mut channel_mention = String::new();
+            // let handle = tokio::task::spawn_blocking(move || {
+            //     let current_runtime = tokio::runtime::Handle::current();
+            //     current_runtime.block_on(async {
+            //         let channel_mention = Cache::guild(&cache.as_ref(), guild_id)
+            //             .unwrap()
+            //             .channels(cache)
+            //             .await;
+            //         channel_mention
+            //     })
+            // });
+            // .channel(channel_id)
+            // .unwrap()
+            // .mention();
+
             // let now_str = chrono::Local::now().to_string();
 
-            return format!(
+            return Ok(format!(
                 "Member joined voice channel\n{} joined {}",
-                user_name, channel_mention
-            );
+                user_name,
+                channel.mention()
+            ));
         },
     };
     let user = if premium {
@@ -891,10 +914,7 @@ pub fn voice_state_diff_str(
             let user_name = &new.member.as_ref().unwrap().user.name;
             let user_mention = new.member.as_ref().unwrap().user.mention();
             let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id
-                .to_channel_cached(cache.as_ref())
-                .unwrap()
-                .mention();
+            let channel_mention = channel_id.to_channel(cache).await?.mention();
 
             let user = if premium {
                 user_mention.to_string()
@@ -908,30 +928,24 @@ pub fn voice_state_diff_str(
                 channel_id.to_string()
             };
 
-            return format!("Member left voice channel\n{} left {}\n", user, channel);
+            return Ok(format!(
+                "Member left voice channel\n{} left {}\n",
+                user, channel
+            ));
         } else if old.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
             let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id
-                .to_channel_cached(cache.as_ref())
-                .unwrap()
-                .mention();
+            let channel_mention = channel_id.to_channel(cache).await?.mention();
 
-            return format!(
+            return Ok(format!(
                 "Member joined voice channel\n{} joined {}\n",
                 user_name, channel_mention
-            );
+            ));
         } else {
             let old_channel_id = old.channel_id.unwrap();
             let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .to_channel_cached(cache.as_ref())
-                .unwrap()
-                .mention();
-            let new_channel_mention = new_channel_id
-                .to_channel_cached(cache.as_ref())
-                .unwrap()
-                .mention();
+            let old_channel_mention = old_channel_id.to_channel(cache.clone()).await?.mention();
+            let new_channel_mention = new_channel_id.to_channel(cache.clone()).await?.mention();
             result.push_str(&format!(
                 "Switched voice channels: {} -> {}\n",
                 old_channel_mention, new_channel_mention
@@ -1011,5 +1025,5 @@ pub fn voice_state_diff_str(
             old.request_to_speak_timestamp, new.request_to_speak_timestamp,
         ));
     }
-    result
+    Ok(result)
 }

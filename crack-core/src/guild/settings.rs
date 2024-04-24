@@ -745,7 +745,6 @@ impl GuildSettings {
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            | FullEvent::PresenceReplace { .. }
             | FullEvent::PresenceUpdate { .. } => {
                 None
                 //.or(log_settings.get_all_log_channel()),
