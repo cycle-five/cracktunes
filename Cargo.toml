@@ -35,8 +35,9 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-# version = "0.12.1"
-path = "/home/lothrop/src/serenity"
+version = "0.12.1"
+git = "https://github.com/CycleFive/serenity"
+branch = "current"
 default-features = false
 features = [
   "builder",
@@ -55,9 +56,8 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-# git = "https://github.com/serenity-rs/songbird"
-# branch = "current"
-path = "/home/lothrop/src/songbird"
+git = "https://github.com/cycle-five/songbird"
+branch = "current"
 version = "0.4.1"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 

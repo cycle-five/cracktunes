@@ -690,15 +690,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "command_attr"
-version = "0.5.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "config-file"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -807,7 +798,7 @@ dependencies = [
  "serde_json",
  "serde_stream",
  "serde_with",
- "serenity 0.12.1",
+ "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
  "songbird",
  "sqlx",
  "symphonia",
@@ -2308,12 +2299,6 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 dependencies = [
  "spin 0.5.2",
 ]
-
-[[package]]
-name = "levenshtein"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
 
 [[package]]
 name = "libc"
@@ -4442,42 +4427,6 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.1"
-dependencies = [
- "arrayvec",
- "async-trait",
- "base64 0.22.0",
- "bitflags 2.5.0",
- "bytes",
- "chrono",
- "command_attr",
- "dashmap",
- "flate2",
- "futures",
- "fxhash",
- "levenshtein",
- "mime_guess",
- "mini-moka",
- "parking_lot 0.12.1",
- "percent-encoding",
- "reqwest 0.12.4",
- "secrecy",
- "serde",
- "serde_cow",
- "serde_json",
- "static_assertions",
- "time",
- "tokio",
- "tokio-tungstenite 0.21.0",
- "tracing",
- "typemap_rev",
- "typesize",
- "url",
- "uwl",
-]
-
-[[package]]
-name = "serenity"
-version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c64da29158bb55d70677cacd4f4f8eab1acef005fb830d9c3bea411b090e96a9"
 dependencies = [
@@ -4497,6 +4446,38 @@ dependencies = [
  "reqwest 0.11.27",
  "secrecy",
  "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tracing",
+ "typemap_rev",
+ "typesize",
+ "url",
+]
+
+[[package]]
+name = "serenity"
+version = "0.12.1"
+source = "git+https://github.com/CycleFive/serenity?branch=current#8ddb138a252093117559711074a98f00a5e18477"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "base64 0.22.0",
+ "bitflags 2.5.0",
+ "bytes",
+ "dashmap",
+ "flate2",
+ "futures",
+ "fxhash",
+ "mime_guess",
+ "mini-moka",
+ "parking_lot 0.12.1",
+ "percent-encoding",
+ "reqwest 0.12.4",
+ "secrecy",
+ "serde",
+ "serde_cow",
  "serde_json",
  "time",
  "tokio",
@@ -4634,6 +4615,7 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.4.1"
+source = "git+https://github.com/cycle-five/songbird?branch=current#cba7d6cf73fb238b4dbeca7fd5d19f9d9ead6652"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -4657,7 +4639,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
- "serenity 0.12.1",
+ "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
  "serenity-voice-model",
  "socket2",
  "streamcatcher",
@@ -6123,12 +6105,6 @@ checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
 dependencies = [
  "getrandom",
 ]
-
-[[package]]
-name = "uwl"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4bf03e0ca70d626ecc4ba6b0763b934b6f2976e8c744088bb3c1d646fbb1ad0"
 
 [[package]]
 name = "validators"
