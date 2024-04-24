@@ -1,7 +1,7 @@
 #[cfg(feature = "crack-metrics")]
 mod metrics_internal {
     use lazy_static::lazy_static;
-    // use prometheus::{Gauge, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
+    use prometheus::{Gauge, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry};
 
     lazy_static! {
         pub static ref REGISTRY: Registry = Registry::new();

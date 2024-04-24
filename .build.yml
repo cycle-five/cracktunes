@@ -40,12 +40,12 @@ tasks:
                   export SQLX_OFFLINE=true
                   . "$HOME/.cargo/env"
                   cd cracktunes
-                  cargo +nightly clippy --all-features --all -- -D clippy::all -D warnings
+                  cargo +nightly clippy --all -- -D clippy::all -D warnings
         - test: |
                   export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
                   export SQLX_OFFLINE=true
                   export DATABASE_URL=postgresql://XXX
                   . "$HOME/.cargo/env"
                   cd cracktunes
-                  # cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+                  # cargo tarpaulin --verbose --workspace --timeout 120 --out xml
                   cargo +nightly test -- --skip test::playlist::test::test_delete_playlist_by_id
