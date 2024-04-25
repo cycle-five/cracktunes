@@ -59,7 +59,7 @@ async fn queue_tracks(
                 continue;
             },
         };
-        update_queue_messages(&http, ctx.data(), &queue, guild_id).await;
+        update_queue_messages(http, ctx.data(), &queue, guild_id).await;
     }
     Ok(())
 }

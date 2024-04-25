@@ -52,7 +52,7 @@ prometheus = { version = "0.13.3", features = ["process"], optional = true }
 anyhow = "1.0.82"
 proc-macro2 = "1.0.81"
 typemap_rev = "0.3.0"
-chatgpt_rs = { version = "1.2.3", optional = true }
+chatgpt_rs = { git = "https://github.com/cycle-five/chatgpt_rs", version = "1.2.4", branch = "master", optional = true }
 either = "1.11.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 once_cell = "1.19.0"
