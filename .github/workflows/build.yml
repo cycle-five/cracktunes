@@ -57,7 +57,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare --workspace -- --tests --all --all-features
+          cargo sqlx prepare --workspace -- --tests --all
 
       - name: Run Unit Tests
         if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')

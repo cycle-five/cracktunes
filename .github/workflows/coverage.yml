@@ -59,7 +59,7 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare --workspace -- --tests --all --all-features
+          cargo sqlx prepare --workspace -- --tests --all
       
       - name: Generate code coverage
         env:
