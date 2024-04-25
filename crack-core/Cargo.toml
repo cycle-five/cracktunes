@@ -23,8 +23,7 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
-# rusty_ytdl = { path = "/home/lothrop/src/rusty_ytdl", features = [
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main", features = [
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "main", features = [
     "live",
     "rustls-tls",
     "search",
@@ -53,13 +52,19 @@ once_cell = "1.19.0"
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
-reqwest = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
+reqwest = { version = "0.12.3", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+] }
 
 [dependencies.rspotify]
 version = "0.13.1"
