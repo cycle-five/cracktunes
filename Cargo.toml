@@ -25,7 +25,7 @@ tracing = "0.1.40"
 version = "0.7.4"
 default-features = false
 features = [
-  "runtime-tokio-rustls",
+  "runtime-tokio",
   "tls-rustls",
   "macros",
   "postgres",
@@ -82,7 +82,7 @@ features = ["cache", "chrono"]
 [workspace.dependencies.tokio]
 version = "1.37.0"
 default-features = false
-features = ["macros", "rt-multi-thread", "signal", "sync"]
+features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
 # features = ["full"]
 
 [profile.release-with-debug]

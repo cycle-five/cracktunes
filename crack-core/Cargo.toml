@@ -18,7 +18,7 @@ playlist = []
 shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
-crack-metrics = []                                     # ["prometheus"]
+crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
@@ -32,7 +32,7 @@ audiopus = "0.3.0-rc.0"
 async-trait = "0.1.80"
 colored = "2.1.0"
 lazy_static = "1.4.0"
-lyric_finder = "0.1.6"
+lyric_finder = { git = "https://github.com/cycle-five/spotify-player/tree/master/lyric_finder", branch = "master", version = "0.1.6" }
 rand = "0.8.5"
 regex = "1.10.4"
 serde_json = "1.0.116"
