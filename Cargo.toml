@@ -77,12 +77,12 @@ features = ["all"]
 git = "https://github.com/cycle-five/poise"
 branch = "current"
 default-features = true
-features = ["cache", "chrono", "handle_panics"]
+features = ["cache", "chrono"]
 
 [workspace.dependencies.tokio]
 version = "1.37.0"
 default-features = false
-features = ["macros", "rt-multi-thread", "signal"]
+features = ["macros", "rt-multi-thread", "signal", "sync"]
 # features = ["full"]
 
 [profile.release-with-debug]

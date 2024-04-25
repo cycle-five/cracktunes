@@ -12,23 +12,13 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = ["crack-tracing", "crack-telemetry", "ignore-presence-log"]
+default = ["crack-tracing", "ignore-presence-log"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 ignore-presence-log = []
 
-crack-tracing = [
-    "tracing-subscriber",
-    "tracing-futures",
-    "tracing-bunyan-formatter",
-]
-crack-metrics = [] # ["prometheus", "warp"]
-crack-telemetry = [
-    "opentelemetry",
-    # "opentelemetry-otlp",
-    # "opentelemetry-semantic-conventions",
-    "tracing-opentelemetry",
-]
+crack-tracing = ["tracing-subscriber"]
+crack-metrics = []                     # ["prometheus", "warp"]
 
 [dependencies]
 # core
@@ -51,10 +41,6 @@ sqlx = { version = "0.7.4", features = [
     "migrate",
     "json",
 ] }
-async-tungstenite = { version = "0.25", features = [
-    "tokio-rustls-webpki-roots",
-] }
-# tungstenite = "0.21"
 async-trait = { version = "0.1.80" }
 mockall = { version = "0.12.1" }
 config-file = { version = "0.2.3", features = ["json"] }
@@ -62,30 +48,11 @@ dotenvy = "0.15.7"
 colored = "2.1.0"
 # Figure this one out better
 
-# crack-telemetry
-opentelemetry = { version = "0.22", optional = true }
-# opentelemetry-otlp = { version = "0.15", features = [
-#     "logs",
-#     "metrics",
-#     "trace",
-# ], optional = true }
-#
-# which one of these is best?
-# rt-tokio: Spawn telemetry tasks using tokio’s multi-thread runtime.
-# rt-tokio-current-thread: Spawn telemetry tasks on a separate runtime so that the main runtime won’t be blocked.
-#
-opentelemetry_sdk = { version = "0.22.1", features = [
-    "rt-tokio",
-], optional = true }
-# opentelemetry-semantic-conventions = { version = "0.14.0", optional = true }
 tracing = { workspace = true }
-tracing-opentelemetry = { version = "0.23.0", optional = true }
-tracing-bunyan-formatter = { version = "0.3.9", optional = true }
 tracing-appender = { version = "0.2.3", optional = true }
 tracing-subscriber = { version = "0.3.18", features = [
     "env-filter",
 ], optional = true }
-tracing-futures = { version = "0.2.5", optional = true }
 
 # crack-metrics
 # prometheus = { version = "0.13.3", features = ["process"], optional = true }
@@ -95,9 +62,6 @@ tracing-futures = { version = "0.2.5", optional = true }
 # This is needed for the tests to run in the IDE
 
 [dev-dependencies]
-async-tungstenite = { version = "0.25", features = [
-    "tokio-rustls-webpki-roots",
-] }
 sqlx = { version = "0.7.4", features = [
     "runtime-tokio",
     "tls-rustls",
