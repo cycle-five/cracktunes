@@ -401,7 +401,12 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
-        let response = reqwest::blocking::get("http://notreallol");
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
+
+        let response = client.get("http://notreallol").send();
         let err = CrackedError::Reqwest(response.unwrap_err());
         assert!(format!("{}", err).starts_with("error sending request for url"));
 
@@ -462,8 +467,13 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(err, CrackedError::SpotifyAuth);
 
-        let response1 = reqwest::blocking::get("http://notreallol");
-        let response2 = reqwest::blocking::get("http://notreallol");
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
+
+        let response1 = client.get("http://notreallol").send();
+        let response2 = client.get("http://notreallol").send();
         let err = CrackedError::Reqwest(response1.unwrap_err());
         assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
 

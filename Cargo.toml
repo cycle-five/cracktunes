@@ -81,6 +81,7 @@ features = ["cache", "chrono", "handle_panics"]
 
 [workspace.dependencies.tokio]
 version = "1.37.0"
+default-features = false
 features = ["macros", "rt-multi-thread", "signal"]
 # features = ["full"]
 

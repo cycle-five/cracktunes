@@ -17,14 +17,17 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 ignore-presence-log = []
 
-crack-tracing = ["tracing-subscriber", "tracing-futures"]
+crack-tracing = [
+    "tracing-subscriber",
+    "tracing-futures",
+    "tracing-bunyan-formatter",
+]
 crack-metrics = [] # ["prometheus", "warp"]
 crack-telemetry = [
     "opentelemetry",
-    "opentelemetry-otlp",
-    "opentelemetry-semantic-conventions",
+    # "opentelemetry-otlp",
+    # "opentelemetry-semantic-conventions",
     "tracing-opentelemetry",
-    "tracing-bunyan-formatter",
 ]
 
 [dependencies]
@@ -40,17 +43,14 @@ tokio = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
 sqlx = { version = "0.7.4", features = [
-    "runtime-tokio-rustls",
+    "runtime-tokio",
     "tls-rustls",
     "macros",
     "postgres",
     "chrono",
-    "time",
     "migrate",
     "json",
 ] }
-
-
 async-tungstenite = { version = "0.25", features = [
     "tokio-rustls-webpki-roots",
 ] }
@@ -64,11 +64,11 @@ colored = "2.1.0"
 
 # crack-telemetry
 opentelemetry = { version = "0.22", optional = true }
-opentelemetry-otlp = { version = "0.15", features = [
-    "logs",
-    "metrics",
-    "trace",
-], optional = true }
+# opentelemetry-otlp = { version = "0.15", features = [
+#     "logs",
+#     "metrics",
+#     "trace",
+# ], optional = true }
 #
 # which one of these is best?
 # rt-tokio: Spawn telemetry tasks using tokio’s multi-thread runtime.
@@ -77,7 +77,7 @@ opentelemetry-otlp = { version = "0.15", features = [
 opentelemetry_sdk = { version = "0.22.1", features = [
     "rt-tokio",
 ], optional = true }
-opentelemetry-semantic-conventions = { version = "0.14.0", optional = true }
+# opentelemetry-semantic-conventions = { version = "0.14.0", optional = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { version = "0.23.0", optional = true }
 tracing-bunyan-formatter = { version = "0.3.9", optional = true }
@@ -98,14 +98,12 @@ tracing-futures = { version = "0.2.5", optional = true }
 async-tungstenite = { version = "0.25", features = [
     "tokio-rustls-webpki-roots",
 ] }
-# tungstenite = { version = "0.21", features = ["tokio-rustls-webpki-roots"] }
 sqlx = { version = "0.7.4", features = [
-    "runtime-tokio-rustls",
+    "runtime-tokio",
     "tls-rustls",
     "macros",
     "postgres",
     "chrono",
-    "time",
     "migrate",
     "json",
 ] }
