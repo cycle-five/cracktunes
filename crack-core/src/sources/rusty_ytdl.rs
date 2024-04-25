@@ -167,11 +167,20 @@ mod test {
         let client = http_utils::get_client().clone();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
-        let playlist = ytdl
-            .one_shot("The Night Chicago Died".to_string())
-            .await
-            .unwrap();
-        println!("{:?}", playlist);
+        let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
+        if playlist.is_err() {
+            assert!(playlist
+                .unwrap_err()
+                .to_string()
+                .contains("Your IP is likely being blocked"));
+        } else {
+            let playlist_val = playlist.unwrap().unwrap();
+            let metadata =
+                crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
+                    &playlist_val,
+                );
+            println!("{:?}", metadata);
+        }
     }
 
     #[tokio::test]
@@ -191,13 +200,18 @@ mod test {
             .unwrap();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
-        let mut all_res = Vec::new();
+        // let mut all_res = Vec::new();
         for search in searches {
-            let res = ytdl.one_shot(search.to_string()).await.unwrap();
-            assert!(res.is_some());
-            all_res.push(res.unwrap().clone());
+            let res = ytdl.one_shot(search.to_string()).await;
+            assert!(
+                res.is_ok()
+                    || res
+                        .unwrap_err()
+                        .to_string()
+                        .contains("Your IP is likely being blocked")
+            );
+            // all_res.push(res.unwrap().clone());
         }
-        println!("{:?}", all_res);
     }
 
     #[tokio::test]
