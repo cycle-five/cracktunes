@@ -716,11 +716,11 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
@@ -775,7 +775,8 @@ async fn match_mode<'a>(
                 } else {
                     1
                 };
-                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty).await?;
+                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty, search_msg)
+                    .await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::trace!("Mode::Next, QueryType::KeywordList");
@@ -788,7 +789,8 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty).await?;
+                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty, search_msg)
+                    .await?;
             },
             QueryType::YoutubeSearch(_) => {
                 tracing::trace!("Mode::Next, QueryType::YoutubeSearch");
@@ -942,7 +944,7 @@ async fn match_mode<'a>(
                 tracing::trace!(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::trace!(
@@ -952,7 +954,7 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?

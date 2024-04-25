@@ -1,6 +1,5 @@
-use self::serenity::{builder::CreateEmbed, futures::StreamExt};
-use crate::errors::CrackedError;
 use crate::{
+    errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
@@ -8,12 +7,10 @@ use crate::{
     Context, Error,
 };
 use ::serenity::builder::{
-    CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
+    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
 };
-use poise::{
-    serenity_prelude::{self as serenity},
-    CreateReply,
-};
+use ::serenity::futures::StreamExt;
+use poise::CreateReply;
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
 
@@ -24,21 +21,21 @@ const EMBED_TIMEOUT: u64 = 3600;
 #[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     tracing::info!("queue called");
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NotConnected)?;
-    tracing::info!("manager: {:?}", manager);
+    tracing::trace!("manager: {:?}", manager);
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
-    tracing::info!("call: {:?}", call);
+    tracing::trace!("call: {:?}", call);
 
     // FIXME
     let handler = call.lock().await;
     let tracks = handler.queue().current_queue();
     drop(handler);
-    tracing::info!("tracks: {:?}", tracks);
+    tracing::info!("tracks: {:?}", tracks.len());
 
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
@@ -76,7 +73,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
-    let data = ctx.data(); //.clone();
+    let data = ctx.data();
     data.guild_cache_map
         .lock()
         .unwrap()
@@ -84,15 +81,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         .or_default()
         .queue_messages
         .push((message.clone(), page.clone()));
-    // let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
-
-    // let cache = cache_map.entry(guild_id).or_default();
-    // cache.queue_messages.push((message.clone(), page.clone()));
-    // drop(data);
 
     // refresh the queue interaction whenever a track ends
-    // let mut handler = call.lock().await;
-    // let data = ctx.data().clone();
     call.lock().await.add_global_event(
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
@@ -102,7 +92,6 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             guild_id,
         },
     );
-    // drop(handler);
 
     let mut cib = message
         .await_component_interactions(ctx)
@@ -113,9 +102,6 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         let btn_id = &mci.data.custom_id;
 
         // refetch the queue in case it changed
-        // let handler = call.lock().await;
-        // let tracks = handler.queue().current_queue();
-        // drop(handler);
         let tracks = call.lock().await.queue().current_queue();
 
         let page_num = {
