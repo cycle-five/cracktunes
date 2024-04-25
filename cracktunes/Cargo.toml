@@ -70,6 +70,3 @@ sqlx = { version = "0.7.4", features = [
     "migrate",
     "json",
 ] }
-
-[patch.crates-io]
-windows_x86_64_msvc = { version = "0.52.5" }
