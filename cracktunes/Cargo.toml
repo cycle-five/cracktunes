@@ -12,15 +12,7 @@ homepage = "https://cracktun.es/"
 repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 [features]
-default = [
-    "crack-gpt",
-    "crack-osint",
-    "crack-tracing",
-    "crack-telemetry",
-    "db",
-    "ignore-presence-log",
-]
-db = ["crack-core/sqlx", "sqlx"]
+default = ["crack-tracing", "crack-telemetry", "ignore-presence-log"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 ignore-presence-log = []
@@ -37,7 +29,7 @@ crack-telemetry = [
 
 [dependencies]
 # core
-crack-core = { workspace = true, optional = false }
+crack-core = { workspace = true }
 # modules, each should be optional
 crack-osint = { workspace = true, optional = true }
 crack-gpt = { workspace = true, optional = true }
@@ -47,7 +39,17 @@ poise = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
-sqlx = { workspace = true, optional = true }
+sqlx = { version = "0.7.4", features = [
+    "runtime-tokio-rustls",
+    "tls-rustls",
+    "macros",
+    "postgres",
+    "chrono",
+    "time",
+    "migrate",
+    "json",
+] }
+
 
 async-tungstenite = { version = "0.25", features = [
     "tokio-rustls-webpki-roots",

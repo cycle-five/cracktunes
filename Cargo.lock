@@ -795,7 +795,6 @@ dependencies = [
  "rusty_ytdl",
  "serde",
  "serde_json",
- "serde_stream",
  "serde_with",
  "serenity",
  "songbird",
@@ -3676,28 +3675,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmp"
-version = "0.8.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "228ed7c16fa39782c3b3468e974aec2795e9089153cd08ee2e9aefb3613334c4"
-dependencies = [
- "byteorder",
- "num-traits",
- "paste",
-]
-
-[[package]]
-name = "rmp-serde"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "938a142ab806f18b88a97b0dea523d39e0fd730a064b035726adcfc58a8a5188"
-dependencies = [
- "byteorder",
- "rmp",
- "serde",
-]
-
-[[package]]
 name = "rsa"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4236,19 +4213,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.60",
-]
-
-[[package]]
-name = "serde_stream"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "492f3b0b24046b1f61b84e5d6a171d776ad1e8776d4c7b1866c2633157224cb1"
-dependencies = [
- "async-trait",
- "rmp-serde",
- "serde",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

@@ -13,18 +13,12 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 
 [features]
-default = [
-    "cache",
-    "playlist",
-    "ignore-presence-log",
-    "crack-gpt",
-    "crack-osint",
-]
+default = ["cache", "playlist", "ignore-presence-log"]
 playlist = []
 shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
-crack-metrics = [] # ["prometheus"]
+crack-metrics = []                                     # ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
@@ -46,7 +40,7 @@ serde_json = "1.0.116"
 serde_with = "3.7.0"
 url = "2.5.0"
 serde = { version = "1.0.198", features = ["derive", "rc"] }
-serde_stream = { version = "1.0.1", features = ["tokio"] }
+# serde_stream = { version = "1.0.1", features = ["tokio"] }
 sys-info = "0.9.1"
 prometheus = { version = "0.13.3", features = ["process"], optional = true }
 anyhow = "1.0.82"
@@ -60,7 +54,7 @@ crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
-sqlx = { workspace = true, optional = true }
+sqlx = { workspace = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
