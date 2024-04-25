@@ -725,6 +725,7 @@ dependencies = [
  "once_cell",
  "poise",
  "proc-macro2",
+ "prometheus",
  "rand",
  "regex",
  "reqwest",
