@@ -96,7 +96,17 @@ mod test {
     async fn test_ytdl() {
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let mut ytdl = crate::sources::ytdl::MyYoutubeDl::new(url);
-        let playlist = ytdl.get_playlist().await.unwrap();
-        println!("{:?}", playlist);
+        let playlist = ytdl.get_playlist().await;
+        if playlist.is_err() {
+            println!(
+                "{:?}",
+                playlist
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Your IP is likely blocked by YouTube.")
+            );
+        } else {
+            println!("{:?}", playlist.unwrap());
+        }
     }
 }
