@@ -21,7 +21,8 @@ pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user id to add to authorized list"] user_id: UserId,
 ) -> Result<(), Error> {
-    let id = user_id.parse::<u64>().expect("Failed to parse user id");
+    // let id = user_id.parse::<u64>().expect("Failed to parse user id");
+    let id = user_id.get();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // let data = ctx.data();
 
