@@ -136,18 +136,24 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                return send_embed_response_poise(ctx, embed).await.map(|m| {
-                    ctx.data().add_msg_to_cache(guild_id, m);
-                })
+                return send_embed_response_poise(ctx, embed)
+                    .await
+                    .map(|m| {
+                        ctx.data().add_msg_to_cache(guild_id, m);
+                    })
+                    .map_err(Into::into);
             },
         };
 
         track_handle.set_volume(new_vol).unwrap();
         embed
     };
-    send_embed_response_poise(ctx, embed).await.map(|m| {
-        ctx.data().add_msg_to_cache(guild_id, m);
-    })
+    send_embed_response_poise(ctx, embed)
+        .await
+        .map(|m| {
+            ctx.data().add_msg_to_cache(guild_id, m);
+        })
+        .map_err(Into::into)
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

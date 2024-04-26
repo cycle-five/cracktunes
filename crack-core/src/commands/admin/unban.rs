@@ -63,4 +63,5 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
         .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
         .map(|_| ())
     }
+    .map_err(Into::into)
 }

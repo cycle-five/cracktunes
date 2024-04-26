@@ -55,7 +55,7 @@ pub async fn create_text_channel(
     Ok(())
 }
 
-/// Create text channel.
+/// Create category.
 #[poise::command(
     slash_command,
     prefix_command,

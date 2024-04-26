@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.5-rc.0"
+version = "0.3.5"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -13,14 +13,7 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 
 
 [features]
-default = [
-    "cache",
-    "playlist",
-    "ignore-presence-log",
-    "crack-gpt",
-    "crack-osint",
-    "crack-metrics",
-]
+default = ["cache", "playlist", "ignore-presence-log"]
 playlist = []
 shuttle = []
 ignore-presence-log = []
@@ -30,43 +23,53 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
-rusty_ytdl = "0.7.1"
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = true, branch = "main", features = [
+    "live",
+    "rustls-tls",
+    "search",
+] }
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1.80"
+anyhow = "1.0.82"
 colored = "2.1.0"
 lazy_static = "1.4.0"
-lyric_finder = "0.1.6"
+lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "master", version = "0.1.6" }
 rand = "0.8.5"
 regex = "1.10.4"
 serde_json = "1.0.116"
 serde_with = "3.7.0"
 url = "2.5.0"
 serde = { version = "1.0.198", features = ["derive", "rc"] }
-serde_stream = { version = "1.0.1", features = ["tokio"] }
 sys-info = "0.9.1"
 prometheus = { version = "0.13.3", features = ["process"], optional = true }
-anyhow = "1.0.82"
 proc-macro2 = "1.0.81"
 typemap_rev = "0.3.0"
-chatgpt_rs = { version = "1.2.3", optional = true }
+chatgpt_rs = { git = "https://github.com/cycle-five/chatgpt_rs", version = "1.2.4", branch = "master", optional = true }
 either = "1.11.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 once_cell = "1.19.0"
+reqwest = { version = "0.12.4", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+] }
+
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 tracing = { workspace = true }
-reqwest = { workspace = true }
-sqlx = { workspace = true, optional = true }
+sqlx = { workspace = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
-# tungstenite = { workspace = true }
-# async-tungstenite = { workspace = true }
 
 [dependencies.rspotify]
 version = "0.13.1"
+default-features = false
+features = ["client-reqwest", "reqwest-rustls-tls"]
 
 # To get additional codecs, you *must* add Symphonia yourself.
 # # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
@@ -79,9 +82,9 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 
 [dev-dependencies]
 ctor = "0.2.8"
-mockall = "0.12"
-tungstenite = "0.21"
-async-tungstenite = "0.25"
+mockall = "0.12.1"
+tungstenite = "0.21.0"
+async-tungstenite = "0.25.1"
 sqlx = { version = "0.7.4", features = [
     "runtime-tokio",
     "tls-rustls",

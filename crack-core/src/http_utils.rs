@@ -16,10 +16,10 @@ pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
-/// Get a new reqwest client with consistent settings.
-pub fn new_reqwest_client() -> &'static Client {
-    &CLIENT
-}
+// /// Get a new reqwest client with consistent settings.
+// pub fn new_reqwest_client() -> &'static Client {
+//     &CLIENT
+// }
 
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
@@ -53,7 +53,8 @@ pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String
 pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // FIXME: This is definitely not efficient, we want ot reuse this client.
     // Make a GET request, which will follow redirects by default
-    let client = new_reqwest_client();
+
+    let client = get_client();
     let response = client.get(url).send().await?;
 
     // Extract the final URL after following all redirects

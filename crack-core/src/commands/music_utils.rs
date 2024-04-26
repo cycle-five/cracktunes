@@ -1,5 +1,6 @@
 use crate::connection::get_voice_channel_for_user;
 use crate::handlers::{IdleHandler, TrackEndHandler};
+use crate::messaging::message::CrackedMessage;
 use crate::utils::send_embed_response_poise;
 use crate::CrackedError;
 use crate::{Context, Error};
@@ -12,8 +13,6 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
-
-use super::CrackedMessage;
 
 /// Set the global handlers.
 #[cfg(not(tarpaulin_include))]

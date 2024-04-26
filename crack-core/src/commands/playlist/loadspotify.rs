@@ -1,8 +1,9 @@
 use crate::{
-    commands::{CrackedMessage, MyAuxMetadata},
+    commands::MyAuxMetadata,
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
     http_utils,
+    messaging::message::CrackedMessage,
     sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
     utils::send_embed_response_str,
     Context, CrackedError, Error,

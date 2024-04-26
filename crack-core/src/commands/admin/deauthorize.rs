@@ -53,7 +53,7 @@ pub async fn deauthorize(
         .clone();
     tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
-    send_response_poise(
+    let msg = send_response_poise(
         ctx,
         CrackedMessage::UserDeauthorized {
             user_id,
@@ -63,7 +63,9 @@ pub async fn deauthorize(
         },
         true,
     )
-    .await
-    .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
-    .map(|_| ())
+    .await?;
+
+    ctx.data().add_msg_to_cache(guild_id, msg);
+
+    Ok(())
 }

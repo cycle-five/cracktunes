@@ -10,16 +10,13 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 use crate::{
-    commands::{
-        doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, send_now_playing,
-        MyAuxMetadata,
-    },
+    commands::{doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message},
+    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
     Data, Error,
 };
 

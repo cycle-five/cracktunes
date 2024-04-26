@@ -36,6 +36,7 @@ pub async fn create(
             )
             .await
             .map(|_| ())
+            .map_err(Into::into)
         },
         Ok(role) => {
             // Send success message
@@ -49,6 +50,7 @@ pub async fn create(
             )
             .await
             .map(|_| ())
+            .map_err(Into::into)
         },
     }
 }

@@ -29,4 +29,5 @@ pub async fn set_vc_size(
     )
     .await
     .map(|_| ())
+    .map_err(Into::into)
 }

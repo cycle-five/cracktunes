@@ -57,7 +57,7 @@ pub async fn create_skip_response(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;

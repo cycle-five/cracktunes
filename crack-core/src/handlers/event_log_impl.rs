@@ -1045,6 +1045,8 @@ impl std::fmt::Display for ClientStatusPrinter {
     }
 }
 
+/// Log a presence update event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_presence_update(
     channel_id: ChannelId,
     http: &Arc<Http>,
@@ -1083,6 +1085,8 @@ pub async fn log_presence_update(
     .await
 }
 
+/// Log a voice state update event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_voice_state_update(
     channel_id: ChannelId,
     ctx: &SerenityContext,
@@ -1096,7 +1100,7 @@ pub async fn log_voice_state_update(
         "Voice State Update: {}",
         new.user_id.to_user(ctx).await?.name
     );
-    let description = voice_state_diff_str(old, new, &ctx.cache);
+    let description = voice_state_diff_str(old, new, Arc::new(ctx)).await?;
 
     let avatar_url = new
         .member

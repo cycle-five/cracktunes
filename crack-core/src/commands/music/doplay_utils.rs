@@ -19,32 +19,39 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+struct QueueTrackData {
+    title: String,
+    url: String,
+}
+
+/// Queue a list of tracks to be played.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_yt_playlist<'a>(
+async fn queue_tracks(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
-    guild_id: GuildId,
-    playlist: YTPlaylist,
-    search_msg: &'a mut Message,
+    tracks: Vec<QueueTrackData>,
+    search_msg: &mut Message,
 ) -> Result<(), Error> {
-    let n = playlist.videos.len() as f32;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let http = ctx.http();
+    let n = tracks.len() as f32;
     let mut i: f32 = 0.0_f32;
-    for video in playlist.videos {
+    for track in tracks {
         // Update the search message with what's queuing right now.
         search_msg
             .edit(
                 ctx.http(),
                 EditMessage::new().embed(CreateEmbed::default().description(format!(
                     "Queuing: [{}]({})\n{}% Done...",
-                    video.title,
-                    video.url,
+                    track.title,
+                    track.url,
                     (i / n) * 100.0
                 ))),
             )
             .await?;
-        i += 1.0;
+        i += 1.0_f32;
         let queue_res =
-            enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(video.url.to_string())).await;
+            enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
         let queue = match queue_res {
             Ok(q) => q,
             Err(e) => {
@@ -52,77 +59,89 @@ pub async fn queue_yt_playlist<'a>(
                 continue;
             },
         };
-        update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+        update_queue_messages(http, ctx.data(), &queue, guild_id).await;
     }
-    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    // let http = ctx.http();
-    // let user_id = ctx.author().id;
-    // let username = http_utils::http_to_username_or_default(http, user_id).await;
-    // let database_pool = ctx.data().database_pool.as_ref().unwrap();
-    // let playlist = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(
-    //     http_utils::new_reqwest_client(),
-    // )
-    // .unwrap()
-    // .get_playlist(&playlist_url)
-    // .await?;
-    // let playlist_tracks = playlist.tracks;
-    // for (idx, track) in playlist_tracks.into_iter().enumerate() {
-    //     let source = track.into();
-    //     let metadata = track.metadata;
-    //     let returned_metadata = write_metadata_pg(
-    //         database_pool,
-    //         metadata,
-    //         user_id,
-    //         username.clone(),
-    //         guild_id,
-    //         ctx.channel_id(),
-    //     )
-    //     .await?;
-    //     let mut handler = call.lock().await;
-    //     let track_handle = handler.enqueue(source.into()).await;
-    //     let mut map = track_handle.typemap().write().await;
-    //     map.insert::<MyAuxMetadata>(MyAuxMetadata::Data(metadata));
-    //     map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-    // }
     Ok(())
+}
+
+/// Queue a YouTube playlist to be played.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_yt_playlist<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    _guild_id: GuildId,
+    playlist: YTPlaylist,
+    search_msg: &'a mut Message,
+) -> Result<(), Error> {
+    queue_tracks(
+        ctx,
+        call,
+        playlist
+            .videos
+            .iter()
+            .map(|x| QueueTrackData {
+                title: x.title.clone(),
+                url: x.url.clone(),
+            })
+            .collect(),
+        search_msg,
+    )
+    .await
 }
 
 /// Queue a list of keywords to be played
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list(
+pub async fn queue_keyword_list<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     keyword_list: Vec<String>,
+    msg: &'a mut Message,
 ) -> Result<(), Error> {
-    queue_keyword_list_w_offset(ctx, call, keyword_list, 0).await
+    queue_keyword_list_w_offset(ctx, call, keyword_list, 0, msg).await
 }
 
 /// Queue a list of keywords to be played with an offset.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_w_offset(
+pub async fn queue_keyword_list_w_offset<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     keyword_list: Vec<String>,
     offset: usize,
+    search_msg: &'a mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut failed: usize = 0;
+    let n = keyword_list.len() as f32;
     for (idx, keywords) in keyword_list.into_iter().enumerate() {
-        let queue = match insert_track(
+        search_msg
+            .edit(
+                ctx.http(),
+                EditMessage::new().embed(CreateEmbed::default().description(format!(
+                    "Queuing: {}\n{}% Done...",
+                    keywords,
+                    (idx as f32 / n) * 100.0
+                ))),
+            )
+            .await?;
+        let ins_track_res = insert_track(
             ctx,
             &call,
             &QueryType::Keywords(keywords),
             idx + offset - failed,
         )
-        .await
-        {
+        .await;
+        let queue = match ins_track_res {
             Ok(x) => x,
             Err(e) => {
                 tracing::error!("insert_track error: {}", e);
                 failed += 1;
-                continue;
+                Vec::new()
             },
         };
+        if queue.is_empty() {
+            continue;
+        }
+        // TODO: Perhaps pass this off to a background task?
         update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }
 

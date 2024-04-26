@@ -64,7 +64,7 @@ pub enum CrackedError {
     RSpotifyLockError(String),
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
-    SerdeStream(serde_stream::Error),
+    // SerdeStream(serde_stream::Error),
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
@@ -101,6 +101,7 @@ impl Display for CrackedError {
                 f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
             },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
+            #[cfg(feature = "crack-gpt")]
             Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
                 "Command `{program}` failed with status `{status}` and output `{output}`"
@@ -148,7 +149,7 @@ impl Display for CrackedError {
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
-            Self::SerdeStream(err) => f.write_str(&format!("{err}")),
+            // Self::SerdeStream(err) => f.write_str(&format!("{err}")),
             Self::Songbird(err) => f.write_str(&format!("{err}")),
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
@@ -215,12 +216,12 @@ impl From<Error> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`serde_stream::Error`] to a [`CrackedError`].
-impl From<serde_stream::Error> for CrackedError {
-    fn from(err: serde_stream::Error) -> Self {
-        CrackedError::SerdeStream(err)
-    }
-}
+// /// Provides an implementation to convert a [`serde_stream::Error`] to a [`CrackedError`].
+// impl From<serde_stream::Error> for CrackedError {
+//     fn from(err: serde_stream::Error) -> Self {
+//         CrackedError::SerdeStream(err)
+//     }
+// }
 
 /// Provides an implementation to convert a [`std::io::Error`] to a [`CrackedError`].
 impl From<std::io::Error> for CrackedError {
@@ -400,7 +401,12 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
-        let response = reqwest::blocking::get("http://notreallol");
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
+
+        let response = client.get("http://notreallol").send();
         let err = CrackedError::Reqwest(response.unwrap_err());
         assert!(format!("{}", err).starts_with("error sending request for url"));
 
@@ -461,8 +467,13 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(err, CrackedError::SpotifyAuth);
 
-        let response1 = reqwest::blocking::get("http://notreallol");
-        let response2 = reqwest::blocking::get("http://notreallol");
+        let client = reqwest::blocking::ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
+
+        let response1 = client.get("http://notreallol").send();
+        let response2 = client.get("http://notreallol").send();
         let err = CrackedError::Reqwest(response1.unwrap_err());
         assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
 

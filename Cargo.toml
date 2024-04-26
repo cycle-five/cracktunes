@@ -8,22 +8,17 @@ license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.5-rc.0" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3.5" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
 
-reqwest = { version = "0.11.27", default-features = false, features = [
+reqwest = { version = "0.12.4", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
   "rustls-tls",
 ] }
-audiopus = "0.3.0-rc.0"
-either = "1.10"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tracing = "0.1"
-uuid = "1.8.0"
+tracing = "0.1.40"
 
 
 [workspace.dependencies.sqlx]
@@ -40,10 +35,9 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-#version = "0.12.0-rc2"
 version = "0.12.1"
-# git = "https://github.com/serenity-rs/serenity"
-# branch = "next"
+git = "https://github.com/CycleFive/serenity"
+branch = "current"
 default-features = false
 features = [
   "builder",
@@ -62,7 +56,7 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-git = "https://github.com/serenity-rs/songbird"
+git = "https://github.com/cycle-five/songbird"
 branch = "current"
 version = "0.4.1"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
@@ -72,39 +66,30 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 [workspace.dependencies.symphonia]
 version = "0.5.4"
 default-features = false
+features = ["all", "opt-simd", "all-codecs", "all-formats"]
+
+[workspace.dependencies.symphonia-metadata]
+version = "0.5.4"
+default-features = false
 features = ["all"]
 
 [workspace.dependencies.poise]
-# version = "0.5.6"
-# version = "0.5.5"
-# path = "../poise"
 git = "https://github.com/cycle-five/poise"
 branch = "current"
-# git = "https://github.com/serenity-rs/poise"
-# branch = "serenity-next"
-# path = "../../src/poise"
 default-features = true
-features = ["cache", "chrono", "handle_panics"]
+features = ["cache", "chrono"]
 
 [workspace.dependencies.tokio]
 version = "1.37.0"
-features = ["macros", "rt-multi-thread", "signal"]
+default-features = false
+features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
+# features = ["full"]
 
 [profile.release-with-debug]
 inherits = "release"
 debug = 1
 
-
 [profile.release]
 incremental = true
-debug = 0
 # Set this to 1 or 2 to get more useful backtraces in debugger.
-
-# [profile.dev]
-# # Disabling debug info speeds up builds a bunch,
-# # and we don't rely on it for debugging that much.
-# debug = 0
-
-[profile.dev.package]
-# This speeds up `cargo xtask dist`.
-miniz_oxide.opt-level = 3
+debug = 0

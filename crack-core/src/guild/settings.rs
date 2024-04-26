@@ -742,10 +742,10 @@ impl GuildSettings {
         self
     }
 
+    /// Get the log channel for the given event type.
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            | FullEvent::PresenceReplace { .. }
             | FullEvent::PresenceUpdate { .. } => {
                 None
                 //.or(log_settings.get_all_log_channel()),
@@ -901,5 +901,33 @@ mod test {
         assert_eq!(settings.welcome_settings.is_none(), true);
         assert_eq!(settings.log_settings.is_none(), true);
         assert_eq!(settings.additional_prefixes.len(), 0);
+    }
+
+    #[test]
+    fn test_get_log_channel() {
+        let mut settings =
+            crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
+        let channel_id = 123;
+        settings.set_all_log_channel(channel_id);
+        assert_eq!(
+            settings.get_log_channel("all"),
+            Some(serenity::model::id::ChannelId::new(123))
+        );
+    }
+
+    #[test]
+    fn test_get_log_channel_type_fe() {
+        let mut settings =
+            crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
+        let channel_id = 123;
+        settings.set_all_log_channel(channel_id);
+        let event = serenity::all::FullEvent::GuildCreate {
+            guild: serenity::model::guild::Guild::default(),
+            is_new: Some(true),
+        };
+        assert_eq!(
+            settings.get_log_channel_type_fe(&event),
+            Some(serenity::model::id::ChannelId::new(123))
+        );
     }
 }

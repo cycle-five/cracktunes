@@ -93,7 +93,7 @@ pub enum QueryType {
 }
 
 /// Get the guild name.
-#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let _id = ctx.serenity_context().shard_id;
@@ -108,13 +108,14 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Sends the searching message after a play command is sent.
 /// Also defers the interaction so we won't timeout.
-async fn send_search_message(ctx: Context<'_>) -> Result<Message, Error> {
+#[cfg(not(tarpaulin_include))]
+pub async fn send_search_message(ctx: Context<'_>) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     send_embed_response_poise(ctx, embed).await
 }
 
 /// Play a song next
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -131,7 +132,7 @@ pub async fn playnext(
 }
 
 /// Search interactively for a song
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
 pub async fn search(
     ctx: Context<'_>,
@@ -143,7 +144,7 @@ pub async fn search(
 }
 
 /// Play a song.
-//#[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
 pub async fn play(
     ctx: Context<'_>,
@@ -155,7 +156,7 @@ pub async fn play(
 }
 
 /// Play a song with more options
-// #[cfg(not(tarpaulin))]
+#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
 pub async fn optplay(
     ctx: Context<'_>,
@@ -169,6 +170,7 @@ pub async fn optplay(
 }
 
 /// Does the actual playing of the song, all the other commands use this.
+#[cfg(not(tarpaulin_include))]
 async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -176,6 +178,7 @@ async fn play_internal(
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
     // let search_msg = send_search_message(ctx).await?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
@@ -200,7 +203,13 @@ async fn play_internal(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // reply with a temporary message while we fetch the source
+    // needed because interactions must be replied within 3s and queueing takes longer
+    let mut search_msg = send_search_message(ctx).await?;
+
+    ctx.data().add_msg_to_cache(guild_id, search_msg.clone());
+
+    tracing::debug!("search response msg: {:?}", search_msg);
 
     let call = get_call_with_fail_msg(ctx, guild_id).await?;
 
@@ -216,15 +225,8 @@ async fn play_internal(
 
     tracing::warn!("query_type: {:?}", query_type);
 
-    // reply with a temporary message while we fetch the source
-    // needed because interactions must be replied within 3s and queueing takes longer
-    let mut msg = send_search_message(ctx).await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg.clone());
-
-    tracing::warn!("search response msg: {:?}", msg);
     // FIXME: Super hacky, fix this shit.
-    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut msg).await?;
+    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
 
     if !move_on {
         return Ok(());
@@ -242,6 +244,7 @@ async fn play_internal(
         guild_settings.volume
     };
 
+    // let queue = call.lock().await.queue().current_queue().clone();
     // tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
@@ -311,11 +314,13 @@ async fn play_internal(
         },
     };
 
-    edit_embed_response(ctx, embed, msg.clone())
+    edit_embed_response(ctx, embed, search_msg.clone())
         .await
         .map(|_| ())
 }
 
+/// Edit the embed response of the given message.
+#[cfg(not(tarpaulin_include))]
 async fn edit_embed_response(
     ctx: Context<'_>,
     embed: CreateEmbed,
@@ -392,7 +397,7 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
         return download_file_ytdlp_mp3(url).await;
     }
 
-    let metadata = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string())
+    let metadata = YoutubeDl::new(http_utils::get_client().clone(), url.to_string())
         .aux_metadata()
         .await?;
 
@@ -550,7 +555,7 @@ async fn send_search_response(
     user_id: UserId,
     query: String,
     res: Vec<AuxMetadata>,
-) -> Result<Message, Error> {
+) -> Result<Message, CrackedError> {
     let author = ctx.author_member().await.unwrap();
     let name = if DEFAULT_PREMIUM {
         author.mention().to_string()
@@ -685,10 +690,10 @@ async fn match_mode<'a>(
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
-                let res =
-                    YoutubeDl::new_search(http_utils::new_reqwest_client().clone(), query.clone())
-                        .search(None)
-                        .await?;
+
+                let res = YoutubeDl::new_search(http_utils::get_client().clone(), query.clone())
+                    .search(None)
+                    .await?;
                 let user_id = ctx.author().id;
                 send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
             },
@@ -711,11 +716,11 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
@@ -770,7 +775,8 @@ async fn match_mode<'a>(
                 } else {
                     1
                 };
-                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty).await?;
+                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty, search_msg)
+                    .await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::trace!("Mode::Next, QueryType::KeywordList");
@@ -783,7 +789,8 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty).await?;
+                queue_keyword_list_w_offset(ctx, call, keywords_list, q_not_empty, search_msg)
+                    .await?;
             },
             QueryType::YoutubeSearch(_) => {
                 tracing::trace!("Mode::Next, QueryType::YoutubeSearch");
@@ -921,7 +928,7 @@ async fn match_mode<'a>(
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::VideoLink | QueryType::PlaylistLink");
                 // FIXME
-                let mut src = YoutubeDl::new(http_utils::new_reqwest_client().clone(), url);
+                let mut src = YoutubeDl::new(http_utils::get_client().clone(), url);
                 let metadata = src.aux_metadata().await?;
                 enqueue_track_pgwrite(ctx, &call, &QueryType::NewYoutubeDl((src, metadata)))
                     .await?;
@@ -937,7 +944,7 @@ async fn match_mode<'a>(
                 tracing::trace!(
                     "Mode::All | Mode::Reverse | Mode::Shuffle, QueryType::KeywordList"
                 );
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::trace!(
@@ -947,7 +954,7 @@ async fn match_mode<'a>(
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list(ctx, call, keywords_list).await?;
+                queue_keyword_list(ctx, call, keywords_list, search_msg).await?;
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
@@ -1019,11 +1026,11 @@ pub async fn get_query_type_from_url(
                     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
                     Some(QueryType::PlaylistLink(url.to_string()))
                 } else {
-                    //YouTube::extract(url)
                     tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
-                    let mut yt =
-                        YoutubeDl::new(http_utils::new_reqwest_client().clone(), url.to_string());
-                    let metadata = yt.aux_metadata().await?;
+                    let rusty_ytdl = RustyYoutubeClient::new()?;
+                    let info = rusty_ytdl.get_video_info(url.to_string()).await?;
+                    let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&info);
+                    let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());
                     Some(QueryType::NewYoutubeDl((yt, metadata)))
                 }
             },
@@ -1251,7 +1258,7 @@ async fn get_download_status_and_filename(
     // FIXME: Don't hardcode this.
     let prefix = "/data/downloads";
     let extension = if mp3 { "mp3" } else { "webm" };
-    let client = http_utils::new_reqwest_client().clone();
+    let client = http_utils::get_client().clone();
     tracing::warn!("query_type: {:?}", query_type);
     match query_type {
         QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
@@ -1413,7 +1420,7 @@ pub async fn get_track_source_and_metadata(
     _http: &Http,
     query_type: QueryType,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    let client = http_utils::new_reqwest_client().clone();
+    let client = http_utils::get_client().clone();
     tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
     match query_type {
         QueryType::YoutubeSearch(query) => {

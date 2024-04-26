@@ -897,7 +897,6 @@ pub async fn handle_event(
             channel_id,
             removed_from_message_id,
         } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
-        FullEvent::PresenceReplace { presences } => event_log.write_log_obj(event_name, presences),
         FullEvent::Ready { data_about_bot } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
             event_log.write_log_obj(event_name, data_about_bot)

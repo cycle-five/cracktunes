@@ -461,7 +461,7 @@ impl Default for DataInner {
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             database_pool: None,
-            http_client: http_utils::new_reqwest_client().clone(),
+            http_client: http_utils::get_client().clone(),
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }
