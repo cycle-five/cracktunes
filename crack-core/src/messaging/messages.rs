@@ -47,6 +47,7 @@ pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice chan
 pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
+
 pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
@@ -97,6 +98,7 @@ pub const REMOVED_QUEUE: &str = "❌ Removed from queue";
 pub const RESUMED: &str = "▶️ Resumed!";
 pub const ROLE_CREATED: &str = "📝 Created role!";
 pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
+pub const ROLE_NOT_FOUND: &str = "⚠️ Role not found!";
 pub const PREMIUM: &str = "👑 Premium status now";
 pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";

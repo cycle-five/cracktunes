@@ -3,7 +3,8 @@ use crate::messaging::messages::{
     FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
     FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_DATABASE_POOL, NO_GUILD_CACHED,
-    NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED,
+    UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -60,6 +61,7 @@ pub enum CrackedError {
     Poise(Error),
     QueueEmpty,
     Reqwest(reqwest::Error),
+    RoleNotFound(serenity::RoleId),
     RSpotify(RSpotifyClientError),
     RSpotifyLockError(String),
     SQLX(sqlx::Error),
@@ -146,6 +148,9 @@ impl Display for CrackedError {
             Self::PoisonError(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
+            Self::RoleNotFound(role_id) => {
+                f.write_fmt(format_args!("{} {}", ROLE_NOT_FOUND, role_id))
+            },
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
