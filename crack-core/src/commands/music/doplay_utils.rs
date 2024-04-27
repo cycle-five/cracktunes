@@ -384,7 +384,7 @@ pub fn get_msg(
         match (mode
             .clone()
             .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or("".to_string())
+            .unwrap_or_default()
             + " "
             + &step1.unwrap_or("".to_string()))
             .trim()
