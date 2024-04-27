@@ -55,10 +55,16 @@ pub fn get_log_prefix() -> String {
 }
 
 /// Settings for a command channel.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct CommandChannelSettings {
-    pub channel_id: Option<ChannelId>,
-    pub permissions: GenericPermissionSettings,
+    pub id: ChannelId,
+    pub perms: GenericPermissionSettings,
+}
+
+/// Command channels to restrict where and who can use what commands
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct CommandChannels {
+    pub music_channel: Option<CommandChannelSettings>,
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -267,8 +273,7 @@ pub struct GuildSettings {
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
-    #[serde(default = "default_no_channel")]
-    pub music_channel: Option<ChannelId>,
+    pub command_channels: CommandChannels,
     #[serde(default = "default_false")]
     pub autopause: bool,
     #[serde(default = "default_true")]
@@ -294,11 +299,6 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
-}
-
-/// Default value for the music channel.
-fn default_no_channel() -> Option<ChannelId> {
-    None
 }
 
 /// Default value function for serialization that is false.
@@ -401,7 +401,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
-            music_channel: default_no_channel(),
+            command_channels: CommandChannels::default(),
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
@@ -960,7 +960,7 @@ mod test {
     fn test_default_functions() {
         use super::{
             additional_prefixes_default, allow_all_domains_default, authorized_users_default,
-            default_false, default_no_channel, default_true, premium_default, volume_default,
+            default_false, default_true, premium_default, volume_default,
         };
         assert_eq!(allow_all_domains_default(), Some(true));
         assert_eq!(authorized_users_default().len(), 0);
@@ -969,6 +969,5 @@ mod test {
         assert_eq!(premium_default(), false);
         assert_eq!(default_false(), false);
         assert_eq!(default_true(), true);
-        assert_eq!(default_no_channel(), None);
     }
 }
