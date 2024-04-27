@@ -52,6 +52,21 @@ pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
 }
 
+/// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
+pub struct GenericPermissionSettings {
+    pub allowed_commands: HashSet<String>,
+    pub denied_commands: HashSet<String>,
+    pub allowed_roles: HashSet<u64>,
+    pub denied_roles: HashSet<u64>,
+    pub allowed_users: HashSet<u64>,
+    pub denied_users: HashSet<u64>,
+}
+
+pub struct CommandChannelSettings {
+    pub channel_id: Option<ChannelId>,
+    pub permissions: GenericPermissionSettings,
+}
+
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
@@ -258,6 +273,8 @@ pub struct GuildSettings {
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
+    #[serde(default = "default_no_channel")]
+    pub music_channel: Option<ChannelId>,
     #[serde(default = "default_false")]
     pub autopause: bool,
     #[serde(default = "default_true")]
@@ -284,30 +301,43 @@ pub struct GuildSettings {
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
 }
+
+/// Default value for the music channel.
+fn default_no_channel() -> Option<ChannelId> {
+    None
+}
+
+/// Default value function for serialization that is false.
 fn default_false() -> bool {
     false
 }
 
+/// Default value function for serialization that is true.
 fn default_true() -> bool {
     true
 }
 
+/// Default value function for serialization for allow all domains.
 fn allow_all_domains_default() -> Option<bool> {
     Some(DEFAULT_ALLOW_ALL_DOMAINS)
 }
 
+/// Default value function for serialization for authorized users.
 fn authorized_users_default() -> BTreeMap<u64, u64> {
     BTreeMap::new()
 }
 
+/// Default value function for serialization for additional prefixes.
 fn additional_prefixes_default() -> Vec<String> {
     Vec::<String>::new()
 }
 
+/// Default value function for serialization for volume.
 fn volume_default() -> f32 {
     DEFAULT_VOLUME_LEVEL
 }
 
+/// Default value function for serialization for premium status.
 fn premium_default() -> bool {
     DEFAULT_PREMIUM
 }
@@ -377,6 +407,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
+            music_channel: default_no_channel(),
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
@@ -929,5 +960,21 @@ mod test {
             settings.get_log_channel_type_fe(&event),
             Some(serenity::model::id::ChannelId::new(123))
         );
+    }
+
+    #[test]
+    fn test_default_functions() {
+        use super::{
+            additional_prefixes_default, allow_all_domains_default, authorized_users_default,
+            default_false, default_no_channel, default_true, premium_default, volume_default,
+        };
+        assert_eq!(allow_all_domains_default(), Some(true));
+        assert_eq!(authorized_users_default().len(), 0);
+        assert_eq!(additional_prefixes_default().len(), 0);
+        assert_eq!(volume_default(), 1.0);
+        assert_eq!(premium_default(), false);
+        assert_eq!(default_false(), false);
+        assert_eq!(default_true(), true);
+        assert_eq!(default_no_channel(), None);
     }
 }

@@ -20,6 +20,9 @@ use crate::{
     Data, Error,
 };
 
+/// Handler for the end of a track event.
+// This needs enough context to be able to send messages to the appropriate
+// channels for the music player.
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
     pub data: Data,
@@ -172,29 +175,7 @@ impl EventHandler for TrackEndHandler {
                                 )
                             },
                         };
-                        //         // match extract_track_metadata(&tracks[0]).await {
-                        //         //     Ok((my_metadata, pos)) => (my_metadata, pos),
-                        //         //     Err(e) => {
-                        //         //         let msg = format!("Error: {}", e);
-                        //         //         tracing::warn!("{}", msg);
-                        //         //         (
-                        //         //             MyAuxMetadata::Data(AuxMetadata::default()),
-                        //         //             Duration::from_secs(0),
-                        //         //         )
-                        //         //     }
-                        //         // };
-                        //         (my_metadata, pos)
-                        //     }
-                        //     Err(e) => {
-                        //         let msg = format!("Error: {}", e);
-                        //         tracing::warn!("{}", msg);
 
-                        //         (
-                        //             MyAuxMetadata::Data(AuxMetadata::default()),
-                        //             Duration::from_secs(0),
-                        //         )
-                        //     }
-                        // };
                         (channel, my_metadata, pos)
                     },
                     (Some(track), _) => {
