@@ -19,5 +19,21 @@ pub use music_utils::*;
 pub use osint::*;
 pub use ping::*;
 pub use playlist::playlist;
+use serenity::all::Message;
 pub use settings::*;
 pub use version::*;
+
+use crate::{errors::CrackedError, Error};
+
+pub type MessageResult = Result<Message, CrackedError>;
+pub type EmptyResult = Result<(), Error>;
+
+pub trait ConvertToEmptyResult {
+    fn convert(self) -> EmptyResult;
+}
+
+impl ConvertToEmptyResult for MessageResult {
+    fn convert(self) -> EmptyResult {
+        self.map(|_| ()).map_err(|e| e.into())
+    }
+}
