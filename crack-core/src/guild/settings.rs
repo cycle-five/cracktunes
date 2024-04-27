@@ -17,6 +17,8 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
+use super::permissions::GenericPermissionSettings;
+
 pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
@@ -52,16 +54,8 @@ pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
 }
 
-/// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
-pub struct GenericPermissionSettings {
-    pub allowed_commands: HashSet<String>,
-    pub denied_commands: HashSet<String>,
-    pub allowed_roles: HashSet<u64>,
-    pub denied_roles: HashSet<u64>,
-    pub allowed_users: HashSet<u64>,
-    pub denied_users: HashSet<u64>,
-}
-
+/// Settings for a command channel.
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CommandChannelSettings {
     pub channel_id: Option<ChannelId>,
     pub permissions: GenericPermissionSettings,
