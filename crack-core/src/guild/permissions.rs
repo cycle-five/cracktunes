@@ -5,14 +5,45 @@ use std::collections::HashSet;
 
 type HashSetString = HashSet<String>;
 
-impl From<serde_json::Value> for HashSetString {
-    fn from(value: serde_json::Value) -> HashSetString {
-        value
-            .as_array()
+pub trait ConvertToHashSetString {
+    fn convert(self) -> HashSetString;
+}
+
+impl ConvertToHashSetString for serde_json::Value {
+    fn convert(self) -> HashSetString {
+        self.as_array()
             .unwrap()
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
             .collect()
+    }
+}
+
+impl ConvertToHashSetString for Vec<String> {
+    fn convert(self) -> HashSetString {
+        self.into_iter().collect()
+    }
+}
+
+type HashSetU64 = HashSet<u64>;
+
+pub trait ConvertToHashSetU64 {
+    fn convert(self) -> HashSetU64;
+}
+
+impl ConvertToHashSetU64 for serde_json::Value {
+    fn convert(self) -> HashSetU64 {
+        self.as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap())
+            .collect()
+    }
+}
+
+impl ConvertToHashSetU64 for Vec<i64> {
+    fn convert(self) -> HashSetU64 {
+        self.iter().map(|&x| x as u64).collect()
     }
 }
 /// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
@@ -30,6 +61,40 @@ pub struct GenericPermissionSettings {
     pub denied_roles: HashSet<u64>,
     pub allowed_users: HashSet<u64>,
     pub denied_users: HashSet<u64>,
+}
+
+/// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
+#[derive(Serialize, Deserialize, FromRow)]
+pub struct GenericPermissionSettingsRead {
+    pub id: i32,
+    #[serde(default = "default_true")]
+    pub default_allow_all_commands: bool,
+    #[serde(default = "default_true")]
+    pub default_allow_all_users: bool,
+    #[serde(default = "default_true")]
+    pub default_allow_all_roles: bool,
+    pub allowed_commands: serde_json::Value,
+    pub denied_commands: serde_json::Value,
+    pub allowed_roles: Vec<i64>,
+    pub denied_roles: Vec<i64>,
+    pub allowed_users: Vec<i64>,
+    pub denied_users: Vec<i64>,
+}
+
+impl GenericPermissionSettingsRead {
+    pub fn convert(self) -> GenericPermissionSettings {
+        GenericPermissionSettings {
+            default_allow_all_commands: self.default_allow_all_commands,
+            default_allow_all_users: self.default_allow_all_users,
+            default_allow_all_roles: self.default_allow_all_roles,
+            allowed_commands: ConvertToHashSetString::convert(self.allowed_commands),
+            denied_commands: ConvertToHashSetString::convert(self.denied_commands),
+            allowed_roles: self.allowed_roles.convert(),
+            denied_roles: self.denied_roles.convert(),
+            allowed_users: self.allowed_users.convert(),
+            denied_users: self.denied_users.convert(),
+        }
+    }
 }
 
 /// Default true for serialization
@@ -164,6 +229,7 @@ impl GenericPermissionSettings {
     }
 
     /// Write to a pg table.
+    #[allow(dead_code)]
     async fn insert_permission_settings(
         pool: &PgPool,
         settings: &GenericPermissionSettings,
@@ -212,22 +278,25 @@ impl GenericPermissionSettings {
     }
 
     /// Read from a pg table.
+    #[allow(dead_code)]
     async fn get_permission_settings(
         pool: &PgPool,
         id: i32,
     ) -> sqlx::Result<GenericPermissionSettings> {
-        let mut settings = sqlx::query_as!(
-            GenericPermissionSettings,
+        let settings_read = sqlx::query_as!(
+            GenericPermissionSettingsRead,
             "SELECT * FROM permission_settings WHERE id = $1",
             id
         )
         .fetch_one(pool)
         .await?;
 
+        let settings = settings_read.convert();
+
         // Deserialize JSON back into HashSet
-        settings.allowed_commands =
-            serde_json::from_value(json!(settings.allowed_commands)).unwrap();
-        settings.denied_commands = serde_json::from_value(json!(settings.denied_commands)).unwrap();
+        // settings.allowed_commands =
+        //    serde_json::from_value(json!(settings.allowed_commands)).unwrap();
+        // settings.denied_commands = serde_json::from_value(json!(settings.denied_commands)).unwrap();
 
         Ok(settings)
     }
@@ -235,7 +304,19 @@ impl GenericPermissionSettings {
 
 #[cfg(test)]
 mod tests {
+    use sqlx::PgPool;
+
     use super::*;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[ctor::ctor]
+    fn set_env() {
+        use std::env;
+        if env::var("DATABASE_URL").is_err() {
+            env::set_var("DATABASE_URL", "postgresql://localhost:5432/postgres");
+        }
+    }
 
     #[test]
     fn test_is_command_allowed() {
@@ -326,5 +407,81 @@ mod tests {
         assert!(!settings.is_user_allowed(1));
         settings.remove_denied_user(1);
         assert!(settings.is_user_allowed(1));
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut settings = GenericPermissionSettings::default();
+        settings.add_allowed_command("test".to_string());
+        settings.add_denied_command("test".to_string());
+        settings.add_allowed_role(1);
+        settings.add_denied_role(1);
+        settings.add_allowed_user(1);
+        settings.add_denied_user(1);
+        settings.clear();
+        assert!(settings.is_command_allowed("test"));
+        assert!(settings.is_role_allowed(1));
+        assert!(settings.is_user_allowed(1));
+    }
+
+    #[test]
+    fn test_convert() {
+        let settings_read = GenericPermissionSettingsRead {
+            id: 1,
+            default_allow_all_commands: true,
+            default_allow_all_users: true,
+            default_allow_all_roles: true,
+            allowed_commands: json!(["test"]),
+            denied_commands: json!(["test2"]),
+            allowed_roles: vec![1, 2],
+            denied_roles: vec![1],
+            allowed_users: vec![1, 2],
+            denied_users: vec![1],
+        };
+        let settings = settings_read.convert();
+        assert!(settings.is_command_allowed("test"));
+        assert!(!settings.is_role_allowed(1));
+        assert!(!settings.is_user_allowed(1));
+        assert!(settings.is_role_allowed(2));
+        assert!(settings.is_user_allowed(2));
+    }
+
+    #[test]
+    fn test_convert_to_hash_set_string() {
+        let value = json!(["test", "test2"]);
+        let hash_set: HashSet<String> = ConvertToHashSetString::convert(value);
+        assert!(hash_set.contains("test"));
+        assert!(hash_set.contains("test2"));
+    }
+
+    #[test]
+    fn test_convert_to_hash_set_u64() {
+        let value = json!([1, 2]);
+        let hash_set = ConvertToHashSetU64::convert(value);
+        assert!(hash_set.contains(&1));
+        assert!(hash_set.contains(&2));
+
+        let value2 = vec![1, 2];
+        let hash_set2 = value2.convert();
+        assert!(hash_set2.contains(&1));
+        assert!(hash_set2.contains(&2));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_insert_permission_settings(pool: PgPool) {
+        let mut settings = GenericPermissionSettings::default();
+        settings.add_allowed_command("test".to_string());
+        settings.add_denied_command("test2".to_string());
+        settings.add_allowed_role(1);
+        settings.add_allowed_user(1);
+        GenericPermissionSettings::insert_permission_settings(&pool, &settings)
+            .await
+            .unwrap();
+
+        let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
+            .await
+            .unwrap();
+        assert!(settings_read.is_command_allowed("test"));
+        assert!(!settings_read.is_command_allowed("test2"));
     }
 }

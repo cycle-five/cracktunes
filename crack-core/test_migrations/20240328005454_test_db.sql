@@ -22,3 +22,16 @@ CREATE TABLE IF NOT EXISTS user_votes (
 );
 
 CREATE INDEX user_votes_user_id_idx ON user_votes(user_id, timestamp, site);
+
+CREATE TABLE permission_settings (
+    id SERIAL PRIMARY KEY,
+    default_allow_all_commands BOOLEAN NOT NULL,
+    default_allow_all_users BOOLEAN NOT NULL,
+    default_allow_all_roles BOOLEAN NOT NULL,
+    allowed_commands JSONB NOT NULL,
+    denied_commands JSONB NOT NULL,
+    allowed_roles BIGINT[] NOT NULL,
+    denied_roles BIGINT[] NOT NULL,
+    allowed_users BIGINT[] NOT NULL,
+    denied_users BIGINT[] NOT NULL
+);

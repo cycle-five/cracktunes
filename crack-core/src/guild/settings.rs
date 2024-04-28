@@ -62,7 +62,7 @@ pub struct CommandChannelSettings {
 }
 
 /// Command channels to restrict where and who can use what commands
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, sqlx::FromRow)]
 pub struct CommandChannels {
     pub music_channel: Option<CommandChannelSettings>,
 }
