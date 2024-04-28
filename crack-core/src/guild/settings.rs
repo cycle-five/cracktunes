@@ -273,6 +273,7 @@ pub struct GuildSettings {
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
+    #[serde(default = "CommandChannels::default")]
     pub command_channels: CommandChannels,
     #[serde(default = "default_false")]
     pub autopause: bool,
