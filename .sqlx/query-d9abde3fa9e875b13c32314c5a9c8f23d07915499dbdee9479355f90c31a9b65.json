@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO permission_settings\n                (default_allow_all_commands,\n                    default_allow_all_users,\n                    default_allow_all_roles,\n                    allowed_commands,\n                    denied_commands,\n                    allowed_roles,\n                    denied_roles,\n                    allowed_users,\n                    denied_users)\n            VALUES\n                ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Bool",
+        "Bool",
+        "Jsonb",
+        "Jsonb",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d9abde3fa9e875b13c32314c5a9c8f23d07915499dbdee9479355f90c31a9b65"
+}

@@ -1,8 +1,22 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
+type HashSetString = HashSet<String>;
+
+impl From<serde_json::Value> for HashSetString {
+    fn from(value: serde_json::Value) -> HashSetString {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    }
+}
 /// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromRow)]
 pub struct GenericPermissionSettings {
     #[serde(default = "default_true")]
     pub default_allow_all_commands: bool,
@@ -147,6 +161,75 @@ impl GenericPermissionSettings {
         self.denied_roles.clear();
         self.allowed_users.clear();
         self.denied_users.clear();
+    }
+
+    /// Write to a pg table.
+    async fn insert_permission_settings(
+        pool: &PgPool,
+        settings: &GenericPermissionSettings,
+    ) -> sqlx::Result<()> {
+        let query = sqlx::query!(
+            "INSERT INTO permission_settings
+                (default_allow_all_commands,
+                    default_allow_all_users,
+                    default_allow_all_roles,
+                    allowed_commands,
+                    denied_commands,
+                    allowed_roles,
+                    denied_roles,
+                    allowed_users,
+                    denied_users)
+            VALUES
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            settings.default_allow_all_commands,
+            settings.default_allow_all_users,
+            settings.default_allow_all_roles,
+            json!(settings.allowed_commands) as serde_json::Value, // Convert to JSON
+            json!(settings.denied_commands) as serde_json::Value,
+            &settings
+                .allowed_roles
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(), // Convert to Vec<i64>
+            &settings
+                .denied_roles
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(),
+            &settings
+                .allowed_users
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(),
+            &settings
+                .denied_users
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(),
+        );
+        query.execute(pool).await?;
+        Ok(())
+    }
+
+    /// Read from a pg table.
+    async fn get_permission_settings(
+        pool: &PgPool,
+        id: i32,
+    ) -> sqlx::Result<GenericPermissionSettings> {
+        let mut settings = sqlx::query_as!(
+            GenericPermissionSettings,
+            "SELECT * FROM permission_settings WHERE id = $1",
+            id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        // Deserialize JSON back into HashSet
+        settings.allowed_commands =
+            serde_json::from_value(json!(settings.allowed_commands)).unwrap();
+        settings.denied_commands = serde_json::from_value(json!(settings.denied_commands)).unwrap();
+
+        Ok(settings)
     }
 }
 

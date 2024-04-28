@@ -348,26 +348,6 @@ pub async fn poise_framework(
 
                 // Default case fail to be on the safe side.
                 Ok(false)
-
-                // //let user_id = ctx.author().id.as_u64();
-                // // let guild_id = ctx.guild_id().unwrap_or_default();
-
-                // ctx.data()
-                //     .guild_settings_map
-                //     .read()
-                //     .unwrap()
-                //     .get(&guild_id)
-                //     .map_or_else(
-                //         || {
-                //             tracing::info!("Guild not found in guild settings map");
-                //             Ok(false)
-                //         },
-                //         |guild_settings| {
-                //             tracing::info!("Guild found in guild settings map");
-                //             Ok(guild_settings.authorized_users.is_empty()
-                //                 || guild_settings.authorized_users.contains_key(&user_id))
-                //         },
-                //     )
             })
         }),
         // Enforce command checks even for owners (enforced by default)
