@@ -334,7 +334,7 @@ impl CommandChannel {
         read: CommandChannelRead,
     ) -> Result<Self, CrackedError> {
         let perms = GenericPermissionSettings::get_permission_settings(
-            &pool,
+            pool,
             read.permission_settings_id as i32,
         )
         .await?;
@@ -400,9 +400,9 @@ impl CommandChannel {
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
+    use serde_json::json;
+    use sqlx::PgPool;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -544,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_convert_to_hash_set_string() {
-        // let value = json!(["test", "test2"]);
+        let value = json!(["test", "test2"]);
         let hash_set: HashSet<String> = ConvertToHashSetString::convert(value);
         assert!(hash_set.contains("test"));
         assert!(hash_set.contains("test2"));
@@ -552,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_convert_to_hash_set_u64() {
-        // let value = json!([1, 2]);
+        let value = json!([1, 2]);
         let hash_set = ConvertToHashSetU64::convert(value);
         assert!(hash_set.contains(&1));
         assert!(hash_set.contains(&2));
@@ -577,6 +577,7 @@ mod tests {
         let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
             .await
             .unwrap();
+        assert!(settings_read == settings);
         // assert!(settings_read.is_command_allowed("test"));
         // assert!(!settings_read.is_command_allowed("test2"));
     }

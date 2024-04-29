@@ -28,13 +28,22 @@ CREATE TABLE permission_settings (
     default_allow_all_commands BOOLEAN NOT NULL,
     default_allow_all_users BOOLEAN NOT NULL,
     default_allow_all_roles BOOLEAN NOT NULL,
-    -- allowed_commands JSONB NOT NULL,
-    -- denied_commands JSONB NOT NULL,
     allowed_roles BIGINT[] NOT NULL,
     denied_roles BIGINT[] NOT NULL,
     allowed_users BIGINT[] NOT NULL,
     denied_users BIGINT[] NOT NULL
 );
+    -- allowed_commands JSONB NOT NULL,
+    -- denied_commands JSONB NOT NULL,
+CREATE TABLE IF NOT EXISTS guild (
+    id BIGINT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO guild (id, "name", created_at, updated_at) VALUES
+(1, 'test', NOW(), NOW());
 
 CREATE TABLE command_channel (
     command TEXT NOT NULL,
