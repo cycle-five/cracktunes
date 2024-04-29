@@ -60,10 +60,7 @@ pub enum ContextLike<'a> {
 
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
-    match ctx {
-        Context::Prefix(_) => true,
-        _ => false,
-    }
+    matches!(ctx, Context::Prefix(_))
 }
 
 /// Checks if we're in a prefix context or not.
