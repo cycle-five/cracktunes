@@ -25,31 +25,21 @@
       },
       {
         "ordinal": 4,
-        "name": "allowed_commands",
-        "type_info": "Jsonb"
-      },
-      {
-        "ordinal": 5,
-        "name": "denied_commands",
-        "type_info": "Jsonb"
-      },
-      {
-        "ordinal": 6,
         "name": "allowed_roles",
         "type_info": "Int8Array"
       },
       {
-        "ordinal": 7,
+        "ordinal": 5,
         "name": "denied_roles",
         "type_info": "Int8Array"
       },
       {
-        "ordinal": 8,
+        "ordinal": 6,
         "name": "allowed_users",
         "type_info": "Int8Array"
       },
       {
-        "ordinal": 9,
+        "ordinal": 7,
         "name": "denied_users",
         "type_info": "Int8Array"
       }
@@ -60,8 +50,6 @@
       ]
     },
     "nullable": [
-      false,
-      false,
       false,
       false,
       false,

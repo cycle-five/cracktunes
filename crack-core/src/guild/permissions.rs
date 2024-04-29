@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use serenity::all::ChannelId;
+use serenity::all::{ChannelId, GuildId};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
@@ -67,8 +66,8 @@ pub struct GenericPermissionSettings {
     pub default_allow_all_users: bool,
     #[serde(default = "default_true")]
     pub default_allow_all_roles: bool,
-    pub allowed_commands: HashSet<String>,
-    pub denied_commands: HashSet<String>,
+    // pub allowed_commands: HashSet<String>,
+    // pub denied_commands: HashSet<String>,
     pub allowed_roles: HashSet<u64>,
     pub denied_roles: HashSet<u64>,
     pub allowed_users: HashSet<u64>,
@@ -85,8 +84,8 @@ pub struct GenericPermissionSettingsRead {
     pub default_allow_all_users: bool,
     #[serde(default = "default_true")]
     pub default_allow_all_roles: bool,
-    pub allowed_commands: serde_json::Value,
-    pub denied_commands: serde_json::Value,
+    // pub allowed_commands: serde_json::Value,
+    // pub denied_commands: serde_json::Value,
     pub allowed_roles: Vec<i64>,
     pub denied_roles: Vec<i64>,
     pub allowed_users: Vec<i64>,
@@ -101,8 +100,8 @@ impl GenericPermissionSettingsRead {
             default_allow_all_commands: self.default_allow_all_commands,
             default_allow_all_users: self.default_allow_all_users,
             default_allow_all_roles: self.default_allow_all_roles,
-            allowed_commands: ConvertToHashSetString::convert(self.allowed_commands),
-            denied_commands: ConvertToHashSetString::convert(self.denied_commands),
+            // allowed_commands: ConvertToHashSetString::convert(self.allowed_commands),
+            // denied_commands: ConvertToHashSetString::convert(self.denied_commands),
             allowed_roles: self.allowed_roles.convert(),
             denied_roles: self.denied_roles.convert(),
             allowed_users: self.allowed_users.convert(),
@@ -124,8 +123,8 @@ impl Default for GenericPermissionSettings {
             default_allow_all_commands: true,
             default_allow_all_users: true,
             default_allow_all_roles: true,
-            allowed_commands: HashSet::new(),
-            denied_commands: HashSet::new(),
+            // allowed_commands: HashSet::new(),
+            // denied_commands: HashSet::new(),
             allowed_roles: HashSet::new(),
             denied_roles: HashSet::new(),
             allowed_users: HashSet::new(),
@@ -141,15 +140,15 @@ impl Default for GenericPermissionSettings {
 /// - If a command is in the allowed commands, all other commands are denied unless default_allow_all_commands is true.
 impl GenericPermissionSettings {
     /// Check if a command is allowed by the permission settings.
-    pub fn is_command_allowed(&self, command: &str) -> bool {
-        (self.allowed_commands.is_empty()
-            && self.denied_commands.is_empty()
-            && self.default_allow_all_commands)
-            || self.allowed_commands.is_empty()
-                && self.default_allow_all_commands
-                && !self.denied_commands.contains(command)
-            || self.allowed_commands.contains(command) && !self.denied_commands.contains(command)
-    }
+    // pub fn is_command_allowed(&self, command: &str) -> bool {
+    //     (self.allowed_commands.is_empty()
+    //         && self.denied_commands.is_empty()
+    //         && self.default_allow_all_commands)
+    //         || self.allowed_commands.is_empty()
+    //             && self.default_allow_all_commands
+    //             && !self.denied_commands.contains(command)
+    //         || self.allowed_commands.contains(command) && !self.denied_commands.contains(command)
+    // }
 
     /// Check if a role is allowed by the permission settings.
     pub fn is_role_allowed(&self, role: u64) -> bool {
@@ -173,25 +172,25 @@ impl GenericPermissionSettings {
             || self.allowed_users.contains(&user) && !self.denied_users.contains(&user)
     }
 
-    /// Add a command to the allowed commands.
-    pub fn add_allowed_command(&mut self, command: String) {
-        self.allowed_commands.insert(command);
-    }
+    // /// Add a command to the allowed commands.
+    // pub fn add_allowed_command(&mut self, command: String) {
+    //     self.allowed_commands.insert(command);
+    // }
 
-    /// Remove a command from the allowed commands.
-    pub fn remove_allowed_command(&mut self, command: &str) {
-        self.allowed_commands.remove(command);
-    }
+    // /// Remove a command from the allowed commands.
+    // pub fn remove_allowed_command(&mut self, command: &str) {
+    //     self.allowed_commands.remove(command);
+    // }
 
-    /// Add a command to the denied commands.
-    pub fn add_denied_command(&mut self, command: String) {
-        self.denied_commands.insert(command);
-    }
+    // /// Add a command to the denied commands.
+    // pub fn add_denied_command(&mut self, command: String) {
+    //     self.denied_commands.insert(command);
+    // }
 
-    /// Remove a command from the denied commands.
-    pub fn remove_denied_command(&mut self, command: &str) {
-        self.denied_commands.remove(command);
-    }
+    // /// Remove a command from the denied commands.
+    // pub fn remove_denied_command(&mut self, command: &str) {
+    //     self.denied_commands.remove(command);
+    // }
 
     /// Add a role to the allowed roles.
     pub fn add_allowed_role(&mut self, role: u64) {
@@ -235,8 +234,8 @@ impl GenericPermissionSettings {
 
     /// Clear all allowed and denied commands, roles, and users.
     pub fn clear(&mut self) {
-        self.allowed_commands.clear();
-        self.denied_commands.clear();
+        // self.allowed_commands.clear();
+        // self.denied_commands.clear();
         self.allowed_roles.clear();
         self.denied_roles.clear();
         self.allowed_users.clear();
@@ -254,20 +253,18 @@ impl GenericPermissionSettings {
                 (default_allow_all_commands,
                     default_allow_all_users,
                     default_allow_all_roles,
-                    allowed_commands,
-                    denied_commands,
                     allowed_roles,
                     denied_roles,
                     allowed_users,
                     denied_users)
             VALUES
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *",
             settings.default_allow_all_commands,
             settings.default_allow_all_users,
             settings.default_allow_all_roles,
-            json!(settings.allowed_commands) as serde_json::Value, // Convert to JSON
-            json!(settings.denied_commands) as serde_json::Value,
+            // json!(settings.allowed_commands) as serde_json::Value, // Convert to JSON
+            // json!(settings.denied_commands) as serde_json::Value,
             &settings
                 .allowed_roles
                 .iter()
@@ -315,16 +312,19 @@ impl GenericPermissionSettings {
 /// Struct for a command channel with permission settings.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandChannel {
-    pub permission_settings: GenericPermissionSettings,
+    pub command: String,
     pub channel_id: ChannelId,
+    pub guild_id: GuildId,
+    pub permission_settings: GenericPermissionSettings,
 }
 
 /// Struct for reading a command channel with permission settings from a pg table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, sqlx::FromRow)]
 pub struct CommandChannelRead {
-    pub id: i64,
-    pub permission_settings_id: i64,
+    pub command: String,
     pub channel_id: i64,
+    pub guild_id: i64,
+    pub permission_settings_id: i64,
 }
 
 impl CommandChannel {
@@ -339,8 +339,10 @@ impl CommandChannel {
         )
         .await?;
         Ok(Self {
-            permission_settings: perms,
+            command: read.command,
             channel_id: ChannelId::new(read.channel_id as u64),
+            guild_id: GuildId::new(read.guild_id as u64),
+            permission_settings: perms,
         })
     }
 
@@ -365,18 +367,32 @@ impl CommandChannel {
         Ok(())
     }
 
-    pub async fn get_command_channel(
+    pub async fn get_command_channels(
         pool: &PgPool,
-        channel_id: ChannelId,
-    ) -> Result<Self, CrackedError> {
+        command: String,
+        guild_id: GuildId,
+    ) -> Vec<Self> {
         let read = sqlx::query_as!(
             CommandChannelRead,
-            "SELECT * FROM command_channel WHERE channel_id = $1",
-            channel_id.get() as i64
+            "SELECT * FROM command_channel WHERE command = $1 AND guild_id = $2",
+            command,
+            guild_id.get() as i64
         )
-        .fetch_one(pool)
-        .await?;
-        Self::from_command_channel_read(pool, read).await
+        .fetch_all(pool)
+        .await;
+        let read = match read {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        let mut channels = Vec::new();
+        for r in read {
+            let channel = CommandChannel::from_command_channel_read(pool, r)
+                .await
+                .unwrap();
+            channels.push(channel);
+        }
+
+        channels
     }
 }
 
@@ -396,16 +412,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_is_command_allowed() {
-        let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_command("test".to_string());
-        assert!(settings.is_command_allowed("test"));
-        assert!(!settings.is_command_allowed("test2"));
-        settings.add_denied_command("test".to_string());
-        assert!(!settings.is_command_allowed("test"));
-        assert!(!settings.is_command_allowed("test2"));
-    }
+    // #[test]
+    // fn test_is_command_allowed() {
+    //     let mut settings = GenericPermissionSettings::default();
+    //     settings.add_allowed_command("test".to_string());
+    //     assert!(settings.is_command_allowed("test"));
+    //     assert!(!settings.is_command_allowed("test2"));
+    //     settings.add_denied_command("test".to_string());
+    //     assert!(!settings.is_command_allowed("test"));
+    //     assert!(!settings.is_command_allowed("test2"));
+    // }
 
     #[test]
     fn test_is_role_allowed() {
@@ -427,25 +443,25 @@ mod tests {
         assert!(!settings.is_user_allowed(1));
     }
 
-    #[test]
-    fn test_add_remove_allowed_command() {
-        let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_command("test".to_string());
-        assert!(settings.is_command_allowed("test"));
-        settings.remove_allowed_command("test");
-        assert!(settings.is_command_allowed("test"));
-        settings.add_allowed_command("test2".to_string());
-        assert!(!settings.is_command_allowed("test"));
-    }
+    // #[test]
+    // fn test_add_remove_allowed_command() {
+    //     let mut settings = GenericPermissionSettings::default();
+    //     settings.add_allowed_command("test".to_string());
+    //     assert!(settings.is_command_allowed("test"));
+    //     settings.remove_allowed_command("test");
+    //     assert!(settings.is_command_allowed("test"));
+    //     settings.add_allowed_command("test2".to_string());
+    //     assert!(!settings.is_command_allowed("test"));
+    // }
 
-    #[test]
-    fn test_add_remove_denied_command() {
-        let mut settings = GenericPermissionSettings::default();
-        settings.add_denied_command("test".to_string());
-        assert!(!settings.is_command_allowed("test"));
-        settings.remove_denied_command("test");
-        assert!(settings.is_command_allowed("test"));
-    }
+    // #[test]
+    // fn test_add_remove_denied_command() {
+    //     let mut settings = GenericPermissionSettings::default();
+    //     settings.add_denied_command("test".to_string());
+    //     assert!(!settings.is_command_allowed("test"));
+    //     settings.remove_denied_command("test");
+    //     assert!(settings.is_command_allowed("test"));
+    // }
 
     #[test]
     fn test_add_remove_allowed_role() {
@@ -490,14 +506,14 @@ mod tests {
     #[test]
     fn test_clear() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_command("test".to_string());
-        settings.add_denied_command("test".to_string());
+        // settings.add_allowed_command("test".to_string());
+        // settings.add_denied_command("test".to_string());
         settings.add_allowed_role(1);
         settings.add_denied_role(1);
         settings.add_allowed_user(1);
         settings.add_denied_user(1);
         settings.clear();
-        assert!(settings.is_command_allowed("test"));
+        // assert!(settings.is_command_allowed("test"));
         assert!(settings.is_role_allowed(1));
         assert!(settings.is_user_allowed(1));
     }
@@ -509,8 +525,8 @@ mod tests {
             default_allow_all_commands: true,
             default_allow_all_users: true,
             default_allow_all_roles: true,
-            allowed_commands: json!(["test"]),
-            denied_commands: json!(["test2"]),
+            // allowed_commands: json!(["test"]),
+            // denied_commands: json!(["test2"]),
             allowed_roles: vec![1, 2],
             denied_roles: vec![1],
             allowed_users: vec![1, 2],
@@ -548,8 +564,8 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_permission_settings(pool: PgPool) {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_command("test".to_string());
-        settings.add_denied_command("test2".to_string());
+        // settings.add_allowed_command("test".to_string());
+        // settings.add_denied_command("test2".to_string());
         settings.add_allowed_role(1);
         settings.add_allowed_user(1);
         GenericPermissionSettings::insert_permission_settings(&pool, &settings)
@@ -559,7 +575,31 @@ mod tests {
         let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
             .await
             .unwrap();
-        assert!(settings_read.is_command_allowed("test"));
-        assert!(!settings_read.is_command_allowed("test2"));
+        // assert!(settings_read.is_command_allowed("test"));
+        // assert!(!settings_read.is_command_allowed("test2"));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_insert_command_channel(pool: PgPool) {
+        let mut settings = GenericPermissionSettings::default();
+        // settings.add_allowed_command("test".to_string());
+        // settings.add_denied_command("test2".to_string());
+        settings.add_allowed_role(1);
+        settings.add_allowed_user(1);
+        let channel = CommandChannel {
+            permission_settings: settings,
+            channel_id: ChannelId::new(1),
+            guild_id: GuildId::new(1),
+            command: "test".to_string(),
+        };
+        CommandChannel::insert_command_channel(&pool, channel)
+            .await
+            .unwrap();
+
+        let channel_read =
+            CommandChannel::get_command_channels(&pool, "test".to_string(), GuildId::new(1)).await;
+        // assert!(channel_read.permission_settings.is_command_allowed("test"));
+        // assert!(!channel_read.permission_settings.is_command_allowed("test2"));
+        assert!(channel_read.len() == 1);
     }
 }

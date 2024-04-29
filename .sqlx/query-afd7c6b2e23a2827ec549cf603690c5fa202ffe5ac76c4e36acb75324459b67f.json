@@ -1,34 +1,41 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM command_channel WHERE channel_id = $1",
+  "query": "SELECT * FROM command_channel WHERE command = $1 AND guild_id = $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
-        "type_info": "Int4"
+        "name": "command",
+        "type_info": "Text"
       },
       {
         "ordinal": 1,
-        "name": "channel_id",
+        "name": "guild_id",
         "type_info": "Int8"
       },
       {
         "ordinal": 2,
+        "name": "channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
         "name": "permission_settings_id",
         "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Int8"
       ]
     },
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "15f7c5d66e6bb006aaccc2a6b092135e5493bd411bbb914aafb906983cf0d3cd"
+  "hash": "afd7c6b2e23a2827ec549cf603690c5fa202ffe5ac76c4e36acb75324459b67f"
 }
