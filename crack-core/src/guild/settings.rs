@@ -109,10 +109,12 @@ impl CommandChannels {
         }
     }
 
+    /// Get the music channel.
     pub fn get_music_channel(&self) -> Option<CommandChannel> {
         self.music_channel.clone()
     }
 
+    /// Insert the command channel into the database.
     pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
         if let Some(music_channel) = &self.music_channel {
             music_channel
