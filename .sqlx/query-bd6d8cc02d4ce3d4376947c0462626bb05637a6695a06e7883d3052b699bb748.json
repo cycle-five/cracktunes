@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO permission_settings\n                (default_allow_all_commands,\n                    default_allow_all_users,\n                    default_allow_all_roles,\n                    allowed_commands,\n                    denied_commands,\n                    allowed_roles,\n                    denied_roles,\n                    allowed_users,\n                    denied_users)\n            VALUES\n                ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n            RETURNING *",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "default_allow_all_commands",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "default_allow_all_users",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "default_allow_all_roles",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "allowed_commands",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "denied_commands",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "allowed_roles",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 7,
+        "name": "denied_roles",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 8,
+        "name": "allowed_users",
+        "type_info": "Int8Array"
+      },
+      {
+        "ordinal": 9,
+        "name": "denied_users",
+        "type_info": "Int8Array"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Bool",
+        "Bool",
+        "Jsonb",
+        "Jsonb",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bd6d8cc02d4ce3d4376947c0462626bb05637a6695a06e7883d3052b699bb748"
+}

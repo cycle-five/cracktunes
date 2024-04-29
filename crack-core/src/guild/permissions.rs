@@ -4,7 +4,7 @@ use serenity::all::ChannelId;
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
-use crate::errors::CrackedError;
+use crate::{errors::CrackedError, Error};
 
 /// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;
@@ -244,11 +244,12 @@ impl GenericPermissionSettings {
     }
 
     /// Write to a pg table.
-    async fn insert_permission_settings(
+    pub async fn insert_permission_settings(
         pool: &PgPool,
         settings: &GenericPermissionSettings,
-    ) -> sqlx::Result<()> {
-        let query = sqlx::query!(
+    ) -> Result<GenericPermissionSettings, CrackedError> {
+        sqlx::query_as!(
+            GenericPermissionSettingsRead,
             "INSERT INTO permission_settings
                 (default_allow_all_commands,
                     default_allow_all_users,
@@ -260,7 +261,8 @@ impl GenericPermissionSettings {
                     allowed_users,
                     denied_users)
             VALUES
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *",
             settings.default_allow_all_commands,
             settings.default_allow_all_users,
             settings.default_allow_all_roles,
@@ -286,32 +288,27 @@ impl GenericPermissionSettings {
                 .iter()
                 .map(|&x| x as i64)
                 .collect::<Vec<i64>>(),
-        );
-        query.execute(pool).await?;
-        Ok(())
+        )
+        .fetch_one(pool)
+        .await
+        .map(|read| read.convert())
+        .map_err(Into::into)
     }
 
     /// Read from a pg table.
-    async fn get_permission_settings(
+    pub async fn get_permission_settings(
         pool: &PgPool,
         id: i32,
-    ) -> sqlx::Result<GenericPermissionSettings> {
-        let settings_read = sqlx::query_as!(
+    ) -> Result<GenericPermissionSettings, CrackedError> {
+        sqlx::query_as!(
             GenericPermissionSettingsRead,
             "SELECT * FROM permission_settings WHERE id = $1",
             id
         )
         .fetch_one(pool)
-        .await?;
-
-        let settings = settings_read.convert();
-
-        // Deserialize JSON back into HashSet
-        // settings.allowed_commands =
-        //    serde_json::from_value(json!(settings.allowed_commands)).unwrap();
-        // settings.denied_commands = serde_json::from_value(json!(settings.denied_commands)).unwrap();
-
-        Ok(settings)
+        .await
+        .map(|read| read.convert())
+        .map_err(Into::into)
     }
 }
 
@@ -351,18 +348,20 @@ impl CommandChannel {
     pub async fn insert_command_channel(
         pool: &PgPool,
         channel: CommandChannel,
-    ) -> sqlx::Result<()> {
-        let settings = channel.permission_settings.clone();
-        let query = sqlx::query!(
+    ) -> Result<(), Error> {
+        let settings = channel.permission_settings;
+        let settings =
+            GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
+        sqlx::query!(
             "INSERT INTO command_channel
                 (permission_settings_id, channel_id)
             VALUES
                 ($1, $2)",
-            channel.permission_settings.id,
+            settings.id,
             channel.channel_id.get() as i64,
-        );
-        GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
-        query.execute(pool).await?;
+        )
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
