@@ -38,38 +38,13 @@ pub mod metrics;
 pub mod sources;
 pub mod utils;
 
-//pub extern crate osint;
-
-// #[cfg(test)]
-// pub mod test;
-
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub use Result;
 
-pub struct TestContext<'a> {
-    pub data: Data,
-    pub asdf: &'a str,
-    pub is_prefix: bool,
-}
-
-pub enum ContextLike<'a> {
-    Real(Context<'a>),
-    Fake(TestContext<'a>),
-}
-
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))
-}
-
-/// Checks if we're in a prefix context or not.
-pub fn is_prefix_test(ctx: ContextLike) -> bool {
-    match ctx {
-        ContextLike::Real(Context::Prefix(_)) => true,
-        ContextLike::Fake(x) => x.is_prefix,
-        _ => false,
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -577,26 +552,6 @@ impl Data {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_is_prefix_test() {
-        // let ctx = ContextLike::Real(Context::Prefix(Default::default()));
-        // assert!(is_prefix_test(ctx));
-        // let ctx = ContextLike::Real(Context::Command(Default::default()));
-        // assert!(!is_prefix_test(ctx));
-        let ctx = ContextLike::Fake(TestContext {
-            data: Default::default(),
-            asdf: "asdf",
-            is_prefix: true,
-        });
-        assert!(is_prefix_test(ctx));
-        let ctx = ContextLike::Fake(TestContext {
-            data: Default::default(),
-            asdf: "asdf",
-            is_prefix: false,
-        });
-        assert!(!is_prefix_test(ctx));
-    }
 
     #[test]
     fn test_phone_code_data() {
