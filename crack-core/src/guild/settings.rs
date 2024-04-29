@@ -68,12 +68,6 @@ pub struct CommandChannels {
 }
 
 impl CommandChannels {
-    pub fn default() -> Self {
-        CommandChannels {
-            music_channel: None,
-        }
-    }
-
     /// Set the music channel, mutating.
     pub fn set_music_channel(
         &mut self,
@@ -103,10 +97,7 @@ impl CommandChannels {
             guild_id,
             permission_settings: perms,
         });
-        Self {
-            music_channel,
-            ..self
-        }
+        Self { music_channel }
     }
 
     /// Get the music channel.
