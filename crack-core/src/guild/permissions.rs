@@ -1,14 +1,20 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use serenity::all::ChannelId;
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
+use crate::errors::CrackedError;
+
+/// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;
 
+/// Trait for converting a serde_json::Value to a HashSet of strings.
 pub trait ConvertToHashSetString {
     fn convert(self) -> HashSetString;
 }
 
+/// Implementation of ConvertToHashSetString for serde_json::Value.
 impl ConvertToHashSetString for serde_json::Value {
     fn convert(self) -> HashSetString {
         self.as_array()
@@ -19,18 +25,22 @@ impl ConvertToHashSetString for serde_json::Value {
     }
 }
 
+/// Implementation of ConvertToHashSetString for Vec<String>.
 impl ConvertToHashSetString for Vec<String> {
     fn convert(self) -> HashSetString {
         self.into_iter().collect()
     }
 }
 
+/// Type alias for a HashSet of u64.
 type HashSetU64 = HashSet<u64>;
 
+/// Trait for converting a serde_json::Value to a HashSet of u64.
 pub trait ConvertToHashSetU64 {
     fn convert(self) -> HashSetU64;
 }
 
+/// Implementation of ConvertToHashSetU64 for serde_json::Value.
 impl ConvertToHashSetU64 for serde_json::Value {
     fn convert(self) -> HashSetU64 {
         self.as_array()
@@ -41,6 +51,7 @@ impl ConvertToHashSetU64 for serde_json::Value {
     }
 }
 
+/// Implementation of ConvertToHashSetU64 for Vec<i64>.
 impl ConvertToHashSetU64 for Vec<i64> {
     fn convert(self) -> HashSetU64 {
         self.iter().map(|&x| x as u64).collect()
@@ -49,6 +60,7 @@ impl ConvertToHashSetU64 for Vec<i64> {
 /// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromRow)]
 pub struct GenericPermissionSettings {
+    pub id: i64,
     #[serde(default = "default_true")]
     pub default_allow_all_commands: bool,
     #[serde(default = "default_true")]
@@ -63,10 +75,10 @@ pub struct GenericPermissionSettings {
     pub denied_users: HashSet<u64>,
 }
 
-/// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
+/// Struct for reading generic permission settings from a pg table.
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct GenericPermissionSettingsRead {
-    pub id: i32,
+    pub id: i64,
     #[serde(default = "default_true")]
     pub default_allow_all_commands: bool,
     #[serde(default = "default_true")]
@@ -81,9 +93,11 @@ pub struct GenericPermissionSettingsRead {
     pub denied_users: Vec<i64>,
 }
 
+/// Implementation of GenericPermissionSettingsRead.
 impl GenericPermissionSettingsRead {
     pub fn convert(self) -> GenericPermissionSettings {
         GenericPermissionSettings {
+            id: self.id,
             default_allow_all_commands: self.default_allow_all_commands,
             default_allow_all_users: self.default_allow_all_users,
             default_allow_all_roles: self.default_allow_all_roles,
@@ -106,6 +120,7 @@ fn default_true() -> bool {
 impl Default for GenericPermissionSettings {
     fn default() -> Self {
         Self {
+            id: 0,
             default_allow_all_commands: true,
             default_allow_all_users: true,
             default_allow_all_roles: true,
@@ -229,7 +244,6 @@ impl GenericPermissionSettings {
     }
 
     /// Write to a pg table.
-    #[allow(dead_code)]
     async fn insert_permission_settings(
         pool: &PgPool,
         settings: &GenericPermissionSettings,
@@ -278,7 +292,6 @@ impl GenericPermissionSettings {
     }
 
     /// Read from a pg table.
-    #[allow(dead_code)]
     async fn get_permission_settings(
         pool: &PgPool,
         id: i32,
@@ -299,6 +312,72 @@ impl GenericPermissionSettings {
         // settings.denied_commands = serde_json::from_value(json!(settings.denied_commands)).unwrap();
 
         Ok(settings)
+    }
+}
+
+/// Struct for a command channel with permission settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommandChannel {
+    pub permission_settings: GenericPermissionSettings,
+    pub channel_id: ChannelId,
+}
+
+/// Struct for reading a command channel with permission settings from a pg table.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, sqlx::FromRow)]
+pub struct CommandChannelRead {
+    pub id: i64,
+    pub permission_settings_id: i64,
+    pub channel_id: i64,
+}
+
+impl CommandChannel {
+    /// Convert a CommandChannelRead to a CommandChannel.
+    pub async fn from_command_channel_read(
+        pool: &PgPool,
+        read: CommandChannelRead,
+    ) -> Result<Self, CrackedError> {
+        let perms = GenericPermissionSettings::get_permission_settings(
+            &pool,
+            read.permission_settings_id as i32,
+        )
+        .await?;
+        Ok(Self {
+            permission_settings: perms,
+            channel_id: ChannelId::new(read.channel_id as u64),
+        })
+    }
+
+    /// Insert a CommandChannel into a pg table.
+    pub async fn insert_command_channel(
+        pool: &PgPool,
+        channel: CommandChannel,
+    ) -> sqlx::Result<()> {
+        let settings = channel.permission_settings.clone();
+        let query = sqlx::query!(
+            "INSERT INTO command_channel
+                (permission_settings_id, channel_id)
+            VALUES
+                ($1, $2)",
+            channel.permission_settings.id,
+            channel.channel_id.get() as i64,
+        );
+        GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
+        query.execute(pool).await?;
+        Ok(())
+    }
+
+    pub async fn get_command_channel(
+        pool: &PgPool,
+        channel_id: ChannelId,
+    ) -> Result<Self, CrackedError> {
+        let read = sqlx::query_as!(
+            CommandChannelRead,
+            "SELECT * FROM command_channel WHERE channel_id = $1",
+            channel_id.get() as i64
+        )
+        .fetch_one(pool)
+        .await?;
+        Self::from_command_channel_read(pool, read).await
     }
 }
 
