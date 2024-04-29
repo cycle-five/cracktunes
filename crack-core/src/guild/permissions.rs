@@ -347,11 +347,8 @@ impl CommandChannel {
     }
 
     /// Insert a CommandChannel into a pg table.
-    pub async fn insert_command_channel(
-        pool: &PgPool,
-        channel: CommandChannel,
-    ) -> Result<(), Error> {
-        let settings = channel.permission_settings;
+    pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<(), Error> {
+        let settings = self.permission_settings.clone();
         let settings =
             GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
         sqlx::query!(
@@ -360,9 +357,9 @@ impl CommandChannel {
             VALUES
                 ($1, $2, $3, $4)",
             settings.id,
-            channel.channel_id.get() as i64,
-            channel.guild_id.get() as i64,
-            channel.command,
+            self.channel_id.get() as i64,
+            self.guild_id.get() as i64,
+            self.command,
         )
         .execute(pool)
         .await?;
@@ -577,7 +574,14 @@ mod tests {
         let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
             .await
             .unwrap();
-        assert!(settings_read == settings);
+        assert!(settings_read.id != settings.id);
+        assert!(settings_read.default_allow_all_commands == settings.default_allow_all_commands);
+        assert!(settings_read.default_allow_all_users == settings.default_allow_all_users);
+        assert!(settings_read.default_allow_all_roles == settings.default_allow_all_roles);
+        assert!(settings_read.allowed_roles == settings.allowed_roles);
+        assert!(settings_read.denied_roles == settings.denied_roles);
+        assert!(settings_read.allowed_users == settings.allowed_users);
+        assert!(settings_read.denied_users == settings.denied_users);
         // assert!(settings_read.is_command_allowed("test"));
         // assert!(!settings_read.is_command_allowed("test2"));
     }
@@ -595,9 +599,7 @@ mod tests {
             guild_id: GuildId::new(1),
             command: "test".to_string(),
         };
-        CommandChannel::insert_command_channel(&pool, channel)
-            .await
-            .unwrap();
+        channel.insert_command_channel(&pool).await.unwrap();
 
         let channel_read =
             CommandChannel::get_command_channels(&pool, "test".to_string(), GuildId::new(1)).await;

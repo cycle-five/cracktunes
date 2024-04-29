@@ -17,7 +17,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
-use super::permissions::GenericPermissionSettings;
+use super::permissions::{CommandChannel, GenericPermissionSettings};
 
 pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
@@ -55,16 +55,74 @@ pub fn get_log_prefix() -> String {
 }
 
 /// Settings for a command channel.
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct CommandChannelSettings {
-    pub id: ChannelId,
-    pub perms: GenericPermissionSettings,
-}
+// #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+// pub struct CommandChannelSettings {
+//     pub id: ChannelId,
+//     pub perms: GenericPermissionSettings,
+// }
 
 /// Command channels to restrict where and who can use what commands
 #[derive(Deserialize, Serialize, Debug, Clone, Default, sqlx::FromRow)]
 pub struct CommandChannels {
-    pub music_channel: Option<CommandChannelSettings>,
+    pub music_channel: Option<CommandChannel>,
+}
+
+impl CommandChannels {
+    pub fn default() -> Self {
+        CommandChannels {
+            music_channel: None,
+        }
+    }
+
+    /// Set the music channel, mutating.
+    pub fn set_music_channel(
+        &mut self,
+        channel_id: ChannelId,
+        guild_id: GuildId,
+        perms: GenericPermissionSettings,
+    ) -> &mut Self {
+        self.music_channel = Some(CommandChannel {
+            command: "music".to_string(),
+            channel_id,
+            guild_id,
+            permission_settings: perms,
+        });
+        self
+    }
+
+    /// Set the music channel, returning a new CommandChannels.
+    pub fn with_music_channel(
+        self,
+        channel_id: ChannelId,
+        guild_id: GuildId,
+        perms: GenericPermissionSettings,
+    ) -> Self {
+        let music_channel = Some(CommandChannel {
+            command: "music".to_string(),
+            channel_id,
+            guild_id,
+            permission_settings: perms,
+        });
+        Self {
+            music_channel,
+            ..self
+        }
+    }
+
+    pub fn get_music_channel(&self) -> Option<CommandChannel> {
+        self.music_channel.clone()
+    }
+
+    pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
+        if let Some(music_channel) = &self.music_channel {
+            music_channel
+                .insert_command_channel(pool)
+                .await
+                .map_err(Into::into)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
