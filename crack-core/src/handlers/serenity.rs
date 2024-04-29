@@ -858,22 +858,27 @@ pub async fn voice_state_diff_str(
     // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
     cache: Arc<impl serenity::CacheHttp>,
 ) -> Result<String, CrackedError> {
-    let channel = new
-        .channel_id
-        .ok_or(CrackedError::NoChannelId)?
-        .to_channel(cache.clone())
-        .await?;
+    let channel = match new.channel_id {
+        Some(channel_id) => channel_id.to_channel(cache.clone()).await.ok(),
+        None => None,
+    };
     let premium = true; //DEFAULT_PREMIUM;
     let old = match old {
         Some(old) => old,
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
-
-            return Ok(format!(
-                "Member joined voice channel\n{} joined {}",
-                user_name,
-                channel.mention()
-            ));
+            let result = match channel {
+                Some(channel) => format!(
+                    "Member joined voice channel\n{} joined {}",
+                    user_name,
+                    channel.mention()
+                ),
+                None => format!(
+                    "Member joined voice channel\n{} joined unknown channel",
+                    user_name
+                ),
+            };
+            return Ok(result);
         },
     };
     let user = if premium {
