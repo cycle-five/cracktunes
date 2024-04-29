@@ -58,6 +58,7 @@ pub async fn set_global_handlers(
         TrackEndHandler {
             guild_id,
             http: ctx.serenity_context().http.clone(),
+            cache: ctx.serenity_context().cache.clone(),
             call: call.clone(),
             data: ctx.data().clone(),
         },

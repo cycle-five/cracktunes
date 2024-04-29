@@ -10,7 +10,7 @@ use crate::{
 use crate::{errors::CrackedError, Context, Error};
 
 use rusty_ytdl::search::Playlist as YTPlaylist;
-use serenity::all::{ChannelId, CreateEmbed, EditMessage, GuildId, Http, Message, UserId};
+use serenity::all::{Cache, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use songbird::Call;
@@ -199,7 +199,7 @@ pub async fn enqueue_track_pgwrite(
         ctx.guild_id().unwrap(),
         ctx.channel_id(),
         ctx.author().id,
-        ctx.http(),
+        ctx.cache(),
         call,
         query_type,
     )
@@ -272,7 +272,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     guild_id: GuildId,
     channel_id: ChannelId,
     user_id: UserId,
-    http: &Http,
+    cache: &Cache,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -280,7 +280,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(http, query_type.clone()).await?;
+        get_track_source_and_metadata(query_type.clone()).await?;
     let res = match metadata.first() {
         Some(x) => x.clone(),
         None => {
@@ -289,7 +289,8 @@ pub async fn enqueue_track_pgwrite_asdf(
     };
     let track: Track = source.into();
 
-    let username = http_utils::http_to_username_or_default(http, user_id).await;
+    // let username = http_utils::http_to_username_or_default(http, user_id).await;
+    let username = http_utils::cache_to_username_or_default(cache, user_id);
 
     let MyAuxMetadata::Data(aux_metadata) = res.clone();
 

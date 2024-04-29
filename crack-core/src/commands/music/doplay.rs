@@ -43,21 +43,19 @@ use ::serenity::{
         EditMessage,
     },
 };
-use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use poise::serenity_prelude::{self as serenity, Attachment};
 use reqwest::Client;
-use rusty_ytdl::search::SearchOptions;
-use rusty_ytdl::search::SearchType;
+use rusty_ytdl::search::{SearchOptions, SearchType};
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::TrackHandle,
     Call,
 };
-use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
     path::Path,
-    process::Output,
+    process::{Output, Stdio},
     sync::Arc,
     time::Duration,
 };
@@ -1417,7 +1415,6 @@ pub async fn video_info_to_source_and_metadata(
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
-    _http: &Http,
     query_type: QueryType,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let client = http_utils::get_client().clone();

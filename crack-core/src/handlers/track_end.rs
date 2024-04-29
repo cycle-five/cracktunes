@@ -1,5 +1,5 @@
 use ::serenity::{
-    all::{ChannelId, UserId},
+    all::{Cache, ChannelId, UserId},
     async_trait,
     builder::EditMessage,
     http::Http,
@@ -27,6 +27,7 @@ pub struct TrackEndHandler {
     pub guild_id: GuildId,
     pub data: Data,
     pub http: Arc<Http>,
+    pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -34,6 +35,7 @@ pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
     pub http: Arc<Http>,
+    pub _cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -153,7 +155,7 @@ impl EventHandler for TrackEndHandler {
                             self.guild_id,
                             chan_id,
                             UserId::new(1),
-                            &self.http,
+                            &self.cache,
                             &self.call,
                             &query,
                         )

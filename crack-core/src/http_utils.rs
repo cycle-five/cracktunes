@@ -39,6 +39,19 @@ pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
+pub fn cache_to_username_or_default(cache: &serenity::all::Cache, user_id: UserId) -> String {
+    match cache.user(user_id) {
+        Some(x) => x.name.clone(),
+        None => {
+            tracing::warn!("cache.user returned None");
+            "Unknown".to_string()
+        },
+    }
+}
+
+/// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
+#[cfg(not(tarpaulin_include))]
+//#[allow(dead_code)]
 pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String {
     match http.get_user(user_id).await {
         Ok(x) => x.name,
