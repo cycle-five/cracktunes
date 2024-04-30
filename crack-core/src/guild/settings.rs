@@ -121,7 +121,7 @@ impl CommandChannels {
         let music_channels =
             CommandChannel::get_command_channels(pool, "music".to_string(), guild_id).await;
 
-        let music_channel = music_channels.first().map(|x| x.clone());
+        let music_channel = music_channels.first().cloned();
 
         Ok(Self { music_channel })
     }

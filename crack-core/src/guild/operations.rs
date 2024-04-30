@@ -66,13 +66,12 @@ impl GuildSettingsOperations for crate::Data {
             .read()
             .unwrap()
             .get(&guild_id)
-            .map(|x| {
+            .and_then(|x| {
                 x.command_channels
                     .music_channel
                     .as_ref()
                     .map(|x| x.channel_id)
             })
-            .flatten()
     }
 
     fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
