@@ -349,7 +349,7 @@ impl CommandChannel {
     /// Insert a CommandChannel into a pg table.
     pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
         let mut settings = self.permission_settings.clone();
-        if settings.id == 1 {
+        if settings.id == 0 {
             settings =
                 GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
         }
