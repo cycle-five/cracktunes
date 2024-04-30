@@ -326,7 +326,7 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
@@ -395,6 +395,12 @@ fn volume_default() -> f32 {
 /// Default value function for serialization for premium status.
 fn premium_default() -> bool {
     DEFAULT_PREMIUM
+}
+
+impl Default for GuildSettings {
+    fn default() -> Self {
+        GuildSettings::new(GuildId::default(), Some("r!"), None)
+    }
 }
 
 impl Display for GuildSettings {
