@@ -1247,7 +1247,7 @@ checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 [[package]]
 name = "ffprobe"
 version = "0.4.0"
-source = "git+https://github.com/cycle-five/ffprobe-rs#7c9f163a812df62799d5e6286d244e66781b67a2"
+source = "git+https://github.com/cycle-five/ffprobe-rs#e35281a7086cc25c5cfa8380e6e2a1f650501263"
 dependencies = [
  "serde",
  "serde_json",
@@ -3572,7 +3572,7 @@ dependencies = [
 [[package]]
 name = "rusty_ytdl"
 version = "0.7.1"
-source = "git+https://github.com/cycle-five/rusty_ytdl?branch=main#b8c0871b36b0770f7e9e2e3000ffc37720b15d2b"
+source = "git+https://github.com/cycle-five/rusty_ytdl?branch=main#ff40d9cadd1ac2b98fcc0bb7c98af16be0d6444e"
 dependencies = [
  "aes",
  "async-trait",

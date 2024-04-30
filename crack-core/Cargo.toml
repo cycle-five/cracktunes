@@ -79,6 +79,8 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"
+features = ["async-tokio"]
+version = "0.4.0"
 
 [dev-dependencies]
 ctor = "0.2.8"
