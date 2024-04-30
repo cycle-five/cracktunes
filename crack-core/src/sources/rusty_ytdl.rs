@@ -138,6 +138,7 @@ impl RustyYoutubeClient {
             limit,
             ..Default::default()
         };
+        tracing::warn!("{:?}", query);
         let search_results = self.rusty_ytdl.search(&query, Some(&opts)).await?;
         println!("{:?}", search_results);
         Ok(search_results)
@@ -145,13 +146,10 @@ impl RustyYoutubeClient {
 
     // Do a one-shot search
     pub async fn one_shot(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
-        let opts = SearchOptions {
-            limit: 1,
-            ..Default::default()
-        };
-        let search_results = self.rusty_ytdl.search_one(&query, Some(&opts)).await?;
-        println!("{:?}", search_results);
-        Ok(search_results)
+        self.rusty_ytdl
+            .search_one(&query, None)
+            .await
+            .map_err(|e| e.into())
     }
 }
 
@@ -228,12 +226,13 @@ mod test {
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = ytdl.search(Some(1)).await;
+            println!("{:?}", res);
             if res.is_err() {
                 assert!(res
                     .as_ref()
                     .unwrap_err()
                     .to_string()
-                    .contains("Your IP is liekly being blocked by Youtube"))
+                    .contains("Your IP is likely being blocked by Youtube"))
             }
             res_all.push(res);
         }

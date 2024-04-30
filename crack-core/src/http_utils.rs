@@ -16,6 +16,13 @@ pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
+pub async fn init_http_client() -> Result<(), CrackedError> {
+    let client = get_client().clone();
+    let res = client.get("https://httpbin.org/ip").send().await?;
+    tracing::info!("HTTP client initialized successfully: {:?}", res);
+    Ok(())
+}
+
 // /// Get a new reqwest client with consistent settings.
 // pub fn new_reqwest_client() -> &'static Client {
 //     &CLIENT

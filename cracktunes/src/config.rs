@@ -324,9 +324,14 @@ pub async fn poise_framework(
 
                 // FIXME: This is a bit of a hack
                 match res {
-                    Ok((true, _)) => {
-                        tracing::info!("Author is admin");
+                    Ok((true, true)) => {
+                        tracing::info!("Author is admin and is an admin command");
                         return Ok(true);
+                    },
+                    Ok((true, false)) => {
+                        tracing::info!(
+                            "Author is admin and is not an admin command, checking roles..."
+                        );
                     },
                     Ok((false, _)) => {
                         tracing::info!("Author is not admin");
@@ -355,13 +360,15 @@ pub async fn poise_framework(
                     match ctx.data().get_guild_settings(guild_id) {
                         Some(guild_settings) => {
                             let command_channel = guild_settings.command_channels.music_channel;
-                            let channel = command_channel.map(|x| x.channel_id);
-                            match channel {
-                                Some(channel) => {
-                                    if channel_id == channel {
+                            let opt_allowed_channel = command_channel.map(|x| x.channel_id);
+                            match opt_allowed_channel {
+                                Some(allowed_channel) => {
+                                    if channel_id == allowed_channel {
                                         return Ok(is_authorized_music(member, None));
                                     }
-                                    return Ok(false);
+                                    return Err(
+                                        CrackedError::NotInMusicChannel(allowed_channel).into()
+                                    );
                                 },
                                 None => return Ok(is_authorized_music(member, None)),
                             }

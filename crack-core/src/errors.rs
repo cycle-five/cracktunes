@@ -2,12 +2,13 @@ use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
     FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
     FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NO_CHANNEL_ID, NO_DATABASE_POOL,
-    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND,
-    SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY,
+    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
+use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
@@ -41,6 +42,7 @@ pub enum CrackedError {
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
+    NotInMusicChannel(ChannelId),
     NotConnected,
     NoChannelId,
     NotImplemented,
@@ -125,6 +127,11 @@ impl Display for CrackedError {
             )),
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
+            )),
+            Self::NotInMusicChannel(channel_id) => f.write_str(&format!(
+                "{} {}",
+                NOT_IN_MUSIC_CHANNEL,
+                channel_id.mention()
             )),
             Self::NoChannelId => f.write_str(NO_CHANNEL_ID),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),

@@ -57,6 +57,7 @@ pub const JOINING: &str = "Joining";
 pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";
+pub const NOT_IN_MUSIC_CHANNEL: &str = "⚠️ You are not in the music channel! Use";
 pub const NO_CHANNEL_ID: &str = "⚠️ No ChannelId Found!";
 pub const NO_DATABASE_POOL: &str = "⚠️ No Database Pool Found!";
 pub const NO_GUILD_CACHED: &str = "⚠️ No Cached Guild Found!";
