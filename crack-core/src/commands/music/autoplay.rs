@@ -1,4 +1,3 @@
-use crate::commands::{cancel_autoplay, enable_autoplay};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 
