@@ -548,6 +548,20 @@ impl Data {
             .cloned()
     }
 
+    pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
+        self.guild_settings_map
+            .write()
+            .unwrap()
+            .insert(guild_id, settings);
+    }
+
+    // /// Get the guild settings for a guild (read only)
+    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+    //     let mut asdf = self.guild_settings_map.write().unwrap().clone();
+    //     let qwer = asdf.get_mut(&guild_id);
+    //     qwer
+    // }
+
     /// Set the guild settings for a guild and return a new copy.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))

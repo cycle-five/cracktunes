@@ -5,9 +5,19 @@ use serenity::all::{ChannelId, GuildId};
 
 use crate::errors::CrackedError;
 
+use super::settings::GuildSettings;
+
 pub trait GuildSettingsOperations {
     fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId>;
     fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId);
+    fn get_guild_settings(&self, guild_id: GuildId) -> Option<crate::GuildSettings>;
+    fn set_guild_settings(&self, guild_id: GuildId, settings: crate::GuildSettings);
+    fn get_or_create_guild_settings(
+        &self,
+        guild_id: GuildId,
+        name: Option<String>,
+        prefix: Option<&str>,
+    ) -> GuildSettings;
     fn save_guild_settings(
         &self,
         guild_id: GuildId,
@@ -24,6 +34,33 @@ pub trait GuildSettingsOperations {
 }
 
 impl GuildSettingsOperations for crate::Data {
+    fn get_or_create_guild_settings(
+        &self,
+        guild_id: GuildId,
+        name: Option<String>,
+        prefix: Option<&str>,
+    ) -> GuildSettings {
+        self.get_guild_settings(guild_id).unwrap_or({
+            let settings = GuildSettings::new(guild_id, prefix, name);
+            self.set_guild_settings(guild_id, settings.clone());
+            settings
+        })
+    }
+    fn get_guild_settings(&self, guild_id: GuildId) -> Option<crate::GuildSettings> {
+        self.guild_settings_map
+            .read()
+            .unwrap()
+            .get(&guild_id)
+            .cloned()
+    }
+
+    fn set_guild_settings(&self, guild_id: GuildId, settings: crate::GuildSettings) {
+        self.guild_settings_map
+            .write()
+            .unwrap()
+            .insert(guild_id, settings);
+    }
+
     fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
         self.guild_settings_map
             .read()
