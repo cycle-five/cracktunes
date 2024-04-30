@@ -26,8 +26,8 @@ use crate::{
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
     pub data: Data,
-    pub http: Arc<Http>,
     pub cache: Arc<Cache>,
+    pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -91,15 +91,37 @@ impl EventHandler for TrackEndHandler {
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
+        let music_channel = {
+            let settings = self.data.guild_settings_map.read().unwrap().clone();
+            let asdf = settings.get(&self.guild_id).map(|guild_settings| {
+                guild_settings
+                    .command_channels
+                    .music_channel
+                    .as_ref()
+                    .map(|c| c.channel_id)
+            });
+            match asdf {
+                Some(channel) => channel,
+                None => None,
+            }
+        };
+
         let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
             let (sb_chan_id, my_metadata, cur_pos) = {
                 let (channel, track) = {
                     let handler = self.call.lock().await;
-                    let channel = handler.current_channel();
+                    let channel = match music_channel {
+                        Some(c) => c,
+                        _ => handler
+                            .current_channel()
+                            .map(|c| ChannelId::new(c.0.get()))
+                            .unwrap(),
+                    };
                     let track = handler.queue().current().clone();
                     (channel, track)
                 };
-                let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
+                let chan_id = channel;
+                // let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
                 match (track, autoplay) {
                     (None, false) => (
                         channel,
@@ -137,9 +159,11 @@ impl EventHandler for TrackEndHandler {
                                 (rec, msg)
                             },
                         };
-                        // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
-                        let msg = chan_id.say(&self.http, msg).await.unwrap();
+                        let msg = chan_id
+                            .say((&self.cache, self.http.as_ref()), msg)
+                            .await
+                            .unwrap();
                         self.data.add_msg_to_cache(self.guild_id, msg);
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
@@ -189,7 +213,8 @@ impl EventHandler for TrackEndHandler {
                     },
                 }
             };
-            let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
+            // let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
+            let chan_id = sb_chan_id;
             let chan_name = chan_id.name(&self.http).await.unwrap();
             (chan_id, chan_name, my_metadata, cur_pos)
         };
