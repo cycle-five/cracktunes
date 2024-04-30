@@ -5,6 +5,7 @@ pub mod set_all_log_channel;
 pub mod set_auto_role;
 pub mod set_idle_timeout;
 pub mod set_join_leave_log_channel;
+pub mod set_music_channel;
 pub mod set_premium;
 pub mod set_volume;
 pub mod set_welcome_settings;
@@ -13,6 +14,7 @@ pub use set_all_log_channel::*;
 pub use set_auto_role::*;
 pub use set_idle_timeout::*;
 pub use set_join_leave_log_channel::*;
+pub use set_music_channel::*;
 pub use set_premium::*;
 pub use set_volume::*;
 pub use set_welcome_settings::*;
@@ -30,6 +32,7 @@ pub use set_welcome_settings::*;
         "auto_role",
         "idle_timeout",
         "welcome_settings",
+        "music_channel",
         // "log_all",
         // "log_guild"
     ),

@@ -116,6 +116,15 @@ impl CommandChannels {
             Ok(())
         }
     }
+
+    pub async fn load(guild_id: GuildId, pool: &PgPool) -> Result<Self, CrackedError> {
+        let music_channels =
+            CommandChannel::get_command_channels(pool, "music".to_string(), guild_id).await;
+
+        let music_channel = music_channels.first().map(|x| x.clone());
+
+        Ok(Self { music_channel })
+    }
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -579,6 +588,15 @@ impl GuildSettings {
         self.banned_domains = banned;
     }
 
+    pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
+        self.command_channels.set_music_channel(
+            ChannelId::new(channel_id),
+            self.guild_id,
+            Default::default(),
+        );
+        self
+    }
+
     pub fn update_domains(&mut self) {
         if !self.allowed_domains.is_empty() && !self.banned_domains.is_empty() {
             self.banned_domains.clear();
@@ -804,6 +822,13 @@ impl GuildSettings {
         };
         Self {
             log_settings: Some(log_settings),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
+        Self {
+            command_channels,
             ..self.clone()
         }
     }

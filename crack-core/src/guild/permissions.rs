@@ -372,6 +372,10 @@ impl CommandChannel {
         Ok(())
     }
 
+    pub async fn save(&self, pool: &PgPool) -> Result<(), Error> {
+        self.insert_command_channel(pool).await
+    }
+
     pub async fn get_command_channels(
         pool: &PgPool,
         command: String,
