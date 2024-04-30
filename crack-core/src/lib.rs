@@ -42,6 +42,16 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub use Result;
 
+pub trait CrackContext<'a> {
+    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+}
+
+impl<'a> CrackContext<'a> for Context<'a> {
+    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg)
+    }
+}
+
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))

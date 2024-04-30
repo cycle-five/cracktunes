@@ -326,7 +326,7 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,

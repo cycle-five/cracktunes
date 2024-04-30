@@ -306,6 +306,8 @@ pub async fn send_embed_response_poise(
     .map_err(Into::into)
 }
 
+
+
 /// Sends a regular reply response.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_nonembed_response_poise(

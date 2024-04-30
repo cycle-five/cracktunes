@@ -13,6 +13,7 @@ use crate::{
     commands::{doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
@@ -91,20 +92,7 @@ impl EventHandler for TrackEndHandler {
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
-        let music_channel = {
-            let settings = self.data.guild_settings_map.read().unwrap().clone();
-            let asdf = settings.get(&self.guild_id).map(|guild_settings| {
-                guild_settings
-                    .command_channels
-                    .music_channel
-                    .as_ref()
-                    .map(|c| c.channel_id)
-            });
-            match asdf {
-                Some(channel) => channel,
-                None => None,
-            }
-        };
+        let music_channel = self.data.get_music_channel(self.guild_id);
 
         let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
             let (sb_chan_id, my_metadata, cur_pos) = {
