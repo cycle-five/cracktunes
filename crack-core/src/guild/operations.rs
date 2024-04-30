@@ -31,6 +31,8 @@ pub trait GuildSettingsOperations {
     fn add_prefix(&self, guild_id: GuildId, prefix: String);
     fn get_autopause(&self, guild_id: GuildId) -> bool;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool);
+    fn get_autoplay(&self, guild_id: GuildId) -> bool;
+    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool);
 }
 
 impl GuildSettingsOperations for crate::Data {
@@ -174,6 +176,26 @@ impl GuildSettingsOperations for crate::Data {
             .and_modify(|e| {
                 e.autopause = autopause;
             });
+    }
+
+    /// Get the current autoplay settings
+    fn get_autoplay(&self, guild_id: GuildId) -> bool {
+        self.guild_cache_map
+            .lock()
+            .unwrap()
+            .get(&guild_id)
+            .map(|settings| settings.autoplay)
+            .unwrap_or(true)
+    }
+
+    /// Set the autoplay setting
+    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
+        self.guild_cache_map
+            .lock()
+            .unwrap()
+            .entry(guild_id)
+            .or_default()
+            .autoplay = autoplay;
     }
 }
 

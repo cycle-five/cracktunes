@@ -1,4 +1,5 @@
 use crate::commands::{cancel_autoplay, enable_autoplay};
+use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 
 /// Toggle music autoplay.
@@ -7,20 +8,12 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let autoplay = {
-        ctx.data()
-            .guild_cache_map
-            .lock()
-            .unwrap()
-            .entry(guild_id)
-            .or_default()
-            .autoplay
-    };
+    let autoplay = ctx.data().get_autoplay(guild_id);
+    ctx.data().set_autoplay(guild_id, !autoplay);
+
     let msg = if autoplay {
-        cancel_autoplay(ctx.data(), guild_id).await?;
         send_response_poise(ctx, CrackedMessage::AutoplayOff, true)
     } else {
-        enable_autoplay(ctx.data(), guild_id).await?;
         send_response_poise(ctx, CrackedMessage::AutoplayOn, true)
     }
     .await?;
