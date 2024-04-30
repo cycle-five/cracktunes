@@ -23,7 +23,7 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = true, branch = "main", features = [
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "main", features = [
     "live",
     "rustls-tls",
     "search",
