@@ -62,7 +62,7 @@ pub fn get_log_prefix() -> String {
 // }
 
 /// Command channels to restrict where and who can use what commands
-#[derive(Deserialize, Serialize, Debug, Clone, Default, sqlx::FromRow)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, sqlx::FromRow)]
 pub struct CommandChannels {
     pub music_channel: Option<CommandChannel>,
 }
@@ -127,7 +127,7 @@ impl CommandChannels {
     }
 }
 
-#[derive(Default, Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
     pub all_log_channel: Option<u64>,
@@ -217,7 +217,7 @@ impl LogSettings {
     }
 }
 
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
 pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
@@ -326,7 +326,7 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,

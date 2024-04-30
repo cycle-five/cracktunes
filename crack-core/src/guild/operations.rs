@@ -8,8 +8,6 @@ use crate::errors::CrackedError;
 use super::settings::GuildSettings;
 
 pub trait GuildSettingsOperations {
-    fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId>;
-    fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId);
     fn get_guild_settings(&self, guild_id: GuildId) -> Option<crate::GuildSettings>;
     fn set_guild_settings(&self, guild_id: GuildId, settings: crate::GuildSettings);
     fn get_or_create_guild_settings(
@@ -22,6 +20,8 @@ pub trait GuildSettingsOperations {
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<(), CrackedError>>;
+    fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId>;
+    fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId);
     fn get_timeout(&self, guild_id: GuildId) -> Option<u32>;
     fn set_timeout(&self, guild_id: GuildId, timeout: u32);
     fn get_premium(&self, guild_id: GuildId) -> Option<bool>;
@@ -200,6 +200,77 @@ mod test {
     use serenity::model::id::ChannelId;
     use std::collections::HashMap;
     use std::sync::RwLock;
+
+    #[test]
+    fn test_get_guild_settings() {
+        let mut guild_settings_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        guild_settings_map.insert(
+            guild_id,
+            crate::GuildSettings {
+                ..Default::default()
+            },
+        );
+        let data = Data(Arc::new(DataInner {
+            guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
+            ..Default::default()
+        }));
+
+        assert_eq!(
+            data.get_guild_settings(guild_id),
+            Some(crate::GuildSettings {
+                ..Default::default()
+            })
+        );
+    }
+
+    #[test]
+    fn test_get_or_create_guild_settings() {
+        let guild_settings_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        let data = Data(Arc::new(DataInner {
+            guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
+            ..Default::default()
+        }));
+
+        assert_eq!(
+            data.get_or_create_guild_settings(guild_id, None, None),
+            crate::GuildSettings {
+                guild_id,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn test_set_guild_settings() {
+        let mut guild_settings_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        guild_settings_map.insert(
+            guild_id,
+            crate::GuildSettings {
+                ..Default::default()
+            },
+        );
+        let data = Data(Arc::new(DataInner {
+            guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
+            ..Default::default()
+        }));
+
+        data.set_guild_settings(
+            guild_id,
+            crate::GuildSettings {
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            data.get_guild_settings(guild_id),
+            Some(crate::GuildSettings {
+                ..Default::default()
+            })
+        );
+    }
 
     #[test]
     fn test_get_music_channel() {
