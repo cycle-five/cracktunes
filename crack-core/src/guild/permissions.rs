@@ -347,13 +347,14 @@ impl CommandChannel {
     }
 
     /// Insert a CommandChannel into a pg table.
-    pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<(), Error> {
+    pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
         let mut settings = self.permission_settings.clone();
-        if settings.id == 0 {
+        if settings.id == 1 {
             settings =
                 GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
         }
-        sqlx::query!(
+        let command_channel = sqlx::query_as!(
+            CommandChannelRead,
             r#"INSERT INTO command_channel
                 (command, guild_id, channel_id, permission_settings_id)
             VALUES
@@ -361,18 +362,22 @@ impl CommandChannel {
             ON CONFLICT (command, guild_id, channel_id) DO UPDATE
                 SET permission_settings_id = $4
                 WHERE command_channel.channel_id = $3 AND command_channel.guild_id = $2 AND command_channel.command = $1
+            RETURNING *
             "#,
             self.command,
             self.guild_id.get() as i64,
             self.channel_id.get() as i64,
             settings.id,
         )
-        .execute(pool)
+        .fetch_one(pool)
         .await?;
-        Ok(())
+        let command_channel = CommandChannel::from_command_channel_read(pool, command_channel)
+            .await
+            .unwrap();
+        Ok(command_channel)
     }
 
-    pub async fn save(&self, pool: &PgPool) -> Result<(), Error> {
+    pub async fn save(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
         self.insert_command_channel(pool).await
     }
 

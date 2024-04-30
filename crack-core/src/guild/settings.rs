@@ -106,14 +106,10 @@ impl CommandChannels {
     }
 
     /// Insert the command channel into the database.
-    pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
-        if let Some(music_channel) = &self.music_channel {
-            music_channel
-                .insert_command_channel(pool)
-                .await
-                .map_err(Into::into)
-        } else {
-            Ok(())
+    pub async fn save(&self, pool: &PgPool) -> Option<CommandChannel> {
+        match self.music_channel {
+            Some(ref c) => c.insert_command_channel(pool).await.ok(),
+            None => None,
         }
     }
 
