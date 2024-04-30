@@ -340,9 +340,13 @@ impl GuildEntity {
         }?;
         let welcome_settings = GuildEntity::get_welcome_settings(pool, self.id).await?;
         let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
+        let command_channels =
+            crate::guild::settings::CommandChannels::load(GuildId::new(self.id as u64), pool)
+                .await?;
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
-            .with_log_settings(log_settings))
+            .with_log_settings(log_settings)
+            .with_command_channels(command_channels))
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
