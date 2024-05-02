@@ -67,7 +67,8 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     let mut client = poise_framework(config, event_log).await?;
 
-    let _ = http_utils::init_http_client().await?;
+    // Force the client to init.
+    http_utils::init_http_client().await?;
 
     // let client = framework.client();
     let data_ro = client.data.clone();
