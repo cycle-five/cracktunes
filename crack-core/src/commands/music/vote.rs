@@ -10,15 +10,22 @@ use crate::{
 };
 use serenity::all::{GuildId, UserId};
 
+/// For API response from top.gg
+#[derive(serde::Deserialize)]
+pub struct CheckResponse {
+    voted: Option<u8>,
+}
+
 /// Vote link for cracktunes on top.gg
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
-    vote_(ctx).await
+    vote_internal(ctx).await
 }
 
 /// Internal vote function without the #command macro
-pub async fn vote_(ctx: Context<'_>) -> Result<(), Error> {
+#[cfg(not(tarpaulin_include))]
+pub async fn vote_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: Option<GuildId> = ctx.guild_id();
 
     let user_id: UserId = ctx.author().id;
@@ -27,35 +34,20 @@ pub async fn vote_(ctx: Context<'_>) -> Result<(), Error> {
 
     let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
     tracing::info!("bot_id: {:?}", bot_id);
-    let has_voted: bool =
-        has_voted_bot_id(ctx.data().http_client.clone(), bot_id.get(), user_id.get()).await?;
-    tracing::info!("has_voted: {:?}", has_voted);
-
-    let has_voted_db = db::UserVote::has_voted_recently_topgg(
-        user_id.get() as i64,
+    let has_voted = match check_and_record_vote(
         ctx.data().database_pool.as_ref().unwrap(),
+        user_id.get() as i64,
+        ctx.author().name.clone(),
+        bot_id.get() as i64,
     )
-    .await?;
-    tracing::info!("has_voted_db: {:?}", has_voted_db);
-
-    let record_vote = has_voted && !has_voted_db;
-
-    if record_vote {
-        let username = ctx.author().name.clone();
-        tracing::info!("username: {:?}", username);
-        db::User::insert_or_update_user(
-            ctx.data().database_pool.as_ref().unwrap(),
-            user_id.get() as i64,
-            username,
-        )
-        .await?;
-        db::UserVote::insert_user_vote(
-            ctx.data().database_pool.as_ref().unwrap(),
-            user_id.get() as i64,
-            "top.gg".to_string(),
-        )
-        .await?;
-    }
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("Error checking and recording vote: {:?}", e);
+            false
+        },
+    };
 
     let msg_str = if has_voted {
         VOTE_TOPGG_VOTED
@@ -77,9 +69,28 @@ pub async fn vote_(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(serde::Deserialize)]
-pub struct CheckResponse {
-    voted: u8,
+/// Check if the user has voted on top.gg in the last 12 hours and record the vote in the database.
+pub async fn check_and_record_vote(
+    pool: &sqlx::PgPool,
+    user_id: i64,
+    username: String,
+    bot_id: i64,
+) -> Result<bool, CrackedError> {
+    let has_voted = has_voted_bot_id(
+        http_utils::get_client().clone(),
+        bot_id as u64,
+        user_id as u64,
+    )
+    .await?;
+    let has_voted_db = db::UserVote::has_voted_recently_topgg(user_id, pool).await?;
+    let record_vote = has_voted && !has_voted_db;
+
+    if record_vote {
+        db::User::insert_or_update_user(pool, user_id, username).await?;
+        db::UserVote::insert_user_vote(pool, user_id, "top.gg".to_string()).await?;
+    }
+
+    Ok(has_voted)
 }
 
 /// Check if the user has voted on top.gg in the last 12 hours.
@@ -97,15 +108,20 @@ pub async fn has_voted_bot_id(
         .get(&url)
         .header("Authorization", token)
         .send()
-        .await?
-        .json::<CheckResponse>()
         .await?;
-    Ok(response.voted == 1_u8)
+    println!("response: {:?}", response);
+    let response = response.json::<CheckResponse>().await?;
+    response
+        .voted
+        .map(|v| v == 1)
+        .ok_or(CrackedError::Other("Error in response from top.gg"))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[ctor::ctor]
     fn set_env() {
@@ -126,5 +142,20 @@ mod test {
 
         //??
         assert!(has_voted.is_ok() || has_voted.is_err());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_check_and_record_vote(pool: sqlx::PgPool) {
+        let user_id = 285219649921220608;
+        let username = "test".to_string();
+        let bot_id = 1115229568006103122;
+
+        let has_voted = check_and_record_vote(&pool, user_id, username, bot_id).await;
+
+        if has_voted.is_ok() {
+            assert!(!has_voted.unwrap());
+        } else {
+            println!("{:?}", has_voted)
+        }
     }
 }
