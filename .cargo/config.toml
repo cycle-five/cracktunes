@@ -1,6 +1,5 @@
-# [build]
-# rustflags = ["-C", "target-cpu=native"]
-# rustdocflags = ["-C", "target-cpu=native"]
+[build]
+rustflags = ['--cfg', 'proc_macro_c_str_literals']
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]

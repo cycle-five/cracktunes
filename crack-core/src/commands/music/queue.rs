@@ -87,6 +87,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
             http: ctx.serenity_context().http.clone(),
+            _cache: ctx.serenity_context().cache.clone(),
             data: data.clone(),
             call: call.clone(),
             guild_id,

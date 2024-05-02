@@ -1,5 +1,6 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use serenity::all::GuildId;
 use sqlx::PgPool;
 
 use crate::{
@@ -258,6 +259,15 @@ impl GuildEntity {
                 .save(pool, guild_id)
                 .await?;
         }
+        if settings.command_channels.music_channel.is_some() {
+            settings
+                .command_channels
+                .music_channel
+                .as_ref()
+                .unwrap()
+                .save(pool)
+                .await?;
+        }
         Ok(())
     }
 
@@ -330,9 +340,13 @@ impl GuildEntity {
         }?;
         let welcome_settings = GuildEntity::get_welcome_settings(pool, self.id).await?;
         let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
+        let command_channels =
+            crate::guild::settings::CommandChannels::load(GuildId::new(self.id as u64), pool)
+                .await?;
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
-            .with_log_settings(log_settings))
+            .with_log_settings(log_settings)
+            .with_command_channels(command_channels))
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
@@ -421,11 +435,15 @@ impl GuildEntity {
                 .fetch_one(pool)
                 .await?;
 
+                let guild_id_2 = GuildId::new(guild_id as u64);
                 let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
                 let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
+                let command_channels =
+                    crate::guild::settings::CommandChannels::load(guild_id_2, pool).await?;
                 let guild_settings = GuildSettings::from(guild_settings)
                     .with_welcome_settings(welcome_settings)
-                    .with_log_settings(log_settings);
+                    .with_log_settings(log_settings)
+                    .with_command_channels(command_channels);
                 (guild_entity, guild_settings)
             },
         };

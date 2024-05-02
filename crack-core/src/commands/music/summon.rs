@@ -123,6 +123,7 @@ pub async fn summon(
             TrackEndHandler {
                 guild_id: guild.id,
                 http: ctx.serenity_context().http.clone(),
+                cache: ctx.serenity_context().cache.clone(),
                 call: call.clone(),
                 data: ctx.data().clone(),
             },

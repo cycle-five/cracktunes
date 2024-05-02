@@ -17,6 +17,8 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
+use super::permissions::{CommandChannel, GenericPermissionSettings};
+
 pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
@@ -52,7 +54,76 @@ pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
 }
 
-#[derive(Default, Deserialize, Serialize, Debug, Clone)]
+/// Settings for a command channel.
+// #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+// pub struct CommandChannelSettings {
+//     pub id: ChannelId,
+//     pub perms: GenericPermissionSettings,
+// }
+
+/// Command channels to restrict where and who can use what commands
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, sqlx::FromRow)]
+pub struct CommandChannels {
+    pub music_channel: Option<CommandChannel>,
+}
+
+impl CommandChannels {
+    /// Set the music channel, mutating.
+    pub fn set_music_channel(
+        &mut self,
+        channel_id: ChannelId,
+        guild_id: GuildId,
+        perms: GenericPermissionSettings,
+    ) -> &mut Self {
+        self.music_channel = Some(CommandChannel {
+            command: "music".to_string(),
+            channel_id,
+            guild_id,
+            permission_settings: perms,
+        });
+        self
+    }
+
+    /// Set the music channel, returning a new CommandChannels.
+    pub fn with_music_channel(
+        self,
+        channel_id: ChannelId,
+        guild_id: GuildId,
+        perms: GenericPermissionSettings,
+    ) -> Self {
+        let music_channel = Some(CommandChannel {
+            command: "music".to_string(),
+            channel_id,
+            guild_id,
+            permission_settings: perms,
+        });
+        Self { music_channel }
+    }
+
+    /// Get the music channel.
+    pub fn get_music_channel(&self) -> Option<CommandChannel> {
+        self.music_channel.clone()
+    }
+
+    /// Insert the command channel into the database.
+    pub async fn save(&self, pool: &PgPool) -> Option<CommandChannel> {
+        match self.music_channel {
+            Some(ref c) => c.insert_command_channel(pool).await.ok(),
+            None => None,
+        }
+    }
+
+    pub async fn load(guild_id: GuildId, pool: &PgPool) -> Result<Self, CrackedError> {
+        let music_channels =
+            CommandChannel::get_command_channels(pool, "music".to_string(), guild_id).await;
+
+        let music_channel = music_channels.first().cloned();
+
+        Ok(Self { music_channel })
+    }
+}
+
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
     pub all_log_channel: Option<u64>,
@@ -142,7 +213,7 @@ impl LogSettings {
     }
 }
 
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
 pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
@@ -251,13 +322,15 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
+    #[serde(default = "CommandChannels::default")]
+    pub command_channels: CommandChannels,
     #[serde(default = "default_false")]
     pub autopause: bool,
     #[serde(default = "default_true")]
@@ -284,32 +357,46 @@ pub struct GuildSettings {
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
 }
+
+/// Default value function for serialization that is false.
 fn default_false() -> bool {
     false
 }
 
+/// Default value function for serialization that is true.
 fn default_true() -> bool {
     true
 }
 
+/// Default value function for serialization for allow all domains.
 fn allow_all_domains_default() -> Option<bool> {
     Some(DEFAULT_ALLOW_ALL_DOMAINS)
 }
 
+/// Default value function for serialization for authorized users.
 fn authorized_users_default() -> BTreeMap<u64, u64> {
     BTreeMap::new()
 }
 
+/// Default value function for serialization for additional prefixes.
 fn additional_prefixes_default() -> Vec<String> {
     Vec::<String>::new()
 }
 
+/// Default value function for serialization for volume.
 fn volume_default() -> f32 {
     DEFAULT_VOLUME_LEVEL
 }
 
+/// Default value function for serialization for premium status.
 fn premium_default() -> bool {
     DEFAULT_PREMIUM
+}
+
+impl Default for GuildSettings {
+    fn default() -> Self {
+        GuildSettings::new(GuildId::default(), Some("r!"), None)
+    }
 }
 
 impl Display for GuildSettings {
@@ -377,6 +464,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
+            command_channels: CommandChannels::default(),
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
@@ -500,6 +588,15 @@ impl GuildSettings {
             .collect();
 
         self.banned_domains = banned;
+    }
+
+    pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
+        self.command_channels.set_music_channel(
+            ChannelId::new(channel_id),
+            self.guild_id,
+            Default::default(),
+        );
+        self
     }
 
     pub fn update_domains(&mut self) {
@@ -731,6 +828,13 @@ impl GuildSettings {
         }
     }
 
+    pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
+        Self {
+            command_channels,
+            ..self.clone()
+        }
+    }
+
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
@@ -929,5 +1033,20 @@ mod test {
             settings.get_log_channel_type_fe(&event),
             Some(serenity::model::id::ChannelId::new(123))
         );
+    }
+
+    #[test]
+    fn test_default_functions() {
+        use super::{
+            additional_prefixes_default, allow_all_domains_default, authorized_users_default,
+            default_false, default_true, premium_default, volume_default,
+        };
+        assert_eq!(allow_all_domains_default(), Some(true));
+        assert_eq!(authorized_users_default().len(), 0);
+        assert_eq!(additional_prefixes_default().len(), 0);
+        assert_eq!(volume_default(), 1.0);
+        assert_eq!(premium_default(), false);
+        assert_eq!(default_false(), false);
+        assert_eq!(default_true(), true);
     }
 }

@@ -851,50 +851,34 @@ async fn server_mute_member(
         .await
 }
 
+/// Returns a string describing the difference between two voice states.
 pub async fn voice_state_diff_str(
     old: &Option<VoiceState>,
     new: &VoiceState,
     // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
     cache: Arc<impl serenity::CacheHttp>,
 ) -> Result<String, CrackedError> {
-    let channel = new.channel_id.unwrap().to_channel(cache.clone()).await?;
+    let channel = match new.channel_id {
+        Some(channel_id) => channel_id.to_channel(cache.clone()).await.ok(),
+        None => None,
+    };
     let premium = true; //DEFAULT_PREMIUM;
     let old = match old {
         Some(old) => old,
         None => {
             let user_name = &new.member.as_ref().unwrap().user.name;
-            // let user_id = new.user_id;
-            // let channel_id = new.channel_id.unwrap();
-            // let guild_id = new.guild_id.unwrap();
-            // // cache
-            //     .as_ref()
-            //     .guild(guild_id)
-            //     .unwrap()
-            //     .channels(channel_id)
-            //     .unwrap()
-            // //     .mention();
-            // let mut channel_mention = String::new();
-            // let handle = tokio::task::spawn_blocking(move || {
-            //     let current_runtime = tokio::runtime::Handle::current();
-            //     current_runtime.block_on(async {
-            //         let channel_mention = Cache::guild(&cache.as_ref(), guild_id)
-            //             .unwrap()
-            //             .channels(cache)
-            //             .await;
-            //         channel_mention
-            //     })
-            // });
-            // .channel(channel_id)
-            // .unwrap()
-            // .mention();
-
-            // let now_str = chrono::Local::now().to_string();
-
-            return Ok(format!(
-                "Member joined voice channel\n{} joined {}",
-                user_name,
-                channel.mention()
-            ));
+            let result = match channel {
+                Some(channel) => format!(
+                    "Member joined voice channel\n{} joined {}",
+                    user_name,
+                    channel.mention()
+                ),
+                None => format!(
+                    "Member joined voice channel\n{} joined unknown channel",
+                    user_name
+                ),
+            };
+            return Ok(result);
         },
     };
     let user = if premium {

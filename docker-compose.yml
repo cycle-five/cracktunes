@@ -5,10 +5,13 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
-      - PORT=${PUB_PORT:-5432}
+      - PGDATABASE=${POSTGRES_DB:-postgres}
+      - PGPORT=${PUB_PORT:-5432}
       - PGDATA=/var/lib/postgresql/data
     ports:
       - "127.0.0.1:${PUB_PORT:-5432}:5432"
@@ -30,15 +33,15 @@ services:
       - crack_postgres
     ports:
       - "127.0.0.1:8833:8833"
-  # pgadmin:
-  #   container_name: pgadmin
-  #   image: dpage/pgadmin4:latest
-  #   environment:
-  #     - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL:-a@b.com}
-  #     - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW:-password}
-  #   ports:
-  #     - "127.0.0.1:5050:80"
-  #   restart: always
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL:-a@b.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW:-password}
+    ports:
+      - "127.0.0.1:5050:80"
+    restart: always
 volumes:
   pgdata:
     external: true

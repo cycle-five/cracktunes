@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO command_channel\n                (command, guild_id, channel_id, permission_settings_id)\n            VALUES\n                ($1, $2, $3, $4)\n            ON CONFLICT (command, guild_id, channel_id) DO UPDATE\n                SET permission_settings_id = $4\n                WHERE command_channel.channel_id = $3 AND command_channel.guild_id = $2 AND command_channel.command = $1\n            RETURNING *\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "command",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "permission_settings_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c1335d7f36c89d5c497ebba7a8396c1bb9295852521a542c9742684690d40334"
+}

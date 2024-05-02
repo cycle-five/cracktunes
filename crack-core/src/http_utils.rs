@@ -16,6 +16,13 @@ pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
+pub async fn init_http_client() -> Result<(), CrackedError> {
+    let client = get_client().clone();
+    let res = client.get("https://httpbin.org/ip").send().await?;
+    tracing::info!("HTTP client initialized successfully: {:?}", res);
+    Ok(())
+}
+
 // /// Get a new reqwest client with consistent settings.
 // pub fn new_reqwest_client() -> &'static Client {
 //     &CLIENT
@@ -39,6 +46,19 @@ pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
+pub fn cache_to_username_or_default(cache: &serenity::all::Cache, user_id: UserId) -> String {
+    match cache.user(user_id) {
+        Some(x) => x.name.clone(),
+        None => {
+            tracing::warn!("cache.user returned None");
+            "Unknown".to_string()
+        },
+    }
+}
+
+/// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
+#[cfg(not(tarpaulin_include))]
+//#[allow(dead_code)]
 pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String {
     match http.get_user(user_id).await {
         Ok(x) => x.name,

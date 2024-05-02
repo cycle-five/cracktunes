@@ -277,6 +277,7 @@ pub async fn poise_framework(
             Box::pin(async move {
                 let command = &ctx.command().qualified_name;
                 let user_id = ctx.author().id.get();
+                let channel_id = ctx.channel_id();
                 let _ = is_authorized_mod();
                 let _ = is_authorized_admin();
 
@@ -323,9 +324,14 @@ pub async fn poise_framework(
 
                 // FIXME: This is a bit of a hack
                 match res {
-                    Ok((true, _)) => {
-                        tracing::info!("Author is admin");
+                    Ok((true, true)) => {
+                        tracing::info!("Author is admin and is an admin command");
                         return Ok(true);
+                    },
+                    Ok((true, false)) => {
+                        tracing::info!(
+                            "Author is admin and is not an admin command, checking roles..."
+                        );
                     },
                     Ok((false, _)) => {
                         tracing::info!("Author is not admin");
@@ -343,31 +349,36 @@ pub async fn poise_framework(
                 }
 
                 if music_command || playlist_command {
-                    return Ok(is_authorized_music(member, None));
+                    let guild_id = match ctx.guild_id() {
+                        Some(id) => id,
+                        None => {
+                            tracing::warn!("No guild id found");
+                            return Ok(false);
+                        },
+                    };
+
+                    match ctx.data().get_guild_settings(guild_id) {
+                        Some(guild_settings) => {
+                            let command_channel = guild_settings.command_channels.music_channel;
+                            let opt_allowed_channel = command_channel.map(|x| x.channel_id);
+                            match opt_allowed_channel {
+                                Some(allowed_channel) => {
+                                    if channel_id == allowed_channel {
+                                        return Ok(is_authorized_music(member, None));
+                                    }
+                                    return Err(
+                                        CrackedError::NotInMusicChannel(allowed_channel).into()
+                                    );
+                                },
+                                None => return Ok(is_authorized_music(member, None)),
+                            }
+                        },
+                        None => return Ok(is_authorized_music(member, None)),
+                    }
                 }
 
                 // Default case fail to be on the safe side.
                 Ok(false)
-
-                // //let user_id = ctx.author().id.as_u64();
-                // // let guild_id = ctx.guild_id().unwrap_or_default();
-
-                // ctx.data()
-                //     .guild_settings_map
-                //     .read()
-                //     .unwrap()
-                //     .get(&guild_id)
-                //     .map_or_else(
-                //         || {
-                //             tracing::info!("Guild not found in guild settings map");
-                //             Ok(false)
-                //         },
-                //         |guild_settings| {
-                //             tracing::info!("Guild found in guild settings map");
-                //             Ok(guild_settings.authorized_users.is_empty()
-                //                 || guild_settings.authorized_users.contains_key(&user_id))
-                //         },
-                //     )
             })
         }),
         // Enforce command checks even for owners (enforced by default)

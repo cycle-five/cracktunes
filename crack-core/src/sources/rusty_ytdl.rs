@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Duration};
 use crate::{commands::QueryType, errors::CrackedError, http_utils};
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
-    RequestOptions, Video, VideoInfo, VideoOptions,
+    Video, VideoInfo,
 };
 use songbird::input::AuxMetadata;
 
@@ -52,10 +52,11 @@ impl RustyYoutubeClient {
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
     pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
-        let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
-            client: Some(client.clone()),
-            ..Default::default()
-        })?;
+        // let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
+        //     client: Some(client.clone()),
+        //     ..Default::default()
+        // })?;
+        let rusty_ytdl = YouTube::new().unwrap();
         Ok(Self { rusty_ytdl, client })
     }
 
@@ -117,14 +118,15 @@ impl RustyYoutubeClient {
 
     /// Get a video from a URL.
     pub async fn get_video_info(&self, url: String) -> Result<VideoInfo, CrackedError> {
-        let vid_options = VideoOptions {
-            request_options: RequestOptions {
-                client: Some(self.client.clone()),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let video = Video::new_with_options(&url, vid_options)?;
+        // let vid_options = VideoOptions {
+        //     request_options: RequestOptions {
+        //         client: Some(self.client.clone()),
+        //         ..Default::default()
+        //     },
+        //     ..Default::default()
+        // };
+        // let video = Video::new_with_options(&url, vid_options)?;
+        let video = Video::new(&url).unwrap();
         video.get_basic_info().await.map_err(|e| e.into())
     }
 
@@ -138,6 +140,7 @@ impl RustyYoutubeClient {
             limit,
             ..Default::default()
         };
+        tracing::warn!("{:?}", query);
         let search_results = self.rusty_ytdl.search(&query, Some(&opts)).await?;
         println!("{:?}", search_results);
         Ok(search_results)
@@ -145,19 +148,17 @@ impl RustyYoutubeClient {
 
     // Do a one-shot search
     pub async fn one_shot(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
-        let opts = SearchOptions {
-            limit: 1,
-            ..Default::default()
-        };
-        let search_results = self.rusty_ytdl.search_one(&query, Some(&opts)).await?;
-        println!("{:?}", search_results);
-        Ok(search_results)
+        self.rusty_ytdl
+            .search_one(&query, None)
+            .await
+            .map_err(|e| e.into())
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::http_utils;
+    use rusty_ytdl::search::YouTube;
     use songbird::input::YoutubeDl;
     use std::sync::Arc;
 
@@ -180,6 +181,31 @@ mod test {
                     &playlist_val,
                 );
             println!("{:?}", metadata);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rusty_ytdl() {
+        // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
+        let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
+
+        // let client = reqwest::ClientBuilder::new()
+        //     .use_rustls_tls()
+        //     .build()
+        //     .unwrap();
+        let rusty_ytdl = YouTube::new().unwrap();
+        // let mut all_res = Vec::new();
+        for search in searches {
+            let res = rusty_ytdl.search_one(search.to_string(), None).await;
+            println!("{res:?}");
+            assert!(
+                res.is_ok()
+                    || res
+                        .unwrap_err()
+                        .to_string()
+                        .contains("Your IP is likely being blocked")
+            );
+            // all_res.push(res.unwrap().clone());
         }
     }
 
@@ -228,12 +254,13 @@ mod test {
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = ytdl.search(Some(1)).await;
+            println!("{:?}", res);
             if res.is_err() {
                 assert!(res
                     .as_ref()
                     .unwrap_err()
                     .to_string()
-                    .contains("Your IP is liekly being blocked by Youtube"))
+                    .contains("Your IP is likely being blocked by Youtube"))
             }
             res_all.push(res);
         }

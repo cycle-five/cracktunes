@@ -1,4 +1,4 @@
-use serenity::all::{Role, RoleId};
+use serenity::all::{Message, Role, RoleId};
 
 use crate::{
     errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
@@ -22,54 +22,34 @@ pub async fn delete_by_id(
     ctx: Context<'_>,
     #[description = "RoleId to delete."] role_id: RoleId,
 ) -> Result<(), Error> {
-    delete_role_by_id_helper(ctx, role_id.into()).await
+    delete_role_by_id_helper(ctx, role_id.into())
+        .await
+        .map_err(Into::into)
+        .map(|_| ())
 }
 
 /// Delete role helper.
-pub async fn delete_role_by_id_helper(ctx: Context<'_>, role_id: u64) -> Result<(), Error> {
+pub async fn delete_role_by_id_helper(
+    ctx: Context<'_>,
+    role_id: u64,
+) -> Result<Message, CrackedError> {
     let role_id = RoleId::new(role_id);
-    match ctx.guild_id() {
-        Some(guild) => {
-            let role = guild
-                .roles(&ctx)
-                .await?
-                .into_iter()
-                .find(|r| r.0 == role_id);
-            if let Some(mut role) = role {
-                if let Err(e) = role.1.delete(&ctx).await {
-                    // Handle error, send error message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::Other(format!("Failed to delete role: {}", e)),
-                        true,
-                    )
-                    .await?;
-                } else {
-                    // Send success message
-                    send_response_poise(
-                        ctx,
-                        CrackedMessage::RoleDeleted {
-                            role_name: role.1.name.clone(),
-                            role_id,
-                        },
-                        true,
-                    )
-                    .await?;
-                }
-            } else {
-                send_response_poise(
-                    ctx,
-                    CrackedMessage::Other("Role not found.".to_string()),
-                    true,
-                )
-                .await?;
-            }
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let mut role = guild_id
+        .roles(&ctx)
+        .await?
+        .into_iter()
+        .find(|r| r.0 == role_id)
+        .ok_or(CrackedError::RoleNotFound(role_id))?;
+    role.1.delete(&ctx).await?;
+    // Send success message
+    send_response_poise(
+        ctx,
+        CrackedMessage::RoleDeleted {
+            role_name: role.1.name.clone(),
+            role_id,
         },
-        None => {
-            return Result::Err(
-                CrackedError::Other("This command can only be used in a guild.").into(),
-            );
-        },
-    }
-    Ok(())
+        true,
+    )
+    .await
 }

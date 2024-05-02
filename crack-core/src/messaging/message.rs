@@ -17,6 +17,10 @@ pub enum CrackedMessage {
     AutopauseOn,
     AutoplayOff,
     AutoplayOn,
+    CategoryCreated {
+        channel_id: serenity::ChannelId,
+        channel_name: String,
+    },
     CountryName(String),
     ChannelDeleted {
         channel_id: serenity::ChannelId,
@@ -62,6 +66,7 @@ pub enum CrackedMessage {
         role_id: serenity::RoleId,
         role_name: String,
     },
+    RoleNotFound,
     #[cfg(feature = "crack-osint")]
     ScanResult {
         result: VirusTotalApiResponse,
@@ -96,10 +101,7 @@ pub enum CrackedMessage {
         channel_id: serenity::ChannelId,
         channel_name: String,
     },
-    CategoryCreated {
-        channel_id: serenity::ChannelId,
-        channel_name: String,
-    },
+
     UserAuthorized {
         user_id: UserId,
         user_name: String,
@@ -144,9 +146,6 @@ pub enum CrackedMessage {
         user: String,
         user_id: UserId,
     },
-    WaybackSnapshot {
-        url: String,
-    },
     Version {
         current: String,
         hash: String,
@@ -159,6 +158,9 @@ pub enum CrackedMessage {
     },
     VoiceChannelCreated {
         channel_name: String,
+    },
+    WaybackSnapshot {
+        url: String,
     },
 }
 
@@ -217,6 +219,7 @@ impl Display for CrackedMessage {
             #[cfg(feature = "crack-osint")]
             Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
             Self::Search => f.write_str(SEARCHING),
+
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),
             Self::RoleCreated { role_id, role_name } => {
@@ -225,6 +228,7 @@ impl Display for CrackedMessage {
             Self::RoleDeleted { role_id, role_name } => {
                 f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
             },
+            Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
@@ -256,7 +260,6 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 CATEGORY_CREATED, channel_id, channel_name
             )),
-            Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::UserAuthorized {
                 user_id,
                 user_name,
@@ -319,6 +322,7 @@ impl Display for CrackedMessage {
             },
             Self::VoteTopggVoted => f.write_str(VOTE_TOPGG_VOTED),
             Self::VoteTopggNotVoted => f.write_str(VOTE_TOPGG_NOT_VOTED),
+            Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
         }
     }
 }

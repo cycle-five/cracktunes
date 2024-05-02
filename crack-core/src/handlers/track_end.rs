@@ -1,5 +1,5 @@
 use ::serenity::{
-    all::{ChannelId, UserId},
+    all::{Cache, ChannelId, UserId},
     async_trait,
     builder::EditMessage,
     http::Http,
@@ -13,6 +13,7 @@ use crate::{
     commands::{doplay_utils::enqueue_track_pgwrite_asdf, forget_skip_votes, MyAuxMetadata},
     db::PlayLog,
     errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
@@ -20,9 +21,13 @@ use crate::{
     Data, Error,
 };
 
+/// Handler for the end of a track event.
+// This needs enough context to be able to send messages to the appropriate
+// channels for the music player.
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
     pub data: Data,
+    pub cache: Arc<Cache>,
     pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
 }
@@ -31,6 +36,7 @@ pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
     pub http: Arc<Http>,
+    pub _cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -86,15 +92,24 @@ impl EventHandler for TrackEndHandler {
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
+        let music_channel = self.data.get_music_channel(self.guild_id);
+
         let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
             let (sb_chan_id, my_metadata, cur_pos) = {
                 let (channel, track) = {
                     let handler = self.call.lock().await;
-                    let channel = handler.current_channel();
+                    let channel = match music_channel {
+                        Some(c) => c,
+                        _ => handler
+                            .current_channel()
+                            .map(|c| ChannelId::new(c.0.get()))
+                            .unwrap(),
+                    };
                     let track = handler.queue().current().clone();
                     (channel, track)
                 };
-                let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
+                let chan_id = channel;
+                // let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
                 match (track, autoplay) {
                     (None, false) => (
                         channel,
@@ -132,9 +147,11 @@ impl EventHandler for TrackEndHandler {
                                 (rec, msg)
                             },
                         };
-                        // let msg = format!("Rec: {:?}", rec);
                         tracing::warn!("{}", msg);
-                        let msg = chan_id.say(&self.http, msg).await.unwrap();
+                        let msg = chan_id
+                            .say((&self.cache, self.http.as_ref()), msg)
+                            .await
+                            .unwrap();
                         self.data.add_msg_to_cache(self.guild_id, msg);
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
@@ -150,7 +167,7 @@ impl EventHandler for TrackEndHandler {
                             self.guild_id,
                             chan_id,
                             UserId::new(1),
-                            &self.http,
+                            &self.cache,
                             &self.call,
                             &query,
                         )
@@ -172,29 +189,7 @@ impl EventHandler for TrackEndHandler {
                                 )
                             },
                         };
-                        //         // match extract_track_metadata(&tracks[0]).await {
-                        //         //     Ok((my_metadata, pos)) => (my_metadata, pos),
-                        //         //     Err(e) => {
-                        //         //         let msg = format!("Error: {}", e);
-                        //         //         tracing::warn!("{}", msg);
-                        //         //         (
-                        //         //             MyAuxMetadata::Data(AuxMetadata::default()),
-                        //         //             Duration::from_secs(0),
-                        //         //         )
-                        //         //     }
-                        //         // };
-                        //         (my_metadata, pos)
-                        //     }
-                        //     Err(e) => {
-                        //         let msg = format!("Error: {}", e);
-                        //         tracing::warn!("{}", msg);
 
-                        //         (
-                        //             MyAuxMetadata::Data(AuxMetadata::default()),
-                        //             Duration::from_secs(0),
-                        //         )
-                        //     }
-                        // };
                         (channel, my_metadata, pos)
                     },
                     (Some(track), _) => {
@@ -206,7 +201,8 @@ impl EventHandler for TrackEndHandler {
                     },
                 }
             };
-            let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
+            // let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
+            let chan_id = sb_chan_id;
             let chan_name = chan_id.name(&self.http).await.unwrap();
             (chan_id, chan_name, my_metadata, cur_pos)
         };

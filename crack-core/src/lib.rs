@@ -38,17 +38,23 @@ pub mod metrics;
 pub mod sources;
 pub mod utils;
 
-//pub extern crate osint;
-
-// #[cfg(test)]
-// pub mod test;
-
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub use Result;
 
+pub trait CrackContext<'a> {
+    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+}
+
+impl<'a> CrackContext<'a> for Context<'a> {
+    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg)
+    }
+}
+
+/// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
-    ctx.prefix() != "/"
+    matches!(ctx, Context::Prefix(_))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -541,6 +547,20 @@ impl Data {
             .get(&guild_id)
             .cloned()
     }
+
+    pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
+        self.guild_settings_map
+            .write()
+            .unwrap()
+            .insert(guild_id, settings);
+    }
+
+    // /// Get the guild settings for a guild (read only)
+    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
+    //     let mut asdf = self.guild_settings_map.write().unwrap().clone();
+    //     let qwer = asdf.get_mut(&guild_id);
+    //     qwer
+    // }
 
     /// Set the guild settings for a guild and return a new copy.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {

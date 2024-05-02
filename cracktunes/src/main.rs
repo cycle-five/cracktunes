@@ -59,11 +59,16 @@ async fn main() -> Result<(), Error> {
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
 async fn main_async(event_log: EventLog) -> Result<(), Error> {
+    use crack_core::http_utils;
+
     init_metrics();
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
     let mut client = poise_framework(config, event_log).await?;
+
+    // Force the client to init.
+    http_utils::init_http_client().await?;
 
     // let client = framework.client();
     let data_ro = client.data.clone();

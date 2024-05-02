@@ -43,21 +43,19 @@ use ::serenity::{
         EditMessage,
     },
 };
-use poise::serenity_prelude::{self as serenity, Attachment, Http};
+use poise::serenity_prelude::{self as serenity, Attachment};
 use reqwest::Client;
-use rusty_ytdl::search::SearchOptions;
-use rusty_ytdl::search::SearchType;
+use rusty_ytdl::search::{SearchOptions, SearchType};
 use songbird::{
     input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
     tracks::TrackHandle,
     Call,
 };
-use std::process::Stdio;
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
     path::Path,
-    process::Output,
+    process::{Output, Stdio},
     sync::Arc,
     time::Duration,
 };
@@ -1383,20 +1381,26 @@ pub async fn search_query_to_source_and_metadata(
     client: reqwest::Client,
     query: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-    let results = rytdl.one_shot(query).await?;
-    // FIXME: Fallback to yt-dlp
-    let result = match results {
-        Some(r) => r,
-        None => return Err(CrackedError::EmptySearchResult),
+    tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
+    let metadata = {
+        let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+        tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
+        let results = rytdl.one_shot(query.clone()).await?;
+        tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
+        // FIXME: Fallback to yt-dlp
+        let result = match results {
+            Some(r) => r,
+            None => return Err(CrackedError::EmptySearchResult),
+        };
+        let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
+        metadata.clone()
     };
-    let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
     let source_url = match metadata.clone().source_url {
         Some(url) => url.clone(),
         None => "".to_string(),
     };
     let ytdl = YoutubeDl::new(client, source_url);
-    let my_metadata = MyAuxMetadata::Data(metadata.clone());
+    let my_metadata = MyAuxMetadata::Data(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
 }
@@ -1417,7 +1421,6 @@ pub async fn video_info_to_source_and_metadata(
 // FIXME: Do you want to have a reqwest client we keep around and pass into
 // this instead of creating a new one every time?
 pub async fn get_track_source_and_metadata(
-    _http: &Http,
     query_type: QueryType,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let client = http_utils::get_client().clone();
@@ -1445,7 +1448,14 @@ pub async fn get_track_source_and_metadata(
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            search_query_to_source_and_metadata(client.clone(), query).await
+            let res = search_query_to_source_and_metadata(client.clone(), query.clone()).await;
+            match res {
+                Ok((input, metadata)) => Ok((input, metadata)),
+                Err(_) => {
+                    tracing::error!("falling back to ytdl!");
+                    search_query_to_source_and_metadata_ytdl(client.clone(), query).await
+                },
+            }
         },
         QueryType::File(file) => {
             tracing::warn!("In File");
