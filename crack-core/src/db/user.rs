@@ -125,7 +125,7 @@ impl UserVote {
     ) -> Result<bool, CrackedError> {
         sqlx::query_as!(
             UserVote,
-            "SELECT * FROM user_votes WHERE user_id = $1 AND timestamp > $2 AND site = $3",
+            r#"SELECT * FROM user_votes WHERE user_id = $1 AND timestamp > $2 AND site = $3"#,
             user_id,
             duration,
             site_name
@@ -186,12 +186,15 @@ mod test {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user_vote(pool: PgPool) {
-        UserVote::insert_user_vote(&pool, 1, "test".to_string())
-            .await
-            .unwrap();
-        let user_votes = UserVote::get_user_votes(1, &pool).await.unwrap();
+        let insert_res = UserVote::insert_user_vote(&pool, 1, "test".to_string()).await;
+        assert!(insert_res.is_ok());
+        let user_votes = UserVote::get_user_votes(1, &pool).await;
+        assert!(user_votes.is_ok());
+        let user_votes = user_votes.unwrap();
         assert_eq!(user_votes.len(), 1);
-        assert_eq!(user_votes.first().unwrap().site, "test");
+        let first = user_votes.first();
+        assert!(first.is_some());
+        assert_eq!(first.unwrap().site, "test");
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
