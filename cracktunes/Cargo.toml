@@ -17,6 +17,7 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 ignore-presence-log = []
 
+crack-telemetry = ["crack-metrics"]
 crack-tracing = ["tracing-subscriber"]
 crack-metrics = ["prometheus"]
 [dependencies]
