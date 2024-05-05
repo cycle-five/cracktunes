@@ -322,7 +322,7 @@ pub async fn poise_framework(
                     },
                 );
 
-                // FIXME: This is a bit of a hack
+                // FIXME: Reorg this into it's own function.
                 match res {
                     Ok((true, true)) => {
                         tracing::info!("Author is admin and is an admin command");
