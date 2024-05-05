@@ -20,3 +20,4 @@ cracktunes.toml
 
 # code coverage
 cobertura.xml
+**/*.profraw
