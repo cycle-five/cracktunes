@@ -1,3 +1,4 @@
+use ::serenity::all::CommandInteraction;
 use colored;
 use rusty_ytdl::search::Playlist;
 
@@ -543,6 +544,18 @@ pub fn duration_to_string(duration: Duration) -> String {
     let minutes = secs / 60;
     secs %= 60;
     format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+}
+
+pub enum MessageOrInteraction {
+    Message(Message),
+    Interaction(CommandInteraction),
+}
+
+pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteraction {
+    match ctx {
+        Context::Prefix(ctx) => MessageOrInteraction::Message(ctx.msg.clone()),
+        Context::Application(ctx) => MessageOrInteraction::Interaction(ctx.interaction.clone()),
+    }
 }
 
 /// Send the search results to the user.

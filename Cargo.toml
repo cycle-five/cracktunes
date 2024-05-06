@@ -66,7 +66,7 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 [workspace.dependencies.symphonia]
 version = "0.5.4"
 default-features = false
-features = ["all", "opt-simd", "all-codecs", "all-formats"]
+features = ["all", "opt-simd", "all-codecs", "all-formats", "mkv", "ogg", "wav"]
 
 [workspace.dependencies.symphonia-metadata]
 version = "0.5.4"
