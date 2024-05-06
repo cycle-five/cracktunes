@@ -15,10 +15,9 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{ChannelId, GuildId, Interaction, UserId},
-    builder::CreateEmbed,
+    all::{CacheHttp, ChannelId, GuildId, Interaction, UserId},
     builder::{
-        CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
@@ -436,8 +435,9 @@ pub async fn create_response_interaction(
 }
 
 /// Defers a response to an interaction.
+/// TODO: use a macro to reduce code here?
 pub async fn defer_response_interaction(
-    http: &Arc<Http>,
+    http: impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
 ) -> Result<(), CrackedError> {
