@@ -28,6 +28,7 @@ pub mod summon;
 pub mod volume;
 pub mod vote;
 pub mod voteskip;
+pub mod youtube;
 
 pub use autopause::*;
 pub use autoplay::*;

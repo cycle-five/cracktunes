@@ -4,7 +4,7 @@ use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
 use crate::http_utils;
 use crate::{
-    commands::{get_track_source_and_metadata, MyAuxMetadata, RequestingUser},
+    commands::{MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
 };
 use crate::{errors::CrackedError, Context, Error};
@@ -276,6 +276,8 @@ pub async fn enqueue_track_pgwrite_asdf(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    use crate::commands::youtube::get_track_source_and_metadata;
+
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
