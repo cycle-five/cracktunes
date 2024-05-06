@@ -63,6 +63,7 @@ sqlx = { workspace = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
 symphonia = { workspace = true }
+symphonia-metadata = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
 

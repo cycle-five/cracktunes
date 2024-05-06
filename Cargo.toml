@@ -65,13 +65,24 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
 [workspace.dependencies.symphonia]
 version = "0.5.4"
-default-features = false
-features = ["all", "opt-simd", "all-codecs", "all-formats", "mkv", "ogg", "wav"]
+default-features = true
+features = [
+  "all",
+  "opt-simd",
+  "all-codecs",
+  "all-formats",
+  # "flac",
+  # "vorbis",
+  # "pcm",
+  # "mkv",
+  # "ogg",
+  # "wav",
+]
 
 [workspace.dependencies.symphonia-metadata]
 version = "0.5.4"
-default-features = false
-features = ["all"]
+default-features = true
+
 
 [workspace.dependencies.poise]
 git = "https://github.com/cycle-five/poise"

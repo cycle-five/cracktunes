@@ -126,7 +126,7 @@ impl RustyYoutubeClient {
         //     ..Default::default()
         // };
         // let video = Video::new_with_options(&url, vid_options)?;
-        let video = Video::new(&url).unwrap();
+        let video = Video::new(&url)?;
         video.get_basic_info().await.map_err(|e| e.into())
     }
 
