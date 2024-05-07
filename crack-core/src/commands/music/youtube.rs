@@ -180,3 +180,76 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
         aux_metadata.track.clone().unwrap_or_default(),
     )
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_track_source_and_metadata() {
+        let query_type = QueryType::Keywords("hello".to_string());
+        let res = get_track_source_and_metadata(query_type).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_track_source_and_metadata_ytdl() {
+        let query_type = QueryType::Keywords("hello".to_string());
+        let res = get_track_source_and_metadata(query_type).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_track_source_and_metadata_video_link() {
+        let query_type =
+            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
+        let res = get_track_source_and_metadata(query_type).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_track_source_and_metadata_playlist_link() {
+        let query_type = QueryType::PlaylistLink(
+            "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
+        );
+        let res = get_track_source_and_metadata(query_type).await;
+        assert!(res.is_ok());
+    }
+
+    // #[tokio::test]
+    // async fn test_get_track_source_and_metadata_spotify_tracks() {
+    //     let query_type = QueryType::SpotifyTracks(vec![SpotifyTrack {
+    //         full_track: FullTrack {
+    //         },
+    //     }]);
+    //     let res = get_track_source_and_metadata(query_type).await;
+    //     assert!(res.is_ok());
+    // }
+
+    #[tokio::test]
+    async fn test_get_track_source_and_metadata_keyword_list() {
+        let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
+        let res = get_track_source_and_metadata(query_type).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_build_query_aux_metadata() {
+        let aux_metadata = AuxMetadata {
+            artist: Some("hello".to_string()),
+            track: Some("world".to_string()),
+            ..Default::default()
+        };
+        let res = build_query_aux_metadata(&aux_metadata);
+        assert_eq!(res, "hello - world");
+    }
+
+    #[tokio::test]
+    async fn test_video_info_to_source_and_metadata() {
+        let client = reqwest::Client::new();
+        let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
+        let res = video_info_to_source_and_metadata(client, url).await;
+        assert!(res.is_ok());
+    }
+}

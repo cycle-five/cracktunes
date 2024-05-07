@@ -89,9 +89,20 @@ pub async fn queue_yt_playlist<'a>(
     .await
 }
 
-/// Queue a list of keywords to be played
+/// Queue a list of keywords to be played at the front of the queue.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list<'a>(
+pub async fn queue_keyword_list_front<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    keyword_list: Vec<String>,
+    msg: &'a mut Message,
+) -> Result<(), Error> {
+    queue_keyword_list_w_offset(ctx, call, keyword_list, 1, msg).await
+}
+
+/// Queue a list of keywords to be played from the end of the queue.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_keyword_list_back<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     keyword_list: Vec<String>,
@@ -123,17 +134,16 @@ pub async fn queue_keyword_list_w_offset<'a>(
                 ))),
             )
             .await?;
-        let ins_track_res = insert_track(
-            ctx,
-            &call,
-            &QueryType::Keywords(keywords),
-            idx + offset - failed,
-        )
-        .await;
-        let queue = match ins_track_res {
+        let queue_res = if offset > 0 {
+            let idx = idx + offset - failed;
+            insert_track(ctx, &call, &QueryType::Keywords(keywords), idx).await
+        } else {
+            enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
+        };
+        let queue = match queue_res {
             Ok(x) => x,
             Err(e) => {
-                tracing::error!("insert_track error: {}", e);
+                tracing::error!("enqueue_track_pgwrite error: {}", e);
                 failed += 1;
                 Vec::new()
             },
