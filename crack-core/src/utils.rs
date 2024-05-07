@@ -343,7 +343,13 @@ pub async fn send_embed_response(
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
-            create_response_interaction(&ctx.serenity_context().http, int, embed, false).await
+            create_response_interaction(
+                &ctx.serenity_context().http,
+                &Interaction::Command(int.clone()),
+                embed,
+                false,
+            )
+            .await
         },
         CommandOrMessageInteraction::Message(_interaction) => {
             tracing::warn!("CommandOrMessageInteraction::Message");
@@ -490,7 +496,7 @@ pub async fn edit_embed_response(
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
-            edit_reponse_interaction(http, int, embed).await
+            edit_reponse_interaction(http, &Interaction::Command(int.clone()), embed).await
         },
         CommandOrMessageInteraction::Message(msg) => match msg {
             Some(_msg) => {
@@ -527,18 +533,19 @@ pub async fn edit_embed_response_poise(
 ) -> Result<Message, CrackedError> {
     match get_interaction_new(ctx) {
         Some(interaction1) => match interaction1 {
-            CommandOrMessageInteraction::Command(interaction2) => match interaction2 {
-                Interaction::Command(interaction3) => {
-                    tracing::warn!("CommandInteraction");
-                    interaction3
-                        .edit_response(
-                            &ctx.serenity_context().http,
-                            EditInteractionResponse::new().content(" ").embed(embed),
-                        )
-                        .await
-                        .map_err(Into::into)
-                },
-                _ => Err(CrackedError::Other("not implemented")),
+            CommandOrMessageInteraction::Command(interaction2) => {
+                // match interaction2 {
+                //     Interaction::Command(interaction3) => {
+                //         tracing::warn!("CommandInteraction");
+                interaction2
+                    .edit_response(
+                        &ctx.serenity_context().http,
+                        EditInteractionResponse::new().content(" ").embed(embed),
+                    )
+                    .await
+                    .map_err(Into::into)
+                //     },
+                //     _ => Err(CrackedError::Other("not implemented")),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
@@ -949,7 +956,7 @@ pub fn check_interaction(result: Result<(), Error>) {
 }
 
 pub enum CommandOrMessageInteraction {
-    Command(Interaction),
+    Command(CommandInteraction),
     Message(Option<Box<MessageInteraction>>),
 }
 
@@ -960,7 +967,7 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
         //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
         //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         // },
-        // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
+        // CrackContext::Prefix(prefix_ctx) => Some(prefix_ctx.msg.interaction.into()),
         CrackContext::Prefix(_ctx) => None,
     }
 }
@@ -968,9 +975,9 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => {
-            Some(CommandOrMessageInteraction::Command(Interaction::Command(
-                app_ctx.interaction.clone(),
-            )))
+            Some(CommandOrMessageInteraction::Command(
+                app_ctx.interaction.clone().into(),
+            ))
             // match app_ctx.interaction {
             // CommandOrAutocompleteInteraction::Command(x) => Some(
             //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),

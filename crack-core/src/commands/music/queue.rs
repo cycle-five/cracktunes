@@ -3,7 +3,7 @@ use crate::{
     handlers::track_end::ModifyQueueHandler,
     interface::{build_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
-    utils::{calculate_num_pages, forget_queue_message, get_interaction},
+    utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
 use ::serenity::builder::{
@@ -20,6 +20,8 @@ const EMBED_TIMEOUT: u64 = 3600;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
+    use crate::utils::get_interaction_new;
+
     tracing::info!("queue called");
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     tracing::info!("guild_id: {}", guild_id);
@@ -40,8 +42,8 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction(ctx) {
-        Some(interaction) => {
+    let mut message = match get_interaction_new(ctx) {
+        Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
             interaction
                 .create_response(
                     &ctx.serenity_context().http,
