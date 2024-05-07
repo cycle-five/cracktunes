@@ -1,5 +1,5 @@
 use crate::errors::CrackedError;
-use serenity::all::{ChannelId, GuildId, Http, UserId};
+use serenity::all::{CacheHttp, ChannelId, GuildId, Http, UserId};
 
 use once_cell::sync::Lazy;
 use reqwest::Client;
@@ -30,11 +30,17 @@ pub async fn init_http_client() -> Result<(), CrackedError> {
 
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
+pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
     let tune_titan_id = UserId::new(1124707756750934159);
     let rusty_bot_id = UserId::new(1111844110597374042);
     let cracktunes_id = UserId::new(1115229568006103122);
-    let bot_id = http.get_current_user().await?.id;
+    let bot_id = match cache_http.cache() {
+        Some(cache) => cache.current_user().id,
+        None => {
+            tracing::warn!("cache_http.cache() returned None");
+            return Err(CrackedError::Other("cache_http.cache() returned None"));
+        },
+    };
 
     // If the bot is tune titan or rusty bot, return cracktunes ID
     if bot_id == tune_titan_id || bot_id == rusty_bot_id {
@@ -46,11 +52,18 @@ pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
-pub fn cache_to_username_or_default(cache: &serenity::all::Cache, user_id: UserId) -> String {
-    match cache.user(user_id) {
-        Some(x) => x.name.clone(),
+pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
+    // let asdf = cache.cache()?.user(user_id);
+    match cache_http.cache() {
+        Some(cache) => match cache.user(user_id) {
+            Some(x) => x.name.clone(),
+            None => {
+                tracing::warn!("cache.user returned None");
+                "Unknown".to_string()
+            },
+        },
         None => {
-            tracing::warn!("cache.user returned None");
+            tracing::warn!("cache_http.cache() returned None");
             "Unknown".to_string()
         },
     }
@@ -85,17 +98,30 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 
 /// Gets the guild_name for a channel_id.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_guild_name(http: &Http, channel_id: ChannelId) -> Result<String, CrackedError> {
+pub async fn get_guild_name(
+    cache_http: &impl CacheHttp,
+    channel_id: ChannelId,
+) -> Result<String, CrackedError> {
     channel_id
-        .to_channel(http)
+        .to_channel(cache_http)
         .await?
         .guild()
         .map(|x| x.guild_id)
         .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
-        .to_partial_guild(http)
+        .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
         .map_err(|e| e.into())
+    // channel_id
+    //     .to_channel(http)
+    //     .await?
+    //     .guild()
+    //     .map(|x| x.guild_id)
+    //     .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
+    //     .to_partial_guild(http)
+    //     .await
+    //     .map(|x| x.name)
+    //     .map_err(|e| e.into())
 }
 
 // Get the guild name from the guild id and an http client.

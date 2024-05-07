@@ -10,7 +10,7 @@ use crate::{
 use crate::{errors::CrackedError, Context, Error};
 
 use rusty_ytdl::search::Playlist as YTPlaylist;
-use serenity::all::{Cache, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
+use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use songbird::Call;
@@ -199,7 +199,7 @@ pub async fn enqueue_track_pgwrite(
         ctx.guild_id().unwrap(),
         ctx.channel_id(),
         ctx.author().id,
-        ctx.cache(),
+        ctx,
         call,
         query_type,
     )
@@ -272,7 +272,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     guild_id: GuildId,
     channel_id: ChannelId,
     user_id: UserId,
-    cache: &Cache,
+    cache_http: impl CacheHttp,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -292,7 +292,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     let track: Track = source.into();
 
     // let username = http_utils::http_to_username_or_default(http, user_id).await;
-    let username = http_utils::cache_to_username_or_default(cache, user_id);
+    let username = http_utils::cache_to_username_or_default(cache_http, user_id);
 
     let MyAuxMetadata::Data(aux_metadata) = res.clone();
 

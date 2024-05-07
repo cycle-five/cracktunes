@@ -29,6 +29,7 @@ pub struct TrackEndHandler {
     pub data: Data,
     pub cache: Arc<Cache>,
     pub http: Arc<Http>,
+    // pub cache_http: impl CacheHttp,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -162,12 +163,13 @@ impl EventHandler for TrackEndHandler {
                                 return None;
                             },
                         };
+                        let cache_http = (&self.cache, self.http.as_ref());
                         let tracks = enqueue_track_pgwrite_asdf(
                             self.data.database_pool.as_ref().unwrap(),
                             self.guild_id,
                             chan_id,
                             UserId::new(1),
-                            &self.cache,
+                            cache_http,
                             &self.call,
                             &query,
                         )

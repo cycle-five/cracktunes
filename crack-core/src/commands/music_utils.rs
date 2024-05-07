@@ -17,8 +17,8 @@ use tokio::sync::Mutex;
 
 /// Set the global handlers.
 #[cfg(not(tarpaulin_include))]
-pub async fn set_global_handlers(
-    ctx: Context<'_>,
+pub async fn set_global_handlers<'a>(
+    ctx: Context<'a>,
     call: Arc<Mutex<Call>>,
     guild_id: GuildId,
     channel_id: ChannelId,
@@ -60,6 +60,7 @@ pub async fn set_global_handlers(
             guild_id,
             cache: ctx.serenity_context().cache.clone(),
             http: ctx.serenity_context().http.clone(),
+            // cache_http: Arc::new(ctx.serenity_context()),
             call: call.clone(),
             data: ctx.data().clone(),
         },
