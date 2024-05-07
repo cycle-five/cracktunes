@@ -1,12 +1,75 @@
-use rusty_ytdl::search::{SearchOptions, SearchType};
-use songbird::input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl};
-
+use super::{QueryType, RequestingUser};
+use crate::Context as CrackContext;
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, http_utils,
     sources::rusty_ytdl::RustyYoutubeClient,
 };
+use rusty_ytdl::search::{SearchOptions, SearchType};
+use serenity::all::UserId;
+use songbird::{
+    input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
+    tracks::{Track, TrackHandle},
+    Call,
+};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-use super::QueryType;
+pub struct TrackReadyData {
+    pub track: Track,
+    pub metadata: MyAuxMetadata,
+    pub username: String,
+}
+
+/// Takes a query and returns a track that is ready to be played, along with relevant metadata.
+pub async fn ready_query(
+    ctx: CrackContext<'_>,
+    query_type: QueryType,
+    user_id: UserId,
+) -> Result<TrackReadyData, CrackedError> {
+    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
+        get_track_source_and_metadata(query_type.clone()).await?;
+    let metadata = match metadata_vec.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
+    let track: Track = source.into();
+
+    // let username = http_utils::http_to_username_or_default(http, user_id).await;
+    let username = http_utils::cache_to_username_or_default(ctx, user_id);
+
+    // let MyAuxMetadata::Data(aux_metadata) = res.clone();
+
+    Ok(TrackReadyData {
+        track,
+        metadata,
+        username,
+    })
+}
+
+/// Pushes a track to the front of the queue.
+pub async fn push_track_front(
+    ctx: CrackContext<'_>,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let ready_track = ready_query(ctx, query_type.clone(), ctx.author().id).await?;
+
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(ctx.author().id));
+
+    // let handler = call.lock().await;
+    handler.queue().modify_queue(|queue| {
+        let back = queue.pop_back().unwrap();
+        queue.push_front(back);
+    });
+
+    Ok(handler.queue().current_queue())
+}
 
 /// Get the source and metadata from a video link.
 pub async fn video_info_to_source_and_metadata(
@@ -31,6 +94,7 @@ pub async fn search_query_to_source_and_metadata(
     tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
     let metadata = {
         let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+        // let rytdl = RustyYoutubeClient::new()?;
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
         let results = rytdl.one_shot(query.clone()).await?;
         tracing::warn!("search_query_to_source_and_metadata: {:?}", results);

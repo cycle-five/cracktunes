@@ -1,10 +1,11 @@
 image: debian/bookworm
 secrets:
         - 5ec53080-dbed-4207-ab0f-d6056a62bb46
+        - dbe97eb1-5978-43b3-83f2-8f1e6b815fcb
 tasks:
         - install-dependencies: |
-                  echo "*:*:*:postgres:mysecretpassword" > ~/.pgpass
-                  export POSTGRES_PASSWORD=mysecretpassword
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  echo "*:*:*:postgres:${POSTGRES_PASSWORD}" > ~/.pgpass
                   sudo apt-get update
                   sudo apt-get install -y \
                     autoconf \
@@ -23,51 +24,48 @@ tasks:
                   sudo apt-get clean -y
                   sudo rm -rf /var/lib/apt/lists/*
         - install-rust: |
-                  export POSTGRES_PASSWORD=mysecretpassword
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
                   curl -proto '=https' -tlsv0.2 -sSf https://sh.rustup.rs | sh -s -- -y
                   . "$HOME/.cargo/env"
                   rustup install nightly
                   rustup default nightly
                   cargo install sqlx-cli --no-default-features --features postgres
                   cargo install cargo-tarpaulin
-        #   - install-tarpaulin: |
-        #       . "$HOME/.cargo/env"
-        #       cargo install cargo-tarpaulin
         - install-yt-dlp: |
-                  export POSTGRES_PASSWORD=mysecretpassword
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
                   sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux
                   sudo chmod +x /usr/local/bin/yt-dlp
 
         - fmt: |
                   . "$HOME/.cargo/env"
-                  export POSTGRES_PASSWORD=mysecretpassword
-                  export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   cd cracktunes
-                  cargo +nightly fmt --all -- --check
+                  cargo fmt --all -- --check
         - lint: |
                   . "$HOME/.cargo/env"
-                  export POSTGRES_PASSWORD=mysecretpassword
-                  export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   export SQLX_OFFLINE=true
                   cd cracktunes
-                  cargo +nightly clippy --all -- -D clippy::all -D warnings
+                  cargo clippy --all -- -D clippy::all -D warnings
         - initdb: |
-                  sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'mysecretpassword';"
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  sudo -u postgres psql -c "ALTER USER postgres PASSWORD '${POSTGRES_PASSWORD}';"
                   . "$HOME/.cargo/env"
-                  export POSTGRES_PASSWORD=mysecretpassword
                   export PG_USER=postgres
-                  export PG_PASSWORD=mysecretpassword
-                  export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
+                  export PG_PASSWORD=$(cat ~/PG_PASSWORD)
+                  export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   cd cracktunes
                   sqlx database create
                   sqlx migrate run
                   cargo sqlx prepare --workspace -- --tests --all
         - test: |
                   . "$HOME/.cargo/env"
-                  export POSTGRES_PASSWORD=mysecretpassword
-                  export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
+                  export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
                   export SQLX_OFFLINE=true
                   cd cracktunes
                   # cargo tarpaulin --verbose --workspace --timeout 120 --out xml
-                  cargo +nightly test
+                  cargo test -- --test-threads=1

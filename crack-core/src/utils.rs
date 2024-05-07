@@ -976,7 +976,7 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
     match ctx {
         CrackContext::Application(app_ctx) => {
             Some(CommandOrMessageInteraction::Command(
-                app_ctx.interaction.clone().into(),
+                app_ctx.interaction.clone(),
             ))
             // match app_ctx.interaction {
             // CommandOrAutocompleteInteraction::Command(x) => Some(

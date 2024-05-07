@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "async-trait",
  "colored",
