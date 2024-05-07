@@ -17,8 +17,8 @@ use tokio::sync::Mutex;
 
 /// Set the global handlers.
 #[cfg(not(tarpaulin_include))]
-pub async fn set_global_handlers<'a>(
-    ctx: Context<'a>,
+pub async fn set_global_handlers(
+    ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     guild_id: GuildId,
     channel_id: ChannelId,

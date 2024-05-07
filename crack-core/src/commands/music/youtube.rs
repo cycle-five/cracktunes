@@ -58,6 +58,11 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     client: reqwest::Client,
     query: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let query = if query.starts_with("ytsearch:") {
+        query
+    } else {
+        format!("ytsearch:{}", query)
+    };
     let mut ytdl = YoutubeDl::new(client, query);
     let metadata = ytdl.aux_metadata().await?;
     let my_metadata = MyAuxMetadata::Data(metadata);
