@@ -7,12 +7,12 @@ use crate::{
 };
 use colored::Colorize;
 use serde::Serialize;
-use serenity::all::InviteDeleteEvent;
 use serenity::all::{
-    ActionExecution, ChannelId, ClientStatus, CommandPermissions, Context as SerenityContext,
-    CurrentUser, Guild, GuildChannel, GuildId, GuildScheduledEventUserAddEvent,
-    GuildScheduledEventUserRemoveEvent, InviteCreateEvent, Member, Message, MessageId,
-    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
+    ActionExecution, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
+    Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
+    GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Interaction,
+    InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Presence,
+    Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
 use std::{
     collections::HashMap,
@@ -37,21 +37,18 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     Ok(())
 }
 
-use serenity::all::CacheHttp;
-use serenity::all::InteractionCreateEvent;
 /// Log Interaction Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_interaction_create(
     channel_id: ChannelId,
     cache_http: &impl CacheHttp,
-    log_data: &InteractionCreateEvent,
+    log_data: &Interaction,
 ) -> Result<(), Error> {
     use crate::utils::interaction_to_guild_id;
 
-    let interaction_create_event = log_data.clone();
+    let interaction = log_data.clone();
     // let guild_id = invite_create_event.guild_id.unwrap_or_default();
-    let guild_id =
-        interaction_to_guild_id(&interaction_create_event.interaction).unwrap_or(GuildId::new(1));
+    let guild_id = interaction_to_guild_id(&interaction).unwrap_or(GuildId::new(1));
     let title = format!("Interaction Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";

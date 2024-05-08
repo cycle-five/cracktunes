@@ -755,7 +755,7 @@ pub async fn handle_event(
             let guild_id =
                 crate::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
             log_event!(
-                log_unimplemented_event,
+                log_interaction_create,
                 guild_settings,
                 event_in,
                 &log_data,
