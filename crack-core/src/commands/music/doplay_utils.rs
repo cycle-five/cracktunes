@@ -124,7 +124,8 @@ pub async fn queue_yt_playlist_internal<'a>(
     search_msg
         .edit(
             ctx,
-            EditMessage::new().embed(CreateEmbed::default().description(format!("Searching...",))),
+            EditMessage::new()
+                .embed(CreateEmbed::default().description("Searching...".to_string())),
         )
         .await?;
 
@@ -151,7 +152,7 @@ pub async fn queue_yt_playlist_internal<'a>(
         .edit(
             ctx,
             EditMessage::new()
-                .embed(CreateEmbed::default().description(format!("Search done, queuing...",))),
+                .embed(CreateEmbed::default().description("Search done, queuing...".to_string())),
         )
         .await?;
 
