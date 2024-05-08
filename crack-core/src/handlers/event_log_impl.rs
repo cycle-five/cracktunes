@@ -8,11 +8,11 @@ use crate::{
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
-    ActionExecution, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
+    ActionExecution, ApplicationId, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
     Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
-    GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Interaction,
-    InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId, MessageUpdateEvent, Presence,
-    Role, RoleId, ScheduledEvent, Sticker, StickerId,
+    GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
+    IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId,
+    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
 use std::{
     collections::HashMap,
@@ -35,6 +35,86 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
         .blue()
     );
     Ok(())
+}
+
+/// Log Integration Update Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_integration_update(
+    channel_id: ChannelId,
+    cache_http: &impl CacheHttp,
+    log_data: &Integration,
+) -> Result<(), Error> {
+    let integration = log_data.clone();
+    let guild_id = integration.guild_id.unwrap_or_default();
+    let title = format!("Integration Create Event {}", channel_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        cache_http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log Integration Delete Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_integration_delete(
+    channel_id: ChannelId,
+    cache_http: &impl CacheHttp,
+    log_data: &(&IntegrationId, &GuildId, &Option<ApplicationId>),
+) -> Result<(), Error> {
+    let (integration_id, guild_id, _application_id) = log_data.clone();
+    let title = format!(
+        "Integration Delete Event {} {} {}",
+        integration_id, guild_id, channel_id
+    );
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        cache_http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Log Integration Create Event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_integration_create(
+    channel_id: ChannelId,
+    cache_http: &impl CacheHttp,
+    log_data: &Integration,
+) -> Result<(), Error> {
+    let integration = log_data.clone();
+    let guild_id = integration.guild_id.unwrap_or_default();
+    let title = format!("Integration Create Event {}", channel_id);
+    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let avatar_url = "";
+    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        cache_http,
+        &guild_id.to_string(),
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Log Interaction Create Event.

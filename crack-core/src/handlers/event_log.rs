@@ -710,7 +710,7 @@ pub async fn handle_event(
         FullEvent::IntegrationCreate { integration } => {
             let log_data = integration;
             log_event!(
-                log_unimplemented_event,
+                log_integration_create,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -723,7 +723,7 @@ pub async fn handle_event(
         FullEvent::IntegrationUpdate { integration } => {
             let log_data = integration;
             log_event!(
-                log_unimplemented_event,
+                log_integration_update,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -740,7 +740,7 @@ pub async fn handle_event(
         } => {
             let log_data = &(integration_id, guild_id, application_id);
             log_event!(
-                log_unimplemented_event,
+                log_integration_delete,
                 guild_settings,
                 event_in,
                 &log_data,
