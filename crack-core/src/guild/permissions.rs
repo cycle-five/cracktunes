@@ -24,7 +24,7 @@ impl ConvertToHashSetString for serde_json::Value {
     }
 }
 
-/// Implementation of ConvertToHashSetString for Vec<String>.
+/// Implementation of ConvertToHashSetString for `Vec<String>`.
 impl ConvertToHashSetString for Vec<String> {
     fn convert(self) -> HashSetString {
         self.into_iter().collect()
@@ -50,7 +50,7 @@ impl ConvertToHashSetU64 for serde_json::Value {
     }
 }
 
-/// Implementation of ConvertToHashSetU64 for Vec<i64>.
+/// Implementation of ConvertToHashSetU64 for `Vec<i64>`.
 impl ConvertToHashSetU64 for Vec<i64> {
     fn convert(self) -> HashSetU64 {
         self.iter().map(|&x| x as u64).collect()
