@@ -96,6 +96,8 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
+    use std::sync::Arc;
+
     use serenity::all::User;
 
     let event_log = Arc::new(&data_global.event_log);
@@ -111,7 +113,7 @@ pub async fn handle_event(
                 event_in,
                 new_data,
                 &new_data.guild_id.unwrap(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -128,7 +130,7 @@ pub async fn handle_event(
                 event_in,
                 new_member,
                 &new_member.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -145,7 +147,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -186,7 +188,7 @@ pub async fn handle_event(
                 event_in,
                 new_message,
                 &new_message.guild_id.unwrap(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -199,7 +201,7 @@ pub async fn handle_event(
                 event_in,
                 event,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -211,7 +213,7 @@ pub async fn handle_event(
                 event_in,
                 permission,
                 &permission.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -223,7 +225,7 @@ pub async fn handle_event(
                 event_in,
                 execution,
                 &execution.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -234,7 +236,7 @@ pub async fn handle_event(
             event_in,
             &rule,
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -244,7 +246,7 @@ pub async fn handle_event(
             event_in,
             &(event_name.to_string(), rule.clone()),
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -254,7 +256,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, rule),
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -264,7 +266,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, category),
             &category.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -274,7 +276,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, category),
             &category.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -284,7 +286,7 @@ pub async fn handle_event(
             event_in,
             &(channel, messages),
             &channel.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -294,7 +296,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, pin),
             &pin.guild_id.unwrap_or_default(),
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -310,7 +312,7 @@ pub async fn handle_event(
                 event_in,
                 &(event_name, old, new),
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -326,7 +328,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -342,7 +344,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -355,7 +357,7 @@ pub async fn handle_event(
                 event_in,
                 &(guild, is_new, guild_settings),
                 &guild.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -368,7 +370,7 @@ pub async fn handle_event(
                 event_in,
                 &(guild, is_new, guild_settings),
                 &guild.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -382,7 +384,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &incomplete.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -396,7 +398,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &incomplete.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -412,7 +414,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -425,7 +427,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -507,7 +509,7 @@ pub async fn handle_event(
                     send_log_embed_thumb(
                         &guild_name,
                         &channel_id,
-                        &ctx.http,
+                        &ctx,
                         &id.to_string(),
                         &title,
                         &description,
@@ -530,7 +532,7 @@ pub async fn handle_event(
                 event_in,
                 &new,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -547,7 +549,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -564,7 +566,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -581,7 +583,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -595,7 +597,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -608,7 +610,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -621,7 +623,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -634,7 +636,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &subscribed.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -647,7 +649,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &unsubscribed.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -663,7 +665,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -683,7 +685,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new_data.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -700,7 +702,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new_data.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -713,7 +715,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &integration.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -726,7 +728,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &integration.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -743,20 +745,22 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
         FullEvent::InteractionCreate { interaction } => {
             let log_data = interaction;
+            let guild_id =
+                crate::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
             log_event!(
                 log_unimplemented_event,
                 guild_settings,
                 event_in,
                 &log_data,
-                &GuildId::new(1),
-                &ctx.http,
+                &guild_id,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -769,7 +773,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &data.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -781,7 +785,7 @@ pub async fn handle_event(
                 event_in,
                 data,
                 &data.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -798,7 +802,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -833,7 +837,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -863,7 +867,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -876,7 +880,7 @@ pub async fn handle_event(
                 event_in,
                 add_reaction,
                 &add_reaction.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -888,7 +892,7 @@ pub async fn handle_event(
                 event_in,
                 removed_reaction,
                 &removed_reaction.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -937,7 +941,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )

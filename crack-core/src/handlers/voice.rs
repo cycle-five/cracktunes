@@ -287,13 +287,13 @@ pub async fn register_voice_handlers(
 
 //         check_msg(
 //             msg.channel_id
-//                 .say(&ctx.http, &format!("Joined {}", connect_to.mention()))
+//                 .say(&ctx, &format!("Joined {}", connect_to.mention()))
 //                 .await,
 //         );
 //     } else {
 //         check_msg(
 //             msg.channel_id
-//                 .say(&ctx.http, "Error joining the channel")
+//                 .say(&ctx, "Error joining the channel")
 //                 .await,
 //         );
 //     }

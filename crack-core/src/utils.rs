@@ -1,10 +1,10 @@
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
-    commands::{music::doplay::RequestingUser, MyAuxMetadata},
+    commands::{music::doplay::RequestingUser, MyAuxMetadata, QueryType},
     db::Playlist,
-    interface::create_now_playing_embed,
-    interface::{build_nav_btns, requesting_user_to_string},
+    guild::settings::DEFAULT_PREMIUM,
+    interface::{build_nav_btns, create_now_playing_embed, requesting_user_to_string},
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -15,7 +15,10 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{CacheHttp, ChannelId, GuildId, Interaction, UserId},
+    all::{
+        CacheHttp, ChannelId, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
+        CreateSelectMenuOption, EmbedField, GuildId, Interaction, UserId,
+    },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
@@ -35,6 +38,7 @@ use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
     cmp::{max, min},
+    collections::HashMap,
     fmt::Write,
     ops::Add,
     time::Duration,
@@ -46,6 +50,27 @@ use url::Url;
 use songbird::Call;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
+
+pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
+    match interaction {
+        Interaction::Command(int) => int.guild_id,
+        Interaction::Component(int) => int.guild_id,
+        Interaction::Modal(int) => int.guild_id,
+        Interaction::Autocomplete(int) => int.guild_id,
+        Interaction::Ping(_) => None,
+        _ => None,
+    }
+}
+
+/// Convert a duration to a string.
+pub fn duration_to_string(duration: Duration) -> String {
+    let mut secs = duration.as_secs();
+    let hours = secs / 3600;
+    secs %= 3600;
+    let minutes = secs / 60;
+    secs %= 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+}
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
@@ -89,7 +114,7 @@ pub async fn build_log_embed_thumb(
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &serenity::ChannelId,
-    http: &Arc<Http>,
+    cache_http: &impl CacheHttp,
     id: &str,
     title: &str,
     description: &str,
@@ -98,7 +123,7 @@ pub async fn send_log_embed_thumb(
     let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
-        .send_message(http, CreateMessage::new().embed(embed))
+        .send_message(cache_http, CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }
@@ -107,7 +132,7 @@ pub async fn send_log_embed_thumb(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     title: &str,
     description: &str,
     avatar_url: &str,
@@ -123,7 +148,7 @@ pub async fn send_log_embed(
 /// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams {
     pub channel: ChannelId,
-    // pub http: &Arc<Http>,
+    // pub http: &impl CacheHttp,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
@@ -211,7 +236,7 @@ pub async fn edit_response_poise(
 }
 
 pub async fn edit_response(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
@@ -220,7 +245,7 @@ pub async fn edit_response(
 }
 
 pub async fn edit_response_text(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, CrackedError> {
@@ -285,6 +310,162 @@ pub async fn send_now_playing(
         .send_message(Arc::clone(&http), msg)
         .await
         .map_err(|e| e.into())
+}
+
+async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
+    tracing::warn!("num elems: {:?}", elems.len());
+    let mut fields = vec![];
+    // let tmp = "".to_string();
+    for elem in elems.into_iter() {
+        let title = elem.title.unwrap_or_default();
+        let link = elem.source_url.unwrap_or_default();
+        let duration = elem.duration.unwrap_or_default();
+        let elem = format!("({}) - {}", link, duration_to_string(duration));
+        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
+    }
+    fields
+}
+
+#[cfg(not(tarpaulin_include))]
+/// Interactive youtube search and selection.
+pub async fn yt_search_select(
+    ctx: SerenityContext,
+    channel_id: ChannelId,
+    metadata: Vec<AuxMetadata>,
+) -> Result<QueryType, Error> {
+    let res = metadata.iter().map(|x| {
+        let title = x.title.clone().unwrap_or_default();
+        let link = x.source_url.clone().unwrap_or_default();
+        let duration = x.duration.unwrap_or_default();
+        let elem = format!("{}: {}", duration_to_string(duration), title);
+        let len = min(elem.len(), 99);
+        let elem = elem[..len].to_string();
+        tracing::warn!("elem: {}", elem);
+        (elem, link)
+    });
+    let rev_map = res
+        .clone()
+        .map(|(elem, link)| (link, elem))
+        .collect::<HashMap<_, _>>();
+    // Ask the user for its favorite animal
+    let m = channel_id
+        .send_message(
+            &ctx,
+            CreateMessage::new().content("Search results").select_menu(
+                CreateSelectMenu::new(
+                    "song_select",
+                    CreateSelectMenuKind::String {
+                        options: res
+                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
+                            .collect(),
+                    },
+                )
+                .custom_id("song_select")
+                .placeholder("Select Song to Play"),
+            ),
+        )
+        .await?;
+
+    // Wait for the user to make a selection
+    // This uses a collector to wait for an incoming event without needing to listen for it
+    // manually in the EventHandler.
+    let interaction = match m
+        .await_component_interaction(&ctx.shard)
+        .timeout(Duration::from_secs(60 * 3))
+        .await
+    {
+        Some(x) => x,
+        None => {
+            m.reply(&ctx, "Timed out").await.unwrap();
+            return Err(CrackedError::Other("Timed out").into());
+        },
+    };
+
+    // data.values contains the selected value from each select menus. We only have one menu,
+    // so we retrieve the first
+    let url = match &interaction.data.kind {
+        ComponentInteractionDataKind::StringSelect { values } => &values[0],
+        _ => panic!("unexpected interaction data kind"),
+    };
+
+    tracing::error!("url: {}", url);
+
+    let qt = QueryType::VideoLink(url.to_string());
+    tracing::error!("url: {:?}", qt);
+
+    // Acknowledge the interaction and edit the message
+    let res = interaction
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
+                    title: rev_map.get(url).unwrap().to_string(),
+                    url: url.to_owned(),
+                }),
+            ),
+        )
+        .await
+        .map_err(|e| e.into())
+        .map(|_| qt);
+
+    m.delete(&ctx).await.unwrap();
+    res
+    // // Wait for multiple interactions
+    // let mut interaction_stream = m
+    //     .await_component_interaction(&ctx.shard)
+    //     .timeout(Duration::from_secs(60 * 3))
+    //     .stream();
+
+    // while let Some(interaction) = interaction_stream.next().await {
+    //     let sound = &interaction.data.custom_id;
+    //     // Acknowledge the interaction and send a reply
+    //     interaction
+    //         .create_response(
+    //             &ctx,
+    //             // This time we dont edit the message but reply to it
+    //             CreateInteractionResponse::Message(
+    //                 CreateInteractionResponseMessage::default()
+    //                     // Make the message hidden for other users by setting `ephemeral(true)`.
+    //                     .ephemeral(true)
+    //                     .content(format!("The **{animal}** says __{sound}__")),
+    //             ),
+    //         )
+    //         .await
+    //         .unwrap();
+    // }
+
+    // // Delete the orig message or there will be dangling components (components that still
+    // // exist, but no collector is running so any user who presses them sees an error)
+}
+
+/// Send the search results to the user.
+pub async fn send_search_response(
+    ctx: CrackContext<'_>,
+    guild_id: GuildId,
+    user_id: UserId,
+    query: String,
+    res: Vec<AuxMetadata>,
+) -> Result<Message, CrackedError> {
+    use poise::serenity_prelude::Mentionable;
+    let author = ctx.author_member().await.unwrap();
+    let name = if DEFAULT_PREMIUM {
+        author.mention().to_string()
+    } else {
+        author.display_name().to_string()
+    };
+
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let fields = build_embed_fields(res).await;
+    let author = CreateEmbedAuthor::new(name);
+    let title = format!("Search results for: {}", query);
+    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let embed = CreateEmbed::new()
+        .author(author)
+        .title(title)
+        .footer(footer)
+        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
+
+    send_embed_response_poise(ctx, embed).await
 }
 
 /// Sends a reply response with an embed.
@@ -362,7 +543,7 @@ pub async fn send_embed_response(
 }
 
 pub async fn edit_reponse_interaction(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
@@ -392,7 +573,7 @@ pub async fn edit_reponse_interaction(
 /// Create a response to an interaction.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_response_interaction(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
     _defer: bool,
@@ -416,7 +597,7 @@ pub async fn create_response_interaction(
             let res = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().embed(embed.clone()),
             );
-            let message = int.get_response(http).await;
+            let message = int.get_response(http.http()).await;
             match message {
                 Ok(message) => {
                     message
@@ -427,7 +608,7 @@ pub async fn create_response_interaction(
                 },
                 Err(_) => {
                     int.create_response(http, res).await?;
-                    let message = int.get_response(http).await?;
+                    let message = int.get_response(http.http()).await?;
                     Ok(message)
                 },
             }
@@ -490,7 +671,7 @@ pub async fn defer_response_interaction(
 }
 
 pub async fn edit_embed_response(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {

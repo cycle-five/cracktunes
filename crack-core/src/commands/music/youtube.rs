@@ -49,24 +49,25 @@ pub async fn ready_query(
 }
 
 /// Pushes a track to the front of the queue.
-pub async fn push_track_front(
+pub async fn queue_track_front(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
+    user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let ready_track = ready_query(ctx, query_type.clone(), ctx.author().id).await?;
+    let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
 
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(ready_track.track).await;
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(ctx.author().id));
-
     // let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
         let back = queue.pop_back().unwrap();
         queue.push_front(back);
     });
+
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
 
     Ok(handler.queue().current_queue())
 }
@@ -210,7 +211,7 @@ pub async fn get_track_source_and_metadata(
             Ok((ytdl.into(), metadata))
         },
         QueryType::SpotifyTracks(tracks) => {
-            tracing::warn!("In KeywordList");
+            tracing::error!("In SpotifyTracks, this is broken");
             let keywords_list = tracks
                 .iter()
                 .map(|x| x.build_query())

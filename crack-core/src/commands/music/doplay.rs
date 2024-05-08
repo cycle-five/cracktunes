@@ -11,10 +11,12 @@ use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use crate::utils::send_search_response;
+use crate::utils::yt_search_select;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
-    guild::settings::{GuildSettings, DEFAULT_PREMIUM},
+    guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     http_utils,
     interface::create_now_playing_embed,
@@ -33,15 +35,10 @@ use crate::{
     Context, Error,
 };
 use ::serenity::{
-    all::{
-        ChannelId, ComponentInteractionDataKind, Context as SerenityContext, EmbedField, GuildId,
-        Mentionable, Message, UserId,
-    },
+    all::{Message, UserId},
     builder::{
-        CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
-        CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-        CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, EditInteractionResponse,
-        EditMessage,
+        CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
+        EditInteractionResponse, EditMessage,
     },
 };
 use poise::serenity_prelude::{self as serenity, Attachment};
@@ -52,8 +49,7 @@ use songbird::{
     Call,
 };
 use std::{
-    cmp::{min, Ordering},
-    collections::HashMap,
+    cmp::Ordering,
     path::Path,
     process::{Output, Stdio},
     sync::Arc,
@@ -412,140 +408,6 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
     Ok((output, metadata))
 }
 
-async fn yt_search_select(
-    ctx: SerenityContext,
-    channel_id: ChannelId,
-    metadata: Vec<AuxMetadata>,
-) -> Result<QueryType, Error> {
-    let res = metadata.iter().map(|x| {
-        let title = x.title.clone().unwrap_or_default();
-        let link = x.source_url.clone().unwrap_or_default();
-        let duration = x.duration.unwrap_or_default();
-        let elem = format!("{}: {}", duration_to_string(duration), title);
-        let len = min(elem.len(), 99);
-        let elem = elem[..len].to_string();
-        tracing::warn!("elem: {}", elem);
-        (elem, link)
-    });
-    let rev_map = res
-        .clone()
-        .map(|(elem, link)| (link, elem))
-        .collect::<HashMap<_, _>>();
-    // Ask the user for its favorite animal
-    let m = channel_id
-        .send_message(
-            &ctx,
-            CreateMessage::new().content("Search results").select_menu(
-                CreateSelectMenu::new(
-                    "song_select",
-                    CreateSelectMenuKind::String {
-                        options: res
-                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
-                            .collect(),
-                    },
-                )
-                .custom_id("song_select")
-                .placeholder("Select Song to Play"),
-            ),
-        )
-        .await?;
-
-    // Wait for the user to make a selection
-    // This uses a collector to wait for an incoming event without needing to listen for it
-    // manually in the EventHandler.
-    let interaction = match m
-        .await_component_interaction(&ctx.shard)
-        .timeout(Duration::from_secs(60 * 3))
-        .await
-    {
-        Some(x) => x,
-        None => {
-            m.reply(&ctx, "Timed out").await.unwrap();
-            return Err(CrackedError::Other("Timed out").into());
-        },
-    };
-
-    // data.values contains the selected value from each select menus. We only have one menu,
-    // so we retrieve the first
-    let url = match &interaction.data.kind {
-        ComponentInteractionDataKind::StringSelect { values } => &values[0],
-        _ => panic!("unexpected interaction data kind"),
-    };
-
-    tracing::error!("url: {}", url);
-
-    let qt = QueryType::VideoLink(url.to_string());
-    tracing::error!("url: {:?}", qt);
-
-    // Acknowledge the interaction and edit the message
-    let res = interaction
-        .create_response(
-            &ctx,
-            CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
-                    title: rev_map.get(url).unwrap().to_string(),
-                    url: url.to_owned(),
-                }),
-            ),
-        )
-        .await
-        .map_err(|e| e.into())
-        .map(|_| qt);
-
-    m.delete(&ctx).await.unwrap();
-    res
-    // // Wait for multiple interactions
-    // let mut interaction_stream = m
-    //     .await_component_interaction(&ctx.shard)
-    //     .timeout(Duration::from_secs(60 * 3))
-    //     .stream();
-
-    // while let Some(interaction) = interaction_stream.next().await {
-    //     let sound = &interaction.data.custom_id;
-    //     // Acknowledge the interaction and send a reply
-    //     interaction
-    //         .create_response(
-    //             &ctx,
-    //             // This time we dont edit the message but reply to it
-    //             CreateInteractionResponse::Message(
-    //                 CreateInteractionResponseMessage::default()
-    //                     // Make the message hidden for other users by setting `ephemeral(true)`.
-    //                     .ephemeral(true)
-    //                     .content(format!("The **{animal}** says __{sound}__")),
-    //             ),
-    //         )
-    //         .await
-    //         .unwrap();
-    // }
-
-    // // Delete the orig message or there will be dangling components (components that still
-    // // exist, but no collector is running so any user who presses them sees an error)
-}
-
-async fn create_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
-    tracing::warn!("num elems: {:?}", elems.len());
-    let mut fields = vec![];
-    // let tmp = "".to_string();
-    for elem in elems.into_iter() {
-        let title = elem.title.unwrap_or_default();
-        let link = elem.source_url.unwrap_or_default();
-        let duration = elem.duration.unwrap_or_default();
-        let elem = format!("({}) - {}", link, duration_to_string(duration));
-        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
-    }
-    fields
-}
-
-/// Convert a duration to a string.
-pub fn duration_to_string(duration: Duration) -> String {
-    let mut secs = duration.as_secs();
-    let hours = secs / 3600;
-    secs %= 3600;
-    let minutes = secs / 60;
-    secs %= 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-}
-
 pub enum MessageOrInteraction {
     Message(Message),
     Interaction(CommandInteraction),
@@ -556,35 +418,6 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
         Context::Prefix(ctx) => MessageOrInteraction::Message(ctx.msg.clone()),
         Context::Application(ctx) => MessageOrInteraction::Interaction(ctx.interaction.clone()),
     }
-}
-
-/// Send the search results to the user.
-async fn send_search_response(
-    ctx: Context<'_>,
-    guild_id: GuildId,
-    user_id: UserId,
-    query: String,
-    res: Vec<AuxMetadata>,
-) -> Result<Message, CrackedError> {
-    let author = ctx.author_member().await.unwrap();
-    let name = if DEFAULT_PREMIUM {
-        author.mention().to_string()
-    } else {
-        author.display_name().to_string()
-    };
-
-    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let fields = create_embed_fields(res).await;
-    let author = CreateEmbedAuthor::new(name);
-    let title = format!("Search results for: {}", query);
-    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
-    let embed = CreateEmbed::new()
-        .author(author)
-        .title(title)
-        .footer(footer)
-        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
-
-    send_embed_response_poise(ctx, embed).await
 }
 
 async fn match_mode<'a>(
@@ -674,7 +507,7 @@ async fn match_mode<'a>(
                 get_download_status_and_filename(query_type.clone(), false).await?;
             ctx.channel_id()
                 .send_message(
-                    ctx.http(),
+                    ctx,
                     CreateMessage::new()
                         .content(format!("Download status {}", status))
                         .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
@@ -1446,53 +1279,4 @@ pub async fn queue_aux_metadata(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use rspotify::model::{FullTrack, SimplifiedAlbum};
-
-    #[test]
-    fn test_from_spotify_track() {
-        let track = SpotifyTrack::new(FullTrack {
-            id: None,
-            name: "asdf".to_string(),
-            artists: vec![],
-            album: SimplifiedAlbum {
-                album_type: None,
-                album_group: None,
-                artists: vec![],
-                available_markets: vec![],
-                external_urls: HashMap::new(),
-                href: None,
-                id: None,
-                images: vec![],
-                name: "zxcv".to_string(),
-                release_date: Some("2012".to_string()),
-                release_date_precision: None,
-                restrictions: None,
-            },
-            track_number: 0,
-            disc_number: 0,
-            explicit: false,
-            external_urls: HashMap::new(),
-            href: None,
-            preview_url: None,
-            popularity: 0,
-            is_playable: None,
-            linked_from: None,
-            restrictions: None,
-            external_ids: HashMap::new(),
-            is_local: false,
-            available_markets: vec![],
-            duration: chrono::TimeDelta::new(60, 0).unwrap(),
-        });
-        let res = MyAuxMetadata::from_spotify_track(&track);
-        let metadata = res.metadata();
-        assert_eq!(metadata.title, Some("asdf".to_string()));
-        assert_eq!(metadata.artist, Some("".to_string()));
-        assert_eq!(metadata.album, Some("zxcv".to_string()));
-        assert_eq!(metadata.duration.unwrap().as_secs(), 60);
-    }
 }

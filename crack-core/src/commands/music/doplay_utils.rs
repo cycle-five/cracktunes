@@ -34,8 +34,7 @@ async fn queue_tracks(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let n = tracks.len() as f32;
-    let mut i: u32 = 0;
-    for track in tracks {
+    for (i, track) in (0_u32..).zip(tracks.into_iter()) {
         // Update the search message with what's queuing right now.
         let _ = search_msg
             .edit(
@@ -48,7 +47,6 @@ async fn queue_tracks(
                 ))),
             )
             .await;
-        i += 1;
         let _queue_res =
             enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
         // let queue = match queue_res {

@@ -118,7 +118,7 @@ impl EventHandler for SerenityHandler {
                 let channel = serenity::ChannelId::new(channel);
                 let x = channel
                     .send_message(
-                        &ctx.http,
+                        &ctx,
                         CreateMessage::default().content({
                             if message.contains("{user}") {
                                 message.replace(
@@ -139,7 +139,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let role_id = serenity::RoleId::new(role_id);
-            match new_member.add_role(&ctx.http, role_id).await {
+            match new_member.add_role(&ctx, role_id).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
                 },
@@ -260,7 +260,7 @@ impl EventHandler for SerenityHandler {
             manager.remove(guild_id).await.ok();
         }
 
-        // update_queue_messages(&ctx.http, &self.data, &[], guild_id).await;
+        // update_queue_messages(&ctx, &self.data, &[], guild_id).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
@@ -517,7 +517,7 @@ impl SerenityHandler {
         if user.id == new.user_id && !new.deaf {
             guild
                 .unwrap()
-                .edit_member(&ctx.http, new.user_id, EditMember::default().deafen(true))
+                .edit_member(&ctx, new.user_id, EditMember::default().deafen(true))
                 .await
                 .unwrap();
         }
@@ -727,7 +727,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                 && status.time_last_cam_change.elapsed()
                                     > Duration::from_secs(kick_conf.cammed_down_timeout)
                             {
-                                let user = cam.user_id.to_user(&ctx.http).await.unwrap();
+                                let user = cam.user_id.to_user(&ctx).await.unwrap();
                                 tracing::warn!(
                                     "User {} has been cammed down for {} seconds",
                                     user.name,
@@ -765,7 +765,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                 let channel = ChannelId::new(kick_conf.channel_id);
                                                 let _ = channel
                                                     .send_message(
-                                                        &ctx.http,
+                                                        &ctx,
                                                         CreateMessage::default().content({
                                                             format!(
                                                                 "{} {}: {}",
@@ -823,11 +823,7 @@ async fn disconnect_member(
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .edit_member(
-            &ctx.http,
-            cam.user_id,
-            EditMember::default().disconnect_member(),
-        )
+        .edit_member(&ctx, cam.user_id, EditMember::default().disconnect_member())
         .await
 }
 
@@ -837,7 +833,7 @@ async fn server_defeafen_member(
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .edit_member(&ctx.http, cam.user_id, EditMember::default().deafen(true))
+        .edit_member(&ctx, cam.user_id, EditMember::default().deafen(true))
         .await
 }
 
@@ -847,7 +843,7 @@ async fn server_mute_member(
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
-        .edit_member(&ctx.http, cam.user_id, EditMember::default().mute(true))
+        .edit_member(&ctx, cam.user_id, EditMember::default().mute(true))
         .await
 }
 
