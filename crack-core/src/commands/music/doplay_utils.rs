@@ -31,7 +31,12 @@ async fn queue_tracks(
     call: Arc<Mutex<Call>>,
     tracks: Vec<QueueTrackData>,
     search_msg: &mut Message,
+    mode: Mode,
 ) -> Result<(), Error> {
+    use crate::commands::youtube::queue_track_front;
+
+    use super::youtube::queue_track_back;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let n = tracks.len() as f32;
     for (i, track) in (0_u32..).zip(tracks.into_iter()) {
@@ -47,8 +52,15 @@ async fn queue_tracks(
                 ))),
             )
             .await;
-        let _queue_res =
-            enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
+        let user_id = ctx.author().id;
+        let new_query_type = QueryType::VideoLink(track.url.to_string());
+        let _queue_res = if mode == Mode::Next {
+            queue_track_front(ctx, &call, &new_query_type, user_id).await
+        } else {
+            queue_track_back(ctx, &call, &new_query_type, user_id).await
+        };
+        // let _queue_res =
+        //    enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
         // let queue = match queue_res {
         //     Ok(q) => q,
         //     Err(e) => {
@@ -72,20 +84,107 @@ pub async fn queue_yt_playlist<'a>(
     playlist: YTPlaylist,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
-    queue_tracks(
-        ctx,
-        call,
-        playlist
-            .videos
-            .iter()
-            .map(|x| QueueTrackData {
-                title: x.title.clone(),
-                url: x.url.clone(),
-            })
-            .collect(),
-        search_msg,
-    )
-    .await
+    let tracks = playlist.videos.iter().map(|x| QueueTrackData {
+        title: x.title.clone(),
+        url: x.url.clone(),
+    });
+    queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::End).await
+}
+
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_yt_playlist_front<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    _guild_id: GuildId,
+    playlist: YTPlaylist,
+    search_msg: &'a mut Message,
+) -> Result<(), Error> {
+    // let tracks = playlist.videos.iter().map(|x| QueueTrackData {
+    //     title: x.title.clone(),
+    //     url: x.url.clone(),
+    // });
+    // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::Next).await
+    queue_yt_playlist_internal(ctx, call, _guild_id, playlist, search_msg, Mode::Next)
+        .await
+        .map(|_| ())
+}
+
+/// Queue a YouTube playlist to be played.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_yt_playlist_internal<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    _guild_id: GuildId,
+    playlist: YTPlaylist,
+    search_msg: &'a mut Message,
+    mode: Mode,
+) -> Result<Vec<TrackHandle>, Error> {
+    use super::youtube::ready_query;
+    let user_id = ctx.author().id;
+    search_msg
+        .edit(
+            ctx,
+            EditMessage::new().embed(CreateEmbed::default().description(format!("Searching...",))),
+        )
+        .await?;
+
+    let track_data = playlist.videos.iter().map(|x| QueueTrackData {
+        title: x.title.clone(),
+        url: x.url.clone(),
+    });
+    let mut tracks = Vec::new();
+    if mode == Mode::Next {
+        for track in track_data.rev().collect::<Vec<QueueTrackData>>() {
+            let new_query = QueryType::VideoLink(track.url.to_string());
+            let asdf = ready_query(ctx, new_query, user_id).await?;
+            tracks.push(asdf);
+        }
+    } else {
+        for track in track_data.collect::<Vec<QueueTrackData>>() {
+            let new_query = QueryType::VideoLink(track.url.to_string());
+            let asdf = ready_query(ctx, new_query, user_id).await?;
+            tracks.push(asdf);
+        }
+    };
+
+    search_msg
+        .edit(
+            ctx,
+            EditMessage::new()
+                .embed(CreateEmbed::default().description(format!("Search done, queuing...",))),
+        )
+        .await?;
+
+    let mut handler = call.lock().await;
+    for ready_track in tracks {
+        let track_handle = handler.enqueue(ready_track.track).await;
+        let mut map = track_handle.typemap().write().await;
+        map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+        map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+        if mode == Mode::Next {
+            handler.queue().modify_queue(|queue| {
+                let back = queue.pop_back().unwrap();
+                queue.push_front(back);
+            });
+        }
+    }
+    // let handler = call.lock().await;
+    Ok(handler.queue().current_queue())
+    //.rev()
+    //.collect();
+    // if mode == Mode::Shuffle {
+    //     let mut tracks: Vec<QueueTrackData> = tracks.collect();
+    //     tracks.shuffle(&mut rand::thread_rng());
+    //     queue_tracks(ctx, call, tracks, search_msg).await
+    // } else if mode == Mode::Reverse {
+    //     let mut tracks: Vec<QueueTrackData> = tracks.collect();
+    //     tracks.reverse();
+    //     queue_tracks(ctx, call, tracks, search_msg).await
+    // } else if mode == Mode::Next {
+    // if mode == Mode::Next {
+    //     let tracks2 = tracks.rev().collect();
+    // }
+    //queue_tracks_ready(ctx, call, tracks, search_msg, mode).await
 }
 
 /// Queue a list of keywords to be played at the front of the queue.
@@ -203,16 +302,19 @@ pub async fn enqueue_track_pgwrite(
     // let channel_id = ctx.channel_id();
     // let user_id = ctx.author().id;
     // let http = ctx.http();
-    enqueue_track_pgwrite_asdf(
-        ctx.data().database_pool.as_ref().unwrap(),
-        ctx.guild_id().unwrap(),
-        ctx.channel_id(),
-        ctx.author().id,
-        ctx,
-        call,
-        query_type,
-    )
-    .await
+
+    use super::youtube;
+    youtube::queue_track_back(ctx, call, query_type, ctx.author().id).await
+    // enqueue_track_pgwrite_asdf(
+    //     ctx.data().database_pool.as_ref().unwrap(),
+    //     ctx.guild_id().unwrap(),
+    //     ctx.channel_id(),
+    //     ctx.author().id,
+    //     ctx,
+    //     call,
+    //     query_type,
+    // )
+    // .await
 }
 
 /// Writes metadata to the database for a playing track.

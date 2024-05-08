@@ -7,6 +7,7 @@ use super::doplay_utils::insert_track;
 use super::doplay_utils::queue_keyword_list_back;
 
 use crate::commands::doplay_utils::queue_yt_playlist;
+use crate::commands::doplay_utils::queue_yt_playlist_front;
 use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
@@ -592,24 +593,27 @@ async fn match_mode<'a>(
                     .await;
             },
             // FIXME
-            QueryType::PlaylistLink(_url) => {
+            QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::Next, QueryType::PlaylistLink");
+                let rusty_ytdl = RustyYoutubeClient::new()?;
+                let playlist: Playlist = rusty_ytdl.get_playlist(url).await?;
+                queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
                 // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
                 //     .await
                 //     .ok_or(CrackedError::Other("failed to fetch playlist"))?;
-                let urls = vec!["".to_string()];
+                // let urls = vec!["".to_string()];
 
-                for (idx, url) in urls.into_iter().enumerate() {
-                    let queue =
-                        insert_track(ctx, &call, &QueryType::VideoLink(url), idx + 1).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await;
-                }
+                // for (idx, url) in urls.into_iter().enumerate() {
+                //     let queue =
+                //         insert_track(ctx, &call, &QueryType::VideoLink(url), idx + 1).await?;
+                //     update_queue_messages(
+                //         &ctx.serenity_context().http,
+                //         ctx.data(),
+                //         &queue,
+                //         guild_id,
+                //     )
+                //     .await;
+                // }
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::Next, QueryType::KeywordList");

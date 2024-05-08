@@ -56,19 +56,34 @@ pub async fn queue_track_front(
     user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
-
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(ready_track.track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
     // let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
         let back = queue.pop_back().unwrap();
         queue.push_front(back);
     });
 
+    Ok(handler.queue().current_queue())
+}
+
+/// Pushes a track to the front of the queue.
+pub async fn queue_track_back(
+    ctx: CrackContext<'_>,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+    user_id: UserId,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
     map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-
+    // let handler = call.lock().await;
     Ok(handler.queue().current_queue())
 }
 
