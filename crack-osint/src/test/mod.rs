@@ -4,8 +4,6 @@ pub mod checkpass;
 pub mod phcode;
 #[cfg(feature = "phone")]
 pub mod phlookup;
-#[cfg(feature = "scan")]
-pub mod scan;
 #[cfg(feature = "social")]
 pub mod socialmedia;
 #[cfg(feature = "wayback")]
