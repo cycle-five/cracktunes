@@ -432,11 +432,15 @@ pub async fn handle_event(
                 event_name
             )
         },
+        // FIXME: Do a better diff of the old and new member data.
+        // FIXME: Do we rely always on the cache from serenity or implement
+        //        our in for any reason? (probably not needed).
         FullEvent::GuildMemberUpdate {
             old_if_available,
             new,
             event,
         } => {
+            // let local_event: GuildMemberUpdateEvent = event.clone();
             let guild_name = event
                 .guild_id
                 .to_guild_cached(&ctx.cache)
@@ -522,7 +526,7 @@ pub async fn handle_event(
                     tracing::debug!(title);
                 },
             }
-            event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
+            event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new, event))
         },
         FullEvent::GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
         FullEvent::GuildRoleCreate { new } => {

@@ -70,12 +70,12 @@ pub async fn log_integration_delete(
     cache_http: &impl CacheHttp,
     log_data: &(&IntegrationId, &GuildId, &Option<ApplicationId>),
 ) -> Result<(), Error> {
-    let (integration_id, guild_id, _application_id) = log_data.clone();
+    let &(integration_id, guild_id, _application_id) = log_data;
     let title = format!(
         "Integration Delete Event {} {} {}",
         integration_id, guild_id, channel_id
     );
-    let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
+    let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(cache_http, channel_id).await?;
     send_log_embed_thumb(
