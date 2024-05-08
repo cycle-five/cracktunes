@@ -33,34 +33,35 @@ async fn queue_tracks(
     search_msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let http = ctx.http();
     let n = tracks.len() as f32;
-    let mut i: f32 = 0.0_f32;
+    let mut i: u32 = 0;
     for track in tracks {
         // Update the search message with what's queuing right now.
-        search_msg
+        let _ = search_msg
             .edit(
-                ctx.http(),
+                ctx,
                 EditMessage::new().embed(CreateEmbed::default().description(format!(
                     "Queuing: [{}]({})\n{}% Done...",
                     track.title,
                     track.url,
-                    (i / n) * 100.0
+                    (i as f32 / n) as u32 * 100
                 ))),
             )
-            .await?;
-        i += 1.0_f32;
-        let queue_res =
+            .await;
+        i += 1;
+        let _queue_res =
             enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
-        let queue = match queue_res {
-            Ok(q) => q,
-            Err(e) => {
-                tracing::error!("Error: {}", e);
-                continue;
-            },
-        };
-        update_queue_messages(http, ctx.data(), &queue, guild_id).await;
+        // let queue = match queue_res {
+        //     Ok(q) => q,
+        //     Err(e) => {
+        //         tracing::error!("Error: {}", e);
+        //         continue;
+        //     },
+        // };
+        // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
     }
+    let queue = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
     Ok(())
 }
 

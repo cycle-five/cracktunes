@@ -5,6 +5,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
+use serenity::all::CacheHttp;
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -268,7 +269,7 @@ impl EventHandler for ModifyQueueHandler {
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.
 pub async fn update_queue_messages(
-    http: &Http,
+    cache_http: &impl CacheHttp,
     data: &Data,
     tracks: &[TrackHandle],
     guild_id: GuildId,
@@ -291,7 +292,7 @@ pub async fn update_queue_messages(
 
         let edit_message = message
             .edit(
-                &http,
+                cache_http,
                 EditMessage::new()
                     .embed(embed)
                     .components(build_nav_btns(page_val, num_pages)),
