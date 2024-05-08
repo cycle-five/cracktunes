@@ -140,6 +140,27 @@ impl Metadata {
             thumbnail: r.thumbnail,
         })
     }
+
+    /// Get a metadata entry by id (url).
+    pub async fn get_by_url(pool: &PgPool, url: &str) -> Result<Option<Metadata>, CrackedError> {
+        let r: Option<MetadataRead> = sqlx::query_as!(MetadataRead, r#"
+            SELECT
+                metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail
+            FROM 
+                metadata
+            WHERE 
+                metadata.source_url = $1
+            "#,
+            url
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(CrackedError::SQLX)?;
+        match r {
+            Some(r) => Ok(Some(r.into())),
+            None => Ok(None),
+        }
+    }
 }
 
 impl From<MetadataRead> for Metadata {

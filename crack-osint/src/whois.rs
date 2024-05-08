@@ -1,3 +1,4 @@
+// #![cfg(feature = "whois")]
 use whois_rust::{WhoIs, WhoIsLookupOptions};
 
 use crack_core::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};

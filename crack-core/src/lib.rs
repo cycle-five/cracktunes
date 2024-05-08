@@ -36,6 +36,8 @@ pub mod interface;
 pub mod messaging;
 pub mod metrics;
 pub mod sources;
+#[cfg(test)]
+pub mod test;
 pub mod utils;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -306,6 +308,8 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
+    #[serde(skip)]
+    pub sender: Option<tokio::sync::mpsc::Sender<db::worker_pool::MetadataWriteData>>,
     // #[serde(skip, default = "default_topgg_client")]
     // pub topgg_client: topgg::Client,
 }
@@ -468,6 +472,7 @@ impl Default for DataInner {
             event_log: EventLog::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
+            sender: None,
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }
@@ -574,7 +579,7 @@ impl Data {
 }
 
 #[cfg(test)]
-mod test {
+mod lib_test {
     use super::*;
 
     #[test]
