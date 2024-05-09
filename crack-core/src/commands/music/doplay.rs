@@ -87,6 +87,30 @@ pub enum QueryType {
     None,
 }
 
+impl QueryType {
+    pub fn build_query(&self) -> Option<String> {
+        match self {
+            QueryType::Keywords(keywords) => Some(keywords.clone()),
+            QueryType::KeywordList(keywords_list) => Some(keywords_list.join(" ")),
+            QueryType::VideoLink(url) => Some(url.clone()),
+            QueryType::SpotifyTracks(tracks) => Some(
+                tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>()
+                    .join(" "),
+            ),
+            QueryType::PlaylistLink(url) => Some(url.clone()),
+            QueryType::File(file) => Some(file.url.clone()),
+            QueryType::NewYoutubeDl((_src, metadata)) => {
+                metadata.source_url.clone().map(|x| x.clone())
+            },
+            QueryType::YoutubeSearch(query) => Some(query.clone()),
+            QueryType::None => None,
+        }
+    }
+}
+
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]

@@ -202,10 +202,24 @@ impl PartialEq for CrackedError {
     }
 }
 
+/// Provides an implementation to convert a [`VideoError`] to a [`CrackedError`].
+impl From<VideoError> for CrackedError {
+    fn from(err: VideoError) -> Self {
+        Self::VideoError(err)
+    }
+}
+
 /// Provides an implementation to convert a [`AudioStreamError`] to a [`CrackedError`].
 impl From<AudioStreamError> for CrackedError {
     fn from(err: AudioStreamError) -> Self {
         Self::AudioStream(err)
+    }
+}
+
+/// Provides an implementation to convert a [`AudioStreamError`] to a [`CrackedError`].
+impl Into<AudioStreamError> for CrackedError {
+    fn into(self) -> AudioStreamError {
+        AudioStreamError::Fail(Box::new(self))
     }
 }
 
@@ -282,12 +296,6 @@ impl From<url::ParseError> for CrackedError {
 impl From<RSpotifyClientError> for CrackedError {
     fn from(err: RSpotifyClientError) -> CrackedError {
         CrackedError::RSpotify(err)
-    }
-}
-
-impl From<VideoError> for CrackedError {
-    fn from(err: VideoError) -> CrackedError {
-        CrackedError::VideoError(err)
     }
 }
 

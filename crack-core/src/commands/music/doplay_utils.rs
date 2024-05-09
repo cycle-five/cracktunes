@@ -24,56 +24,56 @@ struct QueueTrackData {
     url: String,
 }
 
-/// Queue a list of tracks to be played.
-#[cfg(not(tarpaulin_include))]
-async fn queue_tracks(
-    ctx: Context<'_>,
-    call: Arc<Mutex<Call>>,
-    tracks: Vec<QueueTrackData>,
-    search_msg: &mut Message,
-    mode: Mode,
-) -> Result<(), Error> {
-    use crate::commands::youtube::queue_track_front;
+// /// Queue a list of tracks to be played.
+// #[cfg(not(tarpaulin_include))]
+// async fn queue_tracks(
+//     ctx: Context<'_>,
+//     call: Arc<Mutex<Call>>,
+//     tracks: Vec<QueueTrackData>,
+//     search_msg: &mut Message,
+//     mode: Mode,
+// ) -> Result<(), Error> {
+//     use crate::commands::youtube::queue_track_front;
 
-    use super::youtube::queue_track_back;
+//     use super::youtube::queue_track_back;
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let n = tracks.len() as f32;
-    for (i, track) in (0_u32..).zip(tracks.into_iter()) {
-        // Update the search message with what's queuing right now.
-        let _ = search_msg
-            .edit(
-                ctx,
-                EditMessage::new().embed(CreateEmbed::default().description(format!(
-                    "Queuing: [{}]({})\n{}% Done...",
-                    track.title,
-                    track.url,
-                    (i as f32 / n) as u32 * 100
-                ))),
-            )
-            .await;
-        let user_id = ctx.author().id;
-        let new_query_type = QueryType::VideoLink(track.url.to_string());
-        let _queue_res = if mode == Mode::Next {
-            queue_track_front(ctx, &call, &new_query_type, user_id).await
-        } else {
-            queue_track_back(ctx, &call, &new_query_type, user_id).await
-        };
-        // let _queue_res =
-        //    enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
-        // let queue = match queue_res {
-        //     Ok(q) => q,
-        //     Err(e) => {
-        //         tracing::error!("Error: {}", e);
-        //         continue;
-        //     },
-        // };
-        // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
-    }
-    let queue = call.lock().await.queue().current_queue();
-    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
-    Ok(())
-}
+//     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+//     let n = tracks.len() as f32;
+//     for (i, track) in (0_u32..).zip(tracks.into_iter()) {
+//         // Update the search message with what's queuing right now.
+//         let _ = search_msg
+//             .edit(
+//                 ctx,
+//                 EditMessage::new().embed(CreateEmbed::default().description(format!(
+//                     "Queuing: [{}]({})\n{}% Done...",
+//                     track.title,
+//                     track.url,
+//                     (i as f32 / n) as u32 * 100
+//                 ))),
+//             )
+//             .await;
+//         let user_id = ctx.author().id;
+//         let new_query_type = QueryType::VideoLink(track.url.to_string());
+//         let _queue_res = if mode == Mode::Next {
+//             queue_track_front(ctx, &call, &new_query_type, user_id).await
+//         } else {
+//             queue_track_back(ctx, &call, &new_query_type, user_id).await
+//         };
+//         // let _queue_res =
+//         //    enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
+//         // let queue = match queue_res {
+//         //     Ok(q) => q,
+//         //     Err(e) => {
+//         //         tracing::error!("Error: {}", e);
+//         //         continue;
+//         //     },
+//         // };
+//         // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+//     }
+//     let queue = call.lock().await.queue().current_queue();
+//     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+//     Ok(())
+// }
 
 /// Queue a YouTube playlist to be played.
 #[cfg(not(tarpaulin_include))]
@@ -84,11 +84,14 @@ pub async fn queue_yt_playlist<'a>(
     playlist: YTPlaylist,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
-    let tracks = playlist.videos.iter().map(|x| QueueTrackData {
-        title: x.title.clone(),
-        url: x.url.clone(),
-    });
-    queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::End).await
+    // let tracks = playlist.videos.iter().map(|x| QueueTrackData {
+    //     title: x.title.clone(),
+    //     url: x.url.clone(),
+    // });
+    // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::End).await
+    queue_yt_playlist_internal(ctx, call, _guild_id, playlist, search_msg, Mode::End)
+        .await
+        .map(|_| ())
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -133,26 +136,30 @@ pub async fn queue_yt_playlist_internal<'a>(
         title: x.title.clone(),
         url: x.url.clone(),
     });
+    let mut titles = String::new();
     let mut tracks = Vec::new();
     if mode == Mode::Next {
         for track in track_data.rev().collect::<Vec<QueueTrackData>>() {
             let new_query = QueryType::VideoLink(track.url.to_string());
-            let asdf = ready_query(ctx, new_query, user_id).await?;
-            tracks.push(asdf);
+            let ready_track = ready_query(ctx, new_query, user_id).await?;
+            tracks.push(ready_track);
+            titles.push_str(&format!("{}\n", track.title));
         }
     } else {
         for track in track_data.collect::<Vec<QueueTrackData>>() {
             let new_query = QueryType::VideoLink(track.url.to_string());
-            let asdf = ready_query(ctx, new_query, user_id).await?;
-            tracks.push(asdf);
+            let ready_track = ready_query(ctx, new_query, user_id).await?;
+            tracks.push(ready_track);
+            titles.push_str(&format!("{}\n", track.title));
         }
     };
 
     search_msg
         .edit(
             ctx,
-            EditMessage::new()
-                .embed(CreateEmbed::default().description("Search done, queuing...".to_string())),
+            EditMessage::new().embed(
+                CreateEmbed::default().description(format!("Search done, queuing...\n{}", titles)),
+            ),
         )
         .await?;
 
