@@ -1,4 +1,5 @@
 use super::{QueryType, RequestingUser};
+use crate::http_utils::CacheHttpExt;
 use crate::Context as CrackContext;
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, http_utils,
@@ -36,10 +37,7 @@ pub async fn ready_query(
     };
     let track: Track = source.into();
 
-    // let username = http_utils::http_to_username_or_default(http, user_id).await;
-    let username = http_utils::cache_to_username_or_default(ctx, user_id);
-
-    // let MyAuxMetadata::Data(aux_metadata) = res.clone();
+    let username = ctx.user_id_to_username_or_default(user_id);
 
     Ok(TrackReadyData {
         track,
@@ -87,7 +85,9 @@ pub async fn queue_track_back(
     Ok(handler.queue().current_queue())
 }
 
-/// Get the source and metadata from a video link.
+/// Get the source and metadata from a video link. Return value is a vector due
+/// to this being used in a method that also handles the interactive search so
+/// it can return multiple metadatas.
 pub async fn video_info_to_source_and_metadata(
     client: reqwest::Client,
     url: String,

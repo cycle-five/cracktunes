@@ -80,7 +80,7 @@ pub async fn set_global_handlers(
 pub async fn get_call_with_fail_msg(
     ctx: Context<'_>,
     guild_id: GuildId,
-) -> Result<Arc<Mutex<Call>>, Error> {
+) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     match manager.get(guild_id) {
         Some(call) => Ok(call),
@@ -104,12 +104,11 @@ pub async fn get_call_with_fail_msg(
                     ctx.add_msg_to_cache(guild_id, msg);
                     Ok(call)
                 },
-                Err(_) => {
+                Err(err) => {
                     // FIXME: Do something smarter here also.
-                    let embed = CreateEmbed::default()
-                        .description(format!("{}", CrackedError::NotConnected));
+                    let embed = CreateEmbed::default().description(format!("{}", err));
                     send_embed_response_poise(ctx, embed).await?;
-                    Err(CrackedError::NotConnected.into())
+                    Err(CrackedError::JoinChannelError(err))
                 },
             }
         },

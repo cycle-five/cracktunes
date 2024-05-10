@@ -2,7 +2,7 @@ use super::{Mode, QueryType};
 use crate::db::Metadata;
 use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
-use crate::http_utils;
+use crate::http_utils::CacheHttpExt;
 use crate::{
     commands::{MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
@@ -410,8 +410,7 @@ pub async fn enqueue_track_pgwrite_asdf(
     };
     let track: Track = source.into();
 
-    // let username = http_utils::http_to_username_or_default(http, user_id).await;
-    let username = http_utils::cache_to_username_or_default(cache_http, user_id);
+    let username = cache_http.user_id_to_username_or_default(user_id);
 
     let MyAuxMetadata::Data(aux_metadata) = res.clone();
 

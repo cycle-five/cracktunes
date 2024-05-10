@@ -1,32 +1,69 @@
+use std::future::Future;
+
 use crate::errors::CrackedError;
 use serenity::all::{CacheHttp, ChannelId, GuildId, Http, UserId};
 
 use once_cell::sync::Lazy;
 use reqwest::Client;
 
+pub trait CacheHttpExt {
+    fn cache(&self) -> Option<impl CacheHttp>;
+    fn http(&self) -> Option<&Http>;
+    fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
+    fn user_id_to_username_or_default(&self, user_id: UserId) -> String;
+    fn channel_id_to_guild_name(
+        &self,
+        channel_id: ChannelId,
+    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+}
+
+impl<T: CacheHttp> CacheHttpExt for T {
+    fn cache(&self) -> Option<impl CacheHttp> {
+        Some(self)
+    }
+
+    fn http(&self) -> Option<&Http> {
+        Some(self.http())
+    }
+
+    async fn get_bot_id(&self) -> Result<UserId, CrackedError> {
+        get_bot_id(self).await
+    }
+
+    fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
+        cache_to_username_or_default(self, user_id)
+    }
+
+    async fn channel_id_to_guild_name(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<String, CrackedError> {
+        get_guild_name(self, channel_id).await
+    }
+}
+
+/// This is a hack to get around the fact that we can't use async in statics. Is it?
 static CLIENT: Lazy<Client> = Lazy::new(|| {
-    println!("Creating a new client..."); // Optional: for demonstration
+    println!("Creating a new reqwest client...");
+    tracing::info!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()
         .expect("Failed to build reqwest client")
 });
 
+/// Get a reference to the lazy, static, global reqwest client.
 pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
+/// Initialize the static, global reqwest client.
 pub async fn init_http_client() -> Result<(), CrackedError> {
     let client = get_client().clone();
     let res = client.get("https://httpbin.org/ip").send().await?;
     tracing::info!("HTTP client initialized successfully: {:?}", res);
     Ok(())
 }
-
-// /// Get a new reqwest client with consistent settings.
-// pub fn new_reqwest_client() -> &'static Client {
-//     &CLIENT
-// }
 
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
@@ -69,19 +106,6 @@ pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId)
     }
 }
 
-/// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
-#[cfg(not(tarpaulin_include))]
-//#[allow(dead_code)]
-pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String {
-    match http.get_user(user_id).await {
-        Ok(x) => x.name,
-        Err(e) => {
-            tracing::error!("http.get_user error: {}", e);
-            "Unknown".to_string()
-        },
-    }
-}
-
 /// Gets the final URL after following all redirects.
 pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // FIXME: This is definitely not efficient, we want ot reuse this client.
@@ -111,30 +135,20 @@ pub async fn get_guild_name(
         .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
-        .map_err(|e| e.into())
-    // channel_id
-    //     .to_channel(http)
-    //     .await?
-    //     .guild()
-    //     .map(|x| x.guild_id)
-    //     .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
-    //     .to_partial_guild(http)
-    //     .await
-    //     .map(|x| x.name)
-    //     .map_err(|e| e.into())
+        .map_err(Into::into)
 }
 
 // Get the guild name from the guild id and an http client.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_guild_name_from_guild_id(
-    http: &Http,
+pub async fn guild_name_from_guild_id(
+    cache_http: impl CacheHttp,
     guild_id: GuildId,
 ) -> Result<String, CrackedError> {
     guild_id
-        .to_partial_guild(http)
+        .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
-        .map_err(|e| e.into())
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
