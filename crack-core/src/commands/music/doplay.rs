@@ -1,6 +1,8 @@
 use ::serenity::all::CommandInteraction;
 use colored;
 use rusty_ytdl::search::Playlist;
+use rusty_ytdl::search::SearchOptions;
+use rusty_ytdl::search::SearchType;
 
 use super::doplay_utils::enqueue_track_pgwrite;
 use super::doplay_utils::insert_track;
@@ -11,6 +13,9 @@ use crate::commands::doplay_utils::queue_yt_playlist_front;
 use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
+use crate::commands::youtube::search_query_to_source_and_metadata;
+use crate::commands::youtube::search_query_to_source_and_metadata_ytdl;
+use crate::commands::youtube::video_info_to_source_and_metadata;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::utils::send_search_response;
 use crate::utils::yt_search_select;
@@ -44,6 +49,8 @@ use ::serenity::{
 };
 use poise::serenity_prelude::{self as serenity, Attachment};
 use reqwest::Client;
+use songbird::input::HttpRequest;
+use songbird::input::Input as SongbirdInput;
 use songbird::{
     input::{AuxMetadata, Compose, YoutubeDl},
     tracks::TrackHandle,
@@ -75,6 +82,12 @@ pub enum Mode {
 }
 
 #[derive(Clone, Debug)]
+pub struct Query {
+    pub query_type: QueryType,
+    pub metadata: Option<AuxMetadata>,
+}
+
+#[derive(Clone, Debug)]
 pub enum QueryType {
     Keywords(String),
     KeywordList(Vec<String>),
@@ -102,12 +115,154 @@ impl QueryType {
             ),
             QueryType::PlaylistLink(url) => Some(url.clone()),
             QueryType::File(file) => Some(file.url.clone()),
-            QueryType::NewYoutubeDl((_src, metadata)) => {
-                metadata.source_url.clone().map(|x| x.clone())
-            },
+            QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
         }
+    }
+
+    // FIXME: Do you want to have a reqwest client we keep around and pass into
+    // this instead of creating a new one every time?
+    pub async fn get_track_source_and_metadata(
+        &self,
+    ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+        use colored::Colorize;
+        let client = http_utils::get_client().clone();
+        tracing::warn!("{}", format!("query_type: {:?}", self).red());
+        match self {
+            QueryType::YoutubeSearch(query) => {
+                tracing::error!("In YoutubeSearch");
+                let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                let mut res = Vec::new();
+                let asdf = ytdl.search(None).await?;
+                for metadata in asdf {
+                    let my_metadata = MyAuxMetadata::Data(metadata);
+                    res.push(my_metadata);
+                }
+                Ok((ytdl.into(), res))
+            },
+            QueryType::VideoLink(query) => {
+                tracing::warn!("In VideoLink");
+                video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                // let mut ytdl = YoutubeDl::new(client, query);
+                // tracing::warn!("ytdl: {:?}", ytdl);
+                // let metadata = ytdl.aux_metadata().await?;
+                // let my_metadata = MyAuxMetadata::Data(metadata);
+                // Ok((ytdl.into(), vec![my_metadata]))
+            },
+            QueryType::Keywords(query) => {
+                tracing::warn!("In Keywords");
+                let res = search_query_to_source_and_metadata(client.clone(), query.clone()).await;
+                match res {
+                    Ok((input, metadata)) => Ok((input, metadata)),
+                    Err(_) => {
+                        tracing::error!("falling back to ytdl!");
+                        search_query_to_source_and_metadata_ytdl(client.clone(), query.clone())
+                            .await
+                    },
+                }
+            },
+            QueryType::File(file) => {
+                tracing::warn!("In File");
+                Ok((
+                    HttpRequest::new(client, file.url.to_owned()).into(),
+                    vec![MyAuxMetadata::default()],
+                ))
+            },
+            QueryType::NewYoutubeDl(ytdl_metadata) => {
+                tracing::warn!("In NewYoutubeDl {:?}", ytdl_metadata.clone());
+                let (ytdl, aux_metadata) = ytdl_metadata.clone();
+                Ok((ytdl.into(), vec![MyAuxMetadata::Data(aux_metadata)]))
+            },
+            QueryType::PlaylistLink(url) => {
+                tracing::warn!("In PlaylistLink");
+                let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+                let search_options = SearchOptions {
+                    limit: 100,
+                    search_type: SearchType::Playlist,
+                    ..Default::default()
+                };
+
+                let res = rytdl.rusty_ytdl.search(url, Some(&search_options)).await?;
+                let mut metadata = Vec::with_capacity(res.len());
+                for r in res {
+                    metadata.push(MyAuxMetadata::Data(
+                        RustyYoutubeClient::search_result_to_aux_metadata(&r),
+                    ));
+                }
+                let ytdl = YoutubeDl::new(client.clone(), url.clone());
+                tracing::warn!("ytdl: {:?}", ytdl);
+                Ok((ytdl.into(), metadata))
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                tracing::error!("In SpotifyTracks, this is broken");
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                let mut ytdl = YoutubeDl::new(
+                    client,
+                    format!("ytsearch:{}", keywords_list.first().unwrap()),
+                );
+                tracing::warn!("ytdl: {:?}", ytdl);
+                let metdata = ytdl.aux_metadata().await.unwrap();
+                let my_metadata = MyAuxMetadata::Data(metdata);
+                Ok((ytdl.into(), vec![my_metadata]))
+            },
+            QueryType::KeywordList(keywords_list) => {
+                tracing::warn!("In KeywordList");
+                let mut ytdl =
+                    YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
+                tracing::warn!("ytdl: {:?}", ytdl);
+                let metdata = ytdl.aux_metadata().await.unwrap();
+                let my_metadata = MyAuxMetadata::Data(metdata);
+                Ok((ytdl.into(), vec![my_metadata]))
+            },
+            QueryType::None => unimplemented!(),
+        }
+    }
+}
+
+impl Query {
+    pub fn build_query(&self) -> Option<String> {
+        self.query_type.build_query()
+    }
+
+    pub async fn query(&self, n: usize) -> Result<(), CrackedError> {
+        let _ = n;
+        match self.query_type {
+            QueryType::Keywords(_) => Ok(()),
+            QueryType::KeywordList(_) => Ok(()),
+            QueryType::VideoLink(_) => Ok(()),
+            QueryType::SpotifyTracks(_) => Ok(()),
+            QueryType::PlaylistLink(_) => Ok(()),
+            QueryType::File(_) => Ok(()),
+            QueryType::NewYoutubeDl(_) => Ok(()),
+            QueryType::YoutubeSearch(_) => Ok(()),
+            QueryType::None => Err(CrackedError::Other("No query provided!")),
+        }
+    }
+
+    pub fn metadata(&self) -> Option<AuxMetadata> {
+        match &self.query_type {
+            QueryType::NewYoutubeDl((_src, metadata)) => Some(metadata.clone()),
+            _ => None,
+        }
+    }
+
+    pub async fn aux_metadata(&mut self) -> Result<AuxMetadata, CrackedError> {
+        if let Some(meta) = self.metadata.as_ref() {
+            return Ok(meta.clone());
+        }
+
+        self.query(1).await?;
+
+        self.metadata.clone().ok_or_else(|| {
+            CrackedError::Other("Failed to instansiate any metadata... Should be unreachable.")
+            // let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
+            //     "Failed to instansiate any metadata... Should be unreachable.".into();
+            // CrackedError::AudioStream(AudioStreamError::Fail(msg))
+        })
     }
 }
 

@@ -217,9 +217,9 @@ impl From<AudioStreamError> for CrackedError {
 }
 
 /// Provides an implementation to convert a [`AudioStreamError`] to a [`CrackedError`].
-impl Into<AudioStreamError> for CrackedError {
-    fn into(self) -> AudioStreamError {
-        AudioStreamError::Fail(Box::new(self))
+impl From<CrackedError> for AudioStreamError {
+    fn from(x: CrackedError) -> Self {
+        AudioStreamError::Fail(Box::new(x))
     }
 }
 
