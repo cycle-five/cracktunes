@@ -88,7 +88,7 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
 
-    let call = get_call_with_fail_msg(ctx, guild_id).await?;
+    let call = get_call_with_fail_msg(ctx).await?;
 
     let handler = call.lock().await;
     let queue = handler.queue();

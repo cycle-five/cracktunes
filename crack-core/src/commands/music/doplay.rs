@@ -385,7 +385,7 @@ async fn play_internal(
 
     tracing::debug!("search response msg: {:?}", search_msg);
 
-    let call = get_call_with_fail_msg(ctx, guild_id).await?;
+    let call = get_call_with_fail_msg(ctx).await?;
 
     // determine whether this is a link or a query string
     let query_type = get_query_type_from_url(ctx, url, file).await?;

@@ -75,13 +75,12 @@ pub async fn set_global_handlers(
 }
 
 /// Get the call handle for songbird.
-// FIXME: Does this need to take the GuildId?
 #[cfg(not(tarpaulin_include))]
-pub async fn get_call_with_fail_msg(
-    ctx: Context<'_>,
-    guild_id: GuildId,
-) -> Result<Arc<Mutex<Call>>, CrackedError> {
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+pub async fn get_call_with_fail_msg(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
     match manager.get(guild_id) {
         Some(call) => Ok(call),
         None => {
