@@ -556,7 +556,7 @@ impl Data {
             .insert(guild_id, settings);
     }
 
-    // /// Get the guild settings for a guild (read) 
+    // /// Get the guild settings for a guild (read)
     // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
     //     let mut asdf = self.guild_settings_map.write().unwrap().clone();
     //     let qwer = asdf.get_mut(&guild_id);
