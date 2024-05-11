@@ -38,7 +38,7 @@ pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
     pub http: Arc<Http>,
-    pub _cache: Arc<Cache>,
+    pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -249,18 +249,20 @@ async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, D
 #[async_trait]
 impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let (queue, vol) = {
+        let queue = {
             let handler = self.call.lock().await;
             let queue = handler.queue().current_queue().clone();
-            let settings = self.data.guild_settings_map.read().unwrap().clone();
-            let vol = settings
-                .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.volume);
-            (queue, vol)
+            queue
+        };
+        let vol = {
+            let guild_settings = self.data.get_guild_settings(self.guild_id);
+            let vol = guild_settings.map(|x| x.volume);
+            vol
         };
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
-        update_queue_messages(&self.http, &self.data, &queue, self.guild_id).await;
+        let cache_http = (&self.cache, self.http.as_ref());
+        update_queue_messages(&cache_http, &self.data, &queue, self.guild_id).await;
 
         None
     }

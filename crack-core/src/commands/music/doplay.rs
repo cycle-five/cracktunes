@@ -13,6 +13,8 @@ use crate::commands::doplay_utils::queue_yt_playlist_front;
 use crate::commands::doplay_utils::rotate_tracks;
 use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offset};
 use crate::commands::get_call_with_fail_msg;
+use crate::commands::youtube::enqueue_track_ready;
+use crate::commands::youtube::ready_query;
 use crate::commands::youtube::search_query_to_source_and_metadata;
 use crate::commands::youtube::search_query_to_source_and_metadata_ytdl;
 use crate::commands::youtube::video_info_to_source_and_metadata;
@@ -400,12 +402,15 @@ async fn play_internal(
     tracing::warn!("query_type: {:?}", query_type);
 
     // FIXME: Super hacky, fix this shit.
+    // This is actually where the track gets queued into the internal queue, it's the main work function.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
 
+    // FIXME: Yeah, this is terrible, fix this.
     if !move_on {
         return Ok(());
     }
 
+    // FIXME: What was the point of this again?
     let _volume = {
         let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
         let guild_settings = settings.entry(guild_id).or_insert_with(|| {
@@ -428,6 +433,11 @@ async fn play_internal(
     // queue.iter().for_each(|t| t.set_volume(volume).unwrap());
     drop(handler);
 
+    // This makes sense, we're getting the final response to the user based on whether
+    // the song / playlist was queued first, last, or is now playing.
+    // Ah! Also, sometimes after a long queue process the now playing message says that it's already
+    // X seconds into the song, so this is definitely after the section of the code that
+    // takes a long time.
     let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
             let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
@@ -600,6 +610,8 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
     }
 }
 
+/// This is what actually does the majority of the work of the function, it finds the track that the user wants to play
+/// and then actually does the process of queuing it. This needs to be optimized.
 async fn match_mode<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -607,15 +619,10 @@ async fn match_mode<'a>(
     query_type: QueryType,
     search_msg: &'a mut Message,
 ) -> Result<bool, Error> {
-    // let is_prefix = ctx.prefix() != "/";
-    // let user_id = ctx.author().id;
-    // let user_id_i64 = ctx.author().id.get() as i64;
     let handler = call.lock().await;
     let queue_was_empty = handler.queue().is_empty();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     drop(handler);
-
-    // let pool = ctx.data().database_pool.clone().unwrap();
 
     tracing::info!("mode: {:?}", mode);
 
@@ -712,7 +719,7 @@ async fn match_mode<'a>(
         },
         Mode::End => match query_type.clone() {
             QueryType::YoutubeSearch(query) => {
-                tracing::trace!("Mode::Jump, QueryType::YoutubeSearch");
+                tracing::trace!("Mode::End, QueryType::YoutubeSearch");
 
                 let res = YoutubeDl::new_search(http_utils::get_client().clone(), query.clone())
                     .search(None)
@@ -722,9 +729,11 @@ async fn match_mode<'a>(
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
-                update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id)
-                    .await;
+                let track_ready_data =
+                    ready_query(ctx, query_type.clone(), ctx.author().id).await?;
+                // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
+                let queue = enqueue_track_ready(&call, track_ready_data).await?;
+                update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
             },
             // FIXME
             QueryType::PlaylistLink(url) => {
@@ -1000,26 +1009,30 @@ pub async fn get_query_type_from_url(
     url: &str,
     file: Option<Attachment>,
 ) -> Result<Option<QueryType>, Error> {
-    // determine whether this is a link or a query string
-    tracing::warn!("url: {}", url);
+    tracing::info!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") | Some("spotify.link") => {
                 let final_url = http_utils::resolve_final_url(url).await?;
-                tracing::warn!("spotify: {} -> {}", url, final_url);
+                tracing::info!(
+                    "spotify: {} -> {}",
+                    url.underline().blue(),
+                    final_url.underline().bright_blue()
+                );
                 let spotify = SPOTIFY.lock().await;
                 let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
                 Some(Spotify::extract(spotify, &final_url).await?)
             },
             Some("cdn.discordapp.com") => {
-                tracing::warn!("{}: {}", "attachement file".blue(), url.underline().blue());
+                tracing::info!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
             },
 
             Some(other) => {
-                let mut settings = ctx.data().guild_settings_map.write().unwrap().clone();
+                let data = ctx.data();
+                let mut settings = data.guild_settings_map.write().unwrap().clone();
                 let guild_settings = settings.entry(guild_id).or_insert_with(|| {
                     GuildSettings::new(
                         guild_id,
@@ -1095,28 +1108,38 @@ pub async fn get_query_type_from_url(
             Some(QueryType::Keywords(url.to_string()))
         },
     };
+    let guild_settings = ctx
+        .data()
+        .get_guild_settings(guild_id)
+        .ok_or(CrackedError::NoGuildSettings)?;
+    check_banned_domains(&guild_settings, query_type).map_err(Into::into)
+}
 
-    let res = if let Some(QueryType::Keywords(_)) = query_type {
-        let settings = ctx.data().guild_settings_map.write().unwrap().clone();
-        let guild_settings = settings.get(&guild_id).unwrap();
+/// Check if the domain that we're playing from is banned.
+// FIXME: This is borked.
+fn check_banned_domains(
+    guild_settings: &GuildSettings,
+    query_type: Option<QueryType>,
+) -> Result<Option<QueryType>, CrackedError> {
+    if let Some(QueryType::Keywords(_)) = query_type {
         if !guild_settings.allow_all_domains.unwrap_or(true)
             && (guild_settings.banned_domains.contains("youtube.com")
                 || (guild_settings.banned_domains.is_empty()
                     && !guild_settings.allowed_domains.contains("youtube.com")))
         {
-            let message = CrackedMessage::PlayDomainBanned {
-                domain: "youtube.com".to_string(),
-            };
+            // let message = CrackedMessage::PlayDomainBanned {
+            //     domain: "youtube.com".to_string(),
+            // };
 
-            send_response_poise_text(ctx, message).await?;
-            Ok(None)
+            // send_response_poise_text(ctx, message).await?;
+            // Ok(None)
+            Err(CrackedError::Other("youtube.com is banned"))
         } else {
-            Result::Ok(query_type)
+            Ok(query_type)
         }
     } else {
-        Result::Ok(query_type)
-    };
-    res
+        Ok(query_type)
+    }
 }
 
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {

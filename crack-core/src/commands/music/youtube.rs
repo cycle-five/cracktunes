@@ -19,6 +19,7 @@ pub struct TrackReadyData {
     pub track: Track,
     pub metadata: MyAuxMetadata,
     pub username: String,
+    pub user_id: UserId,
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -43,7 +44,39 @@ pub async fn ready_query(
         track,
         metadata,
         username,
+        user_id,
     })
+}
+
+/// Pushes a track to the front of the queue, after readying it.
+pub async fn push_front_track_ready(
+    call: &Arc<Mutex<Call>>,
+    ready_track: TrackReadyData,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    handler.queue().modify_queue(|queue| {
+        let back = queue.pop_back().unwrap();
+        queue.push_front(back);
+    });
+
+    Ok(handler.queue().current_queue())
+}
+
+/// Pushes a track to the back of the queue, after readying it.
+pub async fn enqueue_track_ready(
+    call: &Arc<Mutex<Call>>,
+    ready_track: TrackReadyData,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    Ok(handler.queue().current_queue())
 }
 
 /// Pushes a track to the front of the queue.
@@ -54,18 +87,7 @@ pub async fn queue_track_front(
     user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
-    let mut handler = call.lock().await;
-    let track_handle = handler.enqueue(ready_track.track).await;
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-    // let handler = call.lock().await;
-    handler.queue().modify_queue(|queue| {
-        let back = queue.pop_back().unwrap();
-        queue.push_front(back);
-    });
-
-    Ok(handler.queue().current_queue())
+    push_front_track_ready(call, ready_track).await
 }
 
 /// Pushes a track to the front of the queue.
@@ -76,13 +98,7 @@ pub async fn queue_track_back(
     user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
-    let mut handler = call.lock().await;
-    let track_handle = handler.enqueue(ready_track.track).await;
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-    // let handler = call.lock().await;
-    Ok(handler.queue().current_queue())
+    enqueue_track_ready(call, ready_track).await
 }
 
 /// Get the source and metadata from a video link. Return value is a vector due
