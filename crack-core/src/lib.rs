@@ -1,3 +1,4 @@
+#![feature(trivial_bounds)]
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;

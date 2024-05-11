@@ -718,6 +718,7 @@ dependencies = [
  "async-trait",
  "async-tungstenite",
  "audiopus",
+ "bytes",
  "chatgpt_rs",
  "chrono",
  "colored",

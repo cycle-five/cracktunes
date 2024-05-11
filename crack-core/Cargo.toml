@@ -31,6 +31,7 @@ rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-feature
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1.80"
 anyhow = "1.0.82"
+bytes = "1.6.0"
 colored = "2.1.0"
 lazy_static = "1.4.0"
 lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "master", version = "0.1.6" }

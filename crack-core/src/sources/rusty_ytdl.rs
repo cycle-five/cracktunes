@@ -1,11 +1,16 @@
+use std::pin::Pin;
 use std::{fmt::Display, time::Duration};
 
 use crate::{commands::QueryType, errors::CrackedError, http_utils};
+use rusty_ytdl::stream::Stream;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
     Video, VideoInfo,
 };
-use songbird::input::AuxMetadata;
+use serenity::async_trait;
+use serenity::futures::executor::block_on;
+use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
+use symphonia::core::io::MediaSource;
 // use reqwest::header::HeaderMap;
 // use serenity::async_trait;
 // use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
@@ -159,11 +164,11 @@ impl RustyYoutubeClient {
     }
 }
 
-// impl From<RustyYoutubeSearch> for Input {
-//     fn from(val: RustyYoutubeSearch) -> Self {
-//         Input::Lazy(Box::new(val))
-//     }
-// }
+impl From<RustyYoutubeSearch> for Input {
+    fn from(val: RustyYoutubeSearch) -> Self {
+        Input::Lazy(Box::new(val))
+    }
+}
 
 // pub trait RustyYoutubeTrait: rusty_ytdl::stream::Stream + Send + Sync + Read + Seek {}
 // pub struct RustyYoutubeMediaSource {
@@ -193,72 +198,199 @@ impl RustyYoutubeClient {
 //     }
 // }
 
-// #[async_trait]
-// impl Compose for RustyYoutubeSearch {
-//     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-//         Err(AudioStreamError::Unsupported)
-//     }
+#[async_trait]
+impl Compose for RustyYoutubeSearch {
+    fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        Err(AudioStreamError::Unsupported)
+    }
 
-//     async fn create_async(
-//         &mut self,
-//     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-//         let query_str = self
-//             .query
-//             .build_query()
-//             .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
-//         let res = self
-//             .rusty_ytdl
-//             .one_shot(query_str)
-//             .await
-//             .map_err(Into::into)?;
-//         let asdf = res.map(|x| x.clone()).ok_or_else(|| {
-//             let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
-//                 "Failed to instansiate any metadata... Should be unreachable.".into();
-//             AudioStreamError::Fail(msg)
-//         })?;
-//         let search_video = match asdf {
-//             SearchResult::Video(video) => video,
-//             SearchResult::Playlist(playlist) => {
-//                 let video = playlist.videos.first().unwrap();
-//                 video.clone()
-//             },
-//             _ => {
-//                 let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
-//                     "Failed to instansiate any metadata... Should be unreachable.".into();
-//                 return Err(AudioStreamError::Fail(msg));
-//             },
-//         };
-//         let video = Video::new(&search_video.url).map_err(|e| CrackedError::from(e))?;
-//         video
-//             .stream()
-//             .await
-//             .map(|x| AudioStream {
-//                 input: ReadOnlySource::new(x),
-//                 hint: None,
-//             })
-//             .map_err(|e| e.into())
-//     }
+    async fn create_async(
+        &mut self,
+    ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        let query_str = self
+            .query
+            .build_query()
+            .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
+        let res = self.rusty_ytdl.one_shot(query_str).await?;
+        let asdf = res.ok_or_else(|| {
+            let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
+                "Failed to instansiate any metadata... Should be unreachable.".into();
+            AudioStreamError::Fail(msg)
+        })?;
+        let search_video = match asdf {
+            SearchResult::Video(video) => video,
+            SearchResult::Playlist(playlist) => {
+                let video = playlist.videos.first().unwrap();
+                video.clone()
+            },
+            _ => {
+                let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
+                    "Failed to instansiate any metadata... Should be unreachable.".into();
+                return Err(AudioStreamError::Fail(msg));
+            },
+        };
+        let video = Video::new(&search_video.url).map_err(CrackedError::from)?;
+        video
+            .stream()
+            .await
+            .map(|input| {
+                // let stream = AsyncAdapterStream::new(input, 64 * 1024);
+                let stream = Box::into_pin(input).into_media_source();
 
-//     fn should_create_async(&self) -> bool {
-//         true
-//     }
+                AudioStream {
+                    input: Box::new(stream) as Box<dyn MediaSource>,
+                    hint: None,
+                }
+            })
+            .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
+        // .map(|x| AudioStream {
+        //     input: ReadOnlySource::new(x),
+        //     hint: None,
+        // })
+        // .map_err(|e| e.into())
+    }
 
-//     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
-//         if let Some(meta) = self.metadata.as_ref() {
-//             return Ok(meta.clone());
-//         }
+    fn should_create_async(&self) -> bool {
+        true
+    }
 
-//         self.rusty_ytdl
-//             .one_shot(self.query.build_query().unwrap())
-//             .await?;
+    async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
+        if let Some(meta) = self.metadata.as_ref() {
+            return Ok(meta.clone());
+        }
 
-//         self.metadata.clone().ok_or_else(|| {
-//             let msg: crate::Error =
-//                 "Failed to instansiate any metadata... Should be unreachable.".into();
-//             AudioStreamError::Fail(msg)
-//         })
+        self.rusty_ytdl
+            .one_shot(self.query.build_query().unwrap())
+            .await?;
+
+        self.metadata.clone().ok_or_else(|| {
+            let msg: crate::Error =
+                "Failed to instansiate any metadata... Should be unreachable.".into();
+            AudioStreamError::Fail(msg)
+        })
+    }
+}
+
+use bytes::Buf;
+use bytes::BytesMut;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+pub trait StreamExt {
+    fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream;
+    // where
+    //     Self: Stream + Send + Sync + 'static,
+    // {
+    //     MediaSourceStream {
+    //         stream: self,
+    //         buffer: Arc::new(RwLock::new(BytesMut::new())),
+    //         position: Arc::new(RwLock::new(0)),
+    //     }
+    // }
+}
+
+// //impl<T: ?Sized + Stream + Sync + Send + 'static> StreamExt for T {
+// pub struct StreamWrapper<T: ?Sized + Stream + Sync + Send> {
+//     stream: Box<T>,
+// }
+
+// impl Deref for StreamWrapper<dyn Stream + Sync + Send> {
+//     type Target = dyn Stream + Sync + Send;
+
+//     fn deref(&self) -> &Self::Target {
+//         &*self.stream
 //     }
 // }
+
+impl StreamExt for dyn Stream + Sync + Send {
+    fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream
+    where
+        Self: Sync + Send + 'static,
+    {
+        MediaSourceStream {
+            stream: self,
+            buffer: Arc::new(RwLock::new(BytesMut::new())),
+            position: Arc::new(RwLock::new(0)),
+        }
+    }
+}
+
+pub struct MediaSourceStream {
+    //stream: Box<&'a StreamWrapper<dyn Stream + Sync + Send>>,
+    stream: Pin<Box<dyn Stream + Sync + Send>>,
+    buffer: Arc<RwLock<BytesMut>>,
+    position: Arc<RwLock<u64>>,
+}
+
+impl Read for MediaSourceStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut buffer = self.buffer.blocking_write();
+        let mut position = self.position.blocking_write();
+
+        if buffer.is_empty() {
+            let fut = self.stream.chunk();
+            let result = block_on(fut).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            if let Some(chunk) = result {
+                buffer.extend_from_slice(&chunk);
+            } else {
+                return Ok(0); // End of stream
+            }
+        }
+
+        let len = std::cmp::min(buf.len(), buffer.len());
+        buf[..len].copy_from_slice(&buffer[..len]);
+        buffer.advance(len);
+        *position += len as u64;
+
+        Ok(len)
+    }
+}
+
+impl Seek for MediaSourceStream {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match pos {
+            // Why was this here...?
+            // SeekFrom::Start(_) | SeekFrom::End(_) => Err(io::Error::new(
+            //     io::ErrorKind::Unsupported,
+            //     "Seeking is not supported",
+            // )),
+            SeekFrom::End(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Seeking is not supported",
+            )),
+            SeekFrom::Start(offset) => {
+                let mut position = self.position.blocking_write();
+                *position = offset;
+                Ok(*position)
+            },
+            SeekFrom::Current(offset) => {
+                let mut position = self.position.blocking_write();
+                let new_position = (*position as i64) + offset;
+                if new_position < 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid seek position",
+                    ));
+                }
+                *position = new_position as u64;
+                Ok(*position)
+            },
+        }
+    }
+}
+
+impl MediaSource for MediaSourceStream {
+    fn is_seekable(&self) -> bool {
+        // false
+        true
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        None
+    }
+}
 
 #[cfg(test)]
 mod test {
