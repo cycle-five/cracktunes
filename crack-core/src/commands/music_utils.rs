@@ -84,8 +84,8 @@ pub async fn get_call_with_fail_msg(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>
 
     // Return the call if it already exists
     let maybe_call = manager.get(guild_id);
-    if maybe_call.is_some() {
-        return Ok(maybe_call.unwrap());
+    if let Some(call) = maybe_call {
+        return Ok(call);
     }
 
     // Otherwise, try to join the channel of the user who sent the message.

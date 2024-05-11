@@ -251,13 +251,11 @@ impl EventHandler for ModifyQueueHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let queue = {
             let handler = self.call.lock().await;
-            let queue = handler.queue().current_queue().clone();
-            queue
+            handler.queue().current_queue().clone()
         };
         let vol = {
             let guild_settings = self.data.get_guild_settings(self.guild_id);
-            let vol = guild_settings.map(|x| x.volume);
-            vol
+            guild_settings.map(|x| x.volume)
         };
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
