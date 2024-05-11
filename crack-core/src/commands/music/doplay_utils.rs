@@ -1,7 +1,7 @@
+use super::youtube::queue_track_back;
 use super::{Mode, QueryType};
 use crate::db::Metadata;
 use crate::errors::verify;
-use crate::handlers::track_end::update_queue_messages;
 use crate::http_utils::CacheHttpExt;
 use crate::{
     commands::{MyAuxMetadata, RequestingUser},
@@ -141,14 +141,14 @@ pub async fn queue_yt_playlist_internal<'a>(
     if mode == Mode::Next {
         for track in track_data.rev().collect::<Vec<QueueTrackData>>() {
             let new_query = QueryType::VideoLink(track.url.to_string());
-            let ready_track = ready_query(ctx, new_query, user_id).await?;
+            let ready_track = ready_query(ctx, new_query).await?;
             tracks.push(ready_track);
             titles.push_str(&format!("{}\n", track.title));
         }
     } else {
         for track in track_data.collect::<Vec<QueueTrackData>>() {
             let new_query = QueryType::VideoLink(track.url.to_string());
-            let ready_track = ready_query(ctx, new_query, user_id).await?;
+            let ready_track = ready_query(ctx, new_query).await?;
             tracks.push(ready_track);
             titles.push_str(&format!("{}\n", track.title));
         }
@@ -226,7 +226,7 @@ pub async fn queue_keyword_list_w_offset<'a>(
     offset: usize,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut failed: usize = 0;
     let n = keyword_list.len() as f32;
     for (idx, keywords) in keyword_list.into_iter().enumerate() {
@@ -236,7 +236,7 @@ pub async fn queue_keyword_list_w_offset<'a>(
                 EditMessage::new().embed(CreateEmbed::default().description(format!(
                     "Queuing: {}\n{}% Done...",
                     keywords,
-                    (idx as f32 / n) * 100.0
+                    ((idx as f32 / n) * 100.0) as i32
                 ))),
             )
             .await?;
@@ -258,8 +258,8 @@ pub async fn queue_keyword_list_w_offset<'a>(
             continue;
         }
         // TODO: Perhaps pass this off to a background task?
-        update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     }
+    // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
 
     Ok(())
 }
@@ -272,6 +272,8 @@ pub async fn insert_track(
     query_type: &QueryType,
     idx: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    use crate::commands::youtube::queue_track_back;
+
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
     drop(handler);
@@ -287,7 +289,7 @@ pub async fn insert_track(
         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
     )?;
 
-    enqueue_track_pgwrite(ctx, call, query_type).await?;
+    queue_track_back(ctx, call, query_type).await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
@@ -311,8 +313,7 @@ pub async fn enqueue_track_pgwrite(
     // let user_id = ctx.author().id;
     // let http = ctx.http();
 
-    use super::youtube;
-    youtube::queue_track_back(ctx, call, query_type, ctx.author().id).await
+    queue_track_back(ctx, call, query_type).await
     // enqueue_track_pgwrite_asdf(
     //     ctx.data().database_pool.as_ref().unwrap(),
     //     ctx.guild_id().unwrap(),

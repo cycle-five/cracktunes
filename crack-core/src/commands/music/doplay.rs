@@ -643,13 +643,7 @@ async fn match_mode<'a>(
                     )
                     .await?;
                     let queue = enqueue_track_pgwrite(ctx, &call, &qt).await?;
-                    update_queue_messages(
-                        &ctx.serenity_context().http,
-                        ctx.data(),
-                        &queue,
-                        guild_id,
-                    )
-                    .await
+                    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await
                     // match_mode(ctx, call.clone(), Mode::End, qt).await
                     // send_search_response(ctx, guild_id, user_id, keywords, search_results).await?;
                 },
@@ -729,8 +723,7 @@ async fn match_mode<'a>(
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                let track_ready_data =
-                    ready_query(ctx, query_type.clone(), ctx.author().id).await?;
+                let track_ready_data = ready_query(ctx, query_type.clone()).await?;
                 // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
                 let queue = enqueue_track_ready(&call, track_ready_data).await?;
                 update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;

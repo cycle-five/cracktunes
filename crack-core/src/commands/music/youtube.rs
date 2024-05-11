@@ -26,8 +26,8 @@ pub struct TrackReadyData {
 pub async fn ready_query(
     ctx: CrackContext<'_>,
     query_type: QueryType,
-    user_id: UserId,
 ) -> Result<TrackReadyData, CrackedError> {
+    let user_id = ctx.author().id;
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
         get_track_source_and_metadata(query_type.clone()).await?;
     let metadata = match metadata_vec.first() {
@@ -84,9 +84,8 @@ pub async fn queue_track_front(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
-    user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
+    let ready_track = ready_query(ctx, query_type.clone()).await?;
     push_front_track_ready(call, ready_track).await
 }
 
@@ -95,9 +94,8 @@ pub async fn queue_track_back(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
-    user_id: UserId,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let ready_track = ready_query(ctx, query_type.clone(), user_id).await?;
+    let ready_track = ready_query(ctx, query_type.clone()).await?;
     enqueue_track_ready(call, ready_track).await
 }
 
