@@ -356,10 +356,22 @@ impl Seek for MediaSourceStream {
             //     io::ErrorKind::Unsupported,
             //     "Seeking is not supported",
             // )),
-            SeekFrom::End(_) => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "Seeking is not supported",
-            )),
+            SeekFrom::End(offset) => {
+                let len = self.byte_len().ok_or(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid seek position",
+                ))?;
+                let new_position = len as i64 + offset;
+                if new_position < 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid seek position",
+                    ));
+                }
+                let mut position = self.position.blocking_write();
+                *position = new_position as u64;
+                Ok(*position)
+            },
             SeekFrom::Start(offset) => {
                 let mut position = self.position.blocking_write();
                 *position = offset;
@@ -383,12 +395,11 @@ impl Seek for MediaSourceStream {
 
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        // false
         true
     }
 
     fn byte_len(&self) -> Option<u64> {
-        None
+        Some(self.stream.content_length() as u64)
     }
 }
 
