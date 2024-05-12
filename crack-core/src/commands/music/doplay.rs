@@ -15,7 +15,7 @@ use crate::commands::doplay_utils::{get_mode, get_msg, queue_keyword_list_w_offs
 use crate::commands::get_call_with_fail_msg;
 use crate::commands::youtube::enqueue_track_ready;
 use crate::commands::youtube::ready_query;
-use crate::commands::youtube::search_query_to_source_and_metadata;
+use crate::commands::youtube::search_query_to_source_and_metadata_rusty;
 use crate::commands::youtube::search_query_to_source_and_metadata_ytdl;
 use crate::commands::youtube::video_info_to_source_and_metadata;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
@@ -154,7 +154,11 @@ impl QueryType {
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                let res = search_query_to_source_and_metadata(client.clone(), query.clone()).await;
+                let res = search_query_to_source_and_metadata_rusty(
+                    client.clone(),
+                    QueryType::Keywords(query.clone()),
+                )
+                .await;
                 match res {
                     Ok((input, metadata)) => Ok((input, metadata)),
                     Err(_) => {
@@ -1062,10 +1066,7 @@ pub async fn get_query_type_from_url(
                     let rusty_ytdl = RustyYoutubeClient::new()?;
                     let res_info = rusty_ytdl.get_video_info(url.to_string()).await;
                     let metadata = match res_info {
-                        Ok(info) => {
-                            tracing::warn!("info: {:?}", info);
-                            RustyYoutubeClient::video_info_to_aux_metadata(&info)
-                        },
+                        Ok(info) => RustyYoutubeClient::video_info_to_aux_metadata(&info),
                         _ => {
                             tracing::warn!("info: None, falling back to yt-dlp");
                             AuxMetadata {

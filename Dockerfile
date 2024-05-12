@@ -58,7 +58,8 @@ RUN sudo apt-get update \
        && sudo apt-get clean -y \
        && sudo rm -rf /var/lib/apt/lists/*
 
-RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux \
+#RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux \
+RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2024.05.11.232654/yt-dlp_linux \
        && sudo chmod +x /usr/local/bin/yt-dlp
 
 

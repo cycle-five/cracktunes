@@ -110,10 +110,15 @@ pub async fn video_info_to_source_and_metadata(
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
     let video_info = rytdl.get_video_info(url.clone()).await?;
     let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
-    let my_metadata = MyAuxMetadata::Data(metadata);
+    let my_metadata = MyAuxMetadata::Data(metadata.clone());
 
-    let ytdl = YoutubeDl::new(client, url);
-    Ok((ytdl.into(), vec![my_metadata]))
+    // let ytdl = YoutubeDl::new(client, url);
+    let rusty_search = RustyYoutubeSearch {
+        rusty_ytdl: rytdl,
+        metadata: Some(metadata.clone()),
+        query: QueryType::VideoLink(url),
+    };
+    Ok((rusty_search.into(), vec![my_metadata]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -245,7 +250,11 @@ pub async fn get_track_source_and_metadata(
         },
         QueryType::Keywords(query) => {
             tracing::warn!("In Keywords");
-            let res = search_query_to_source_and_metadata(client.clone(), query.clone()).await;
+            let res = search_query_to_source_and_metadata_rusty(
+                client.clone(),
+                QueryType::Keywords(query.clone()),
+            )
+            .await;
             match res {
                 Ok((input, metadata)) => Ok((input, metadata)),
                 Err(_) => {

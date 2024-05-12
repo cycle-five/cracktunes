@@ -351,11 +351,6 @@ impl Read for MediaSourceStream {
 impl Seek for MediaSourceStream {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match pos {
-            // Why was this here...?
-            // SeekFrom::Start(_) | SeekFrom::End(_) => Err(io::Error::new(
-            //     io::ErrorKind::Unsupported,
-            //     "Seeking is not supported",
-            // )),
             SeekFrom::End(offset) => {
                 let len = self.byte_len().ok_or(io::Error::new(
                     io::ErrorKind::InvalidInput,
