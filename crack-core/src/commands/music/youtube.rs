@@ -1,5 +1,6 @@
 use super::{QueryType, RequestingUser};
 use crate::http_utils::CacheHttpExt;
+use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::Context as CrackContext;
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, http_utils,
@@ -122,6 +123,7 @@ pub async fn search_query_to_source_and_metadata(
     query: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
+
     let metadata = {
         let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
         // let rytdl = RustyYoutubeClient::new()?;
@@ -136,6 +138,7 @@ pub async fn search_query_to_source_and_metadata(
         let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
         metadata.clone()
     };
+
     let source_url = match metadata.clone().source_url {
         Some(url) => url.clone(),
         None => "".to_string(),
@@ -144,6 +147,52 @@ pub async fn search_query_to_source_and_metadata(
     let my_metadata = MyAuxMetadata::Data(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
+    // Ok((ytdl.into(), vec![MyAuxMetadata::Data(metadata)]))
+}
+
+/// Search youtube for a query and return the source (playable)
+/// and metadata.
+pub async fn search_query_to_source_and_metadata_rusty(
+    client: reqwest::Client,
+    query: QueryType,
+) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
+    let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+
+    let metadata = {
+        // let rytdl = RustyYoutubeClient::new()?;
+        tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
+        let results = rytdl
+            .one_shot(
+                query
+                    .build_query()
+                    .ok_or(CrackedError::Other("No query given"))?,
+            )
+            .await?;
+        tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
+        // FIXME: Fallback to yt-dlp
+        let result = match results {
+            Some(r) => r,
+            None => return Err(CrackedError::EmptySearchResult),
+        };
+        let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
+        metadata.clone()
+    };
+
+    let rusty_search = RustyYoutubeSearch {
+        rusty_ytdl: rytdl,
+        metadata: Some(metadata.clone()),
+        query,
+    };
+    // let source_url = match metadata.clone().source_url {
+    //     Some(url) => url.clone(),
+    //     None => "".to_string(),
+    // };
+    // let ytdl = YoutubeDl::new(client, source_url);
+    // let my_metadata = MyAuxMetadata::Data(metadata);
+
+    // Ok((ytdl.into(), vec![my_metadata]))
+    Ok((rusty_search.into(), vec![MyAuxMetadata::Data(metadata)]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -187,6 +236,7 @@ pub async fn get_track_source_and_metadata(
         QueryType::VideoLink(query) => {
             tracing::warn!("In VideoLink");
             video_info_to_source_and_metadata(client.clone(), query).await
+            // get_source_and_metadata_rusty(client.clone(), query).await
             // let mut ytdl = YoutubeDl::new(client, query);
             // tracing::warn!("ytdl: {:?}", ytdl);
             // let metadata = ytdl.aux_metadata().await?;

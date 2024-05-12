@@ -36,9 +36,9 @@ impl Display for RustyYoutubeClient {
 
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeSearch {
-    rusty_ytdl: RustyYoutubeClient,
-    metadata: Option<AuxMetadata>,
-    query: QueryType,
+    pub rusty_ytdl: RustyYoutubeClient,
+    pub metadata: Option<AuxMetadata>,
+    pub query: QueryType,
 }
 
 impl Display for RustyYoutubeSearch {
