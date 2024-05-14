@@ -9,12 +9,57 @@ use rusty_ytdl::{
 };
 use serenity::async_trait;
 use serenity::futures::executor::block_on;
-use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
+use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
 use symphonia::core::io::MediaSource;
 // use reqwest::header::HeaderMap;
 // use serenity::async_trait;
 // use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
 // use symphonia::core::io::{MediaSource, ReadOnlySource};
+
+/// Hacky, why did I do this?
+pub trait AsString {
+    fn as_string(&self) -> String;
+}
+
+impl AsString for SearchResult {
+    fn as_string(&self) -> String {
+        match self {
+            SearchResult::Video(video) => video.title.clone(),
+            SearchResult::Playlist(playlist) => playlist.name.clone(),
+            SearchResult::Channel(channel) => channel.name.clone(),
+        }
+    }
+}
+
+impl AsString for VideoInfo {
+    fn as_string(&self) -> String {
+        self.video_details.title.clone()
+    }
+}
+
+impl AsString for Playlist {
+    fn as_string(&self) -> String {
+        self.name.clone()
+    }
+}
+
+impl AsString for YouTube {
+    fn as_string(&self) -> String {
+        "YouTube".to_string()
+    }
+}
+
+impl AsString for YoutubeDl {
+    fn as_string(&self) -> String {
+        format!("YoutubeDl")
+    }
+}
+
+impl AsString for RustyYoutubeClient {
+    fn as_string(&self) -> String {
+        self.to_string()
+    }
+}
 
 /// Out strucut to wrap the rusty-ytdl search instance
 //TODO expand to go beyond search
@@ -39,6 +84,27 @@ pub struct RustyYoutubeSearch {
     pub rusty_ytdl: RustyYoutubeClient,
     pub metadata: Option<AuxMetadata>,
     pub query: QueryType,
+}
+
+/// More general struct to wrap the search instances. Name this better.
+#[derive(Clone, Debug)]
+pub struct FastYoutubeSearch {
+    pub query: QueryType,
+    pub client: reqwest::Client,
+    pub ytdl: either::Either<RustyYoutubeClient, YoutubeDl>,
+    pub metadata: Option<AuxMetadata>,
+}
+
+impl Display for FastYoutubeSearch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            r#"FastYT: Query: {:?}
+            ytdl: {:?}"#,
+            self.query.build_query(),
+            either::for_both!(&self.ytdl, ytdl => ytdl.as_string()),
+        )
+    }
 }
 
 impl Display for RustyYoutubeSearch {
@@ -211,26 +277,23 @@ impl Compose for RustyYoutubeSearch {
             .query
             .build_query()
             .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
-        let res = self.rusty_ytdl.one_shot(query_str).await?;
-        let asdf = res.ok_or_else(|| {
-            let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
-                "Failed to instansiate any metadata... Should be unreachable.".into();
-            AudioStreamError::Fail(msg)
-        })?;
-        let search_video = match asdf {
+        let search_res = self
+            .rusty_ytdl
+            .one_shot(query_str)
+            .await?
+            .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
+        let search_video = match search_res {
             SearchResult::Video(video) => video,
             SearchResult::Playlist(playlist) => {
                 let video = playlist.videos.first().unwrap();
                 video.clone()
             },
             _ => {
-                let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
-                    "Failed to instansiate any metadata... Should be unreachable.".into();
-                return Err(AudioStreamError::Fail(msg));
+                return Err(Into::into(CrackedError::AudioStreamRustyYtdlMetadata));
             },
         };
-        let video = Video::new(&search_video.url).map_err(CrackedError::from)?;
-        video
+        Video::new(&search_video.url)
+            .map_err(CrackedError::from)?
             .stream()
             .await
             .map(|input| {
@@ -243,11 +306,6 @@ impl Compose for RustyYoutubeSearch {
                 }
             })
             .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
-        // .map(|x| AudioStream {
-        //     input: ReadOnlySource::new(x),
-        //     hint: None,
-        // })
-        // .map_err(|e| e.into())
     }
 
     fn should_create_async(&self) -> bool {
@@ -263,11 +321,9 @@ impl Compose for RustyYoutubeSearch {
             .one_shot(self.query.build_query().unwrap())
             .await?;
 
-        self.metadata.clone().ok_or_else(|| {
-            let msg: crate::Error =
-                "Failed to instansiate any metadata... Should be unreachable.".into();
-            AudioStreamError::Fail(msg)
-        })
+        self.metadata
+            .clone()
+            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
     }
 }
 

@@ -1,10 +1,10 @@
 use crate::messaging::messages::{
-    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
-    FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
-    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
-    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, QUEUE_IS_EMPTY,
-    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
+    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN,
+    FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY,
+    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY,
+    NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
+    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -25,6 +25,7 @@ use std::process::ExitStatus;
 pub enum CrackedError {
     AlreadyConnected(Mention),
     AudioStream(AudioStreamError),
+    AudioStreamRustyYtdlMetadata,
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
@@ -98,6 +99,9 @@ impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::AudioStream(err) => f.write_str(&format!("{err}")),
+            Self::AudioStreamRustyYtdlMetadata => {
+                f.write_str(FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA)
+            },
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             },
