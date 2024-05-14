@@ -51,7 +51,7 @@ impl AsString for YouTube {
 
 impl AsString for YoutubeDl {
     fn as_string(&self) -> String {
-        format!("YoutubeDl")
+        "YoutubeDl".to_string()
     }
 }
 
