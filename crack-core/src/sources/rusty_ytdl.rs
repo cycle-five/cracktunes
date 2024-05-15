@@ -8,7 +8,7 @@ use rusty_ytdl::{
     Video, VideoInfo,
 };
 use serenity::async_trait;
-use serenity::futures::executor::block_on;
+//use serenity::futures::executor::block_on_stream;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
 use symphonia::core::io::MediaSource;
 // use reqwest::header::HeaderMap;
@@ -379,20 +379,30 @@ pub struct MediaSourceStream {
     position: Arc<RwLock<u64>>,
 }
 
-impl Read for MediaSourceStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut buffer = self.buffer.blocking_write();
-        let mut position = self.position.blocking_write();
+impl MediaSourceStream {
+    async fn read_async(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let opt_bytes = if self.buffer.read().await.is_empty() {
+            either::Left(
+                self.stream
+                    .chunk()
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+            )
+        } else {
+            either::Right(())
+        };
 
-        if buffer.is_empty() {
-            let fut = self.stream.chunk();
-            let result = block_on(fut).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let chunk = match opt_bytes {
+            either::Left(Some(chunk)) => Some(chunk),
+            either::Left(None) => return Ok(0), // End of stream
+            either::Right(_) => None,
+        };
 
-            if let Some(chunk) = result {
-                buffer.extend_from_slice(&chunk);
-            } else {
-                return Ok(0); // End of stream
-            }
+        let mut buffer = self.buffer.write().await;
+        let mut position = self.position.write().await;
+
+        if let Some(chunk) = chunk {
+            buffer.extend_from_slice(&chunk);
         }
 
         let len = std::cmp::min(buf.len(), buffer.len());
@@ -401,6 +411,46 @@ impl Read for MediaSourceStream {
         *position += len as u64;
 
         Ok(len)
+    }
+}
+
+impl Read for MediaSourceStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // Get the current tokio runtime
+
+        tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
+        })
+        // tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
+        // let opt_bytes = if self.buffer.blocking_read().is_empty() {
+        //     let fut = self.stream.chunk();
+        //     either::Left(
+        //         serenity::futures::executor::block_on(fut)
+        //             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+        //     )
+        // } else {
+        //     either::Right(())
+        // };
+
+        // let chunk = match opt_bytes {
+        //     either::Left(Some(chunk)) => Some(chunk),
+        //     either::Left(None) => return Ok(0), // End of stream
+        //     either::Right(_) => None,
+        // };
+
+        // let mut buffer = self.buffer.blocking_write();
+        // let mut position = self.position.blocking_write();
+
+        // if let Some(chunk) = chunk {
+        //     buffer.extend_from_slice(&chunk);
+        // }
+
+        // let len = std::cmp::min(buf.len(), buffer.len());
+        // buf[..len].copy_from_slice(&buffer[..len]);
+        // buffer.advance(len);
+        // *position += len as u64;
+
+        // Ok(len)
     }
 }
 
@@ -446,11 +496,12 @@ impl Seek for MediaSourceStream {
 
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        true
+        false
     }
 
     fn byte_len(&self) -> Option<u64> {
-        Some(self.stream.content_length() as u64)
+        // Some(self.stream.content_length() as u64)
+        Some(0)
     }
 }
 
@@ -468,18 +519,20 @@ mod test {
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
-        if playlist.is_err() {
-            assert!(playlist
-                .unwrap_err()
-                .to_string()
-                .contains("Your IP is likely being blocked"));
-        } else {
-            let playlist_val = playlist.unwrap().unwrap();
-            let metadata =
-                crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
-                    &playlist_val,
-                );
-            println!("{:?}", metadata);
+        match playlist {
+            Ok(Some(playlist)) => {
+                let metadata =
+                    crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
+                        &playlist,
+                    );
+                println!("{:?}", metadata);
+            },
+            Ok(None) => {
+                assert!(false)
+            },
+            Err(e) => {
+                assert!(e.to_string().contains("Your IP is likely being blocked"))
+            },
         }
     }
 

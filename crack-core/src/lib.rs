@@ -291,6 +291,8 @@ impl PhoneCodeData {
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
+    // #[serde(skip)]
+    // pub rt_handle: Arc<RwLock<Option<tokio::runtime::Handle>>>,
     #[serde(skip)]
     pub phone_data: PhoneCodeData,
     pub up_prefix: &'static str,
@@ -462,7 +464,14 @@ impl EventLog {
 impl Default for DataInner {
     fn default() -> Self {
         // let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
+        // let runtime = tokio::runtime::Builder::new_multi_thread()
+        //     .worker_threads(4)
+        //     .enable_all()
+        //     .build()
+        //     .unwrap();
+        // let rt_handle = Arc::new(RwLock::new(Some(runtime.handle().clone())));
         Self {
+            // rt_handle,
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
             bot_settings: Default::default(),

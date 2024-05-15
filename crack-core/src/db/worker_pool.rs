@@ -9,7 +9,7 @@ use tracing;
 use crate::db::{metadata::aux_metadata_to_db_structures, Metadata, PlayLog, User};
 use crate::CrackedError;
 
-const CHANNEL_BUF_SIZE: usize = 100;
+const CHANNEL_BUF_SIZE: usize = 256;
 
 /// Data needed to write a metadata entry to the database.
 #[derive(Debug, Clone)]
