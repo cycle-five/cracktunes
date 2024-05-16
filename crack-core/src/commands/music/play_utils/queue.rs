@@ -226,17 +226,6 @@ pub async fn queue_yt_playlist_internal<'a>(
     //queue_tracks_ready(ctx, call, tracks, search_msg, mode).await
 }
 
-// /// Queue a list of keywords to be played at the front of the queue.
-// #[cfg(not(tarpaulin_include))]
-// pub async fn queue_keyword_list_front<'a>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     keyword_list: Vec<String>,
-//     msg: &'a mut Message,
-// ) -> Result<(), Error> {
-//     queue_keyword_list_w_offset(ctx, call, keyword_list, 1, msg).await
-// }
-
 /// Queue a list of keywords to be played from the end of the queue.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_keyword_list_back<'a>(
@@ -245,7 +234,10 @@ pub async fn queue_keyword_list_back<'a>(
     keyword_list: Vec<String>,
     msg: &'a mut Message,
 ) -> Result<(), Error> {
-    queue_keyword_list_inside_out(ctx, call, keyword_list, msg).await
+    for chunk in keyword_list.chunks(10) {
+        queue_keyword_list_inside_out(ctx, call.clone(), chunk.to_vec(), msg).await?
+    }
+    Ok(())
 }
 
 /// Queue a list of keywords to be played with an offset.
@@ -268,69 +260,22 @@ pub async fn queue_keyword_list_inside_out<'a>(
         )
         .await?;
 
-    let size = keyword_list.len();
     let mut tracks = Vec::new();
 
-    for keywords in keyword_list.into_iter() {
+    for keywords in keyword_list {
         let query_type = QueryType::Keywords(keywords);
         let ready_track = ready_query(ctx, query_type).await?;
         tracks.push(ready_track);
-        // search_msg
-        //     .edit(
-        //         ctx,
-        //         EditMessage::new().embed(CreateEmbed::default().description(format!(
-        //             "Queuing: {}\n{}% Done...",
-        //             keywords,
-        //             ((idx as f32 / n) * 100.0) as i32
-        //         ))),
-        //     )
-        //     .await?;
-        // let queue_res = if offset > 0 {
-        //     let idx = idx + offset - failed;
-        //     insert_track(ctx, &call, &QueryType::Keywords(keywords), idx).await
-        // } else {
-        //     enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
-        // };
-        // let _ = match queue_res {
-        //     Ok(x) => x,
-        //     Err(e) => {
-        //         tracing::error!("enqueue_track_pgwrite error: {}", e);
-        //         failed += 1;
-        //         Vec::new()
-        //     },
-        // };
+        //     search_msg
+        //         .edit(
+        //             ctx,
+        //             EditMessage::new().embed(
+        //                 CreateEmbed::default().description(format!("Queuing {} songs...", size)),
+        //             ),
+        //         )
     }
-    search_msg
-        .edit(
-            ctx,
-            EditMessage::new()
-                .embed(CreateEmbed::default().description(format!("Queuing {} songs...", size))),
-        )
-        .await?;
-
-    // let n = ((size as f32) / 10.0) as usize;
-    // for i in 0..n {
-    //     let beg = i * n;
-    //     let end = (i + 1) * n;
-    //     let slice = &tracks[beg..end];
-
-    //     search_msg
-    //         .edit(
-    //             ctx,
-    //             EditMessage::new().embed(CreateEmbed::default().description(format!(
-    //                 "Queuing {}% Done...",
-    //                 ((i as f32 / n as f32) * 100.0) as i32
-    //             ))),
-    //         )
-    //         .await?;
-    //     let _queue =
-    //         queue_ready_track_list(call.clone(), ctx.author().id, slice.to_vec(), Mode::End)
-    //             .await?;
-    // }
-    // let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
     let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
-
     Ok(())
 }
 
