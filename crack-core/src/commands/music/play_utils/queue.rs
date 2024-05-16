@@ -115,15 +115,22 @@ pub async fn queue_yt_playlist_front<'a>(
 /// Queue a list of tracks to be played.
 pub async fn queue_ready_track_list(
     call: Arc<Mutex<Call>>,
-    user_id: UserId,
+    _user_id: UserId,
+    // tracks: &[TrackReadyData],
     tracks: Vec<TrackReadyData>,
     mode: Mode,
 ) -> Result<Vec<TrackHandle>, Error> {
     let mut handler = call.lock().await;
     for ready_track in tracks {
-        let track_handle = handler.enqueue(ready_track.track).await;
+        let TrackReadyData {
+            track,
+            metadata,
+            user_id,
+            ..
+        } = ready_track;
+        let track_handle = handler.enqueue(track).await;
         let mut map = track_handle.typemap().write().await;
-        map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+        map.insert::<MyAuxMetadata>(metadata);
         map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
@@ -300,25 +307,27 @@ pub async fn queue_keyword_list_inside_out<'a>(
                 .embed(CreateEmbed::default().description(format!("Queuing {} songs...", size))),
         )
         .await?;
-    let n = ((size as f32) / 10.0) as usize;
-    for i in 0..n {
-        let beg = i * n;
-        let end = (i + 1) * n;
-        let slice = &tracks[beg..end];
 
-        search_msg
-            .edit(
-                ctx,
-                EditMessage::new().embed(CreateEmbed::default().description(format!(
-                    "Queuing {}% Done...",
-                    ((i as f32 / n as f32) * 100.0) as i32
-                ))),
-            )
-            .await?;
-        let _queue =
-            queue_ready_track_list(call.clone(), ctx.author().id, slice.to_vec(), Mode::End)
-                .await?;
-    }
+    // let n = ((size as f32) / 10.0) as usize;
+    // for i in 0..n {
+    //     let beg = i * n;
+    //     let end = (i + 1) * n;
+    //     let slice = &tracks[beg..end];
+
+    //     search_msg
+    //         .edit(
+    //             ctx,
+    //             EditMessage::new().embed(CreateEmbed::default().description(format!(
+    //                 "Queuing {}% Done...",
+    //                 ((i as f32 / n as f32) * 100.0) as i32
+    //             ))),
+    //         )
+    //         .await?;
+    //     let _queue =
+    //         queue_ready_track_list(call.clone(), ctx.author().id, slice.to_vec(), Mode::End)
+    //             .await?;
+    // }
+    // let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
     let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
 

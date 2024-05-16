@@ -14,7 +14,6 @@ use songbird::{
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone)]
 pub struct TrackReadyData {
     pub track: Track,
     pub metadata: MyAuxMetadata,
