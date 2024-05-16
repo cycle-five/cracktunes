@@ -1,3 +1,4 @@
+#![feature(iter_array_chunks)]
 use std::process::Command;
 fn main() {
     // make sure tarpaulin is included in the build

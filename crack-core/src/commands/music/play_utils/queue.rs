@@ -3,7 +3,7 @@ use crate::db::Metadata;
 use crate::errors::verify;
 use crate::handlers::track_end::update_queue_messages;
 use crate::http_utils::CacheHttpExt;
-use crate::sources::youtube::queue_track_back;
+use crate::sources::youtube::{queue_track_back, TrackReadyData};
 use crate::{
     commands::{Mode, MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
@@ -112,6 +112,30 @@ pub async fn queue_yt_playlist_front<'a>(
         .map(|_| ())
 }
 
+/// Queue a list of tracks to be played.
+pub async fn queue_ready_track_list(
+    call: Arc<Mutex<Call>>,
+    user_id: UserId,
+    tracks: Vec<TrackReadyData>,
+    mode: Mode,
+) -> Result<Vec<TrackHandle>, Error> {
+    let mut handler = call.lock().await;
+    for ready_track in tracks {
+        let track_handle = handler.enqueue(ready_track.track).await;
+        let mut map = track_handle.typemap().write().await;
+        map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+        map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+        if mode == Mode::Next {
+            handler.queue().modify_queue(|queue| {
+                let back = queue.pop_back().unwrap();
+                queue.push_front(back);
+            });
+        }
+    }
+    // let handler = call.lock().await;
+    Ok(handler.queue().current_queue())
+}
+
 /// Queue a YouTube playlist to be played.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_yt_playlist_internal<'a>(
@@ -214,49 +238,88 @@ pub async fn queue_keyword_list_back<'a>(
     keyword_list: Vec<String>,
     msg: &'a mut Message,
 ) -> Result<(), Error> {
-    queue_keyword_list_w_offset(ctx, call, keyword_list, 0, msg).await
+    queue_keyword_list_inside_out(ctx, call, keyword_list, msg).await
 }
 
 /// Queue a list of keywords to be played with an offset.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_w_offset2<'a>(
+pub async fn queue_keyword_list_inside_out<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     keyword_list: Vec<String>,
-    offset: usize,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
+    use crate::sources::youtube::ready_query;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let mut failed: usize = 0;
-    let n = keyword_list.len() as f32;
-    for (idx, keywords) in keyword_list.into_iter().enumerate() {
+    search_msg
+        .edit(
+            ctx,
+            EditMessage::new().embed(
+                CreateEmbed::default()
+                    .description(format!("Searching {} songs...", keyword_list.len())),
+            ),
+        )
+        .await?;
+
+    let size = keyword_list.len();
+    let mut tracks = Vec::new();
+
+    for (_idx, keywords) in keyword_list.into_iter().enumerate() {
+        let query_type = QueryType::Keywords(keywords);
+        let ready_track = ready_query(ctx, query_type).await?;
+        tracks.push(ready_track);
+        // search_msg
+        //     .edit(
+        //         ctx,
+        //         EditMessage::new().embed(CreateEmbed::default().description(format!(
+        //             "Queuing: {}\n{}% Done...",
+        //             keywords,
+        //             ((idx as f32 / n) * 100.0) as i32
+        //         ))),
+        //     )
+        //     .await?;
+        // let queue_res = if offset > 0 {
+        //     let idx = idx + offset - failed;
+        //     insert_track(ctx, &call, &QueryType::Keywords(keywords), idx).await
+        // } else {
+        //     enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
+        // };
+        // let _ = match queue_res {
+        //     Ok(x) => x,
+        //     Err(e) => {
+        //         tracing::error!("enqueue_track_pgwrite error: {}", e);
+        //         failed += 1;
+        //         Vec::new()
+        //     },
+        // };
+    }
+    search_msg
+        .edit(
+            ctx,
+            EditMessage::new()
+                .embed(CreateEmbed::default().description(format!("Queuing {} songs...", size))),
+        )
+        .await?;
+    let n = ((size as f32) / 10.0) as usize;
+    for i in 0..n {
+        let beg = i * n;
+        let end = (i + 1) * n;
+        let slice = &tracks[beg..end];
+
         search_msg
             .edit(
                 ctx,
                 EditMessage::new().embed(CreateEmbed::default().description(format!(
-                    "Queuing: {}\n{}% Done...",
-                    keywords,
-                    ((idx as f32 / n) * 100.0) as i32
+                    "Queuing {}% Done...",
+                    ((i as f32 / n as f32) * 100.0) as i32
                 ))),
             )
             .await?;
-        let queue_res = if offset > 0 {
-            let idx = idx + offset - failed;
-            insert_track(ctx, &call, &QueryType::Keywords(keywords), idx).await
-        } else {
-            enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
-        };
-        let _ = match queue_res {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("enqueue_track_pgwrite error: {}", e);
-                failed += 1;
-                Vec::new()
-            },
-        };
+        let _queue =
+            queue_ready_track_list(call.clone(), ctx.author().id, slice.to_vec(), Mode::End)
+                .await?;
     }
-
-    let queue = call.lock().await.queue().current_queue();
+    let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
 
     Ok(())

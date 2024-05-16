@@ -41,7 +41,7 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use super::{
-    enqueue_track_pgwrite, insert_track, queue_keyword_list_back, queue_keyword_list_w_offset2,
+    enqueue_track_pgwrite, insert_track, queue_keyword_list_back, queue_keyword_list_w_offset,
     queue_yt_playlist_front,
 };
 
@@ -99,7 +99,7 @@ impl QueryType {
             ))),
             QueryType::VideoLink(url) => {
                 tracing::warn!("Mode::Download, QueryType::VideoLink");
-                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let (output, metadata) = download_file_ytdlp(url, mp3).await?;
                 let status = output.status.success();
                 let url = metadata.source_url.unwrap();
                 let file_name = format!(
@@ -122,7 +122,7 @@ impl QueryType {
                     extension,
                 );
                 tracing::warn!("file_name: {}", file_name);
-                let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
+                let (output, _metadata) = download_file_ytdlp(url, mp3).await?;
                 let status = output.status.success();
                 Ok((status, file_name))
             },
@@ -149,7 +149,7 @@ impl QueryType {
             },
             QueryType::PlaylistLink(url) => {
                 tracing::warn!("In PlaylistLink");
-                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let (output, metadata) = download_file_ytdlp(url, mp3).await?;
                 let file_name = format!(
                     "{}/{} [{}].{}",
                     prefix,
@@ -212,7 +212,7 @@ impl QueryType {
             )
             .await?;
 
-        return Ok(false);
+        Ok(false)
     }
 
     pub async fn mode_search(
@@ -285,7 +285,7 @@ impl QueryType {
                 queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
             },
             QueryType::KeywordList(keywords_list) => {
-                queue_keyword_list_w_offset2(ctx, call, keywords_list.clone(), 1, search_msg)
+                queue_keyword_list_w_offset(ctx, call, keywords_list.clone(), 1, search_msg)
                     .await?;
             },
             QueryType::SpotifyTracks(tracks) => {
@@ -293,10 +293,10 @@ impl QueryType {
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                queue_keyword_list_w_offset2(ctx, call, keywords_list, 1, search_msg).await?;
+                queue_keyword_list_w_offset(ctx, call, keywords_list, 1, search_msg).await?;
             },
             QueryType::YoutubeSearch(_) => {
-                return Err(CrackedError::Other("Not implemented yet!").into());
+                return Err(CrackedError::Other("Not implemented yet!"));
             },
             QueryType::None => {
                 return Ok(false);
@@ -403,7 +403,7 @@ impl QueryType {
         _ctx: Context<'_>,
         _call: Arc<Mutex<Call>>,
     ) -> Result<bool, CrackedError> {
-        Err(CrackedError::Other("Not implemented yet!").into())
+        Err(CrackedError::Other("Not implemented yet!"))
         // match self {
         //     QueryType::YoutubeSearch(query) => {
         //         return Err(CrackedError::Other("Not implemented yet!").into());
@@ -712,17 +712,22 @@ pub async fn query_type_from_url(
                     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
                     Some(QueryType::PlaylistLink(url.to_string()))
                 } else {
-                    tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                    tracing::warn!("{}: {}", "LINK".blue(), url.underline().blue());
                     let rusty_ytdl = RustyYoutubeClient::new()?;
                     let res_info = rusty_ytdl.get_video_info(url.to_string()).await;
                     let metadata = match res_info {
                         Ok(info) => RustyYoutubeClient::video_info_to_aux_metadata(&info),
                         _ => {
                             tracing::warn!("info: None, falling back to yt-dlp");
-                            AuxMetadata {
-                                source_url: Some(url.to_string()),
-                                ..AuxMetadata::default()
-                            }
+                            let mut ytdl =
+                                YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
+                            tracing::warn!("ytdl: {:?}", ytdl);
+                            let metadata = ytdl.aux_metadata().await.unwrap();
+                            // AuxMetadata {
+                            //     source_url: Some(url.to_string()),
+                            //     ..AuxMetadata::default()
+                            // }
+                            metadata
                         },
                     };
                     let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());

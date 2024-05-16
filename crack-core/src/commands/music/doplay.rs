@@ -308,7 +308,10 @@ async fn match_mode<'a>(
     tracing::info!("mode: {:?}", mode);
 
     match mode {
-        Mode::Search => query_type.mode_search(ctx, call).await.map(|x| x.len() > 0),
+        Mode::Search => query_type
+            .mode_search(ctx, call)
+            .await
+            .map(|x| !x.is_empty()),
         Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
         Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
         Mode::End => query_type.mode_end(ctx, call, search_msg).await,
