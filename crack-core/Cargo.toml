@@ -23,10 +23,11 @@ crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "main", features = [
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "v0.7.2-boa", features = [
     "live",
     "rustls-tls",
     "search",
+    "blocking",
 ] }
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1.80"
@@ -37,10 +38,10 @@ lazy_static = "1.4.0"
 lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "master", version = "0.1.6" }
 rand = "0.8.5"
 regex = "1.10.4"
+serde = { version = "1.0.202", features = ["derive", "rc"] }
 serde_json = "1.0.117"
 serde_with = "3.8.1"
 url = "2.5.0"
-serde = { version = "1.0.201", features = ["derive", "rc"] }
 sys-info = "0.9.1"
 prometheus = { version = "0.13.4", features = ["process"], optional = true }
 proc-macro2 = "1.0.82"
