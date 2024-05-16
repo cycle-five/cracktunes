@@ -315,17 +315,11 @@ async fn edit_embed_response(
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
-            .edit_response(
-                &ctx.serenity_context().http,
-                EditInteractionResponse::new().add_embed(embed),
-            )
+            .edit_response(ctx, EditInteractionResponse::new().add_embed(embed))
             .await
             .map_err(Into::into),
         None => msg
-            .edit(
-                ctx.serenity_context().http.clone(),
-                EditMessage::new().embed(embed),
-            )
+            .edit(ctx, EditMessage::new().embed(embed))
             .await
             .map(|_| msg)
             .map_err(Into::into),

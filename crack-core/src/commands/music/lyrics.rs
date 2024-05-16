@@ -6,7 +6,7 @@ use serenity::{all::GuildId, async_trait};
 
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, messaging::interface::create_lyrics_embed,
-    Context, Error,
+    Context, Data, Error,
 };
 
 #[async_trait]
@@ -45,7 +45,7 @@ pub async fn lyrics(
 
 /// Get the current call.
 pub async fn get_call(ctx: Context<'_>) -> Result<Arc<Mutex<songbird::Call>>, Error> {
-    let guild_id = get_guild_id(ctx).ok_or(CrackedError::NoGuildId)?;
+    let guild_id = get_guild_id(ctx)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NotConnected)?;
@@ -114,19 +114,19 @@ pub async fn do_lyric_query(
 }
 
 #[async_trait]
-pub trait ContextWithGuildId {
-    fn guild_id(&self) -> Option<GuildId>;
+pub trait ContextWithGuildId<U, E> {
+    fn guild_id_res(&self) -> Result<GuildId, E>;
 }
 
 #[async_trait]
-impl<U, E> ContextWithGuildId for poise::Context<'_, U, E> {
-    fn guild_id(&self) -> Option<GuildId> {
-        Some(GuildId::new(1))
+impl ContextWithGuildId<Data, Error> for poise::Context<'_, Data, Error> {
+    fn guild_id_res(&self) -> Result<GuildId, Error> {
+        self.guild_id().ok_or(CrackedError::NoGuildId.into())
     }
 }
 
-fn get_guild_id(ctx: impl ContextWithGuildId) -> Option<GuildId> {
-    ctx.guild_id()
+fn get_guild_id(ctx: impl ContextWithGuildId<Data, Error>) -> Result<GuildId, Error> {
+    ctx.guild_id_res()
 }
 #[cfg(test)]
 mod test {
