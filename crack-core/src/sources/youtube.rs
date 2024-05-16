@@ -159,12 +159,12 @@ pub async fn search_query_to_source_and_metadata_rusty(
     client: reqwest::Client,
     query: QueryType,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
+    tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", query);
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
 
     let metadata = {
         // let rytdl = RustyYoutubeClient::new()?;
-        tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
+        tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", rytdl);
         let results = rytdl
             .one_shot(
                 query
@@ -172,7 +172,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
                     .ok_or(CrackedError::Other("No query given"))?,
             )
             .await?;
-        tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
+        tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", results);
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
@@ -327,8 +327,8 @@ pub async fn search_query_to_source_and_metadata_ytdl(
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
         "{} - {}",
-        aux_metadata.artist.clone().unwrap_or_default(),
         aux_metadata.track.clone().unwrap_or_default(),
+        aux_metadata.artist.clone().unwrap_or_default(),
     )
 }
 

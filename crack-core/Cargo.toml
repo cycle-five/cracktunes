@@ -28,6 +28,7 @@ rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-feature
     "rustls-tls",
     "search",
     "blocking",
+    "ffmpeg",
 ] }
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1.80"

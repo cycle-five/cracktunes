@@ -67,10 +67,9 @@ features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 version = "0.5.4"
 default-features = true
 features = [
-  "all",
-  "opt-simd",
-  "all-codecs",
   "all-formats",
+  "all-codecs",
+  "opt-simd",
   # "flac",
   # "vorbis",
   # "pcm",
