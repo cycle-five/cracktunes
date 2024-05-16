@@ -1,24 +1,16 @@
 use ::serenity::all::CommandInteraction;
-use rusty_ytdl::search::Playlist;
 
 use super::play_utils::query::QueryType;
-use super::play_utils::queue::{
-    enqueue_track_pgwrite, get_mode, get_msg, insert_track, queue_keyword_list_back,
-    queue_keyword_list_w_offset2, queue_yt_playlist, queue_yt_playlist_front, rotate_tracks,
-};
+use super::play_utils::queue::{enqueue_track_pgwrite, get_mode, get_msg};
 use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
-use crate::sources::youtube::{enqueue_track_ready, ready_query};
-use crate::utils::{send_search_response, yt_search_select};
 //FIXME
 use crate::utils::edit_embed_response2;
 use crate::{
-    commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
-    http_utils,
     messaging::interface::create_now_playing_embed,
     messaging::{
         message::CrackedMessage,
@@ -28,33 +20,21 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     utils::{
-        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_track_metadata,
-        send_embed_response_poise,
+        get_guild_name, get_human_readable_timestamp, get_track_metadata, send_embed_response_poise,
     },
     Context, Error,
 };
 use ::serenity::{
     all::{Message, UserId},
-    builder::{
-        CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
-        EditMessage,
-    },
+    builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
 use poise::serenity_prelude as serenity;
-use reqwest::Client;
 use songbird::{
-    input::{AuxMetadata, Compose, YoutubeDl},
+    input::{AuxMetadata, YoutubeDl},
     tracks::TrackHandle,
     Call,
 };
-use std::{
-    cmp::Ordering,
-    path::Path,
-    process::{Output, Stdio},
-    sync::Arc,
-    time::Duration,
-};
-use tokio::process::Command;
+use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
 
@@ -315,8 +295,9 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
     }
 }
 
-/// This is what actually does the majority of the work of the function, it finds the track that the user wants to play
-/// and then actually does the process of queuing it. This needs to be optimized.
+/// This is what actually does the majority of the work of the function.
+/// It finds the track that the user wants to play and then actually
+/// does the process of queuing it. This needs to be optimized.
 async fn match_mode<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -325,8 +306,6 @@ async fn match_mode<'a>(
     search_msg: &'a mut Message,
 ) -> Result<bool, CrackedError> {
     tracing::info!("mode: {:?}", mode);
-    let queue_was_empty = call.lock().await.queue().is_empty();
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     match mode {
         Mode::Search => query_type.mode_search(ctx, call).await.map(|x| x.len() > 0),
@@ -368,6 +347,7 @@ pub fn check_banned_domains(
     }
 }
 
+/// Calculate the time until the next track plays.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
     if queue.is_empty() {
         return None;

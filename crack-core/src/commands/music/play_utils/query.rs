@@ -22,7 +22,7 @@ use crate::{
     },
     Context, Error,
 };
-use ::serenity::all::{Attachment, CreateAttachment, CreateEmbed, CreateMessage};
+use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType};
@@ -327,7 +327,7 @@ impl QueryType {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let track_ready_data = ready_query(ctx, self.clone()).await?;
                 // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
-                let queue = enqueue_track_ready(&call, track_ready_data).await?;
+                let _queue = enqueue_track_ready(&call, track_ready_data).await?;
                 Ok(true)
             },
             // FIXME
@@ -354,7 +354,7 @@ impl QueryType {
             },
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
-                let queue =
+                let _queue =
                     enqueue_track_pgwrite(ctx, &call, &QueryType::File(file.clone())).await?;
                 // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
                 Ok(true)
