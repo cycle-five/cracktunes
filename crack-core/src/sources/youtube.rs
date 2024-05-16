@@ -1,15 +1,13 @@
-use super::{QueryType, RequestingUser};
+use crate::commands::{play_utils::QueryType, RequestingUser};
 use crate::http_utils::CacheHttpExt;
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::Context as CrackContext;
 use crate::{
-    commands::MyAuxMetadata, errors::CrackedError, http_utils,
-    sources::rusty_ytdl::RustyYoutubeClient,
+    commands::MyAuxMetadata, errors::CrackedError, sources::rusty_ytdl::RustyYoutubeClient,
 };
-use rusty_ytdl::search::{SearchOptions, SearchType};
 use serenity::all::UserId;
 use songbird::{
-    input::{AuxMetadata, Compose, HttpRequest, Input as SongbirdInput, YoutubeDl},
+    input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl},
     tracks::{Track, TrackHandle},
     Call,
 };
@@ -30,7 +28,7 @@ pub async fn ready_query(
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = ctx.author().id;
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(query_type.clone()).await?;
+        query_type.get_track_source_and_metadata().await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {
@@ -218,112 +216,112 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
-// FIXME: Do you want to have a reqwest client we keep around and pass into
-// this instead of creating a new one every time?
-pub async fn get_track_source_and_metadata(
-    query_type: QueryType,
-) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    use colored::Colorize;
-    let client = http_utils::get_client().clone();
-    tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
-    match query_type {
-        QueryType::YoutubeSearch(query) => {
-            tracing::error!("In YoutubeSearch");
-            let mut ytdl = YoutubeDl::new_search(client, query);
-            let mut res = Vec::new();
-            let asdf = ytdl.search(None).await?;
-            for metadata in asdf {
-                let my_metadata = MyAuxMetadata::Data(metadata);
-                res.push(my_metadata);
-            }
-            Ok((ytdl.into(), res))
-        },
-        QueryType::VideoLink(query) => {
-            tracing::warn!("In VideoLink");
-            video_info_to_source_and_metadata(client.clone(), query).await
-            // get_source_and_metadata_rusty(client.clone(), query).await
-            // let mut ytdl = YoutubeDl::new(client, query);
-            // tracing::warn!("ytdl: {:?}", ytdl);
-            // let metadata = ytdl.aux_metadata().await?;
-            // let my_metadata = MyAuxMetadata::Data(metadata);
-            // Ok((ytdl.into(), vec![my_metadata]))
-        },
-        QueryType::Keywords(query) => {
-            tracing::warn!("In Keywords");
-            let res = search_query_to_source_and_metadata_rusty(
-                client.clone(),
-                QueryType::Keywords(query.clone()),
-            )
-            .await;
-            match res {
-                Ok((input, metadata)) => Ok((input, metadata)),
-                Err(_) => {
-                    tracing::error!("falling back to ytdl!");
-                    search_query_to_source_and_metadata_ytdl(client.clone(), query).await
-                },
-            }
-        },
-        QueryType::File(file) => {
-            tracing::warn!("In File");
-            Ok((
-                HttpRequest::new(client, file.url.to_owned()).into(),
-                vec![MyAuxMetadata::default()],
-            ))
-        },
-        QueryType::NewYoutubeDl(ytdl) => {
-            tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
-            Ok((ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)]))
-        },
-        QueryType::PlaylistLink(url) => {
-            tracing::warn!("In PlaylistLink");
-            let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
-            let search_options = SearchOptions {
-                limit: 100,
-                search_type: SearchType::Playlist,
-                ..Default::default()
-            };
+// // FIXME: Do you want to have a reqwest client we keep around and pass into
+// // this instead of creating a new one every time?
+// pub async fn get_track_source_and_metadata(
+//     query_type: QueryType,
+// ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+//     use colored::Colorize;
+//     let client = http_utils::get_client().clone();
+//     tracing::warn!("{}", format!("query_type: {:?}", query_type).red());
+//     match query_type {
+//         QueryType::YoutubeSearch(query) => {
+//             tracing::error!("In YoutubeSearch");
+//             let mut ytdl = YoutubeDl::new_search(client, query);
+//             let mut res = Vec::new();
+//             let asdf = ytdl.search(None).await?;
+//             for metadata in asdf {
+//                 let my_metadata = MyAuxMetadata::Data(metadata);
+//                 res.push(my_metadata);
+//             }
+//             Ok((ytdl.into(), res))
+//         },
+//         QueryType::VideoLink(query) => {
+//             tracing::warn!("In VideoLink");
+//             video_info_to_source_and_metadata(client.clone(), query).await
+//             // get_source_and_metadata_rusty(client.clone(), query).await
+//             // let mut ytdl = YoutubeDl::new(client, query);
+//             // tracing::warn!("ytdl: {:?}", ytdl);
+//             // let metadata = ytdl.aux_metadata().await?;
+//             // let my_metadata = MyAuxMetadata::Data(metadata);
+//             // Ok((ytdl.into(), vec![my_metadata]))
+//         },
+//         QueryType::Keywords(query) => {
+//             tracing::warn!("In Keywords");
+//             let res = search_query_to_source_and_metadata_rusty(
+//                 client.clone(),
+//                 QueryType::Keywords(query.clone()),
+//             )
+//             .await;
+//             match res {
+//                 Ok((input, metadata)) => Ok((input, metadata)),
+//                 Err(_) => {
+//                     tracing::error!("falling back to ytdl!");
+//                     search_query_to_source_and_metadata_ytdl(client.clone(), query).await
+//                 },
+//             }
+//         },
+//         QueryType::File(file) => {
+//             tracing::warn!("In File");
+//             Ok((
+//                 HttpRequest::new(client, file.url.to_owned()).into(),
+//                 vec![MyAuxMetadata::default()],
+//             ))
+//         },
+//         QueryType::NewYoutubeDl(ytdl) => {
+//             tracing::warn!("In NewYoutubeDl {:?}", ytdl.0);
+//             Ok((ytdl.0.into(), vec![MyAuxMetadata::Data(ytdl.1)]))
+//         },
+//         QueryType::PlaylistLink(url) => {
+//             tracing::warn!("In PlaylistLink");
+//             let rytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+//             let search_options = SearchOptions {
+//                 limit: 100,
+//                 search_type: SearchType::Playlist,
+//                 ..Default::default()
+//             };
 
-            let res = rytdl
-                .rusty_ytdl
-                .search(&url, Some(&search_options))
-                .await
-                .unwrap();
-            let mut metadata = Vec::with_capacity(res.len());
-            for r in res {
-                metadata.push(MyAuxMetadata::Data(
-                    RustyYoutubeClient::search_result_to_aux_metadata(&r),
-                ));
-            }
-            let ytdl = YoutubeDl::new(client.clone(), url);
-            tracing::warn!("ytdl: {:?}", ytdl);
-            Ok((ytdl.into(), metadata))
-        },
-        QueryType::SpotifyTracks(tracks) => {
-            tracing::error!("In SpotifyTracks, this is broken");
-            let keywords_list = tracks
-                .iter()
-                .map(|x| x.build_query())
-                .collect::<Vec<String>>();
-            let mut ytdl = YoutubeDl::new(
-                client,
-                format!("ytsearch:{}", keywords_list.first().unwrap()),
-            );
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            Ok((ytdl.into(), vec![my_metadata]))
-        },
-        QueryType::KeywordList(keywords_list) => {
-            tracing::warn!("In KeywordList");
-            let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
-            tracing::warn!("ytdl: {:?}", ytdl);
-            let metdata = ytdl.aux_metadata().await.unwrap();
-            let my_metadata = MyAuxMetadata::Data(metdata);
-            Ok((ytdl.into(), vec![my_metadata]))
-        },
-        QueryType::None => unimplemented!(),
-    }
-}
+//             let res = rytdl
+//                 .rusty_ytdl
+//                 .search(&url, Some(&search_options))
+//                 .await
+//                 .unwrap();
+//             let mut metadata = Vec::with_capacity(res.len());
+//             for r in res {
+//                 metadata.push(MyAuxMetadata::Data(
+//                     RustyYoutubeClient::search_result_to_aux_metadata(&r),
+//                 ));
+//             }
+//             let ytdl = YoutubeDl::new(client.clone(), url);
+//             tracing::warn!("ytdl: {:?}", ytdl);
+//             Ok((ytdl.into(), metadata))
+//         },
+//         QueryType::SpotifyTracks(tracks) => {
+//             tracing::error!("In SpotifyTracks, this is broken");
+//             let keywords_list = tracks
+//                 .iter()
+//                 .map(|x| x.build_query())
+//                 .collect::<Vec<String>>();
+//             let mut ytdl = YoutubeDl::new(
+//                 client,
+//                 format!("ytsearch:{}", keywords_list.first().unwrap()),
+//             );
+//             tracing::warn!("ytdl: {:?}", ytdl);
+//             let metdata = ytdl.aux_metadata().await.unwrap();
+//             let my_metadata = MyAuxMetadata::Data(metdata);
+//             Ok((ytdl.into(), vec![my_metadata]))
+//         },
+//         QueryType::KeywordList(keywords_list) => {
+//             tracing::warn!("In KeywordList");
+//             let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
+//             tracing::warn!("ytdl: {:?}", ytdl);
+//             let metdata = ytdl.aux_metadata().await.unwrap();
+//             let my_metadata = MyAuxMetadata::Data(metdata);
+//             Ok((ytdl.into(), vec![my_metadata]))
+//         },
+//         QueryType::None => unimplemented!(),
+//     }
+// }
 
 /// Build a query from AuxMetadata.
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
@@ -342,14 +340,14 @@ mod test {
     #[tokio::test]
     async fn test_get_track_source_and_metadata() {
         let query_type = QueryType::Keywords("hello".to_string());
-        let res = get_track_source_and_metadata(query_type).await;
+        let res = query_type.get_track_source_and_metadata().await;
         assert!(res.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_track_source_and_metadata_ytdl() {
         let query_type = QueryType::Keywords("hello".to_string());
-        let res = get_track_source_and_metadata(query_type).await;
+        let res = query_type.get_track_source_and_metadata().await;
         assert!(res.is_ok());
     }
 
@@ -357,7 +355,7 @@ mod test {
     async fn test_get_track_source_and_metadata_video_link() {
         let query_type =
             QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
-        let res = get_track_source_and_metadata(query_type).await;
+        let res = query_type.get_track_source_and_metadata().await;
         assert!(res.is_ok());
     }
 
@@ -366,7 +364,7 @@ mod test {
         let query_type = QueryType::PlaylistLink(
             "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
         );
-        let res = get_track_source_and_metadata(query_type).await;
+        let res = query_type.get_track_source_and_metadata().await;
         assert!(res.is_ok());
     }
 
@@ -383,7 +381,7 @@ mod test {
     #[tokio::test]
     async fn test_get_track_source_and_metadata_keyword_list() {
         let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
-        let res = get_track_source_and_metadata(query_type).await;
+        let res = query_type.get_track_source_and_metadata().await;
         assert!(res.is_ok());
     }
 

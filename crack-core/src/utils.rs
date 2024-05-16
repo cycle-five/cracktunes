@@ -1,7 +1,7 @@
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
-    commands::{music::doplay::RequestingUser, MyAuxMetadata, QueryType},
+    commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
     db::Playlist,
     guild::settings::DEFAULT_PREMIUM,
     interface::{build_nav_btns, create_now_playing_embed, requesting_user_to_string},

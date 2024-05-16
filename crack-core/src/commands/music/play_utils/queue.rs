@@ -1,14 +1,14 @@
-use super::youtube::queue_track_back;
-use super::{Mode, QueryType};
+use super::QueryType;
 use crate::db::Metadata;
 use crate::errors::verify;
+use crate::handlers::track_end::update_queue_messages;
 use crate::http_utils::CacheHttpExt;
+use crate::sources::youtube::queue_track_back;
 use crate::{
-    commands::{MyAuxMetadata, RequestingUser},
+    commands::{Mode, MyAuxMetadata, RequestingUser},
     db::{aux_metadata_to_db_structures, PlayLog, User},
 };
 use crate::{errors::CrackedError, Context, Error};
-
 use rusty_ytdl::search::Playlist as YTPlaylist;
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::input::AuxMetadata;
@@ -80,7 +80,7 @@ struct QueueTrackData {
 pub async fn queue_yt_playlist<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
-    _guild_id: GuildId,
+    guild_id: GuildId,
     playlist: YTPlaylist,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
@@ -89,7 +89,7 @@ pub async fn queue_yt_playlist<'a>(
     //     url: x.url.clone(),
     // });
     // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::End).await
-    queue_yt_playlist_internal(ctx, call, _guild_id, playlist, search_msg, Mode::End)
+    queue_yt_playlist_internal(ctx, call, guild_id, playlist, search_msg, Mode::End)
         .await
         .map(|_| ())
 }
@@ -98,7 +98,7 @@ pub async fn queue_yt_playlist<'a>(
 pub async fn queue_yt_playlist_front<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
-    _guild_id: GuildId,
+    guild_id: GuildId,
     playlist: YTPlaylist,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
@@ -107,7 +107,7 @@ pub async fn queue_yt_playlist_front<'a>(
     //     url: x.url.clone(),
     // });
     // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::Next).await
-    queue_yt_playlist_internal(ctx, call, _guild_id, playlist, search_msg, Mode::Next)
+    queue_yt_playlist_internal(ctx, call, guild_id, playlist, search_msg, Mode::Next)
         .await
         .map(|_| ())
 }
@@ -122,7 +122,7 @@ pub async fn queue_yt_playlist_internal<'a>(
     search_msg: &'a mut Message,
     mode: Mode,
 ) -> Result<Vec<TrackHandle>, Error> {
-    use super::youtube::ready_query;
+    use crate::sources::youtube::ready_query;
     let user_id = ctx.author().id;
     search_msg
         .edit(
@@ -195,16 +195,16 @@ pub async fn queue_yt_playlist_internal<'a>(
     //queue_tracks_ready(ctx, call, tracks, search_msg, mode).await
 }
 
-/// Queue a list of keywords to be played at the front of the queue.
-#[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_front<'a>(
-    ctx: Context<'_>,
-    call: Arc<Mutex<Call>>,
-    keyword_list: Vec<String>,
-    msg: &'a mut Message,
-) -> Result<(), Error> {
-    queue_keyword_list_w_offset(ctx, call, keyword_list, 1, msg).await
-}
+// /// Queue a list of keywords to be played at the front of the queue.
+// #[cfg(not(tarpaulin_include))]
+// pub async fn queue_keyword_list_front<'a>(
+//     ctx: Context<'_>,
+//     call: Arc<Mutex<Call>>,
+//     keyword_list: Vec<String>,
+//     msg: &'a mut Message,
+// ) -> Result<(), Error> {
+//     queue_keyword_list_w_offset(ctx, call, keyword_list, 1, msg).await
+// }
 
 /// Queue a list of keywords to be played from the end of the queue.
 #[cfg(not(tarpaulin_include))]
@@ -219,20 +219,20 @@ pub async fn queue_keyword_list_back<'a>(
 
 /// Queue a list of keywords to be played with an offset.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_w_offset<'a>(
+pub async fn queue_keyword_list_w_offset2<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     keyword_list: Vec<String>,
     offset: usize,
     search_msg: &'a mut Message,
 ) -> Result<(), Error> {
-    //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut failed: usize = 0;
     let n = keyword_list.len() as f32;
     for (idx, keywords) in keyword_list.into_iter().enumerate() {
         search_msg
             .edit(
-                ctx.http(),
+                ctx,
                 EditMessage::new().embed(CreateEmbed::default().description(format!(
                     "Queuing: {}\n{}% Done...",
                     keywords,
@@ -246,7 +246,7 @@ pub async fn queue_keyword_list_w_offset<'a>(
         } else {
             enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
         };
-        let queue = match queue_res {
+        let _ = match queue_res {
             Ok(x) => x,
             Err(e) => {
                 tracing::error!("enqueue_track_pgwrite error: {}", e);
@@ -254,12 +254,55 @@ pub async fn queue_keyword_list_w_offset<'a>(
                 Vec::new()
             },
         };
-        if queue.is_empty() {
-            continue;
-        }
-        // TODO: Perhaps pass this off to a background task?
     }
-    // update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+
+    let queue = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+
+    Ok(())
+}
+
+/// Queue a list of keywords to be played with an offset.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_keyword_list_w_offset<'a>(
+    ctx: Context<'_>,
+    call: Arc<Mutex<Call>>,
+    keyword_list: Vec<String>,
+    offset: usize,
+    search_msg: &'a mut Message,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let mut failed: usize = 0;
+    let n = keyword_list.len() as f32;
+    for (idx, keywords) in keyword_list.into_iter().enumerate() {
+        search_msg
+            .edit(
+                ctx,
+                EditMessage::new().embed(CreateEmbed::default().description(format!(
+                    "Queuing: {}\n{}% Done...",
+                    keywords,
+                    ((idx as f32 / n) * 100.0) as i32
+                ))),
+            )
+            .await?;
+        let queue_res = if offset > 0 {
+            let idx = idx + offset - failed;
+            insert_track(ctx, &call, &QueryType::Keywords(keywords), idx).await
+        } else {
+            enqueue_track_pgwrite(ctx, &call, &QueryType::Keywords(keywords)).await
+        };
+        let _ = match queue_res {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("enqueue_track_pgwrite error: {}", e);
+                failed += 1;
+                Vec::new()
+            },
+        };
+    }
+
+    let queue = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
 
     Ok(())
 }
@@ -272,7 +315,7 @@ pub async fn insert_track(
     query_type: &QueryType,
     idx: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::commands::youtube::queue_track_back;
+    use crate::sources::youtube::queue_track_back;
 
     let handler = call.lock().await;
     let queue_size = handler.queue().len();
@@ -396,13 +439,13 @@ pub async fn enqueue_track_pgwrite_asdf(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::commands::youtube::get_track_source_and_metadata;
+    // use crate::sources::youtube::get_track_source_and_metadata;
 
     tracing::info!("query_type: {:?}", query_type);
     // is this comment still relevant to this section of code?
     // safeguard against ytdl dying on a private/deleted video and killing the playlist
     let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        get_track_source_and_metadata(query_type.clone()).await?;
+        query_type.get_track_source_and_metadata().await?;
     let res = match metadata.first() {
         Some(x) => x.clone(),
         None => {

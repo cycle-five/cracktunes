@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::{fmt::Display, time::Duration};
 
-use crate::{commands::QueryType, errors::CrackedError, http_utils};
+use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
@@ -333,6 +333,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use super::ytdl::HANDLE;
+
 pub trait StreamExt {
     fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream;
     // where
@@ -417,10 +419,12 @@ impl MediaSourceStream {
 impl Read for MediaSourceStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Get the current tokio runtime
-
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
-        })
+        let handle = HANDLE.lock().unwrap().clone().unwrap();
+        tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
+        // handle.block_on(async { self.read_async(buf).await })
+        // tokio::task::block_in_place(move || {
+        //     tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
+        // })
         // tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
         // let opt_bytes = if self.buffer.blocking_read().is_empty() {
         //     let fut = self.stream.chunk();
