@@ -271,7 +271,7 @@ pub async fn queue_keyword_list_inside_out<'a>(
     let size = keyword_list.len();
     let mut tracks = Vec::new();
 
-    for (_idx, keywords) in keyword_list.into_iter().enumerate() {
+    for keywords in keyword_list.into_iter() {
         let query_type = QueryType::Keywords(keywords);
         let ready_track = ready_query(ctx, query_type).await?;
         tracks.push(ready_track);

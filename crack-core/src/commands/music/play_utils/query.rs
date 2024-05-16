@@ -722,12 +722,7 @@ pub async fn query_type_from_url(
                             let mut ytdl =
                                 YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
                             tracing::warn!("ytdl: {:?}", ytdl);
-                            let metadata = ytdl.aux_metadata().await.unwrap();
-                            // AuxMetadata {
-                            //     source_url: Some(url.to_string()),
-                            //     ..AuxMetadata::default()
-                            // }
-                            metadata
+                            ytdl.aux_metadata().await.unwrap()
                         },
                     };
                     let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());
