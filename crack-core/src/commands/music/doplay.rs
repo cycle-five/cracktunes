@@ -10,8 +10,9 @@ use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::sources::youtube::{enqueue_track_ready, ready_query};
-use crate::utils::send_search_response;
-use crate::utils::yt_search_select;
+use crate::utils::{send_search_response, yt_search_select};
+//FIXME
+use crate::utils::edit_embed_response2;
 use crate::{
     commands::skip::force_skip_top_track,
     errors::{verify, CrackedError},
@@ -27,8 +28,8 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     utils::{
-        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_interaction,
-        get_track_metadata, send_embed_response_poise,
+        edit_response_poise, get_guild_name, get_human_readable_timestamp, get_track_metadata,
+        send_embed_response_poise,
     },
     Context, Error,
 };
@@ -36,7 +37,7 @@ use ::serenity::{
     all::{Message, UserId},
     builder::{
         CreateAttachment, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage,
-        EditInteractionResponse, EditMessage,
+        EditMessage,
     },
 };
 use poise::serenity_prelude as serenity;
@@ -155,8 +156,6 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    // let search_msg = send_search_message(ctx).await?;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     let prefix = ctx.prefix();
@@ -291,7 +290,6 @@ async fn play_internal(
             tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
             create_now_playing_embed(track).await
-            // print_queue(queue).await;
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
@@ -301,31 +299,10 @@ async fn play_internal(
         },
     };
 
-    edit_embed_response(ctx, embed, search_msg.clone())
+    edit_embed_response2(ctx, embed, search_msg.clone())
         .await
         .map(|_| ())
 }
-
-/// Edit the embed response of the given message.
-#[cfg(not(tarpaulin_include))]
-async fn edit_embed_response(
-    ctx: Context<'_>,
-    embed: CreateEmbed,
-    mut msg: Message,
-) -> Result<Message, Error> {
-    match get_interaction(ctx) {
-        Some(interaction) => interaction
-            .edit_response(ctx, EditInteractionResponse::new().add_embed(embed))
-            .await
-            .map_err(Into::into),
-        None => msg
-            .edit(ctx, EditMessage::new().embed(embed))
-            .await
-            .map(|_| msg)
-            .map_err(Into::into),
-    }
-}
-
 /// Download a file and upload it as an mp3.
 async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
     let metadata = YoutubeDl::new(

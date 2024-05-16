@@ -230,9 +230,7 @@ pub async fn edit_response_poise(
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction_new(ctx) {
-        Some(interaction) => {
-            edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await
-        },
+        Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
         None => send_embed_response_poise(ctx, embed).await,
     }
 }
@@ -672,6 +670,27 @@ pub async fn defer_response_interaction(
     }
 }
 
+/// Edit the embed response of the given message.
+#[cfg(not(tarpaulin_include))]
+pub async fn edit_embed_response2(
+    ctx: CrackContext<'_>,
+    embed: CreateEmbed,
+    mut msg: Message,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(interaction) => interaction
+            .edit_response(ctx, EditInteractionResponse::new().add_embed(embed))
+            .await
+            .map_err(Into::into),
+        None => msg
+            .edit(ctx, EditMessage::new().embed(embed))
+            .await
+            .map(|_| msg)
+            .map_err(Into::into),
+    }
+}
+
+/// WHY ARE THERE TWO OF THESE?
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
