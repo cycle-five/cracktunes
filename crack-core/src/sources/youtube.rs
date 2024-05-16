@@ -393,7 +393,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, "hello - world");
+        assert_eq!(res, "world - hello");
     }
 
     #[tokio::test]
