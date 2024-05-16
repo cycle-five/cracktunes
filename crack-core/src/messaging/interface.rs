@@ -5,8 +5,8 @@ use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
     QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
 };
-use crate::utils::calculate_num_pages;
 use crate::utils::EMBED_PAGE_SIZE;
+use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::Context as CrackContext;
 use crate::{
     messaging::message::CrackedMessage,
@@ -217,6 +217,31 @@ pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
         build_single_nav_btn(">", cant_right),
         build_single_nav_btn(">>", cant_right),
     ])]
+}
+
+/// Sends a message to the user indicating that the search failed.
+pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+    let guild_id = ctx.guild_id().unwrap();
+    let embed = CreateEmbed::default()
+        .description(format!(
+            "{}",
+            CrackedError::Other("Something went wrong while parsing your query!")
+        ))
+        .footer(CreateEmbedFooter::new("Search failed!"));
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
+}
+
+/// Sends a message to the user indicating that no query was provided.
+pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+    let guild_id = ctx.guild_id().unwrap();
+    let embed = CreateEmbed::default()
+        .description(format!("{}", CrackedError::Other("No query provided!")))
+        .footer(CreateEmbedFooter::new("No query provided!"));
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
 
 #[cfg(test)]

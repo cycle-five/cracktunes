@@ -1,26 +1,49 @@
 use crate::{
-    commands::{check_banned_domains, MyAuxMetadata},
+    commands::{check_banned_domains, play_utils::queue_yt_playlist, MyAuxMetadata},
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     http_utils,
-    messaging::{message::CrackedMessage, messages::SPOTIFY_AUTH_FAILED},
+    messaging::{
+        interface::{send_no_query_provided, send_search_failed},
+        message::CrackedMessage,
+        messages::SPOTIFY_AUTH_FAILED,
+    },
     sources::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
         youtube::{
-            search_query_to_source_and_metadata_rusty, search_query_to_source_and_metadata_ytdl,
-            video_info_to_source_and_metadata,
+            enqueue_track_ready, ready_query, search_query_to_source_and_metadata_rusty,
+            search_query_to_source_and_metadata_ytdl, video_info_to_source_and_metadata,
         },
     },
-    utils::{compare_domains, get_guild_name, send_response_poise_text},
+    utils::{
+        compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
+        send_search_response, yt_search_select,
+    },
     Context, Error,
 };
-use ::serenity::all::Attachment;
+use ::serenity::all::{Attachment, CreateAttachment, CreateEmbed, CreateMessage};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
-use rusty_ytdl::search::{SearchOptions, SearchType};
-use songbird::input::{AuxMetadata, Compose as _, HttpRequest, Input as SongbirdInput, YoutubeDl};
+use rusty_ytdl::search::{Playlist, SearchOptions, SearchType};
+use songbird::{
+    input::{AuxMetadata, Compose as _, HttpRequest, Input as SongbirdInput, YoutubeDl},
+    tracks::TrackHandle,
+    Call,
+};
+use std::{
+    path::Path,
+    process::{Output, Stdio},
+    sync::Arc,
+};
+use tokio::process::Command;
+use tokio::sync::Mutex;
 use url::Url;
+
+use super::{
+    enqueue_track_pgwrite, insert_track, queue_keyword_list_back, queue_keyword_list_w_offset2,
+    queue_yt_playlist_front,
+};
 
 /// Enum for type of possible queries we have to handle
 #[derive(Clone, Debug)]
@@ -56,6 +79,416 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
         }
+    }
+
+    // FIXME: Do you want to have a reqwest client we keep around and pass into
+    // this instead of creating a new one every time?
+    // FIXME: This is super expensive, literally we need to do this a lot better.
+    pub async fn get_download_status_and_filename(
+        &self,
+        mp3: bool,
+    ) -> Result<(bool, String), Error> {
+        // FIXME: Don't hardcode this.
+        let prefix = "/data/downloads";
+        let extension = if mp3 { "mp3" } else { "webm" };
+        let client = http_utils::get_client().clone();
+        // tracing::warn!("query_type: {:?}", query_type);
+        match self {
+            QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
+                "Download not valid with search results.",
+            ))),
+            QueryType::VideoLink(url) => {
+                tracing::warn!("Mode::Download, QueryType::VideoLink");
+                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let status = output.status.success();
+                let url = metadata.source_url.unwrap();
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                Ok((status, file_name))
+            },
+            QueryType::NewYoutubeDl((_src, metadata)) => {
+                tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
+                let url = metadata.source_url.as_ref().unwrap();
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.as_ref().unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                tracing::warn!("file_name: {}", file_name);
+                let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
+                let status = output.status.success();
+                Ok((status, file_name))
+            },
+            QueryType::Keywords(query) => {
+                tracing::warn!("In Keywords");
+                let mut ytdl = YoutubeDl::new(client, format!("ytsearch:{}", query));
+                let metadata = ytdl.aux_metadata().await.unwrap();
+                let url = metadata.source_url.unwrap();
+                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                let status = output.status.success();
+                Ok((status, file_name))
+            },
+            QueryType::File(file) => {
+                tracing::warn!("In File");
+                Ok((true, file.url.to_owned().to_string()))
+            },
+            QueryType::PlaylistLink(url) => {
+                tracing::warn!("In PlaylistLink");
+                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                let status = output.status.success();
+                Ok((status, file_name))
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                tracing::warn!("In SpotifyTracks");
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                let url = format!("ytsearch:{}", keywords_list.first().unwrap());
+                let mut ytdl = YoutubeDl::new(client, url.clone());
+                let metadata = ytdl.aux_metadata().await.unwrap();
+                let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                let status = output.status.success();
+                Ok((status, file_name))
+            },
+            QueryType::KeywordList(keywords_list) => {
+                tracing::warn!("In KeywordList");
+                let url = format!("ytsearch:{}", keywords_list.join(" "));
+                let mut ytdl = YoutubeDl::new(client, url.clone());
+                tracing::warn!("ytdl: {:?}", ytdl);
+                let metadata = ytdl.aux_metadata().await.unwrap();
+                let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
+                let file_name = format!(
+                    "{}/{} [{}].{}",
+                    prefix,
+                    metadata.title.unwrap(),
+                    url.split('=').last().unwrap(),
+                    extension,
+                );
+                let status = output.status.success();
+                Ok((status, file_name))
+            },
+            QueryType::None => Err(Box::new(CrackedError::Other("No query provided!"))),
+        }
+    }
+
+    pub async fn mode_download(&self, ctx: Context<'_>, mp3: bool) -> Result<bool, CrackedError> {
+        let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
+        ctx.channel_id()
+            .send_message(
+                ctx,
+                CreateMessage::new()
+                    .content(format!("Download status {}", status))
+                    .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
+            )
+            .await?;
+
+        return Ok(false);
+    }
+
+    pub async fn mode_search(
+        &self,
+        ctx: Context<'_>,
+        call: Arc<Mutex<Call>>,
+    ) -> Result<Vec<TrackHandle>, CrackedError> {
+        match self {
+            QueryType::Keywords(keywords) => {
+                self.mode_search_keywords(ctx, call, keywords.clone()).await
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                self.mode_search_keywords(
+                    ctx,
+                    call,
+                    tracks
+                        .iter()
+                        .map(|x| x.build_query())
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                )
+                .await
+            },
+            QueryType::YoutubeSearch(query) => {
+                self.mode_search_keywords(ctx, call, query.clone()).await
+            },
+            _ => send_search_failed(ctx).await.map(|_| Vec::new()),
+        }
+    }
+
+    pub async fn mode_search_keywords(
+        &self,
+        ctx: Context<'_>,
+        call: Arc<Mutex<Call>>,
+        keywords: String,
+    ) -> Result<Vec<TrackHandle>, CrackedError> {
+        let reqwest_client = ctx.data().http_client.clone();
+        let search_results = YoutubeDl::new_search(reqwest_client, keywords)
+            .search(None)
+            .await?;
+        // let user_id = ctx.author().id;
+        let qt = yt_search_select(
+            ctx.serenity_context().clone(),
+            ctx.channel_id(),
+            search_results,
+        )
+        .await?;
+        enqueue_track_pgwrite(ctx, &call, &qt).await
+        // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await
+    }
+
+    pub async fn mode_next(
+        &self,
+        ctx: Context<'_>,
+        call: Arc<Mutex<Call>>,
+        search_msg: &mut serenity::Message,
+    ) -> Result<bool, CrackedError> {
+        match self {
+            QueryType::Keywords(_)
+            | QueryType::VideoLink(_)
+            | QueryType::File(_)
+            | QueryType::NewYoutubeDl(_) => {
+                let _queue = insert_track(ctx, &call, self, 1).await?;
+            },
+            // FIXME
+            QueryType::PlaylistLink(url) => {
+                let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+                let rusty_ytdl = RustyYoutubeClient::new()?;
+                let playlist: Playlist = rusty_ytdl.get_playlist(url.clone()).await?;
+                queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
+            },
+            QueryType::KeywordList(keywords_list) => {
+                queue_keyword_list_w_offset2(ctx, call, keywords_list.clone(), 1, search_msg)
+                    .await?;
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                queue_keyword_list_w_offset2(ctx, call, keywords_list, 1, search_msg).await?;
+            },
+            QueryType::YoutubeSearch(_) => {
+                return Err(CrackedError::Other("Not implemented yet!").into());
+            },
+            QueryType::None => {
+                return Ok(false);
+            },
+        }
+        Ok(true)
+    }
+
+    pub async fn mode_end(
+        &self,
+        ctx: Context<'_>,
+        call: Arc<Mutex<Call>>,
+        search_msg: &mut crate::Message,
+    ) -> Result<bool, CrackedError> {
+        let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+        match self {
+            QueryType::YoutubeSearch(query) => {
+                tracing::trace!("Mode::End, QueryType::YoutubeSearch");
+
+                let res = YoutubeDl::new_search(http_utils::get_client().clone(), query.clone())
+                    .search(None)
+                    .await?;
+                let user_id = ctx.author().id;
+                send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
+                Ok(true)
+            },
+            QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
+                tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
+                let track_ready_data = ready_query(ctx, self.clone()).await?;
+                // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
+                let queue = enqueue_track_ready(&call, track_ready_data).await?;
+                Ok(true)
+            },
+            // FIXME
+            QueryType::PlaylistLink(url) => {
+                tracing::trace!("Mode::End, QueryType::PlaylistLink");
+                // Let's use the new YouTube rust library for this
+                let rusty_ytdl = RustyYoutubeClient::new()?;
+                let playlist: Playlist = rusty_ytdl.get_playlist(url.clone()).await?;
+                queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
+                Ok(true)
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                queue_keyword_list_back(ctx, call, keywords_list, search_msg).await?;
+                Ok(true)
+            },
+            QueryType::KeywordList(keywords_list) => {
+                tracing::trace!("Mode::End, QueryType::KeywordList");
+                queue_keyword_list_back(ctx, call, keywords_list.clone(), search_msg).await?;
+                Ok(true)
+            },
+            QueryType::File(file) => {
+                tracing::trace!("Mode::End, QueryType::File");
+                let queue =
+                    enqueue_track_pgwrite(ctx, &call, &QueryType::File(file.clone())).await?;
+                // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
+                Ok(true)
+            },
+            QueryType::None => send_no_query_provided(ctx).await.map(|_| false),
+        }
+    }
+
+    pub async fn mode_rest(
+        &self,
+        ctx: Context<'_>,
+        call: Arc<Mutex<Call>>,
+        search_msg: &mut crate::Message,
+    ) -> Result<bool, CrackedError> {
+        match self {
+            QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
+                // FIXME
+                let mut src = YoutubeDl::new(http_utils::get_client().clone(), url.clone());
+                let metadata = src.aux_metadata().await?;
+                enqueue_track_pgwrite(ctx, &call, &QueryType::NewYoutubeDl((src, metadata)))
+                    .await?;
+                Ok(true)
+            },
+            QueryType::KeywordList(keywords_list) => {
+                queue_keyword_list_back(ctx, call, keywords_list.clone(), search_msg).await?;
+                Ok(true)
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                queue_keyword_list_back(ctx, call, keywords_list, search_msg).await?;
+                Ok(true)
+            },
+            _ => {
+                ctx.defer().await?; // Why did I do this?
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                Ok(false)
+            },
+        }
+    }
+
+    pub async fn mode_jump(
+        &self,
+        _ctx: Context<'_>,
+        _call: Arc<Mutex<Call>>,
+    ) -> Result<bool, CrackedError> {
+        Err(CrackedError::Other("Not implemented yet!").into())
+        // match self {
+        //     QueryType::YoutubeSearch(query) => {
+        //         return Err(CrackedError::Other("Not implemented yet!").into());
+        //     },
+        //     QueryType::Keywords(_)
+        //     | QueryType::VideoLink(_)
+        //     | QueryType::File(_)
+        //     | QueryType::NewYoutubeDl(_) => {
+        //         let mut queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
+
+        //         if !queue_was_empty {
+        //             rotate_tracks(&call, 1).await.ok();
+        //             queue = force_skip_top_track(&call.lock().await).await?;
+        //         }
+        //     },
+        //     QueryType::PlaylistLink(url) => {
+        //         tracing::error!("Mode::Jump, QueryType::PlaylistLink");
+        //         // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
+        //         //     .await
+        //         //     .ok_or(CrackedError::PlayListFail)?;
+        //         // FIXME
+        //         let _src = YoutubeDl::new(Client::new(), url);
+        //         // .ok_or(CrackedError::Other("failed to fetch playlist"))?
+        //         // .into_iter()
+        //         // .for_each(|track| async {
+        //         //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
+        //         // });
+        //         let urls = vec!["".to_string()];
+        //         let mut insert_idx = 1;
+
+        //         for (i, url) in urls.into_iter().enumerate() {
+        //             let mut queue =
+        //                 insert_track(ctx, &call, &QueryType::VideoLink(url), insert_idx).await?;
+
+        //             if i == 0 && !queue_was_empty {
+        //                 queue = force_skip_top_track(&call.lock().await).await?;
+        //             } else {
+        //                 insert_idx += 1;
+        //             }
+        //         }
+        //     },
+        //     // FIXME
+        //     QueryType::SpotifyTracks(tracks) => {
+        //         let mut insert_idx = 1;
+        //         let keywords_list = tracks
+        //             .iter()
+        //             .map(|x| x.build_query())
+        //             .collect::<Vec<String>>();
+
+        //         for (i, keywords) in keywords_list.into_iter().enumerate() {
+        //             let mut queue =
+        //                 insert_track(ctx, &call, &QueryType::Keywords(keywords), insert_idx)
+        //                     .await?;
+
+        //             if i == 0 && !queue_was_empty {
+        //                 queue = force_skip_top_track(&call.lock().await).await?;
+        //             } else {
+        //                 insert_idx += 1;
+        //             }
+        //         }
+        //     },
+        //     // FIXME
+        //     QueryType::KeywordList(keywords_list) => {
+        //         let mut insert_idx = 1;
+
+        //         for (i, keywords) in keywords_list.into_iter().enumerate() {
+        //             let mut queue =
+        //                 insert_track(ctx, &call, &QueryType::Keywords(keywords), insert_idx)
+        //                     .await?;
+
+        //             if i == 0 && !queue_was_empty {
+        //                 queue = force_skip_top_track(&call.lock().await).await?;
+        //             } else {
+        //                 insert_idx += 1;
+        //             }
+        //         }
+        //     },
+        //     QueryType::None => {
+        //         let embed = CreateEmbed::default()
+        //             .description(format!("{}", CrackedError::Other("No query provided!")))
+        //             .footer(CreateEmbedFooter::new("No query provided!"));
+        //         send_embed_response_poise(ctx, embed).await?;
+        //         return Ok(false);
+        //     },
+        // }
     }
 
     // FIXME: Do you want to have a reqwest client we keep around and pass into
@@ -162,6 +595,59 @@ impl QueryType {
             QueryType::None => unimplemented!(),
         }
     }
+}
+
+/// Download a file and upload it as an mp3.
+async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
+    let metadata = YoutubeDl::new(
+        reqwest::ClientBuilder::new().use_rustls_tls().build()?,
+        url.to_string(),
+    )
+    .aux_metadata()
+    .await?;
+
+    let args = [
+        "--extract-audio",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "0",
+        url,
+    ];
+    let child = Command::new("yt-dlp")
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    tracing::warn!("yt-dlp");
+
+    let output = child.wait_with_output().await?;
+    Ok((output, metadata))
+}
+
+/// Download a file and upload it as an attachment.
+async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadata), Error> {
+    if mp3 || url.contains("youtube.com") {
+        return download_file_ytdlp_mp3(url).await;
+    }
+
+    let metadata = YoutubeDl::new(http_utils::get_client().clone(), url.to_string())
+        .aux_metadata()
+        .await?;
+
+    let child = Command::new("yt-dlp")
+        .arg(url)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    tracing::warn!("yt-dlp");
+
+    let output = child.wait_with_output().await?;
+    Ok((output, metadata))
 }
 
 /// Returns the QueryType for a given URL (or query string, or file attachment)
