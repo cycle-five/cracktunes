@@ -5,7 +5,8 @@ use lyric_finder::LyricResult;
 use serenity::{all::GuildId, async_trait};
 
 use crate::{
-    commands::MyAuxMetadata, errors::CrackedError, interface::create_lyrics_embed, Context, Error,
+    commands::MyAuxMetadata, errors::CrackedError, messaging::interface::create_lyrics_embed,
+    Context, Error,
 };
 
 #[async_trait]

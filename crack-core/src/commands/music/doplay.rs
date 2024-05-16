@@ -18,7 +18,7 @@ use crate::{
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     http_utils,
-    interface::create_now_playing_embed,
+    messaging::interface::create_now_playing_embed,
     messaging::{
         message::CrackedMessage,
         messages::{

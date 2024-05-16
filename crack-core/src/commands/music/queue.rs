@@ -1,7 +1,7 @@
 use crate::{
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    interface::{build_nav_btns, create_queue_embed},
+    messaging::interface::{build_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,

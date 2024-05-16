@@ -15,7 +15,7 @@ use crate::{
     db::PlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
-    interface::{build_nav_btns, create_queue_embed},
+    messaging::interface::{build_nav_btns, create_queue_embed},
     messaging::messages::SPOTIFY_AUTH_FAILED,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message, send_now_playing},

@@ -4,8 +4,8 @@ use crate::{
     commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
     db::Playlist,
     guild::settings::DEFAULT_PREMIUM,
-    interface::{build_nav_btns, create_now_playing_embed, requesting_user_to_string},
     messaging::{
+        interface::{build_nav_btns, create_now_playing_embed, requesting_user_to_string},
         message::CrackedMessage,
         messages::{
             INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
@@ -158,11 +158,10 @@ pub struct SendMessageParams {
 /// Sends a message to a channel.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_channel_message(
-    http: Arc<&Http>,
+    cache_http: impl CacheHttp,
     params: SendMessageParams,
 ) -> Result<Message, CrackedError> {
     let channel = params.channel;
-    // let http = params.http;
     let content = format!("{}", params.msg);
     let msg = if params.as_embed {
         let embed = CreateEmbed::default().description(content);
@@ -170,7 +169,10 @@ pub async fn send_channel_message(
     } else {
         CreateMessage::new().content(content)
     };
-    channel.send_message(http, msg).await.map_err(Into::into)
+    channel
+        .send_message(cache_http, msg)
+        .await
+        .map_err(Into::into)
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
@@ -1275,7 +1277,7 @@ mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 
-    use crate::interface::build_single_nav_btn;
+    use crate::messaging::interface::build_single_nav_btn;
 
     use super::*;
 

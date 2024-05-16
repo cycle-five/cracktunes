@@ -33,7 +33,6 @@ pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
-pub mod interface;
 pub mod messaging;
 pub mod metrics;
 pub mod sources;
