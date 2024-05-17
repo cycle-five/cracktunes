@@ -1,6 +1,3 @@
-use std::pin::Pin;
-use std::{fmt::Display, time::Duration};
-
 use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::{
@@ -8,19 +5,17 @@ use rusty_ytdl::{
     Video, VideoInfo,
 };
 use serenity::async_trait;
-//use serenity::futures::executor::block_on_stream;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use std::pin::Pin;
+use std::{fmt::Display, time::Duration};
 use symphonia::core::io::MediaSource;
-// use reqwest::header::HeaderMap;
-// use serenity::async_trait;
-// use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
-// use symphonia::core::io::{MediaSource, ReadOnlySource};
 
-/// Hacky, why did I do this?
+/// Hacky, why did I do this? `AsString`
 pub trait AsString {
     fn as_string(&self) -> String;
 }
 
+/// Implement the `AsString` trait for the `SearchResult` enum.
 impl AsString for SearchResult {
     fn as_string(&self) -> String {
         match self {
@@ -31,39 +26,44 @@ impl AsString for SearchResult {
     }
 }
 
+/// Implement the `AsString` trait for the `VideoInfo` struct.
 impl AsString for VideoInfo {
     fn as_string(&self) -> String {
         self.video_details.title.clone()
     }
 }
 
+/// Implement the `AsString` trait for the `Playlist` struct.
 impl AsString for Playlist {
     fn as_string(&self) -> String {
         self.name.clone()
     }
 }
 
+/// Implement the `AsString` trait for the `YouTube` struct.
 impl AsString for YouTube {
     fn as_string(&self) -> String {
         "YouTube".to_string()
     }
 }
 
+/// Implement the `AsString` trait for the `YoutubeDl` struct.
 impl AsString for YoutubeDl {
     fn as_string(&self) -> String {
         "YoutubeDl".to_string()
     }
 }
 
+/// Implement the `AsString` trait for the `RustyYoutubeClient` struct.
 impl AsString for RustyYoutubeClient {
     fn as_string(&self) -> String {
         self.to_string()
     }
 }
 
-/// Out strucut to wrap the rusty-ytdl search instance
-//TODO expand to go beyond search
 #[derive(Clone, Debug)]
+/// Our strucut to wrap the rusty-ytdl search instance
+//TODO expand to go beyond search
 pub struct RustyYoutubeClient {
     pub rusty_ytdl: YouTube,
     pub client: reqwest::Client,
@@ -542,15 +542,9 @@ mod test {
 
     #[tokio::test]
     async fn test_rusty_ytdl() {
-        // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
 
-        // let client = reqwest::ClientBuilder::new()
-        //     .use_rustls_tls()
-        //     .build()
-        //     .unwrap();
         let rusty_ytdl = YouTube::new().unwrap();
-        // let mut all_res = Vec::new();
         for search in searches {
             let res = rusty_ytdl.search_one(search.to_string(), None).await;
             println!("{res:?}");
@@ -561,7 +555,6 @@ mod test {
                         .to_string()
                         .contains("Your IP is likely being blocked")
             );
-            // all_res.push(res.unwrap().clone());
         }
     }
 
@@ -582,7 +575,6 @@ mod test {
             .unwrap();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
-        // let mut all_res = Vec::new();
         for search in searches {
             let res = ytdl.one_shot(search.to_string()).await;
             assert!(
@@ -592,7 +584,6 @@ mod test {
                         .to_string()
                         .contains("Your IP is likely being blocked")
             );
-            // all_res.push(res.unwrap().clone());
         }
     }
 
@@ -621,57 +612,6 @@ mod test {
             res_all.push(res);
         }
 
-        // assert!(res_all.len() == 5);
-
         println!("{:?}", res_all);
     }
-    // #[tokio::test]
-    // async fn test_ytdl_parallel() {
-    //     // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-    //     let searches = vec![
-    //         "The Night Chicago Died".to_string(),
-    //         "The Devil Went Down to Georgia".to_string(),
-    //         "Hit That The Offspring".to_string(),
-    //         "Nightwish I Wish I had an Angel".to_string(),
-    //         "Oh Shit I'm Feeling It".to_string(),
-    //     ];
-    //     let ytdl = crate::sources::rusty_ytdl::MyRustyYoutubeDl::new(None).unwrap();
-    //     let ytdl = Arc::new(ytdl);
-    //     use tokio::task::JoinSet;
-
-    //     {
-    //         let ytdl2 = ytdl.clone();
-    //         let mut futures = Vec::with_capacity(searches.len());
-    //         for search in searches {
-    //             let fut = ytdl2.clone().one_shot(search);
-    //             futures.push(fut);
-    //         }
-
-    //         let mut set = JoinSet::new();
-
-    //         for fut in futures {
-    //             set.spawn(fut);
-    //         }
-
-    //         let mut results = Vec::with_capacity(futures.len());
-    //         while let Some(res) = set.join_next().await {
-    //             let out = &mut res.unwrap().unwrap();
-    //             results.append(out);
-    //         }
-
-    //         assert!(results.len() == 5);
-    //         println!("{:?}", results);
-    //     }
-    //     println!("{:?}", ytdl)
-    //     // for search in searches {
-    //     //     let join_handle =
-    //     //         tokio::spawn(async move { ytdl.clone().one_shot(search.to_string()) });
-    //     //     handles.push(join_handle);
-    //     // }
-
-    //     // for handle in handles {
-    //     //     results.push(handle.await.unwrap())
-    //     // }
-    //     //tokio::join!(all_res);
-    // }
 }
