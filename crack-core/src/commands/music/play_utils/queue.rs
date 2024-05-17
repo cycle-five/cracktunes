@@ -1,121 +1,28 @@
 use super::QueryType;
-use crate::db::Metadata;
-use crate::errors::verify;
-use crate::handlers::track_end::update_queue_messages;
-use crate::http_utils::CacheHttpExt;
-use crate::sources::youtube::{queue_track_back, TrackReadyData};
 use crate::{
     commands::{Mode, MyAuxMetadata, RequestingUser},
-    db::{aux_metadata_to_db_structures, PlayLog, User},
+    db::{aux_metadata_to_db_structures, Metadata, PlayLog, User},
+    errors::{verify, CrackedError},
+    handlers::track_end::update_queue_messages,
+    http_utils::CacheHttpExt,
+    sources::youtube::{ready_query, TrackReadyData},
+    Context, Error,
 };
-use crate::{errors::CrackedError, Context, Error};
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
-use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use songbird::Call;
-use songbird::{input::Input as SongbirdInput, tracks::Track};
+use songbird::{
+    input::{AuxMetadata, Input as SongbirdInput},
+    tracks::Track,
+};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-// struct QueueTrackData {
-//     title: String,
-//     url: String,
-// }
-
-// /// Queue a list of tracks to be played.
-// #[cfg(not(tarpaulin_include))]
-// async fn queue_tracks(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     tracks: Vec<QueueTrackData>,
-//     search_msg: &mut Message,
-//     mode: Mode,
-// ) -> Result<(), Error> {
-//     use crate::commands::youtube::queue_track_front;
-
-//     use super::youtube::queue_track_back;
-
-//     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-//     let n = tracks.len() as f32;
-//     for (i, track) in (0_u32..).zip(tracks.into_iter()) {
-//         // Update the search message with what's queuing right now.
-//         let _ = search_msg
-//             .edit(
-//                 ctx,
-//                 EditMessage::new().embed(CreateEmbed::default().description(format!(
-//                     "Queuing: [{}]({})\n{}% Done...",
-//                     track.title,
-//                     track.url,
-//                     (i as f32 / n) as u32 * 100
-//                 ))),
-//             )
-//             .await;
-//         let user_id = ctx.author().id;
-//         let new_query_type = QueryType::VideoLink(track.url.to_string());
-//         let _queue_res = if mode == Mode::Next {
-//             queue_track_front(ctx, &call, &new_query_type, user_id).await
-//         } else {
-//             queue_track_back(ctx, &call, &new_query_type, user_id).await
-//         };
-//         // let _queue_res =
-//         //    enqueue_track_pgwrite(ctx, &call, &QueryType::VideoLink(track.url.to_string())).await;
-//         // let queue = match queue_res {
-//         //     Ok(q) => q,
-//         //     Err(e) => {
-//         //         tracing::error!("Error: {}", e);
-//         //         continue;
-//         //     },
-//         // };
-//         // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
-//     }
-//     let queue = call.lock().await.queue().current_queue();
-//     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
-//     Ok(())
-// }
-
-// /// Queue a YouTube playlist to be played.
-// #[cfg(not(tarpaulin_include))]
-// pub async fn queue_yt_playlist<'a>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     guild_id: GuildId,
-//     playlist: YTPlaylist,
-//     search_msg: &'a mut Message,
-// ) -> Result<(), Error> {
-//     // let tracks = playlist.videos.iter().map(|x| QueueTrackData {
-//     //     title: x.title.clone(),
-//     //     url: x.url.clone(),
-//     // });
-//     // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::End).await
-//     queue_yt_playlist_internal(ctx, call, guild_id, playlist, search_msg, Mode::End)
-//         .await
-//         .map(|_| ())
-// }
-
-// #[cfg(not(tarpaulin_include))]
-// pub async fn queue_yt_playlist_front<'a>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     guild_id: GuildId,
-//     playlist: YTPlaylist,
-//     search_msg: &'a mut Message,
-// ) -> Result<(), Error> {
-//     // let tracks = playlist.videos.iter().map(|x| QueueTrackData {
-//     //     title: x.title.clone(),
-//     //     url: x.url.clone(),
-//     // });
-//     // queue_tracks(ctx, call, tracks.collect(), search_msg, Mode::Next).await
-//     queue_yt_playlist_internal(ctx, call, guild_id, playlist, search_msg, Mode::Next)
-//         .await
-//         .map(|_| ())
-// }
 
 /// Queue a list of tracks to be played.
 pub async fn queue_ready_track_list(
     call: Arc<Mutex<Call>>,
     _user_id: UserId,
-    // tracks: &[TrackReadyData],
     tracks: Vec<TrackReadyData>,
     mode: Mode,
 ) -> Result<Vec<TrackHandle>, Error> {
@@ -138,92 +45,8 @@ pub async fn queue_ready_track_list(
             });
         }
     }
-    // let handler = call.lock().await;
     Ok(handler.queue().current_queue())
 }
-
-// /// Queue a YouTube playlist to be played.
-// #[cfg(not(tarpaulin_include))]
-// pub async fn queue_yt_playlist_internal<'a>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     _guild_id: GuildId,
-//     playlist: YTPlaylist,
-//     search_msg: &'a mut Message,
-//     mode: Mode,
-// ) -> Result<Vec<TrackHandle>, Error> {
-//     use crate::sources::youtube::ready_query;
-//     let user_id = ctx.author().id;
-//     search_msg
-//         .edit(
-//             ctx,
-//             EditMessage::new()
-//                 .embed(CreateEmbed::default().description("Searching...".to_string())),
-//         )
-//         .await?;
-
-//     let track_data = playlist.videos.iter().map(|x| QueueTrackData {
-//         title: x.title.clone(),
-//         url: x.url.clone(),
-//     });
-//     let mut titles = String::new();
-//     let mut tracks = Vec::new();
-//     if mode == Mode::Next {
-//         for track in track_data.rev().collect::<Vec<QueueTrackData>>() {
-//             let new_query = QueryType::VideoLink(track.url.to_string());
-//             let ready_track = ready_query(ctx, new_query).await?;
-//             tracks.push(ready_track);
-//             titles.push_str(&format!("{}\n", track.title));
-//         }
-//     } else {
-//         for track in track_data.collect::<Vec<QueueTrackData>>() {
-//             let new_query = QueryType::VideoLink(track.url.to_string());
-//             let ready_track = ready_query(ctx, new_query).await?;
-//             tracks.push(ready_track);
-//             titles.push_str(&format!("{}\n", track.title));
-//         }
-//     };
-
-//     search_msg
-//         .edit(
-//             ctx,
-//             EditMessage::new().embed(
-//                 CreateEmbed::default().description(format!("Search done, queuing...\n{}", titles)),
-//             ),
-//         )
-//         .await?;
-
-//     let mut handler = call.lock().await;
-//     for ready_track in tracks {
-//         let track_handle = handler.enqueue(ready_track.track).await;
-//         let mut map = track_handle.typemap().write().await;
-//         map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-//         map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-//         if mode == Mode::Next {
-//             handler.queue().modify_queue(|queue| {
-//                 let back = queue.pop_back().unwrap();
-//                 queue.push_front(back);
-//             });
-//         }
-//     }
-//     // let handler = call.lock().await;
-//     Ok(handler.queue().current_queue())
-//     //.rev()
-//     //.collect();
-//     // if mode == Mode::Shuffle {
-//     //     let mut tracks: Vec<QueueTrackData> = tracks.collect();
-//     //     tracks.shuffle(&mut rand::thread_rng());
-//     //     queue_tracks(ctx, call, tracks, search_msg).await
-//     // } else if mode == Mode::Reverse {
-//     //     let mut tracks: Vec<QueueTrackData> = tracks.collect();
-//     //     tracks.reverse();
-//     //     queue_tracks(ctx, call, tracks, search_msg).await
-//     // } else if mode == Mode::Next {
-//     // if mode == Mode::Next {
-//     //     let tracks2 = tracks.rev().collect();
-//     // }
-//     //queue_tracks_ready(ctx, call, tracks, search_msg, mode).await
-// }
 
 /// Queue a list of keywords to be played from the end of the queue.
 #[cfg(not(tarpaulin_include))]
@@ -236,7 +59,7 @@ pub async fn queue_keyword_list_back<'a>(
     let first = queries
         .first()
         .ok_or(CrackedError::Other("queries.first()"))?;
-    queue_keyword_list_inside_out(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
+    queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
     let queries = queries[1..].to_vec();
     for chunk in queries.chunks(10) {
         let to_queue_str = chunk
@@ -247,26 +70,25 @@ pub async fn queue_keyword_list_back<'a>(
         msg.edit(
             ctx,
             EditMessage::new().embed(CreateEmbed::default().description(format!(
-                "queue {} songs... \n{}",
+                "Queuing {} songs... \n{}",
                 chunk.len(),
                 to_queue_str
             ))),
         )
         .await?;
-        queue_keyword_list_inside_out(ctx, call.clone(), chunk.to_vec(), Mode::End).await?
+        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?
     }
     Ok(())
 }
 
 /// Queue a list of keywords to be played with an offset.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_inside_out(
+pub async fn queue_vec_query_type(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
     _mode: Mode,
 ) -> Result<(), Error> {
-    use crate::sources::youtube::ready_query;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let mut tracks = Vec::new();
@@ -280,23 +102,47 @@ pub async fn queue_keyword_list_inside_out(
     Ok(())
 }
 
-/// Queue a list of keywords to be played with an offset.
+/// Queue a list of queries to be played with a given offset.
+/// N.B. The offset must be 0 < offset < queue.len() + 1
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_w_offset<'a>(
+pub async fn queue_query_list_offset<'a>(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
-    //keyword_list: Vec<String>,
     offset: usize,
     _search_msg: &'a mut Message,
 ) -> Result<(), Error> {
-    use crate::sources::youtube::ready_query;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    //let mut failed: usize = 0;
-    //let n = keyword_list.len() as f32;
+
+    // Can this starting section be simplified?
+    let queue_size = {
+        let handler = call.lock().await;
+        handler.queue().len()
+    };
+
+    if queue_size <= 1 {
+        return queue_vec_query_type(ctx, call, queries, Mode::End).await;
+    }
+
+    verify(
+        offset > 0 && offset <= queue_size + 1,
+        CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
+    )?;
+
+    // If the queue is empty and the this is going to play immediately, then
+    // queue the first track right away so that it doesn't wait until the
+    // whole queuing process is finished before it starts playing.
+    let (queries, offset) = if offset == 1 {
+        let first = queries
+            .first()
+            .ok_or(CrackedError::Other("queries.first()"))?;
+        queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
+        (queries[1..].to_vec(), 2)
+    } else {
+        (queries, offset)
+    };
+
     let mut tracks = Vec::new();
-    //for (idx, keywords) in keyword_list.into_iter().enumerate() {
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
         tracks.push(ready_track);
@@ -325,67 +171,41 @@ pub async fn queue_keyword_list_w_offset<'a>(
     Ok(())
 }
 
-/// Inserts a track into the queue at the specified index.
-#[cfg(not(tarpaulin_include))]
-pub async fn insert_track(
-    ctx: Context<'_>,
-    call: &Arc<Mutex<Call>>,
-    query_type: &QueryType,
-    idx: usize,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::sources::youtube::queue_track_back;
+// /// Inserts a track into the queue at the specified index.
+// // TODO: This is mostly redundant with the other queuing functions.
+// // unify the use of queuing functions and remove duplicate code.
+// #[cfg(not(tarpaulin_include))]
+// pub async fn insert_track(
+//     ctx: Context<'_>,
+//     call: &Arc<Mutex<Call>>,
+//     query_type: &QueryType,
+//     idx: usize,
+// ) -> Result<Vec<TrackHandle>, CrackedError> {
+//     let handler = call.lock().await;
+//     let queue_size = handler.queue().len();
+//     drop(handler);
+//     tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
 
-    let handler = call.lock().await;
-    let queue_size = handler.queue().len();
-    drop(handler);
-    tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
+//     if queue_size <= 1 {
+//         let queue = queue_track_back(ctx, call, query_type).await?;
+//         return Ok(queue);
+//     }
 
-    if queue_size <= 1 {
-        let queue = enqueue_track_pgwrite(ctx, call, query_type).await?;
-        return Ok(queue);
-    }
+//     verify(
+//         idx > 0 && idx <= queue_size + 1,
+//         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
+//     )?;
 
-    verify(
-        idx > 0 && idx <= queue_size + 1,
-        CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
-    )?;
+//     queue_track_back(ctx, call, query_type).await?;
 
-    queue_track_back(ctx, call, query_type).await?;
+//     let handler = call.lock().await;
+//     handler.queue().modify_queue(|queue| {
+//         let back = queue.pop_back().unwrap();
+//         queue.insert(idx, back);
+//     });
 
-    let handler = call.lock().await;
-    handler.queue().modify_queue(|queue| {
-        let back = queue.pop_back().unwrap();
-        queue.insert(idx, back);
-    });
-
-    Ok(handler.queue().current_queue())
-}
-
-/// Enqueues a track and adds metadata to the database. (concise parameters)
-#[cfg(not(tarpaulin_include))]
-pub async fn enqueue_track_pgwrite(
-    ctx: Context<'_>,
-    call: &Arc<Mutex<Call>>,
-    query_type: &QueryType,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    // let database_pool = get_db_or_err!(ctx);
-    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    // let channel_id = ctx.channel_id();
-    // let user_id = ctx.author().id;
-    // let http = ctx.http();
-
-    queue_track_back(ctx, call, query_type).await
-    // enqueue_track_pgwrite_asdf(
-    //     ctx.data().database_pool.as_ref().unwrap(),
-    //     ctx.guild_id().unwrap(),
-    //     ctx.channel_id(),
-    //     ctx.author().id,
-    //     ctx,
-    //     call,
-    //     query_type,
-    // )
-    // .await
-}
+//     Ok(handler.queue().current_queue())
+// }
 
 /// Writes metadata to the database for a playing track.
 #[cfg(not(tarpaulin_include))]
@@ -447,6 +267,7 @@ pub async fn write_metadata_pg(
 }
 
 /// Enqueues a track and adds metadata to the database. (parameters broken out)
+// TODO: This is redundant with the other queuing functions. Remove it.
 #[cfg(not(tarpaulin_include))]
 pub async fn enqueue_track_pgwrite_asdf(
     database_pool: &PgPool,
@@ -498,6 +319,7 @@ pub async fn enqueue_track_pgwrite_asdf(
 }
 
 /// Get the play mode and the message from the parameters to the play command.
+// TODO: There is a lot of cruft in this from the older version of this. Clean it up.
 pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
     let opt_mode = mode.clone();
     if is_prefix {
@@ -557,6 +379,7 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
 /// Due to the way that the way the poise library works with auto filling them
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
+// TODO: Old and crufty. Clean up.
 pub fn get_msg(
     mode: Option<String>,
     query_or_url: Option<String>,
@@ -581,6 +404,7 @@ pub fn get_msg(
 }
 
 /// Rotates the queue by `n` tracks to the right.
+// FIXME: Do we need this anymore?
 #[cfg(not(tarpaulin_include))]
 pub async fn _rotate_tracks(
     call: &Arc<Mutex<Call>>,

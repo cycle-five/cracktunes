@@ -1,7 +1,7 @@
 use ::serenity::all::CommandInteraction;
 
 use super::play_utils::query::QueryType;
-use super::play_utils::queue::{enqueue_track_pgwrite, get_mode, get_msg};
+use super::play_utils::queue::{get_mode, get_msg};
 use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
@@ -19,6 +19,7 @@ use crate::{
         },
     },
     sources::spotify::SpotifyTrack,
+    sources::youtube::{build_query_aux_metadata, queue_track_back},
     utils::{
         get_guild_name, get_human_readable_timestamp, get_track_metadata, send_embed_response_poise,
     },
@@ -534,8 +535,6 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
 ) -> Result<(), CrackedError> {
-    use crate::sources::youtube::build_query_aux_metadata;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
@@ -570,7 +569,7 @@ pub async fn queue_aux_metadata(
         );
 
         let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.metadata().clone()));
-        let _ = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
+        let _ = queue_track_back(ctx, &call, &query_type).await?;
     }
 
     let queue = call.lock().await.queue().current_queue();

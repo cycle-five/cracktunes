@@ -20,6 +20,7 @@ ignore-presence-log = []
 crack-telemetry = ["crack-metrics"]
 crack-tracing = ["tracing-subscriber"]
 crack-metrics = ["prometheus"]
+
 [dependencies]
 # core
 crack-core = { workspace = true }

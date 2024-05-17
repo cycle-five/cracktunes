@@ -69,14 +69,14 @@ tokio = { workspace = true }
 poise = { workspace = true }
 
 [dependencies.symphonia]
-version = "=0.5.4"
-features = ["all-formats", "all-codecs"]
+version = "0.5.4"
+features = ["all-formats", "all-codecs", "opt-simd"]
 
-[dependencies.symphonia-core]
-version = "=0.5.4"
+# [dependencies.symphonia-core]
+# version = "=0.5.4"
 
-[dependencies.symphonia-metadata]
-version = "=0.5.4"
+# [dependencies.symphonia-metadata]
+# version = "=0.5.4"
 
 
 [dependencies.rspotify]

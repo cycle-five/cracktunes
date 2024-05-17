@@ -12,8 +12,9 @@ use crate::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
         youtube::{
-            enqueue_track_ready, ready_query, search_query_to_source_and_metadata_rusty,
-            search_query_to_source_and_metadata_ytdl, video_info_to_source_and_metadata,
+            enqueue_track_ready, queue_track_back, queue_track_front, ready_query,
+            search_query_to_source_and_metadata_rusty, search_query_to_source_and_metadata_ytdl,
+            video_info_to_source_and_metadata,
         },
     },
     utils::{
@@ -41,9 +42,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use url::Url;
 
-use super::{
-    enqueue_track_pgwrite, insert_track, queue_keyword_list_back, queue_keyword_list_w_offset,
-};
+use super::{queue_keyword_list_back, queue_query_list_offset};
 
 /// Enum for type of possible queries we have to handle
 #[derive(Clone, Debug)]
@@ -331,7 +330,7 @@ impl QueryType {
             search_results,
         )
         .await?;
-        enqueue_track_pgwrite(ctx, &call, &qt).await
+        queue_track_back(ctx, &call, &qt).await
         // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await
     }
 
@@ -346,25 +345,18 @@ impl QueryType {
             | QueryType::VideoLink(_)
             | QueryType::File(_)
             | QueryType::NewYoutubeDl(_) => {
-                let _queue = insert_track(ctx, &call, self, 1).await?;
+                queue_track_front(ctx, &call, self).await?;
             },
             // FIXME
             QueryType::PlaylistLink(url) => {
                 let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
                 let rusty_ytdl = RustyYoutubeClient::new()?;
                 let playlist: Playlist = rusty_ytdl.get_playlist(url.clone()).await?;
-                queue_keyword_list_w_offset(
-                    ctx,
-                    call,
-                    Queries::from(playlist).to_vec(),
-                    1,
-                    search_msg,
-                )
-                .await?;
-                // queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
+                queue_query_list_offset(ctx, call, Queries::from(playlist).to_vec(), 1, search_msg)
+                    .await?;
             },
             QueryType::KeywordList(keywords_list) => {
-                queue_keyword_list_w_offset(
+                queue_query_list_offset(
                     ctx,
                     call,
                     Queries::from(keywords_list.clone()).to_vec(),
@@ -378,7 +370,7 @@ impl QueryType {
                 //     .iter()
                 //     .map(|x| x.build_query())
                 //     .collect::<Vec<String>>();
-                queue_keyword_list_w_offset(
+                queue_query_list_offset(
                     ctx,
                     call,
                     Queries::from(tracks.clone()).to_vec(),
@@ -452,8 +444,7 @@ impl QueryType {
             },
             QueryType::File(file) => {
                 tracing::trace!("Mode::End, QueryType::File");
-                let _queue =
-                    enqueue_track_pgwrite(ctx, &call, &QueryType::File(file.clone())).await?;
+                let _queue = queue_track_back(ctx, &call, &QueryType::File(file.clone())).await?;
                 // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
                 Ok(true)
             },
@@ -472,8 +463,7 @@ impl QueryType {
                 // FIXME
                 let mut src = YoutubeDl::new(http_utils::get_client().clone(), url.clone());
                 let metadata = src.aux_metadata().await?;
-                enqueue_track_pgwrite(ctx, &call, &QueryType::NewYoutubeDl((src, metadata)))
-                    .await?;
+                queue_track_back(ctx, &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
                 Ok(true)
             },
             QueryType::KeywordList(keywords_list) => {
