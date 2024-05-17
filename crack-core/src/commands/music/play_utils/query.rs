@@ -1,5 +1,5 @@
 use crate::{
-    commands::{check_banned_domains, play_utils::queue_yt_playlist, MyAuxMetadata},
+    commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     http_utils,
@@ -32,6 +32,7 @@ use songbird::{
     Call,
 };
 use std::{
+    ops::Deref,
     path::Path,
     process::{Output, Stdio},
     sync::Arc,
@@ -42,7 +43,6 @@ use url::Url;
 
 use super::{
     enqueue_track_pgwrite, insert_track, queue_keyword_list_back, queue_keyword_list_w_offset,
-    queue_yt_playlist_front,
 };
 
 /// Enum for type of possible queries we have to handle
@@ -58,6 +58,77 @@ pub enum QueryType {
     YoutubeSearch(String),
     None,
 }
+
+pub struct Queries {
+    queries: Vec<QueryType>,
+}
+
+impl Queries {
+    pub fn new(queries: Vec<QueryType>) -> Self {
+        Self { queries }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queries.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.queries.len()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<QueryType> {
+        self.queries.iter()
+    }
+}
+
+impl Deref for Queries {
+    type Target = Vec<QueryType>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.queries
+    }
+}
+
+impl From<Vec<String>> for Queries {
+    fn from(v: Vec<String>) -> Self {
+        let queries = v.into_iter().map(QueryType::Keywords).collect();
+        Queries::new(queries)
+    }
+}
+
+impl From<Vec<SpotifyTrack>> for Queries {
+    fn from(v: Vec<SpotifyTrack>) -> Self {
+        let queries = v
+            .into_iter()
+            .map(|x| QueryType::Keywords(x.build_query()))
+            .collect();
+        Queries::new(queries)
+    }
+}
+
+impl From<Playlist> for Queries {
+    fn from(v: Playlist) -> Self {
+        let queries = v
+            .videos
+            .into_iter()
+            .map(|x| QueryType::VideoLink(x.url))
+            .collect();
+        Queries::new(queries)
+    }
+}
+
+impl From<Queries> for Vec<QueryType> {
+    fn from(q: Queries) -> Vec<QueryType> {
+        q.queries
+    }
+}
+
+// impl From<Into<Vec<QueryType>>> for Queries {
+//     fn from(v: Into<Vec<QueryType>>) -> Self {
+//         let queries = v.into();
+//         Queries::new(queries)
+//     }
+// }
 
 impl QueryType {
     /// Build a query string from the query type.
@@ -279,21 +350,42 @@ impl QueryType {
             },
             // FIXME
             QueryType::PlaylistLink(url) => {
-                let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+                let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
                 let rusty_ytdl = RustyYoutubeClient::new()?;
                 let playlist: Playlist = rusty_ytdl.get_playlist(url.clone()).await?;
-                queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
+                queue_keyword_list_w_offset(
+                    ctx,
+                    call,
+                    Queries::from(playlist).to_vec(),
+                    1,
+                    search_msg,
+                )
+                .await?;
+                // queue_yt_playlist_front(ctx, call, guild_id, playlist, search_msg).await?;
             },
             QueryType::KeywordList(keywords_list) => {
-                queue_keyword_list_w_offset(ctx, call, keywords_list.clone(), 1, search_msg)
-                    .await?;
+                queue_keyword_list_w_offset(
+                    ctx,
+                    call,
+                    Queries::from(keywords_list.clone()).to_vec(),
+                    1,
+                    search_msg,
+                )
+                .await?;
             },
             QueryType::SpotifyTracks(tracks) => {
-                let keywords_list = tracks
-                    .iter()
-                    .map(|x| x.build_query())
-                    .collect::<Vec<String>>();
-                queue_keyword_list_w_offset(ctx, call, keywords_list, 1, search_msg).await?;
+                // let keywords_list = tracks
+                //     .iter()
+                //     .map(|x| x.build_query())
+                //     .collect::<Vec<String>>();
+                queue_keyword_list_w_offset(
+                    ctx,
+                    call,
+                    Queries::from(tracks.clone()).to_vec(),
+                    1,
+                    search_msg,
+                )
+                .await?;
             },
             QueryType::YoutubeSearch(_) => {
                 return Err(CrackedError::Other("Not implemented yet!"));
@@ -336,20 +428,26 @@ impl QueryType {
                 // Let's use the new YouTube rust library for this
                 let rusty_ytdl = RustyYoutubeClient::new()?;
                 let playlist: Playlist = rusty_ytdl.get_playlist(url.clone()).await?;
-                queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
+                queue_keyword_list_back(ctx, call, Queries::from(playlist).to_vec(), search_msg)
+                    .await?;
+                // queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
                 Ok(true)
             },
             QueryType::SpotifyTracks(tracks) => {
-                let keywords_list = tracks
+                let queries = tracks
                     .iter()
-                    .map(|x| x.build_query())
-                    .collect::<Vec<String>>();
-                queue_keyword_list_back(ctx, call, keywords_list, search_msg).await?;
+                    .map(|x| QueryType::Keywords(x.build_query()))
+                    .collect::<Vec<QueryType>>();
+                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
                 Ok(true)
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::trace!("Mode::End, QueryType::KeywordList");
-                queue_keyword_list_back(ctx, call, keywords_list.clone(), search_msg).await?;
+                let queries = keywords_list
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.clone()))
+                    .collect::<Vec<QueryType>>();
+                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
                 Ok(true)
             },
             QueryType::File(file) => {
@@ -379,15 +477,19 @@ impl QueryType {
                 Ok(true)
             },
             QueryType::KeywordList(keywords_list) => {
-                queue_keyword_list_back(ctx, call, keywords_list.clone(), search_msg).await?;
+                let queries = keywords_list
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.clone()))
+                    .collect::<Vec<QueryType>>();
+                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
                 Ok(true)
             },
             QueryType::SpotifyTracks(tracks) => {
-                let keywords_list = tracks
+                let queries = tracks
                     .iter()
-                    .map(|x| x.build_query())
-                    .collect::<Vec<String>>();
-                queue_keyword_list_back(ctx, call, keywords_list, search_msg).await?;
+                    .map(|x| QueryType::Keywords(x.build_query()))
+                    .collect::<Vec<QueryType>>();
+                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
                 Ok(true)
             },
             _ => {
