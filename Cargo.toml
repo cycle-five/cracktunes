@@ -61,14 +61,6 @@ branch = "current"
 version = "0.4.1"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
-# To get additional codecs, you *must* add Symphonia yourself.
-# This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
-[workspace.dependencies.symphonia]
-version = "0.5.3"
-default-features = true
-features = ["all-formats", "all-codecs", "opt-simd"]
-
-
 [workspace.dependencies.poise]
 git = "https://github.com/cycle-five/poise"
 branch = "current"
@@ -79,7 +71,6 @@ features = ["cache", "chrono"]
 version = "1.37.0"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
-# features = ["full"]
 
 [profile.release-with-debug]
 inherits = "release"

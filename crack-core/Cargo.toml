@@ -65,20 +65,24 @@ tracing = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }
 songbird = { workspace = true }
-symphonia = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
+
+[dependencies.symphonia]
+version = "=0.5.4"
+features = ["all-formats", "all-codecs"]
+
+[dependencies.symphonia-core]
+version = "=0.5.4"
+
+[dependencies.symphonia-metadata]
+version = "=0.5.4"
+
 
 [dependencies.rspotify]
 version = "0.13.1"
 default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
-
-# To get additional codecs, you *must* add Symphonia yourself.
-# # This includes the default formats (MKV/WebM, Ogg, Wave) and codecs (FLAC, PCM, Vorbis)...
-# [dependencies.symphonia]
-# version = "0.5.3"
-# features = ["all"]
 
 [dependencies.ffprobe]
 git = "https://github.com/cycle-five/ffprobe-rs"

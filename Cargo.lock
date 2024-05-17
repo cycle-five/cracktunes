@@ -746,6 +746,8 @@ dependencies = [
  "songbird",
  "sqlx",
  "symphonia",
+ "symphonia-core",
+ "symphonia-metadata",
  "sys-info",
  "tokio",
  "tracing",
@@ -794,7 +796,6 @@ dependencies = [
  "prometheus",
  "songbird",
  "sqlx",
- "symphonia",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -4508,7 +4509,6 @@ dependencies = [
  "bytemuck",
  "lazy_static",
  "log",
- "rustfft",
 ]
 
 [[package]]
