@@ -31,8 +31,8 @@ impl EventHandler for Handler {
 //     type Value = Vec<u8>;
 // }
 
-// 10MB (10s not powers of 2 since it gets stored on disc)
-const DEFAULT_BUFFER_SIZE: usize = 1_00_000_000;
+// 10MB (10s not powers of 2 since it gets stored on disk)
+const DEFAULT_BUFFER_SIZE: usize = 100_000_000;
 
 pub struct Receiver {
     pub data: Arc<RwLock<Vec<u8>>>,
