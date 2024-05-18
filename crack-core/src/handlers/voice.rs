@@ -7,7 +7,7 @@ use songbird::{
     model::payload::{ClientDisconnect, Speaking},
     Event, EventContext, EventHandler as VoiceEventHandler,
 };
-use songbird::{Call, CoreEvent};
+use songbird::{Call, CoreEvent, TrackEvent};
 use std::{mem, slice, sync::Arc};
 
 use crate::errors::CrackedError;
@@ -31,11 +31,14 @@ impl EventHandler for Handler {
 //     type Value = Vec<u8>;
 // }
 
+// 10MB (10s not powers of 2 since it gets stored on disc)
+const DEFAULT_BUFFER_SIZE: usize = 1_00_000_000;
+
 pub struct Receiver {
     pub data: Arc<RwLock<Vec<u8>>>,
-    // pub cache_http: &'a (&'a Arc<Cache>, Http),
     pub cache: Option<Arc<Cache>>,
     pub http: Arc<Http>,
+    buf_size: usize,
 }
 
 impl Receiver {
@@ -46,53 +49,29 @@ impl Receiver {
             http: ctx
                 .map(|x| x.http.clone())
                 .unwrap_or(Arc::new(Http::new(""))),
+            buf_size: DEFAULT_BUFFER_SIZE,
         }
     }
 
-    // FIXME
-    #[allow(dead_code)]
+    // Insert a buffer from the audio stream to the handlers internal buffer.
+    // Clear it every so often to bound the memory usage.
     async fn insert(&self, buf: &[u8]) {
-        let insert_lock = {
-            // While data is a RwLock, it's recommended that you always open the lock as read.
-            // This is mainly done to avoid Deadlocks for having a possible writer waiting for multiple
-            // readers to close.
-            self.data.write().await
-            //let data_read = self.data.write().await;
+        let mut lock = self.data.write().await;
 
-            //data_read
-            // data, instead the reference is cloned.
-            // We wrap every value on in an Arc, as to keep the data lock open for the least time possible,
-            // to again, avoid deadlocking it.
-            // data_read
-            //     .get::<AudioBuffer>()
-            //     .expect("Expected AudioBuffer.")
-            //     .clone()
-        };
-
-        // Just like with client.data in main, we want to keep write locks open the least time
-        // possible, so we wrap them on a block so they get automatically closed at the end.
-        {
-            // The HashMap of CommandCounter is wrapped in an RwLock; since we want to write to it, we will
-            // open the lock in write mode.
-            // let mut buff = insert_lock.write().await;
-            let mut buff = insert_lock; //.clone();
-
-            println!("AudioBuffer size: {}", buff.len());
-            // And we write the amount of times the command has been called to it.
-            if buff.len() > 100000000 {
-                // let mut out_file = File::create(format!(
-                //     "file_{:?}.out",
-                //     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
-                // ))
-                // .await
-                // .unwrap();
-                // use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
-                // out_file.write_all(&buff).await.unwrap();
-                buff.clear();
-            }
-            //
-            buff.extend_from_slice(buf);
+        let n = lock.len();
+        tracing::trace!("AudioBuffer size: {}", n);
+        if n > self.buf_size {
+            // let mut out_file = File::create(format!(
+            //     "file_{:?}.out",
+            //     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+            // ))
+            // .await
+            // .unwrap();
+            // use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
+            // out_file.write_all(&buff).await.unwrap();
+            lock.clear();
         }
+        lock.extend_from_slice(buf);
     }
 }
 
@@ -148,7 +127,11 @@ impl VoiceEventHandler for Receiver {
                 let ssrc = data.rtp().get_ssrc();
                 let n = data.packet.len();
                 let (beg, end) = data.packet.split_at(n - data.payload_end_pad);
-                // FIXME: Can we not do an unsafe?
+                // Can we not do an unsafe?...
+                // Seven months later... We need to do an unsafe because we are not moving
+                // this memory, but reinterpreting the ptr as a slice of a different size.
+                // This is I believe analogous to  `new_type *new_obj = *(new_type *)(void*)&obj;`
+                // in C.
                 let slice_u8: &[u8] = unsafe {
                     slice::from_raw_parts(beg.as_ptr(), beg.len() * mem::size_of::<u16>())
                 };
@@ -204,6 +187,8 @@ impl VoiceEventHandler for Receiver {
     }
 }
 
+/// Registers the voice handlers for a call instance for the bot.
+/// These are kept per guild.
 pub async fn register_voice_handlers(
     buffer: Arc<RwLock<Vec<u8>>>,
     handler_lock: Arc<tokio::sync::Mutex<Call>>,
@@ -211,22 +196,17 @@ pub async fn register_voice_handlers(
 ) -> Result<(), CrackedError> {
     // NOTE: this skips listening for the actual connection result.
     let mut handler = handler_lock.lock().await;
-    // allocating memory, need to drop this when y
-    // let cache_http = Box::pin(cache_http);
-    // .map_err(|e| {
-    //     tracing::error!("Error locking handler: {:?}", e);
-    //     CrackedError::RSpotifyLockError(format!("{e:?}"))
-    // })?;
 
+    // allocating memory, need to drop this when y???
     handler.add_global_event(
         CoreEvent::SpeakingStateUpdate.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
-    // handler.add_global_event(
-    //     CoreEvent::SpeakingStateUpdate.into(),
-    //     Receiver::new(buffer.clone()),
-    // );
+    handler.add_global_event(
+        TrackEvent::End.into(),
+        Receiver::new(buffer.clone(), Some(ctx.clone())),
+    );
 
     handler.add_global_event(
         CoreEvent::RtpPacket.into(),
@@ -267,9 +247,7 @@ mod test {
         let ctx = EventContext::SpeakingStateUpdate(speaking);
         let _ = receiver.act(&ctx).await;
         let buf = receiver.data.read().await.clone();
-        // let buf = buf.as_slice();
-        // let mut read_buf = [0 as u8; 8];
-        // read_buf.copy_from_slice(&buf[..8]);
+
         let user_id = u64::from_be_bytes(buf.as_slice().try_into().unwrap());
         let got = VoiceUserId(user_id);
 
