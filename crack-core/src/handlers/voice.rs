@@ -1,22 +1,14 @@
-use std::sync::Arc;
-// use std::{mem, slice};
-
-use songbird::{Call, CoreEvent};
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
-
+use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
-use serenity::prelude::RwLock;
-
 use serenity::client::EventHandler;
-
+use serenity::prelude::RwLock;
+use serenity::{client::Context as SerenityContext, model::gateway::Ready};
 use songbird::{
     model::payload::{ClientDisconnect, Speaking},
     Event, EventContext, EventHandler as VoiceEventHandler,
 };
-
-use serenity::{client::Context as SerenityContext, model::gateway::Ready};
-use std::time::{SystemTime, UNIX_EPOCH};
+use songbird::{Call, CoreEvent};
+use std::{mem, slice, sync::Arc};
 
 use crate::errors::CrackedError;
 
@@ -41,12 +33,20 @@ impl EventHandler for Handler {
 
 pub struct Receiver {
     pub data: Arc<RwLock<Vec<u8>>>,
+    // pub cache_http: &'a (&'a Arc<Cache>, Http),
+    pub cache: Option<Arc<Cache>>,
+    pub http: Arc<Http>,
 }
 
 impl Receiver {
-    pub fn new(arc: Arc<RwLock<Vec<u8>>>) -> Self {
-        // Copy of the global audio buffer with RWLock
-        Self { data: arc }
+    pub fn new(data: Arc<RwLock<Vec<u8>>>, ctx: Option<SerenityContext>) -> Self {
+        Self {
+            data,
+            cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
+            http: ctx
+                .map(|x| x.http.clone())
+                .unwrap_or(Arc::new(Http::new(""))),
+        }
     }
 
     // FIXME
@@ -80,13 +80,14 @@ impl Receiver {
             println!("AudioBuffer size: {}", buff.len());
             // And we write the amount of times the command has been called to it.
             if buff.len() > 100000000 {
-                let mut out_file = File::create(format!(
-                    "file_{:?}.out",
-                    SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
-                ))
-                .await
-                .unwrap();
-                out_file.write_all(&buff).await.unwrap();
+                // let mut out_file = File::create(format!(
+                //     "file_{:?}.out",
+                //     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+                // ))
+                // .await
+                // .unwrap();
+                // use tokio::io::AsyncWriteExt as TokAsyncWriteExt; // for write_all()
+                // out_file.write_all(&buff).await.unwrap();
                 buff.clear();
             }
             //
@@ -144,31 +145,19 @@ impl VoiceEventHandler for Receiver {
                 // FIXME: update this to the new library
                 // An event which fires for every received audio packet,
                 // containing the decoded data.
-                // if let Some(audio) = data.audio {
-                //     // FIXME: Can we not do an unsafe?
-                //     let slice_u8: &[u8] = unsafe {
-                //         slice::from_raw_parts(
-                //             audio.as_ptr() as *const u8,
-                //             audio.len() * mem::size_of::<u16>(),
-                //         )
-                //     };
-                //     // self.insert(slice_u8);
-                //     self.insert(slice_u8).await;
+                let ssrc = data.rtp().get_ssrc();
+                let n = data.packet.len();
+                let (beg, end) = data.packet.split_at(n - data.payload_end_pad);
+                // FIXME: Can we not do an unsafe?
+                let slice_u8: &[u8] = unsafe {
+                    slice::from_raw_parts(beg.as_ptr(), beg.len() * mem::size_of::<u16>())
+                };
+                self.insert(slice_u8).await;
 
-                //     println!(
-                //         "Audio packet's first 5 samples: {:?}",
-                //         audio.get(..5.min(audio.len()))
-                //     );
-                //     println!(
-                //         "Audio packet sequence {:05} has {:04} bytes (decompressed from {}), SSRC {}",
-                //         data.packet.sequence.0,
-                //         audio.len() * std::mem::size_of::<i16>(),
-                //         data.packet.payload.len(),
-                //         data.packet.ssrc,
-                //     );
-                // } else {
-                //     println!("RTP packet, but no audio. Driver may not be configured to decode.");
-                // }
+                println!(
+                    "Audio packet's first 5 samples: {:?}",
+                    data.packet.get(..5.min(beg.len()))
+                );
                 tracing::trace!("RTP packet received: {:?}", data.packet);
             },
             Ctx::RtcpPacket(data) => {
@@ -182,7 +171,7 @@ impl VoiceEventHandler for Receiver {
                 // You will typically need to map the User ID to their SSRC; observed when
                 // first speaking.
 
-                tracing::warn!("Client disconnected: user {:?}", user_id);
+                let user_name = tracing::warn!("Client disconnected: user {:?}", user_id);
             },
             Ctx::Track(track_data) => {
                 // An event which fires when a new track starts playing.
@@ -218,9 +207,12 @@ impl VoiceEventHandler for Receiver {
 pub async fn register_voice_handlers(
     buffer: Arc<RwLock<Vec<u8>>>,
     handler_lock: Arc<tokio::sync::Mutex<Call>>,
+    ctx: SerenityContext,
 ) -> Result<(), CrackedError> {
     // NOTE: this skips listening for the actual connection result.
     let mut handler = handler_lock.lock().await;
+    // allocating memory, need to drop this when y
+    // let cache_http = Box::pin(cache_http);
     // .map_err(|e| {
     //     tracing::error!("Error locking handler: {:?}", e);
     //     CrackedError::RSpotifyLockError(format!("{e:?}"))
@@ -228,7 +220,7 @@ pub async fn register_voice_handlers(
 
     handler.add_global_event(
         CoreEvent::SpeakingStateUpdate.into(),
-        Receiver::new(buffer.clone()),
+        Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
     // handler.add_global_event(
@@ -236,13 +228,19 @@ pub async fn register_voice_handlers(
     //     Receiver::new(buffer.clone()),
     // );
 
-    handler.add_global_event(CoreEvent::RtpPacket.into(), Receiver::new(buffer.clone()));
+    handler.add_global_event(
+        CoreEvent::RtpPacket.into(),
+        Receiver::new(buffer.clone(), Some(ctx.clone())),
+    );
 
-    handler.add_global_event(CoreEvent::RtcpPacket.into(), Receiver::new(buffer.clone()));
+    handler.add_global_event(
+        CoreEvent::RtcpPacket.into(),
+        Receiver::new(buffer.clone(), Some(ctx.clone())),
+    );
 
     handler.add_global_event(
         CoreEvent::ClientDisconnect.into(),
-        Receiver::new(buffer.clone()),
+        Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
     Ok(())
 }
@@ -256,7 +254,7 @@ mod test {
     #[tokio::test]
     async fn test_receiver() {
         let buffer = Arc::new(RwLock::new(Vec::new()));
-        let receiver = Receiver::new(buffer.clone());
+        let receiver = Receiver::new(buffer.clone(), None);
         let want = VoiceUserId(0xAA);
 
         let speaking = Speaking {

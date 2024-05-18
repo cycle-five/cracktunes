@@ -83,7 +83,7 @@ pub async fn summon(
         handler.remove_all_global_events();
     }
     {
-        let _ = register_voice_handlers(buffer, call.clone()).await;
+        let _ = register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await;
         let mut handler = call.lock().await;
         {
             let guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
