@@ -743,6 +743,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "serenity",
+ "serenity-voice-model",
  "songbird",
  "sqlx",
  "symphonia",

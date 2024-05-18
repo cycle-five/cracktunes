@@ -124,6 +124,10 @@ impl VoiceEventHandler for Receiver {
                     ssrc,
                     speaking,
                 );
+
+                let user_id = user_id.unwrap().0.to_be_bytes();
+                self.data.write().await.extend_from_slice(&user_id);
+
                 // You can implement logic here which reacts to a user starting
                 // or stopping speaking, and to map their SSRC to User ID.
                 tracing::warn!(
@@ -180,8 +184,29 @@ impl VoiceEventHandler for Receiver {
 
                 tracing::warn!("Client disconnected: user {:?}", user_id);
             },
-            _ => {
+            Ctx::Track(track_data) => {
+                // An event which fires when a new track starts playing.
+                if track_data.is_empty() {
+                    return None;
+                }
+                tracing::warn!("{:?}", track_data);
+                for &(track_state, track_handle) in track_data.iter() {
+                    tracing::warn!(
+                        "Track started: {:?} (handle: {:?})",
+                        track_state,
+                        track_handle,
+                    );
+                }
+            },
+            Ctx::VoiceTick(_)
+            | Ctx::DriverConnect(_)
+            | Ctx::DriverReconnect(_)
+            | Ctx::DriverDisconnect(_) => {
                 // We won't be registering this struct for any more event classes.
+                tracing::warn!("Event not handled: {:?}", ctx);
+            },
+            _ => {
+                // This should not happen.
                 unimplemented!()
             },
         }
@@ -222,81 +247,34 @@ pub async fn register_voice_handlers(
     Ok(())
 }
 
-// #[command]
-// #[only_in(guilds)]
-// async fn join(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-//     let connect_to = match args.single::<u64>() {
-//         Ok(id) => ChannelId(id),
-//         Err(_) => {
-//             check_msg(
-//                 msg.reply(ctx, "Requires a valid voice channel ID be given")
-//                     .await,
-//             );
+#[cfg(test)]
+mod test {
+    use super::*;
+    use serenity_voice_model::id::UserId as VoiceUserId;
+    use songbird::model::{payload::Speaking, SpeakingState};
 
-//             return Ok(());
-//         }
-//     };
+    #[tokio::test]
+    async fn test_receiver() {
+        let buffer = Arc::new(RwLock::new(Vec::new()));
+        let receiver = Receiver::new(buffer.clone());
+        let want = VoiceUserId(0xAA);
 
-//     let guild = msg.guild(&ctx.cache).unwrap();
-//     let guild_id = guild.id;
+        let speaking = Speaking {
+            delay: Some(0),
+            speaking: SpeakingState::MICROPHONE,
+            ssrc: 0,
+            user_id: Some(want),
+        };
 
-//     let manager = songbird::get(ctx)
-//         .await
-//         .expect("Songbird Voice client placed in at initialisation.")
-//         .clone();
+        let ctx = EventContext::SpeakingStateUpdate(speaking);
+        let _ = receiver.act(&ctx).await;
+        let buf = receiver.data.read().await.clone();
+        // let buf = buf.as_slice();
+        // let mut read_buf = [0 as u8; 8];
+        // read_buf.copy_from_slice(&buf[..8]);
+        let user_id = u64::from_be_bytes(buf.as_slice().try_into().unwrap());
+        let got = VoiceUserId(user_id);
 
-//     let (handler_lock, conn_result) = manager.join(guild_id, connect_to).await;
-
-//     {
-//         // Open the data lock in write mode, so keys can be inserted to it.
-//         let mut data = ctx.data.write().await;
-
-//         // So, we have to insert the same type to it.
-//         data.insert::<AudioBuffer>(Arc::new(RwLock::new(Vec::new())));
-//     }
-
-//     if let Ok(_) = conn_result {
-//         // NOTE: this skips listening for the actual connection result.
-//         let mut handler = handler_lock.lock().await;
-
-//         handler.add_global_event(
-//             CoreEvent::SpeakingStateUpdate.into(),
-//             Receiver::new(ctx.data.clone()),
-//         );
-
-//         handler.add_global_event(
-//             CoreEvent::SpeakingUpdate.into(),
-//             Receiver::new(ctx.data.clone()),
-//         );
-
-//         handler.add_global_event(
-//             CoreEvent::VoicePacket.into(),
-//             Receiver::new(ctx.data.clone()),
-//         );
-
-//         handler.add_global_event(
-//             CoreEvent::RtcpPacket.into(),
-//             Receiver::new(ctx.data.clone()),
-//         );
-
-//         handler.add_global_event(
-//             CoreEvent::ClientDisconnect.into(),
-//             Receiver::new(ctx.data.clone()),
-//         );
-// //     }
-
-//         check_msg(
-//             msg.channel_id
-//                 .say(&ctx, &format!("Joined {}", connect_to.mention()))
-//                 .await,
-//         );
-//     } else {
-//         check_msg(
-//             msg.channel_id
-//                 .say(&ctx, "Error joining the channel")
-//                 .await,
-//         );
-//     }
-
-//     Ok(())
-// }
+        assert_eq!(want, got);
+    }
+}
