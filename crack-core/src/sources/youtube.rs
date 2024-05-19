@@ -48,7 +48,7 @@ pub async fn ready_query(
 }
 
 /// Pushes a track to the front of the queue, after readying it.
-pub async fn push_front_track_ready(
+pub async fn queue_track_ready_front(
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -66,7 +66,7 @@ pub async fn push_front_track_ready(
 }
 
 /// Pushes a track to the back of the queue, after readying it.
-pub async fn enqueue_track_ready(
+pub async fn queue_track_ready_back(
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -85,7 +85,7 @@ pub async fn queue_track_front(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone()).await?;
-    push_front_track_ready(call, ready_track).await
+    queue_track_ready_front(call, ready_track).await
 }
 
 /// Pushes a track to the front of the queue.
@@ -95,7 +95,7 @@ pub async fn queue_track_back(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone()).await?;
-    enqueue_track_ready(call, ready_track).await
+    queue_track_ready_back(call, ready_track).await
 }
 
 /// Get the source and metadata from a video link. Return value is a vector due

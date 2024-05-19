@@ -42,7 +42,11 @@ pub mod utils;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
-pub use Result;
+pub type ArcRwLock<T> = Arc<tokio::sync::RwLock<T>>;
+pub type ArcMutex<T> = Arc<tokio::sync::Mutex<T>>;
+pub type ArcRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
+pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
+pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
 
 pub trait CrackContext<'a> {
     fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message>;

@@ -484,14 +484,10 @@ pub async fn send_embed_response(
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
-            create_response_interaction(
-                &ctx.serenity_context().http,
-                &Interaction::Command(int.clone()),
-                embed,
-                false,
-            )
-            .await
+            create_response_interaction(&ctx, &Interaction::Command(int.clone()), embed, false)
+                .await
         },
+        // Under what circusmtances does this get called?
         CommandOrMessageInteraction::Message(_interaction) => {
             tracing::warn!("CommandOrMessageInteraction::Message");
             ctx.channel_id()
@@ -530,10 +526,10 @@ pub async fn edit_reponse_interaction(
     }
 }
 
-/// Create a response to an interaction.
+/// Create (and send) a response to an interaction.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_response_interaction(
-    http: &impl CacheHttp,
+    cache_http: &impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
     _defer: bool,
@@ -557,18 +553,18 @@ pub async fn create_response_interaction(
             let res = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().embed(embed.clone()),
             );
-            let message = int.get_response(http.http()).await;
+            let message = int.get_response(cache_http.http()).await;
             match message {
                 Ok(message) => {
                     message
                         .clone()
-                        .edit(http, EditMessage::default().embed(embed.clone()))
+                        .edit(cache_http, EditMessage::default().embed(embed.clone()))
                         .await?;
                     Ok(message)
                 },
                 Err(_) => {
-                    int.create_response(http, res).await?;
-                    let message = int.get_response(http.http()).await?;
+                    int.create_response(cache_http, res).await?;
+                    let message = int.get_response(cache_http.http()).await?;
                     Ok(message)
                 },
             }
@@ -577,7 +573,7 @@ pub async fn create_response_interaction(
         | Interaction::Component(..)
         | Interaction::Modal(..)
         | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented")),
-        _ => todo!(),
+        _ => unimplemented!(),
     }
 }
 
@@ -1153,16 +1149,6 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
     }
 }
 
-// pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
-//     match ctx {
-//         Context::Application(app_ctx) => match app_ctx.interaction {
-//             ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone().into()),
-//             ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
-//         },
-//         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
-//     }
-// }
-
 /// Get the user id from a context.
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
@@ -1170,31 +1156,6 @@ pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
         CrackContext::Prefix(ctx) => ctx.msg.author.id,
     }
 }
-
-// /// Get the channel id from a context.
-// pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
-//     match ctx {
-//         CrackContext::Application(ctx) => ctx.interaction.channel_id,
-//         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
-//     }
-// }
-
-// pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
-//     match ctx {
-//         CrackContext::Application(_ctx) => {
-//             tracing::warn!("summoning via slash command");
-//             // summon().slash_action.unwrap()(ctx).await
-//             // FIXME
-//             Ok(())
-//         }
-//         CrackContext::Prefix(_ctx) => {
-//             tracing::warn!("summoning via prefix command");
-//             // summon().prefix_action.unwrap()(ctx).await
-//             // FIXME
-//             Ok(())
-//         }
-//     }
-// }
 
 pub async fn handle_error(
     ctx: CrackContext<'_>,

@@ -72,11 +72,16 @@ version = "1.37.0"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
 
-[profile.release-with-debug]
-inherits = "release"
-debug = 1
-
 [profile.release]
 incremental = true
 # Set this to 1 or 2 to get more useful backtraces in debugger.
 debug = 0
+
+[profile.release-with-debug]
+inherits = "release"
+debug = 1
+
+[profile.release-with-performance]
+inherits = "release"
+lto = true
+opt-level = 3

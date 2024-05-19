@@ -12,7 +12,7 @@ use crate::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
         youtube::{
-            enqueue_track_ready, queue_track_back, queue_track_front, ready_query,
+            queue_track_back, queue_track_front, queue_track_ready_back, ready_query,
             search_query_to_source_and_metadata_rusty, search_query_to_source_and_metadata_ytdl,
             video_info_to_source_and_metadata,
         },
@@ -411,7 +411,7 @@ impl QueryType {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
                 let track_ready_data = ready_query(ctx, self.clone()).await?;
                 // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
-                let _queue = enqueue_track_ready(&call, track_ready_data).await?;
+                let _queue = queue_track_ready_back(&call, track_ready_data).await?;
                 Ok(true)
             },
             // FIXME
