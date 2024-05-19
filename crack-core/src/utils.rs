@@ -182,8 +182,16 @@ pub async fn send_response_poise(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<Message, CrackedError> {
+    use ::serenity::all::Colour;
+
+    let color = match message {
+        CrackedMessage::CrackedError(_) => Colour::RED,
+        _ => Colour::BLUE,
+    };
     if as_embed {
-        let embed = CreateEmbed::default().description(format!("{message}"));
+        let embed = CreateEmbed::default()
+            .color(color)
+            .description(format!("{message}"));
         send_embed_response_poise(ctx, embed).await
     } else {
         send_nonembed_response_poise(ctx, format!("{message}")).await
@@ -196,9 +204,7 @@ pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
-    let message_str = format!("{message}");
-
-    send_embed_response_str(ctx, message_str).await
+    send_response_poise(ctx, message, false).await
 }
 
 /// Create an embed to send as a response.
@@ -251,24 +257,6 @@ pub async fn edit_response_text(
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
-}
-
-/// Sends a reply response as an embed.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_embed_response_str(
-    ctx: CrackContext<'_>,
-    message_str: String,
-) -> Result<Message, CrackedError> {
-    ctx.send(
-        CreateReply::default()
-            .embed(CreateEmbed::new().description(message_str))
-            .reply(true),
-    )
-    .await
-    .unwrap()
-    .into_message()
-    .await
-    .map_err(Into::into)
 }
 
 /// Send the current track information as an ebmed to the given channel.
@@ -410,32 +398,6 @@ pub async fn yt_search_select(
 
     m.delete(&ctx).await.unwrap();
     res
-    // // Wait for multiple interactions
-    // let mut interaction_stream = m
-    //     .await_component_interaction(&ctx.shard)
-    //     .timeout(Duration::from_secs(60 * 3))
-    //     .stream();
-
-    // while let Some(interaction) = interaction_stream.next().await {
-    //     let sound = &interaction.data.custom_id;
-    //     // Acknowledge the interaction and send a reply
-    //     interaction
-    //         .create_response(
-    //             &ctx,
-    //             // This time we dont edit the message but reply to it
-    //             CreateInteractionResponse::Message(
-    //                 CreateInteractionResponseMessage::default()
-    //                     // Make the message hidden for other users by setting `ephemeral(true)`.
-    //                     .ephemeral(true)
-    //                     .content(format!("The **{animal}** says __{sound}__")),
-    //             ),
-    //         )
-    //         .await
-    //         .unwrap();
-    // }
-
-    // // Delete the orig message or there will be dangling components (components that still
-    // // exist, but no collector is running so any user who presses them sees an error)
 }
 
 /// Send the search results to the user.
@@ -474,11 +436,14 @@ pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
+    let is_prefix = crate::is_prefix(ctx);
+    let is_ephemeral = !is_prefix;
+    let is_reply = is_prefix;
     ctx.send(
         CreateReply::default()
             .embed(embed)
-            .ephemeral(false)
-            .reply(true),
+            .ephemeral(is_ephemeral)
+            .reply(is_reply),
     )
     .await?
     .into_message()
@@ -508,12 +473,7 @@ pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
-    ctx.send(CreateReply::default().embed(embed))
-        .await
-        .unwrap()
-        .into_message()
-        .await
-        .map_err(Into::into)
+    send_embed_response_poise(ctx, embed).await
 }
 
 pub async fn send_embed_response(

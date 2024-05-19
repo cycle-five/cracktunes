@@ -6,7 +6,7 @@ use ::serenity::builder::CreateEmbed;
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude::{self as serenity, UserId};
 
-use crate::messaging::messages::*;
+use crate::{errors::CrackedError, messaging::messages::*};
 
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -28,6 +28,7 @@ pub enum CrackedMessage {
     },
     Clear,
     Clean(i32),
+    CrackedError(CrackedError),
     DomainInfo(String),
     Error,
     ErrorHttp(serenity::http::HttpError),
@@ -184,6 +185,7 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 CHANNEL_DELETED, channel_id, channel_name
             )),
+            Self::CrackedError(err) => f.write_str(&format!("{}", err)),
             Self::DomainInfo(info) => f.write_str(info),
             Self::Error => f.write_str(ERROR),
             Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),

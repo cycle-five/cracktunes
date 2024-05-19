@@ -14,7 +14,12 @@ use rspotify::{
     },
     ClientCredsSpotify, ClientResult, Config, Credentials,
 };
-use std::{env, str::FromStr, time::Duration};
+use std::{
+    env,
+    ops::{Deref, DerefMut},
+    str::FromStr,
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -69,6 +74,7 @@ impl FromStr for MediaType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ParsedSpotifyUrl {
     media_type: MediaType,
     media_id: String,
@@ -76,7 +82,25 @@ pub struct ParsedSpotifyUrl {
 
 type SpotifyCreds = Credentials;
 
+#[derive(Debug, Clone)]
+pub struct SpotifyPlaylist(FullPlaylist);
+
+impl Deref for SpotifyPlaylist {
+    type Target = FullPlaylist;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SpotifyPlaylist {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// Spotify source.
+#[derive(Debug, Clone)]
 pub struct Spotify {}
 
 /// Implementation of Spotify source.
