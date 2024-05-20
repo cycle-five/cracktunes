@@ -6,7 +6,6 @@
 [![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
 [![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
-[![Rust Version](https://img.shields.io/badge/rustc-1.76-blue.svg)](https://github.com/cycle-five/cracktunes/)
 [![Rust Version](https://img.shields.io/badge/rustc-1.78-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Aknowledgements
@@ -66,21 +65,33 @@ pip install -U yt-dlp
 If you are using Windows Subsystem for Linux (WSL), you should follow the [Linux/MacOS](#linuxmacos) guide, and, in addition to the other required packages, install pkg-config, which you may do by running:
 
 ```shell
-apt install pkg-config
+apt install -y pkg-config
 ```
 
-## Testing **FIXME**
+## Testing
 
-Tests are available inside the `src/tests` folder. They can be run via `cargo test`. It's recommended that you run the tests before submitting your Pull Request.
-Increasing the test coverage is also welcome.
+The following command will run all tests:
 
-### Docker **FIXME**
+```shell
+cargo +nightly test --all
+```
+
+Some tests are available inside the `src/tests` folder, others are in their respective
+files. It's recommended that you run the tests before submitting a Pull Request.
+Increasing the test coverage is also welcome. Test coverage is tracked using
+[tarpaulin]().
+
+```shell
+cargo +nightly tarpaulin --all
+```
+
+### Docker Compose
 
 Within the project folder, simply run the following:
 
 ```shell
 docker build -t cracktunes .
-docker run -d --env-file .env cracktunes
+docker compose up -d
 ```
 
 
