@@ -3,6 +3,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::Mentionable;
 use serenity::builder::EditMember;
 
 /// Deafen a user.
@@ -37,14 +38,14 @@ pub async fn deafen_internal(
         .await
     {
         let msg = CrackedMessage::UserDeafenedFail {
-            user: user.name.clone(),
+            user_mention: user.mention(),
             user_id: user.clone().id,
         };
         tracing::error!("{msg}\n{e}");
         msg
     } else {
         let msg = CrackedMessage::UserDeafened {
-            user: user.name.clone(),
+            user_mention: user.mention(),
             user_id: user.clone().id,
         };
         tracing::info!("{msg}");

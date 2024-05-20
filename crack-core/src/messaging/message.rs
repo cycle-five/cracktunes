@@ -140,11 +140,11 @@ pub enum CrackedMessage {
         user_id: UserId,
     },
     UserDeafened {
-        user: String,
+        user_mention: Mention,
         user_id: UserId,
     },
     UserDeafenedFail {
-        user: String,
+        user_mention: Mention,
         user_id: UserId,
     },
     UserUndeafened {
@@ -302,15 +302,14 @@ impl Display for CrackedMessage {
             Self::UserUndeafened { user, user_id } => {
                 f.write_str(&format!("{} {} {}", UNDEAFENED, user, user_id))
             },
-            Self::UserDeafened { user, user_id } => {
-                f.write_str(&format!("{}\n{}({})", DEAFENED, user.mention(), user_id))
-            },
-            Self::UserDeafenedFail { user, user_id } => f.write_str(&format!(
-                "{}\n{}({})",
-                DEAFENED_FAIL,
-                user.mention(),
-                user_id
-            )),
+            Self::UserDeafened {
+                user_mention,
+                user_id,
+            } => f.write_str(&format!("{}\n{}({})", DEAFENED, user_mention, user_id)),
+            Self::UserDeafenedFail {
+                user_mention,
+                user_id,
+            } => f.write_str(&format!("{}\n{}({})", DEAFENED_FAIL, user_mention, user_id)),
             Self::UserMuted { user, user_id } => {
                 f.write_str(&format!("{} {} {}", MUTED, user, user_id))
             },
