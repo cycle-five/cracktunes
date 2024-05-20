@@ -26,12 +26,6 @@ pub struct PlaylistTrack {
 impl Playlist {
     pub async fn create(pool: &PgPool, name: &str, user_id: i64) -> Result<Playlist, CrackedError> {
         if User::get_user(pool, user_id).await.is_none() {
-            // match User::insert_user(pool, user_id, "FAKENAME".to_string()).await {
-            //     Ok(_) => (),
-            //     Err(e) => {
-            //         return Err(CrackedError::SQLX(e));
-            //     }
-            // }
             return Err(CrackedError::Other(
                 "(playlist::create) User does not exist",
             ));

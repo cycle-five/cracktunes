@@ -6,6 +6,30 @@ they appear.
 
 ## Playlist (src/db/playlist.rs)
 
+### Playlist::create
+`name: &str, user_id: i64`
+```sql
+INSERT INTO playlist (name, user_id) VALUES ($1, $2) RETURNING id, name, user_id, privacy;
+```
+
+### Playlist::get_playlist_by_id
+`id: i32`
+```sql
+SELECT * FROM playlist WHERE id = $1
+```
+
+### Playlist::get_playlists_by_user_id
+`user_id: i64`
+```sql
+SELECT * FROM playlist WHERE user_id = $1;
+```
+
+### Playlist::get_playlist_by_name
+`name: &str, user_id: i64`
+```sql
+SELECT * FROM playlist WHERE user_id = $1 and name = $2;
+```
+
 ### get_track_metadata_for_playlist_name
 ```sql
 SELECT
