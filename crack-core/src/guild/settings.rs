@@ -218,6 +218,7 @@ pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
     pub auto_role: Option<u64>,
+    pub password: Option<String>,
 }
 
 impl Display for WelcomeSettings {
@@ -236,11 +237,50 @@ impl From<WelcomeSettingsRead> for WelcomeSettings {
             channel_id: settings_db.channel_id.map(|x| x as u64),
             message: settings_db.message,
             auto_role: settings_db.auto_role.map(|x| x as u64),
+            password: None,
         }
     }
 }
 
 impl WelcomeSettings {
+    /// Create a new empty welcome settings struct.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Set the channel id, returning a new WelcomeSettings.
+    pub fn with_channel_id(self, channel_id: u64) -> Self {
+        Self {
+            channel_id: Some(channel_id),
+            ..self
+        }
+    }
+
+    /// Set the message, returning a new WelcomeSettings.
+    pub fn with_message(self, message: String) -> Self {
+        Self {
+            message: Some(message),
+            ..self
+        }
+    }
+
+    /// Set the auto role, returning a new WelcomeSettings.
+    pub fn with_auto_role(self, auto_role: u64) -> Self {
+        Self {
+            auto_role: Some(auto_role),
+            ..self
+        }
+    }
+
+    /// Set the password, returning a new WelcomeSettings.
+    pub fn with_password(self, password: String) -> Self {
+        Self {
+            password: Some(password),
+            ..self
+        }
+    }
+
+    /// Save the welcome settings to the database.
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
         crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
             .await
@@ -697,6 +737,7 @@ impl GuildSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
             auto_role,
+            ..Default::default()
         });
         self
     }
@@ -710,6 +751,8 @@ impl GuildSettings {
                 .clone()
                 .map(|x| x.auto_role)
                 .unwrap_or_default(),
+
+            ..Default::default()
         });
         self
     }

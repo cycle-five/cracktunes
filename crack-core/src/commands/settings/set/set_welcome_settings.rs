@@ -4,7 +4,39 @@ use crate::{
     utils::get_guild_name,
     Context, Data, Error,
 };
-use serenity::all::{Channel, GuildId};
+use serenity::all::{Channel, GuildId, Role};
+
+/// Set password verification for the server.
+#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
+#[cfg(not(tarpaulin_include))]
+pub async fn password_verify(
+    ctx: Context<'_>,
+    #[description = "The channel use for verification message"] channel: Channel,
+    #[description = "Password to verify"] password: String,
+    #[description = "Role to add after successful verification"] auto_role: Role,
+    #[rest]
+    #[description = "Welcome message template use {user} for username"]
+    message: String,
+) -> Result<(), Error> {
+    let prefix = ctx.data().bot_settings.get_prefix();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let welcome_settings = WelcomeSettings {
+        channel_id: Some(channel.id().get()),
+        message: Some(message.clone()),
+        auto_role: Some(auto_role.id.get()),
+        password: Some(password),
+    };
+    let msg = set_welcome_settings(
+        ctx.data().clone(),
+        guild_id,
+        get_guild_name(ctx.serenity_context(), guild_id),
+        prefix.to_string(),
+        welcome_settings,
+    )
+    .await?;
+    ctx.say(msg).await?;
+    Ok(())
+}
 
 /// Set the welcome settings for the server.
 #[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
@@ -22,6 +54,7 @@ pub async fn welcome_settings(
         channel_id: Some(channel.id().get()),
         message: Some(message.clone()),
         auto_role: None,
+        password: None,
     };
     let msg = set_welcome_settings(
         ctx.data().clone(),
@@ -90,7 +123,7 @@ mod test {
         let init_welcome_settings = WelcomeSettings {
             channel_id: Some(1),
             message: Some("Welcome {user}!".to_string()),
-            auto_role: None,
+            ..Default::default()
         };
 
         let res =
