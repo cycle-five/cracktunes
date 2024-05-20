@@ -1,12 +1,12 @@
-use serenity::all::GuildId;
-use serenity::all::User;
-use serenity::all::UserId;
-
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use poise::serenity_prelude::Mentionable;
+use serenity::all::GuildId;
+use serenity::all::User;
+use serenity::all::UserId;
 
 /// Unban command
 #[poise::command(
@@ -39,6 +39,8 @@ pub async fn unban_by_user_id(
 #[cfg(not(tarpaulin_include))]
 pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Result<(), Error> {
     let guild = guild_id.to_partial_guild(&ctx).await?;
+    let id = user.id;
+    let mention = user.mention();
     if let Err(e) = guild.unban(&ctx, user.id).await {
         // Handle error, send error message
         send_response_poise(
@@ -51,17 +53,10 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
         .map(|_| ())
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserUnbanned {
-                user: user.name.clone(),
-                user_id: user.id,
-            },
-            true,
-        )
-        .await
-        .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
-        .map(|_| ())
+        send_response_poise(ctx, CrackedMessage::UserUnbanned { id, mention }, true)
+            .await
+            .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
+            .map(|_| ())
     }
     .map_err(Into::into)
 }

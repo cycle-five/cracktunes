@@ -5,6 +5,7 @@ use crate::Context;
 use crate::Error;
 use serenity::all::Message;
 use serenity::builder::EditMember;
+use poise::serenity_prelude::Mentionable;
 
 /// Unmute a user.
 /// TODO: Add a way to unmute a user by their ID.
@@ -30,6 +31,8 @@ pub async fn unmute_impl(
     ctx: Context<'_>,
     user: serenity::model::user::User,
 ) -> Result<Message, Error> {
+    let id = user.id;
+    let mention = user.mention();
     let guild_id = ctx
         .guild_id()
         .ok_or(CrackedError::Other("Guild ID not found"))?;
@@ -46,15 +49,7 @@ pub async fn unmute_impl(
         .await
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserUnmuted {
-                user: user.name.clone(),
-                user_id: user.clone().id,
-            },
-            true,
-        )
-        .await
+        send_response_poise(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
     }
     .map_err(Into::into)
 }

@@ -3,7 +3,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use serenity::all::{Mentionable, UserId};
+use serenity::all::{Mentionable, User};
 use serenity::builder::EditMember;
 use std::fs::read_to_string;
 use std::time::Duration;
@@ -16,7 +16,12 @@ use std::time::Duration;
     ephemeral,
     required_permissions = "ADMINISTRATOR"
 )]
-pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
+pub async fn kick(
+    ctx: Context<'_>,
+    #[description = "User to kick."] user: User,
+) -> Result<(), Error> {
+    let mention = user.mention();
+    let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let reply_with_embed = ctx
         .data()
@@ -24,7 +29,7 @@ pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
         .map(|x| x.reply_with_embed)
         .ok_or(CrackedError::Other("No guild settings"))?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
-    if let Err(e) = guild.kick(&ctx, user_id).await {
+    if let Err(e) = guild.kick(&ctx, id).await {
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
@@ -35,7 +40,7 @@ pub async fn kick(ctx: Context<'_>, user_id: UserId) -> Result<(), Error> {
         // Send success message
         send_response_poise(
             ctx,
-            CrackedMessage::UserKicked { user_id },
+            CrackedMessage::UserKicked { id, mention },
             reply_with_embed,
         )
         .await?;
