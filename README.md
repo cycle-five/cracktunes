@@ -86,6 +86,12 @@ docker run -d --env-file .env cracktunes
 
 # ~~Roadmap~~ Change Log
 ## v0.3.7 (2024/04/??)
+- [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
+- [x] Remove the grafana dashboard.
+- [ ] Switch to async logging.
+- [ ] Add an async service to handle the database (accept writes on a channel,
+      and write to the database in a separate thread).
+      Eventually this could be a seperate service (REST / GRPC).
 ## v0.3.6 (2024/04/??)
 ## v0.3.5 (2024/04/??)
 ## v0.3.3 (2024/04/??)
