@@ -16,7 +16,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
-        interface::{build_nav_btns, create_queue_embed},
+        interface::{create_nav_btns, create_queue_embed},
         messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
@@ -297,7 +297,7 @@ pub async fn update_queue_messages(
                 cache_http,
                 EditMessage::new()
                     .embed(embed)
-                    .components(build_nav_btns(page_val, num_pages)),
+                    .components(create_nav_btns(page_val, num_pages)),
             )
             .await;
 

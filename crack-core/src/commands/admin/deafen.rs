@@ -20,7 +20,7 @@ pub async fn deafen(
     #[description = "User to deafen"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let crack_msg = deafen_internal(ctx.clone(), user.clone()).await?;
+    let crack_msg = deafen_internal(ctx, user.clone()).await?;
     // Handle error, send error message
     let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
     ctx.data().add_msg_to_cache(guild_id, sent_msg);

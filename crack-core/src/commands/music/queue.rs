@@ -1,7 +1,7 @@
 use crate::{
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::interface::{build_nav_btns, create_queue_embed},
+    messaging::interface::{create_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
@@ -50,7 +50,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                     CreateInteractionResponse::Message(
                         CreateInteractionResponseMessage::new()
                             .embed(create_queue_embed(&tracks, 0).await)
-                            .components(build_nav_btns(0, num_pages)),
+                            .components(create_nav_btns(0, num_pages)),
                     ),
                 )
                 .await?;
@@ -63,7 +63,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 .send(
                     CreateReply::default()
                         .embed(create_queue_embed(&tracks, 0).await)
-                        .components(build_nav_btns(0, num_pages)),
+                        .components(create_nav_btns(0, num_pages)),
                 )
                 .await?;
             reply.into_message().await?
@@ -125,7 +125,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
                     .add_embed(create_queue_embed(&tracks, page_num).await)
-                    .components(build_nav_btns(page_num, num_pages)),
+                    .components(create_nav_btns(page_num, num_pages)),
             ),
         )
         .await?;

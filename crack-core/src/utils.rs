@@ -5,7 +5,7 @@ use crate::{
     db::Playlist,
     guild::settings::DEFAULT_PREMIUM,
     messaging::{
-        interface::{build_nav_btns, create_now_playing_embed, requesting_user_to_string},
+        interface::{create_nav_btns, create_now_playing_embed, requesting_user_to_string},
         message::CrackedMessage,
         messages::{
             INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
@@ -929,7 +929,7 @@ pub async fn create_paged_embed(
                             .description(page_getter(0))
                             .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
                     )
-                    .components(build_nav_btns(0, num_pages)),
+                    .components(create_nav_btns(0, num_pages)),
             )
             .await?;
         reply.into_message().await?
@@ -966,7 +966,7 @@ pub async fn create_paged_embed(
                             *page_wlock + 1,
                             num_pages
                         )))])
-                    .components(build_nav_btns(*page_wlock, num_pages)),
+                    .components(create_nav_btns(*page_wlock, num_pages)),
             ),
         )
         .await?;
@@ -1217,7 +1217,7 @@ mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 
-    use crate::messaging::interface::build_single_nav_btn;
+    use crate::messaging::interface::create_single_nav_btn;
 
     use super::*;
 
@@ -1252,7 +1252,7 @@ mod test {
 
     #[test]
     fn test_build_single_nav_btn() {
-        let creat_btn = build_single_nav_btn("<<", true);
+        let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
         let btn = serde_json::from_str::<Button>(&s).unwrap();
@@ -1264,7 +1264,7 @@ mod test {
 
     #[test]
     fn test_build_nav_btns() {
-        let nav_btns_vev = build_nav_btns(0, 1);
+        let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
             for btn in nav_btns {

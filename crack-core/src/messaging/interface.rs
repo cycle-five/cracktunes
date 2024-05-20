@@ -32,9 +32,9 @@ pub fn requesting_user_to_string(user_id: UserId) -> String {
     }
 }
 
-/// Builds a page of the queue.
+/// Creates a page of the queue.
 #[cfg(not(tarpaulin_include))]
-async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
+async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
         .iter()
@@ -69,7 +69,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     description
 }
 
-/// Builds the queue embed.
+/// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !tracks.is_empty() {
         let metadata = get_track_metadata(&tracks[0]).await;
@@ -103,7 +103,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
     CreateEmbed::default()
         .thumbnail(thumbnail)
         .field(QUEUE_NOW_PLAYING, &description, false)
-        .field(QUEUE_UP_NEXT, build_queue_page(tracks, page).await, false)
+        .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
             "{} {} {} {}",
             QUEUE_PAGE,
@@ -200,7 +200,7 @@ pub async fn create_lyrics_embed(
 }
 
 /// Builds a single navigation button for the queue.
-pub fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
+pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
@@ -209,13 +209,13 @@ pub fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
+pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(vec![
-        build_single_nav_btn("<<", cant_left),
-        build_single_nav_btn("<", cant_left),
-        build_single_nav_btn(">", cant_right),
-        build_single_nav_btn(">>", cant_right),
+        create_single_nav_btn("<<", cant_left),
+        create_single_nav_btn("<", cant_left),
+        create_single_nav_btn(">", cant_right),
+        create_single_nav_btn(">>", cant_right),
     ])]
 }
 
