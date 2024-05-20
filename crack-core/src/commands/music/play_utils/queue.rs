@@ -129,18 +129,18 @@ pub async fn queue_query_list_offset<'a>(
         CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
     )?;
 
-    // If the queue is empty and the this is going to play immediately, then
-    // queue the first track right away so that it doesn't wait until the
-    // whole queuing process is finished before it starts playing.
-    let (queries, offset) = if offset == 1 {
-        let first = queries
-            .first()
-            .ok_or(CrackedError::Other("queries.first()"))?;
-        queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
-        (queries[1..].to_vec(), 2)
-    } else {
-        (queries, offset)
-    };
+    // // If the queue is empty and the this is going to play immediately, then
+    // // queue the first track right away so that it doesn't wait until the
+    // // whole queuing process is finished before it starts playing.
+    // let (queries, offset) = if offset == 1 {
+    //     let first = queries
+    //         .first()
+    //         .ok_or(CrackedError::Other("queries.first()"))?;
+    //     queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
+    //     (queries[1..].to_vec(), 2)
+    // } else {
+    //     (queries, offset)
+    // };
 
     let mut tracks = Vec::new();
     for query in queries {
@@ -149,12 +149,12 @@ pub async fn queue_query_list_offset<'a>(
     }
 
     let mut handler = call.lock().await;
-
     for (idx, ready_track) in tracks.into_iter().enumerate() {
         let track = ready_track.track;
         let metadata = ready_track.metadata;
         let user_id = ready_track.user_id;
 
+        // let mut handler = call.lock().await;
         let track_handle = handler.enqueue(track).await;
         let mut map = track_handle.typemap().write().await;
         map.insert::<MyAuxMetadata>(metadata);
@@ -166,6 +166,7 @@ pub async fn queue_query_list_offset<'a>(
     }
 
     let cur_q = handler.queue().current_queue();
+    drop(handler);
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 
     Ok(())
@@ -404,9 +405,8 @@ pub fn get_msg(
 }
 
 /// Rotates the queue by `n` tracks to the right.
-// FIXME: Do we need this anymore?
 #[cfg(not(tarpaulin_include))]
-pub async fn _rotate_tracks(
+pub async fn rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
