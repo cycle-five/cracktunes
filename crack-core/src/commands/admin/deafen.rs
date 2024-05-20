@@ -16,33 +16,39 @@ use serenity::builder::EditMember;
 )]
 pub async fn deafen(
     ctx: Context<'_>,
-    #[rest]
-    #[description = "User to deafen"]
-    user: serenity::model::user::User,
+    #[description = "User to deafen"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    if let Err(e) = guild_id
+    let crack_msg = deafen_internal(ctx.clone(), user.clone()).await?;
+    // Handle error, send error message
+    let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
+    ctx.data().add_msg_to_cache(guild_id, sent_msg);
+    Ok(())
+}
+
+/// Deafen a user.
+pub async fn deafen_internal(
+    ctx: Context<'_>,
+    user: serenity::model::user::User,
+) -> Result<CrackedMessage, Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
+    let msg = if let Err(e) = guild_id
         .edit_member(&ctx, user.clone().id, EditMember::new().deafen(true))
         .await
     {
-        // Handle error, send error message
-        send_response_poise(
-            ctx,
-            CrackedMessage::Other(format!("Failed to deafen user: {}", e)),
-            true,
-        )
-        .await?;
+        let msg = CrackedMessage::UserDeafenedFail {
+            user: user.name.clone(),
+            user_id: user.clone().id,
+        };
+        tracing::error!("{msg}\n{e}");
+        msg
     } else {
-        // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserMuted {
-                user: user.name.clone(),
-                user_id: user.clone().id,
-            },
-            true,
-        )
-        .await?;
-    }
-    Ok(())
+        let msg = CrackedMessage::UserDeafened {
+            user: user.name.clone(),
+            user_id: user.clone().id,
+        };
+        tracing::info!("{msg}");
+        msg
+    };
+    Ok(msg)
 }

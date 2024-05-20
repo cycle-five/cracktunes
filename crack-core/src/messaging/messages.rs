@@ -11,7 +11,10 @@ pub const AUTHORIZED: &str = "✅ User has been authorized.";
 pub const DEAUTHORIZED: &str = "❌ User has been deauthorized.";
 pub const BANNED: &str = "Banned";
 pub const UNBANNED: &str = "Unbanned";
-pub const DEAFENED: &str = "Deafened";
+// Use the unicode emoji for the check mark
+pub const EMOJI_HEADPHONES: &str = "🎧";
+pub const DEAFENED: &str = "User feafened.";
+pub const DEAFENED_FAIL: &str = "User failed to be deafened.";
 pub const UNDEAFENED: &str = "Undeafened";
 pub const MUTED: &str = "Muted";
 pub const UNMUTED: &str = "Unmuted";

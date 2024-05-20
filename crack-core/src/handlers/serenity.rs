@@ -433,6 +433,8 @@ impl SerenityHandler {
         }
     }
 
+    /// Loads the stored guild settings from the DB. This is a major and important
+    /// function that allows the bot to persist settings across restarts.
     async fn load_guilds_settings_cache_ready(
         &self,
         ctx: &SerenityContext,
