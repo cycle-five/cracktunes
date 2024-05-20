@@ -39,7 +39,7 @@ pub async fn authorize(
         .or_insert({
             let settings =
                 GuildSettings::new(guild_id, Some(&ctx.data().bot_settings.get_prefix()), None)
-                    .authorize_user(id.try_into().unwrap())
+                    .authorize_user(id.into())
                     .clone();
             settings
         })

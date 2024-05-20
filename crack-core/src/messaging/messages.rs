@@ -13,7 +13,7 @@ pub const BANNED: &str = "Banned";
 pub const UNBANNED: &str = "Unbanned";
 // Use the unicode emoji for the check mark
 pub const EMOJI_HEADPHONES: &str = "🎧";
-pub const DEAFENED: &str = "User feafened.";
+pub const DEAFENED: &str = "User deafened.";
 pub const DEAFENED_FAIL: &str = "User failed to be deafened.";
 pub const UNDEAFENED: &str = "Undeafened";
 pub const UNDEAFENED_FAIL: &str = "User failed to be undeafened.";
