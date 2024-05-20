@@ -24,6 +24,8 @@ use serenity::{
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
 
+use super::messages::REQUESTED_BY;
+
 /// Converts a user id to a string, with special handling for autoplay.
 pub fn requesting_user_to_string(user_id: UserId) -> String {
     match user_id.get() {
@@ -127,13 +129,13 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
         Ok(user_id) => (
-            "Requested By",
+            REQUESTED_BY,
             format!(">>> {}", requesting_user_to_string(user_id)),
             true,
         ),
         Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
-            ("Requested By", ">>> N/A".to_string(), true)
+            (REQUESTED_BY, ">>> N/A".to_string(), true)
         },
     };
 
@@ -235,7 +237,7 @@ pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedErro
 
 /// Sends a message to the user indicating that no query was provided.
 pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));

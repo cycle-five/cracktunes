@@ -1,13 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
-
 use super::event_log_impl::*;
 
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, Data, Error,
+    utils::send_log_embed_thumb, ArcRwMap, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -50,7 +45,8 @@ pub fn get_log_channel(
 
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
-    guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+    //guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+    guild_settings_map: &ArcRwMap<GuildId, GuildSettings>,
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
@@ -100,7 +96,10 @@ pub async fn handle_event(
 
     use serenity::all::User;
 
+    use crate::log_event_async;
+
     let event_log = Arc::new(&data_global.event_log);
+    let event_log_async = Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
 
@@ -182,14 +181,14 @@ pub async fn handle_event(
             if new_message.author.bot {
                 return Ok(());
             }
-            log_event!(
+            log_event_async!(
                 log_message,
                 guild_settings,
                 event_in,
                 new_message,
                 &new_message.guild_id.unwrap(),
                 &ctx,
-                event_log,
+                event_log_async,
                 event_name
             )
         },

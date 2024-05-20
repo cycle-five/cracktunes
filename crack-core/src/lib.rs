@@ -42,9 +42,10 @@ pub mod utils;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
-pub type ArcRwLock<T> = Arc<tokio::sync::RwLock<T>>;
-pub type ArcMutex<T> = Arc<tokio::sync::Mutex<T>>;
-pub type ArcRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
+pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
+pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
+pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
+//pub type ArcRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
 
@@ -311,6 +312,8 @@ pub struct DataInner {
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
+    pub event_log_async: EventLogAsync,
+    #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
@@ -393,6 +396,42 @@ impl std::ops::DerefMut for EventLog {
     }
 }
 
+/// General log for events that the bot reveices from Discord.
+#[derive(Clone, Debug)]
+pub struct EventLogAsync(pub ArcTMutex<File>);
+
+impl std::ops::Deref for EventLogAsync {
+    type Target = ArcTMutex<File>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for EventLogAsync {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Default for EventLogAsync {
+    fn default() -> Self {
+        let log_path = format!("{}/events2.log", get_log_prefix());
+        let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
+        let log_file = match File::create(log_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error creating log file: {}", e);
+                // FIXME: Maybe use io::null()?
+                // I went down this path with sink and it was a mistake.
+                File::create("/dev/null")
+                    .expect("Should be able to have a file object to write too.")
+            },
+        };
+        Self(Arc::new(tokio::sync::Mutex::new(log_file)))
+    }
+}
+
 impl Default for EventLog {
     fn default() -> Self {
         let log_path = format!("{}/events.log", get_log_prefix());
@@ -408,6 +447,62 @@ impl Default for EventLog {
             },
         };
         Self(Arc::new(Mutex::new(log_file)))
+    }
+}
+
+impl EventLogAsync {
+    /// Create a new EventLog, calls default
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Write an object to the log file without a note async.
+    pub async fn write_log_obj_async<T: serde::Serialize>(
+        &self,
+        name: &str,
+        obj: &T,
+    ) -> Result<(), Error> {
+        self.write_log_obj_note_async(name, None, obj).await
+    }
+
+    /// Write an object to the log file with a note.
+    pub async fn write_log_obj_note_async<T: serde::Serialize>(
+        &self,
+        name: &str,
+        notes: Option<&str>,
+        obj: &T,
+    ) -> Result<(), Error> {
+        let entry = LogEntry {
+            name: name.to_string(),
+            notes: notes.unwrap_or("").to_string(),
+            event: obj,
+        };
+        let mut buf = serde_json::to_vec(&entry).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    /// Write an object to the log file.
+    pub async fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
+        let mut buf = serde_json::to_vec(obj).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    /// Write a buffer to the log file.
+    pub async fn write(self, buf: &[u8]) -> Result<(), Error> {
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
     }
 }
 
@@ -483,6 +578,7 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
+            event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             sender: None,
