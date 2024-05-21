@@ -1,4 +1,6 @@
 use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
+use bytes::Buf;
+use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
@@ -6,10 +8,14 @@ use rusty_ytdl::{
 };
 use serenity::async_trait;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
+use std::sync::Arc;
 use std::{fmt::Display, time::Duration};
 use symphonia::core::io::MediaSource;
+use tokio::sync::RwLock;
 
+use super::ytdl::HANDLE;
 /// Hacky, why did I do this? `AsString`
 pub trait AsString {
     fn as_string(&self) -> String;
@@ -239,34 +245,6 @@ impl From<RustyYoutubeSearch> for Input {
     }
 }
 
-// pub trait RustyYoutubeTrait: rusty_ytdl::stream::Stream + Send + Sync + Read + Seek {}
-// pub struct RustyYoutubeMediaSource {
-//     pub video: Video,
-// }
-
-// impl MediaSource for RustyYoutubeMediaSource {
-//     fn is_seekable(&self) -> bool {
-//         false
-//     }
-
-//     fn byte_len(&self) -> Option<u64> {
-//         None
-//     }
-// }
-
-// impl std::io::Seek for RustyYoutubeMediaSource {
-//     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
-//         let _ = pos;
-//         Ok(0)
-//     }
-// }
-
-// impl std::io::Read for RustyYoutubeMediaSource {
-//     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-//         self.video.stream().read(buf)
-//     }
-// }
-
 #[async_trait]
 impl Compose for RustyYoutubeSearch {
     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
@@ -330,39 +308,9 @@ impl Compose for RustyYoutubeSearch {
     }
 }
 
-use bytes::Buf;
-use bytes::BytesMut;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-use super::ytdl::HANDLE;
-
 pub trait StreamExt {
     fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream;
-    // where
-    //     Self: Stream + Send + Sync + 'static,
-    // {
-    //     MediaSourceStream {
-    //         stream: self,
-    //         buffer: Arc::new(RwLock::new(BytesMut::new())),
-    //         position: Arc::new(RwLock::new(0)),
-    //     }
-    // }
 }
-
-// //impl<T: ?Sized + Stream + Sync + Send + 'static> StreamExt for T {
-// pub struct StreamWrapper<T: ?Sized + Stream + Sync + Send> {
-//     stream: Box<T>,
-// }
-
-// impl Deref for StreamWrapper<dyn Stream + Sync + Send> {
-//     type Target = dyn Stream + Sync + Send;
-
-//     fn deref(&self) -> &Self::Target {
-//         &*self.stream
-//     }
-// }
 
 impl StreamExt for dyn Stream + Sync + Send {
     fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream
@@ -378,7 +326,6 @@ impl StreamExt for dyn Stream + Sync + Send {
 }
 
 pub struct MediaSourceStream {
-    //stream: Box<&'a StreamWrapper<dyn Stream + Sync + Send>>,
     stream: Pin<Box<dyn Stream + Sync + Send>>,
     buffer: Arc<RwLock<BytesMut>>,
     position: Arc<RwLock<u64>>,
@@ -424,40 +371,6 @@ impl Read for MediaSourceStream {
         // Get the current tokio runtime
         let handle = HANDLE.lock().unwrap().clone().unwrap();
         tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
-        // handle.block_on(async { self.read_async(buf).await })
-        // tokio::task::block_in_place(move || {
-        //     tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
-        // })
-        // tokio::runtime::Handle::current().block_on(async { self.read_async(buf).await })
-        // let opt_bytes = if self.buffer.blocking_read().is_empty() {
-        //     let fut = self.stream.chunk();
-        //     either::Left(
-        //         serenity::futures::executor::block_on(fut)
-        //             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
-        //     )
-        // } else {
-        //     either::Right(())
-        // };
-
-        // let chunk = match opt_bytes {
-        //     either::Left(Some(chunk)) => Some(chunk),
-        //     either::Left(None) => return Ok(0), // End of stream
-        //     either::Right(_) => None,
-        // };
-
-        // let mut buffer = self.buffer.blocking_write();
-        // let mut position = self.position.blocking_write();
-
-        // if let Some(chunk) = chunk {
-        //     buffer.extend_from_slice(&chunk);
-        // }
-
-        // let len = std::cmp::min(buf.len(), buffer.len());
-        // buf[..len].copy_from_slice(&buffer[..len]);
-        // buffer.advance(len);
-        // *position += len as u64;
-
-        // Ok(len)
     }
 }
 

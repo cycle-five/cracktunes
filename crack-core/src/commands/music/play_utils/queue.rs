@@ -18,6 +18,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Data structure for a track that is ready to be played.
 pub struct TrackReadyData {
     pub track: Track,
     pub metadata: MyAuxMetadata,
@@ -213,19 +214,6 @@ pub async fn queue_query_list_offset<'a>(
         CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
     )?;
 
-    // // If the queue is empty and the this is going to play immediately, then
-    // // queue the first track right away so that it doesn't wait until the
-    // // whole queuing process is finished before it starts playing.
-    // let (queries, offset) = if offset == 1 {
-    //     let first = queries
-    //         .first()
-    //         .ok_or(CrackedError::Other("queries.first()"))?;
-    //     queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
-    //     (queries[1..].to_vec(), 2)
-    // } else {
-    //     (queries, offset)
-    // };
-
     let mut tracks = Vec::new();
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
@@ -255,42 +243,6 @@ pub async fn queue_query_list_offset<'a>(
 
     Ok(())
 }
-
-// /// Inserts a track into the queue at the specified index.
-// // TODO: This is mostly redundant with the other queuing functions.
-// // unify the use of queuing functions and remove duplicate code.
-// #[cfg(not(tarpaulin_include))]
-// pub async fn insert_track(
-//     ctx: Context<'_>,
-//     call: &Arc<Mutex<Call>>,
-//     query_type: &QueryType,
-//     idx: usize,
-// ) -> Result<Vec<TrackHandle>, CrackedError> {
-//     let handler = call.lock().await;
-//     let queue_size = handler.queue().len();
-//     drop(handler);
-//     tracing::trace!("queue_size: {}, idx: {}", queue_size, idx);
-
-//     if queue_size <= 1 {
-//         let queue = queue_track_back(ctx, call, query_type).await?;
-//         return Ok(queue);
-//     }
-
-//     verify(
-//         idx > 0 && idx <= queue_size + 1,
-//         CrackedError::NotInRange("index", idx as isize, 1, queue_size as isize),
-//     )?;
-
-//     queue_track_back(ctx, call, query_type).await?;
-
-//     let handler = call.lock().await;
-//     handler.queue().modify_queue(|queue| {
-//         let back = queue.pop_back().unwrap();
-//         queue.insert(idx, back);
-//     });
-
-//     Ok(handler.queue().current_queue())
-// }
 
 /// Writes metadata to the database for a playing track.
 #[cfg(not(tarpaulin_include))]
