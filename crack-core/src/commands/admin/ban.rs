@@ -3,8 +3,8 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
-use serenity::all::User;
 use poise::serenity_prelude::Mentionable;
+use serenity::all::User;
 
 /// Ban a user from the server.
 // There really doesn't seem to be a good way to restructure commands like this

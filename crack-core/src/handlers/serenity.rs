@@ -54,7 +54,7 @@ impl EventHandler for SerenityHandler {
 
         ctx.set_activity(Some(ActivityData::listening(format!(
             "{}play",
-            __self.data.bot_settings.get_prefix()
+            self.data.bot_settings.get_prefix()
         ))));
 
         // attempts to authenticate to spotify
@@ -352,6 +352,10 @@ impl EventHandler for SerenityHandler {
             if video_status_poll_interval > 0 {
                 cam_status_loop(ctx3.clone(), config3.clone(), guilds.clone()).await;
             };
+
+            //let pool = self.data.database_pool.clone().unwrap();
+            //let tx = setup_workers(pool).await;
+            //self.data.set_db_channel(tx);
 
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);

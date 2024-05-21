@@ -2,6 +2,7 @@
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
+use db::worker_pool::MetadataWriteData;
 use db::PlayLog;
 use db::TrackReaction;
 use errors::CrackedError;
@@ -292,6 +293,7 @@ impl PhoneCodeData {
     }
 }
 
+use tokio::sync::mpsc::Sender;
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
@@ -314,11 +316,11 @@ pub struct DataInner {
     #[serde(skip)]
     pub event_log_async: EventLogAsync,
     #[serde(skip)]
+    pub db_channel: Option<Sender<MetadataWriteData>>,
+    #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    #[serde(skip)]
-    pub sender: Option<tokio::sync::mpsc::Sender<db::worker_pool::MetadataWriteData>>,
     // #[serde(skip, default = "default_topgg_client")]
     // pub topgg_client: topgg::Client,
 }
@@ -365,6 +367,14 @@ impl DataInner {
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
             database_pool: Some(database_pool),
+            ..self.clone()
+        }
+    }
+
+    /// Set the channel for the database pool communication
+    pub fn with_db_channel(&self, db_channel: Sender<MetadataWriteData>) -> Self {
+        Self {
+            db_channel: Some(db_channel),
             ..self.clone()
         }
     }
@@ -581,7 +591,7 @@ impl Default for DataInner {
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
-            sender: None,
+            db_channel: None,
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }

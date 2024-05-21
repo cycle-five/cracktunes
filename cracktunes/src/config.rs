@@ -3,10 +3,10 @@ use colored::Colorize;
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
     commands,
+    db::setup_workers,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::handle_event,
-    handlers::SerenityHandler,
+    handlers::{handle_event, SerenityHandler},
     is_prefix,
     utils::{
         check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
@@ -428,6 +428,10 @@ pub async fn poise_framework(
             None
         },
     };
+    let channel = match pool_opts.clone().map(|x| setup_workers(x)) {
+        Some(c) => Some(c.await),
+        None => None,
+    };
     // let rt = tokio::runtime::Builder::new_multi_thread()
     //     .enable_all()
     //     .build()
@@ -440,6 +444,7 @@ pub async fn poise_framework(
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
         database_pool: pool_opts,
+        db_channel: channel,
         ..Default::default()
     }));
 

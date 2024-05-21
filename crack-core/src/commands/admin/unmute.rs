@@ -3,9 +3,9 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use poise::serenity_prelude::Mentionable;
 use serenity::all::Message;
 use serenity::builder::EditMember;
-use poise::serenity_prelude::Mentionable;
 
 /// Unmute a user.
 /// TODO: Add a way to unmute a user by their ID.
