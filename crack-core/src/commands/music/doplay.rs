@@ -1,7 +1,7 @@
 use ::serenity::all::CommandInteraction;
 
 use super::play_utils::query::QueryType;
-use super::play_utils::queue::{get_mode, get_msg};
+use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
@@ -19,7 +19,7 @@ use crate::{
         },
     },
     sources::spotify::SpotifyTrack,
-    sources::youtube::{build_query_aux_metadata, queue_track_back},
+    sources::youtube::build_query_aux_metadata,
     utils::{get_human_readable_timestamp, get_track_metadata, send_embed_response_poise},
     Context, Error,
 };

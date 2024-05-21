@@ -2,8 +2,7 @@ use colored::Colorize;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
-    commands,
-    db::setup_workers,
+    commands, db,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::{handle_event, SerenityHandler},
@@ -428,7 +427,7 @@ pub async fn poise_framework(
             None
         },
     };
-    let channel = match pool_opts.clone().map(|x| setup_workers(x)) {
+    let channel = match pool_opts.clone().map(db::worker_pool::setup_workers) {
         Some(c) => Some(c.await),
         None => None,
     };

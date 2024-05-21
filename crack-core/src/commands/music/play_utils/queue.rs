@@ -5,8 +5,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    sources::youtube::{ready_query, TrackReadyData},
-    Context, Error,
+    Context as CrackContext, Error,
 };
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::tracks::TrackHandle;
@@ -19,6 +18,91 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub struct TrackReadyData {
+    pub track: Track,
+    pub metadata: MyAuxMetadata,
+    pub user_id: UserId,
+}
+
+/// Takes a query and returns a track that is ready to be played, along with relevant metadata.
+pub async fn ready_query(
+    ctx: CrackContext<'_>,
+    query_type: QueryType,
+) -> Result<TrackReadyData, CrackedError> {
+    let user_id = ctx.author().id;
+    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
+        query_type.get_track_source_and_metadata().await?;
+    let metadata = match metadata_vec.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
+    let track: Track = source.into();
+
+    // let username = ctx.user_id_to_username_or_default(user_id);
+
+    Ok(TrackReadyData {
+        track,
+        metadata,
+        user_id,
+    })
+}
+
+/// Pushes a track to the front of the queue, after readying it.
+pub async fn queue_track_ready_front(
+    call: &Arc<Mutex<Call>>,
+    ready_track: TrackReadyData,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
+    let new_q = handler.queue().current_queue();
+    handler.queue().modify_queue(|queue| {
+        let back = queue.pop_back().unwrap();
+        queue.insert(1, back);
+    });
+    drop(handler);
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    Ok(new_q)
+}
+
+/// Pushes a track to the back of the queue, after readying it.
+pub async fn queue_track_ready_back(
+    call: &Arc<Mutex<Call>>,
+    ready_track: TrackReadyData,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let track_handle = handler.enqueue(ready_track.track).await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    Ok(new_q)
+}
+
+/// Pushes a track to the front of the queue.
+pub async fn queue_track_front(
+    ctx: CrackContext<'_>,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let ready_track = ready_query(ctx, query_type.clone()).await?;
+    queue_track_ready_front(call, ready_track).await
+}
+
+/// Pushes a track to the front of the queue.
+pub async fn queue_track_back(
+    ctx: CrackContext<'_>,
+    call: &Arc<Mutex<Call>>,
+    query_type: &QueryType,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let ready_track = ready_query(ctx, query_type.clone()).await?;
+    queue_track_ready_back(call, ready_track).await
+}
+
 /// Queue a list of tracks to be played.
 pub async fn queue_ready_track_list(
     call: Arc<Mutex<Call>>,
@@ -27,7 +111,7 @@ pub async fn queue_ready_track_list(
     mode: Mode,
 ) -> Result<Vec<TrackHandle>, Error> {
     let mut handler = call.lock().await;
-    for ready_track in tracks {
+    for (idx, ready_track) in tracks.into_iter().enumerate() {
         let TrackReadyData {
             track,
             metadata,
@@ -41,7 +125,7 @@ pub async fn queue_ready_track_list(
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
                 let back = queue.pop_back().unwrap();
-                queue.push_front(back);
+                queue.insert(idx + 1, back);
             });
         }
     }
@@ -51,7 +135,7 @@ pub async fn queue_ready_track_list(
 /// Queue a list of keywords to be played from the end of the queue.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_keyword_list_back<'a>(
-    ctx: Context<'_>,
+    ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
     msg: &'a mut Message,
@@ -84,7 +168,7 @@ pub async fn queue_keyword_list_back<'a>(
 /// Queue a list of keywords to be played with an offset.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_vec_query_type(
-    ctx: Context<'_>,
+    ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
     _mode: Mode,
@@ -106,7 +190,7 @@ pub async fn queue_vec_query_type(
 /// N.B. The offset must be 0 < offset < queue.len() + 1
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_query_list_offset<'a>(
-    ctx: Context<'_>,
+    ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
     offset: usize,

@@ -1,3 +1,4 @@
+use super::queue::{queue_track_back, queue_track_front, queue_track_ready_back, ready_query};
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -11,14 +12,13 @@ use crate::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
         youtube::{
-            queue_track_back, queue_track_front, queue_track_ready_back, ready_query,
             search_query_to_source_and_metadata_rusty, search_query_to_source_and_metadata_ytdl,
             video_info_to_source_and_metadata,
         },
     },
     utils::{
-        //compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
         edit_response_poise,
+        //compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
         send_search_response,
         yt_search_select,
     },
@@ -122,13 +122,6 @@ impl From<Queries> for Vec<QueryType> {
         q.queries
     }
 }
-
-// impl From<Into<Vec<QueryType>>> for Queries {
-//     fn from(v: Into<Vec<QueryType>>) -> Self {
-//         let queries = v.into();
-//         Queries::new(queries)
-//     }
-// }
 
 impl QueryType {
     /// Build a query string from the query type.
@@ -637,9 +630,8 @@ impl QueryType {
                     vec![MyAuxMetadata::default()],
                 ))
             },
-            QueryType::NewYoutubeDl(ytdl_metadata) => {
-                tracing::warn!("In NewYoutubeDl {:?}", ytdl_metadata.clone());
-                let (ytdl, aux_metadata) = ytdl_metadata.clone();
+            QueryType::NewYoutubeDl(data) => {
+                let (ytdl, aux_metadata) = data.clone();
                 Ok((ytdl.into(), vec![MyAuxMetadata::Data(aux_metadata)]))
             },
             QueryType::PlaylistLink(url) => {
@@ -770,60 +762,26 @@ pub async fn query_type_from_url(
                 tracing::info!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
             },
-            Some("www.youtube.com") => Some(QueryType::VideoLink(url.to_string())),
-            Some(other) => {
-                tracing::warn!("domain: {other}");
-                //let data = ctx.data();
-                // let mut settings = data.guild_settings_map.write().unwrap().clone();
-                // let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-                //     GuildSettings::new(
-                //         guild_id,
-                //         Some(ctx.prefix()),
-                //         get_guild_name(ctx.serenity_context(), guild_id),
-                //     )
-                // });
-                // if !guild_settings.allow_all_domains.unwrap_or(true) {
-                //     let is_allowed = guild_settings
-                //         .allowed_domains
-                //         .iter()
-                //         .any(|d| compare_domains(d, other));
-
-                //     let is_banned = guild_settings
-                //         .banned_domains
-                //         .iter()
-                //         .any(|d| compare_domains(d, other));
-
-                //     if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                //         let message = CrackedMessage::PlayDomainBanned {
-                //             domain: other.to_string(),
-                //         };
-
-                //         send_response_poise_text(ctx, message).await?;
-                //     }
-                // }
-
+            Some("www.youtube.com") => {
                 // Handle youtube playlist
                 if url.contains("playlist") {
                     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
                     Some(QueryType::PlaylistLink(url.to_string()))
                 } else {
-                    tracing::warn!("{}: {}", "LINK".blue(), url.underline().blue());
                     Some(QueryType::VideoLink(url.to_string()))
-                    //     let rusty_ytdl = RustyYoutubeClient::new()?;
-                    //     let res_info = rusty_ytdl.get_video_info(url.to_string()).await;
-                    //     let metadata = match res_info {
-                    //         Ok(info) => RustyYoutubeClient::video_info_to_aux_metadata(&info),
-                    //         _ => {
-                    //             tracing::warn!("info: None, falling back to yt-dlp");
-                    //             let mut ytdl =
-                    //                 YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
-                    //             tracing::warn!("ytdl: {:?}", ytdl);
-                    //             ytdl.aux_metadata().await.unwrap()
-                    //         },
-                    //     };
-                    //     let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());
-                    //     Some(QueryType::NewYoutubeDl((yt, metadata)))
                 }
+            },
+            // For all other domains fall back to yt-dlp.
+            Some(other) => {
+                tracing::warn!("query_type_from_url: domain: {other}, using yt-dlp");
+                tracing::warn!(
+                    "query_type_from_use: {}: {}",
+                    "LINK".blue(),
+                    url.underline().blue()
+                );
+                let mut ytdl = YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
+                let metadata = ytdl.aux_metadata().await.unwrap();
+                Some(QueryType::NewYoutubeDl((ytdl, metadata)))
             },
             None => {
                 // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?
@@ -839,7 +797,6 @@ pub async fn query_type_from_url(
                     Some(Spotify::extract(spotify, &final_url).await?)
                 } else {
                     Some(QueryType::Keywords(url.to_string()))
-                    //                None
                 }
             },
         },
@@ -854,52 +811,3 @@ pub async fn query_type_from_url(
         .ok_or(CrackedError::NoGuildSettings)?;
     check_banned_domains(&guild_settings, query_type).map_err(Into::into)
 }
-
-// #[derive(Clone, Debug)]
-// pub struct Query {
-//     pub query_type: QueryType,
-//     pub metadata: Option<AuxMetadata>,
-// }
-
-// impl Query {
-//     pub fn build_query(&self) -> Option<String> {
-//         self.query_type.build_query()
-//     }
-
-//     pub async fn query(&self, n: usize) -> Result<(), CrackedError> {
-//         let _ = n;
-//         match self.query_type {
-//             QueryType::Keywords(_) => Ok(()),
-//             QueryType::KeywordList(_) => Ok(()),
-//             QueryType::VideoLink(_) => Ok(()),
-//             QueryType::SpotifyTracks(_) => Ok(()),
-//             QueryType::PlaylistLink(_) => Ok(()),
-//             QueryType::File(_) => Ok(()),
-//             QueryType::NewYoutubeDl(_) => Ok(()),
-//             QueryType::YoutubeSearch(_) => Ok(()),
-//             QueryType::None => Err(CrackedError::Other("No query provided!")),
-//         }
-//     }
-
-//     pub fn metadata(&self) -> Option<AuxMetadata> {
-//         match &self.query_type {
-//             QueryType::NewYoutubeDl((_src, metadata)) => Some(metadata.clone()),
-//             _ => None,
-//         }
-//     }
-
-//     pub async fn aux_metadata(&mut self) -> Result<AuxMetadata, CrackedError> {
-//         if let Some(meta) = self.metadata.as_ref() {
-//             return Ok(meta.clone());
-//         }
-
-//         self.query(1).await?;
-
-//         self.metadata.clone().ok_or_else(|| {
-//             CrackedError::Other("Failed to instansiate any metadata... Should be unreachable.")
-//             // let msg: Box<dyn std::error::Error + Send + Sync + 'static> =
-//             //     "Failed to instansiate any metadata... Should be unreachable.".into();
-//             // CrackedError::AudioStream(AudioStreamError::Fail(msg))
-//         })
-//     }
-// }
