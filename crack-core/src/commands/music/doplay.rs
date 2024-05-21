@@ -20,9 +20,7 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     sources::youtube::{build_query_aux_metadata, queue_track_back},
-    utils::{
-        get_guild_name, get_human_readable_timestamp, get_track_metadata, send_embed_response_poise,
-    },
+    utils::{get_human_readable_timestamp, get_track_metadata, send_embed_response_poise},
     Context, Error,
 };
 use ::serenity::{
@@ -139,7 +137,6 @@ async fn play_internal(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
-    let prefix = ctx.prefix();
     let is_prefix = ctx.prefix() != "/";
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
@@ -194,17 +191,17 @@ async fn play_internal(
     }
 
     // FIXME: What was the point of this again?
-    let _volume = {
-        let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
-        let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-            GuildSettings::new(
-                guild_id,
-                Some(prefix),
-                get_guild_name(ctx.serenity_context(), guild_id),
-            )
-        });
-        guild_settings.volume
-    };
+    // let _volume = {
+    //     let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
+    //     let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+    //         GuildSettings::new(
+    //             guild_id,
+    //             Some(prefix),
+    //             get_guild_name(ctx.serenity_context(), guild_id),
+    //         )
+    //     });
+    //     guild_settings.volume
+    // };
 
     // let queue = call.lock().await.queue().current_queue().clone();
     // tracing::warn!("guild_settings: {:?}", guild_settings);

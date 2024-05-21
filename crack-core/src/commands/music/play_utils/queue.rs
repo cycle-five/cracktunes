@@ -406,7 +406,7 @@ pub fn get_msg(
 
 /// Rotates the queue by `n` tracks to the right.
 #[cfg(not(tarpaulin_include))]
-pub async fn rotate_tracks(
+pub async fn _rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,
 ) -> Result<Vec<TrackHandle>, CrackedError> {

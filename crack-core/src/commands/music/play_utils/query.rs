@@ -1,7 +1,6 @@
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
-    guild::settings::GuildSettings,
     http_utils,
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
@@ -18,8 +17,10 @@ use crate::{
         },
     },
     utils::{
-        compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
-        send_search_response, yt_search_select,
+        //compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
+        edit_response_poise,
+        send_search_response,
+        yt_search_select,
     },
     Context, Error,
 };
@@ -345,6 +346,7 @@ impl QueryType {
             | QueryType::VideoLink(_)
             | QueryType::File(_)
             | QueryType::NewYoutubeDl(_) => {
+                tracing::info!("Mode::Next, QueryType::Keywords|VideoLink|File|NewYoutubeDl");
                 queue_track_front(ctx, &call, self).await?;
             },
             // FIXME
@@ -768,57 +770,59 @@ pub async fn query_type_from_url(
                 tracing::info!("{}: {}", "attachement file".blue(), url.underline().blue());
                 Some(QueryType::File(file.unwrap()))
             },
-
+            Some("www.youtube.com") => Some(QueryType::VideoLink(url.to_string())),
             Some(other) => {
-                let data = ctx.data();
-                let mut settings = data.guild_settings_map.write().unwrap().clone();
-                let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-                    GuildSettings::new(
-                        guild_id,
-                        Some(ctx.prefix()),
-                        get_guild_name(ctx.serenity_context(), guild_id),
-                    )
-                });
-                if !guild_settings.allow_all_domains.unwrap_or(true) {
-                    let is_allowed = guild_settings
-                        .allowed_domains
-                        .iter()
-                        .any(|d| compare_domains(d, other));
+                tracing::warn!("domain: {other}");
+                //let data = ctx.data();
+                // let mut settings = data.guild_settings_map.write().unwrap().clone();
+                // let guild_settings = settings.entry(guild_id).or_insert_with(|| {
+                //     GuildSettings::new(
+                //         guild_id,
+                //         Some(ctx.prefix()),
+                //         get_guild_name(ctx.serenity_context(), guild_id),
+                //     )
+                // });
+                // if !guild_settings.allow_all_domains.unwrap_or(true) {
+                //     let is_allowed = guild_settings
+                //         .allowed_domains
+                //         .iter()
+                //         .any(|d| compare_domains(d, other));
 
-                    let is_banned = guild_settings
-                        .banned_domains
-                        .iter()
-                        .any(|d| compare_domains(d, other));
+                //     let is_banned = guild_settings
+                //         .banned_domains
+                //         .iter()
+                //         .any(|d| compare_domains(d, other));
 
-                    if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
-                        let message = CrackedMessage::PlayDomainBanned {
-                            domain: other.to_string(),
-                        };
+                //     if is_banned || (guild_settings.banned_domains.is_empty() && !is_allowed) {
+                //         let message = CrackedMessage::PlayDomainBanned {
+                //             domain: other.to_string(),
+                //         };
 
-                        send_response_poise_text(ctx, message).await?;
-                    }
-                }
+                //         send_response_poise_text(ctx, message).await?;
+                //     }
+                // }
 
                 // Handle youtube playlist
-                if url.contains("list=") {
+                if url.contains("playlist") {
                     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
                     Some(QueryType::PlaylistLink(url.to_string()))
                 } else {
                     tracing::warn!("{}: {}", "LINK".blue(), url.underline().blue());
-                    let rusty_ytdl = RustyYoutubeClient::new()?;
-                    let res_info = rusty_ytdl.get_video_info(url.to_string()).await;
-                    let metadata = match res_info {
-                        Ok(info) => RustyYoutubeClient::video_info_to_aux_metadata(&info),
-                        _ => {
-                            tracing::warn!("info: None, falling back to yt-dlp");
-                            let mut ytdl =
-                                YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
-                            tracing::warn!("ytdl: {:?}", ytdl);
-                            ytdl.aux_metadata().await.unwrap()
-                        },
-                    };
-                    let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());
-                    Some(QueryType::NewYoutubeDl((yt, metadata)))
+                    Some(QueryType::VideoLink(url.to_string()))
+                    //     let rusty_ytdl = RustyYoutubeClient::new()?;
+                    //     let res_info = rusty_ytdl.get_video_info(url.to_string()).await;
+                    //     let metadata = match res_info {
+                    //         Ok(info) => RustyYoutubeClient::video_info_to_aux_metadata(&info),
+                    //         _ => {
+                    //             tracing::warn!("info: None, falling back to yt-dlp");
+                    //             let mut ytdl =
+                    //                 YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
+                    //             tracing::warn!("ytdl: {:?}", ytdl);
+                    //             ytdl.aux_metadata().await.unwrap()
+                    //         },
+                    //     };
+                    //     let yt = YoutubeDl::new(http_utils::get_client().clone(), url.to_string());
+                    //     Some(QueryType::NewYoutubeDl((yt, metadata)))
                 }
             },
             None => {

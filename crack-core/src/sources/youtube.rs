@@ -59,7 +59,7 @@ pub async fn queue_track_ready_front(
     map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
     handler.queue().modify_queue(|queue| {
         let back = queue.pop_back().unwrap();
-        queue.push_front(back);
+        queue.insert(1, back);
     });
 
     Ok(handler.queue().current_queue())
