@@ -588,7 +588,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
             let user = match user_id.to_user(&ctx).await {
                 Ok(user) => user,
                 Err(err) => {
-                    tracing::error!("Error getting user: {}", err);
+                    tracing::error!("Error getting user: {err}");
                     continue;
                 },
             };
@@ -600,10 +600,8 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
                 },
                 Err(err) => {
                     tracing::error!(
-                        "Error getting channel name for channel {} in guild {}: {}",
-                        channel_id,
-                        guild_name,
-                        err
+                        r#"Error getting channel name for channel
+                        {channel_id} in guild {guild_name}: {err}"#,
                     );
                     "MISSING_ACCESS".to_string()
                 },
