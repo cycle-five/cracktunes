@@ -4,7 +4,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use commands::play_utils::TrackReadyData;
 use commands::MyAuxMetadata;
-use db::worker_pool::MetadataWriteData;
+use db::worker_pool::MetadataMsg;
 use db::PlayLog;
 use db::TrackReaction;
 use errors::CrackedError;
@@ -18,8 +18,10 @@ use guild::settings::{
 use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
 use serenity::all::Message;
+use songbird::Call;
 use std::fs;
 use std::fs::File;
+use std::future::Future;
 use std::io::Write;
 use std::path::Path;
 use std::sync::RwLock;
@@ -320,7 +322,7 @@ pub struct DataInner {
     #[serde(skip)]
     pub event_log_async: EventLogAsync,
     #[serde(skip)]
-    pub db_channel: Option<Sender<MetadataWriteData>>,
+    pub db_channel: Option<Sender<MetadataMsg>>,
     #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
@@ -376,7 +378,7 @@ impl DataInner {
     }
 
     /// Set the channel for the database pool communication
-    pub fn with_db_channel(&self, db_channel: Sender<MetadataWriteData>) -> Self {
+    pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
         Self {
             db_channel: Some(db_channel),
             ..self.clone()
@@ -778,8 +780,14 @@ mod lib_test {
     }
 }
 
+use tokio::sync::Mutex as TokMutex;
+
+/// Trait to extend the Context struct with additional convenience functionality.
 pub trait ContextExt {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// Return the call that the bot is currently in, if it is in one.
+    fn get_call(&self) -> impl Future<Output = Result<Arc<TokMutex<Call>>, CrackedError>>;
 }
 
 impl ContextExt for Context<'_> {
@@ -791,7 +799,7 @@ impl ContextExt for Context<'_> {
         let channel_id = self.channel_id();
         match &self.data().db_channel {
             Some(channel) => {
-                let write_data: MetadataWriteData = MetadataWriteData {
+                let write_data: MetadataMsg = MetadataMsg {
                     user_id,
                     aux_metadata,
                     username,
@@ -804,5 +812,13 @@ impl ContextExt for Context<'_> {
             },
             None => {},
         }
+    }
+
+    async fn get_call(&self) -> Result<Arc<TokMutex<Call>>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(self.serenity_context())
+            .await
+            .ok_or(CrackedError::NotConnected)?;
+        manager.get(guild_id).ok_or(CrackedError::NotConnected)
     }
 }

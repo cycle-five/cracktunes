@@ -9,11 +9,12 @@ use tracing;
 use crate::db::{metadata::aux_metadata_to_db_structures, Metadata, PlayLog, User};
 use crate::CrackedError;
 
-const CHANNEL_BUF_SIZE: usize = 256;
+// TODO: Make this configurable, and experiment to find a good default.
+const CHANNEL_BUF_SIZE: usize = 1024;
 
 /// Data needed to write a metadata entry to the database.
 #[derive(Debug, Clone)]
-pub struct MetadataWriteData {
+pub struct MetadataMsg {
     pub aux_metadata: AuxMetadata,
     pub user_id: UserId,
     pub username: String,
@@ -21,11 +22,11 @@ pub struct MetadataWriteData {
     pub channel_id: ChannelId,
 }
 
-impl Display for MetadataWriteData {
+impl Display for MetadataMsg {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "MetadataWriteData {{ aux_metadata: {:?}, user_id: {:?}, username: {:?}, guild_id: {:?}, channel_id: {:?} }}",
+            "MetadataMsg {{ aux_metadata: {:?}, user_id: {:?}, username: {:?}, guild_id: {:?}, channel_id: {:?} }}",
             self.aux_metadata, self.user_id, self.username, self.guild_id, self.channel_id
         )
     }
@@ -34,9 +35,9 @@ impl Display for MetadataWriteData {
 /// Writes metadata to the database for a playing track.
 pub async fn write_metadata_pg(
     database_pool: &PgPool,
-    data: MetadataWriteData,
+    data: MetadataMsg,
 ) -> Result<Metadata, CrackedError> {
-    let MetadataWriteData {
+    let MetadataMsg {
         aux_metadata,
         user_id,
         username,
@@ -93,27 +94,18 @@ pub async fn write_metadata_pg(
 }
 
 /// Run a worker that writes metadata to the database.
-pub async fn run_db_worker(mut receiver: mpsc::Receiver<MetadataWriteData>, pool: PgPool) {
+pub async fn run_db_worker(mut receiver: mpsc::Receiver<MetadataMsg>, pool: PgPool) {
     while let Some(message) = receiver.recv().await {
         tracing::trace!("Received message in run_db_worker: {}", message);
         match write_metadata_pg(&pool, message).await {
             Ok(_) => tracing::trace!("Metadata written to database"),
             Err(e) => tracing::warn!("Failed to write metadata to database: {}", e),
         }
-        // TODO: Have this write the proper data
-        // match sqlx::query("INSERT INTO logs (message) VALUES ($1)")
-        //     .bind(&message)
-        //     .execute(&pool)
-        //     .await
-        // {
-        //     Ok(_) => tracing::trace!("Message logged to database"),
-        //     Err(e) => tracing::warn!("Failed to write to database: {}", e),
-        // }
     }
 }
 
 /// Setup the workers to handle db writes asynchronously during runtime.
-pub async fn setup_workers(pool: PgPool) -> mpsc::Sender<MetadataWriteData> {
+pub async fn setup_workers(pool: PgPool) -> mpsc::Sender<MetadataMsg> {
     let (tx, rx) = mpsc::channel(CHANNEL_BUF_SIZE);
     let pool = pool.clone();
     tokio::spawn(async move {
@@ -132,7 +124,7 @@ mod test {
     async fn test_workers(pool: PgPool) {
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let sender = setup_workers(pool.clone()).await;
-        let data = MetadataWriteData {
+        let data = MetadataMsg {
             aux_metadata: AuxMetadata {
                 source_url: Some(url.clone()),
                 ..Default::default()

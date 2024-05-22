@@ -1,5 +1,4 @@
-/// Contains functions for creating embeds and other messages which are used
-/// to communicate with the user.
+use super::messages::REQUESTED_BY;
 use crate::errors::CrackedError;
 use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
@@ -8,12 +7,16 @@ use crate::messaging::messages::{
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::Context as CrackContext;
+use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
     utils::{
         get_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
     },
 };
+/// Contains functions for creating embeds and other messages which are used
+/// to communicate with the user.
+use lyric_finder::LyricResult;
 use poise::CreateReply;
 use serenity::all::UserId;
 use serenity::{
@@ -23,8 +26,6 @@ use serenity::{
 };
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
-
-use super::messages::REQUESTED_BY;
 
 /// Converts a user id to a string, with special handling for autoplay.
 pub fn requesting_user_to_string(user_id: UserId) -> String {
@@ -185,11 +186,20 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
 #[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
-    track: String,
-    artists: String,
-    lyric: String,
+    lyric_res: LyricResult,
 ) -> Result<(), CrackedError> {
-    use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
+    let (track, artists, lyric) = match lyric_res {
+        LyricResult::Some {
+            track,
+            artists,
+            lyric,
+        } => (track, artists, lyric),
+        LyricResult::None => (
+            "Unknown".to_string(),
+            "Unknown".to_string(),
+            "No lyrics found!".to_string(),
+        ),
+    };
 
     create_paged_embed(
         ctx,

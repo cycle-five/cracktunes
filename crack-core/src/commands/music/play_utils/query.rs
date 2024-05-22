@@ -784,7 +784,14 @@ pub async fn query_type_from_url(
                     url.underline().blue()
                 );
                 let mut ytdl = YoutubeDl::new(ctx.data().http_client.clone(), url.to_string());
-                let metadata = ytdl.aux_metadata().await.unwrap();
+                // This can fail whenever yt-dlp cannot parse a track from the URL.
+                let metadata = match ytdl.aux_metadata().await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        tracing::error!("yt-dlp error: {}", e);
+                        return Err(CrackedError::AudioStream(e).into());
+                    },
+                };
                 Some(QueryType::NewYoutubeDl((ytdl, metadata)))
             },
             None => {
