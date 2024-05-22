@@ -42,7 +42,7 @@ sqlx = { version = "0.7.4", features = [
     "json",
 ] }
 async-trait = { version = "0.1.80" }
-mockall = { version = "0.12.1" }
+# mockall = { version = "0.12.1" }
 config-file = { version = "0.2.3", features = ["json"] }
 dotenvy = "0.15.7"
 colored = "2.1.0"

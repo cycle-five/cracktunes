@@ -161,16 +161,6 @@ mod test {
         assert!(res.is_ok());
     }
 
-    // #[tokio::test]
-    // async fn test_get_track_source_and_metadata_spotify_tracks() {
-    //     let query_type = QueryType::SpotifyTracks(vec![SpotifyTrack {
-    //         full_track: FullTrack {
-    //         },
-    //     }]);
-    //     let res = get_track_source_and_metadata(query_type).await;
-    //     assert!(res.is_ok());
-    // }
-
     #[tokio::test]
     async fn test_get_track_source_and_metadata_keyword_list() {
         let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
