@@ -1,4 +1,4 @@
-use super::queue::{queue_track_back, queue_track_front, queue_track_ready_back, ready_query};
+use super::queue::{queue_track_back, queue_track_front};
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -404,9 +404,13 @@ impl QueryType {
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                let track_ready_data = ready_query(ctx, self.clone()).await?;
-                // let queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
-                let _queue = queue_track_ready_back(&call, track_ready_data).await?;
+                match queue_track_back(ctx, &call, self).await {
+                    Ok(_) => (),
+                    Err(e) => {
+                        tracing::error!("queue_track_back error: {:?}", e);
+                        return Ok(false);
+                    },
+                };
                 Ok(true)
             },
             // FIXME

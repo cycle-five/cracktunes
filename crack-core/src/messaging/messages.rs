@@ -70,6 +70,7 @@ pub const NO_DATABASE_POOL: &str = "⚠️ No Database Pool Found!";
 pub const NO_GUILD_CACHED: &str = "⚠️ No Cached Guild Found!";
 pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
+pub const NO_USER_AUTOPLAY: &str = "(auto)";
 pub const ONETWOFT: &str = "https://12ft.io/";
 pub const PAGINATION_COMPLETE: &str =
     "🔚 Dynamic message timed out! Run the command again to see updates.";

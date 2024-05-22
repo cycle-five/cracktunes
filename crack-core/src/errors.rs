@@ -1,10 +1,11 @@
 use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
-    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INVALID_TOPGG_TOKEN,
-    FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY,
-    FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY,
-    NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
-    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER, FAIL_INSERT
+    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT,
+    FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD,
+    FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL,
+    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
+    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -121,7 +122,7 @@ impl Display for CrackedError {
             },
             Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
             Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
-            Self::FailedToInsert => f.write_str(&format!("{FAIL_INSERT}")),
+            Self::FailedToInsert => f.write_str(FAIL_INSERT),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
@@ -151,7 +152,7 @@ impl Display for CrackedError {
             },
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
-            Self::NoUserAutoplay => f.write_str("(auto)"),
+            Self::NoUserAutoplay => f.write_str(NO_USER_AUTOPLAY),
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
             Self::NoVirusTotalApiKey => f.write_str(FAIL_NO_VIRUSTOTAL_API_KEY),

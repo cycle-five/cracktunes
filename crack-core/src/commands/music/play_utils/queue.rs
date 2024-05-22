@@ -185,6 +185,7 @@ pub async fn queue_vec_query_type(
 
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
+        ctx.send_track_metadata_write_msg(&ready_track);
         tracks.push(ready_track);
     }
     let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
@@ -222,6 +223,7 @@ pub async fn queue_query_list_offset<'a>(
     let mut tracks = Vec::new();
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
+        ctx.send_track_metadata_write_msg(&ready_track);
         tracks.push(ready_track);
     }
 
