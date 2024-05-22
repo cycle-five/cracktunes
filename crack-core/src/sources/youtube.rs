@@ -175,7 +175,13 @@ mod test {
     async fn test_get_track_source_and_metadata_keyword_list() {
         let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
         let res = query_type.get_track_source_and_metadata().await;
-        assert!(res.is_ok());
+        match res {
+            Ok(_) => assert!(true),
+            Err(e) => {
+                let phrase = "Your IP is likely being blocked by Youtube";
+                assert!(e.to_string().contains(phrase));
+            },
+        }
     }
 
     #[tokio::test]
