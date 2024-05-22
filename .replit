@@ -1,5 +1,7 @@
 run = "cargo build"
 hidden = ["target"]
+entrypoint = "src/main.rs"
+modules = ["rust-stable:v4-20240117-0bd73cd"]
 
 [packager]
 language = "rust"
