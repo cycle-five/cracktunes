@@ -268,8 +268,11 @@ impl EventHandler for SerenityHandler {
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
-        for guildid in guilds.iter() {
-            tracing::info!("Guild: {:?}", guildid);
+        for guild_id in guilds.iter() {
+            match guild_id.name(ctx.clone()) {
+                Some(name) => tracing::info!("Guild: {name}"),
+                None => tracing::info!("Guild: {guild_id}"),
+            }
         }
 
         let config = self.data.bot_settings.clone();
@@ -429,11 +432,10 @@ impl SerenityHandler {
                 .unwrap()
                 .insert(guild_id, default.clone());
 
-            default
-                .save(&pool)
-                .await
-                .expect("Error saving guild settings");
-            tracing::info!("saving guild {}...", default);
+            match default.save(&pool).await {
+                Ok(()) => tracing::info!("Saved guild {guild_name}..."),
+                Err(err) => tracing::error!("Failed to save guild {guild_name} due to {err}"),
+            }
         }
     }
 
@@ -494,7 +496,7 @@ impl SerenityHandler {
 
             match guild_settings_opt {
                 Some(&mut ref guild_settings) => {
-                    tracing::info!("loaded guild from db {}...", guild_settings);
+                    tracing::trace!("loaded guild from db {}...", guild_settings);
                     guild_settings_list.push(guild_settings.clone());
                 },
                 None => {

@@ -2,6 +2,8 @@
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
+use commands::play_utils::TrackReadyData;
+use commands::MyAuxMetadata;
 use db::worker_pool::MetadataWriteData;
 use db::PlayLog;
 use db::TrackReaction;
@@ -46,7 +48,7 @@ pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
 pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
-//pub type ArcRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
+pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
 
@@ -307,6 +309,8 @@ pub struct DataInner {
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub gld_sttngs_mp: ArcTRwMap<GuildId, GuildSettings>,
     #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
@@ -585,6 +589,7 @@ impl Default for DataInner {
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
+            gld_sttngs_mp: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
@@ -615,6 +620,32 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
+    /// Non async insert of guild settings.
+    pub fn insert_guild_non_async(
+        &self,
+        guild_id: GuildId,
+        guild_settings: GuildSettings,
+    ) -> Result<GuildSettings, CrackedError> {
+        self.guild_settings_map
+            .write()
+            .unwrap()
+            .insert(guild_id, guild_settings)
+            .ok_or(CrackedError::FailedToInsert)
+    }
+
+    /// Insert a guild into the guild settings map.
+    pub async fn insert_guild(
+        &self,
+        guild_id: GuildId,
+        guild_settings: GuildSettings,
+    ) -> Result<GuildSettings, CrackedError> {
+        self.gld_sttngs_mp
+            .write()
+            .await
+            .insert(guild_id, guild_settings)
+            .ok_or(CrackedError::FailedToInsert)
+    }
+
     /// Create a new Data, calls default
     pub async fn downvote_track(
         &self,
@@ -744,5 +775,34 @@ mod lib_test {
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().unwrap().is_empty());
+    }
+}
+
+pub trait ContextExt {
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+}
+
+impl ContextExt for Context<'_> {
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
+        let username = ready_track.username.clone();
+        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+        match &self.data().db_channel {
+            Some(channel) => {
+                let write_data: MetadataWriteData = MetadataWriteData {
+                    user_id,
+                    aux_metadata,
+                    username,
+                    guild_id,
+                    channel_id,
+                };
+                if let Err(e) = channel.try_send(write_data) {
+                    tracing::error!("Error sending metadata to db_channel: {}", e);
+                }
+            },
+            None => {},
+        }
     }
 }

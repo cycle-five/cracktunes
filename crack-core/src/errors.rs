@@ -4,7 +4,7 @@ use crate::messaging::messages::{
     FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY,
     FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_WRONG_CHANNEL, GUILD_ONLY,
     NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
-    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    NO_GUILD_SETTINGS, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER, FAIL_INSERT
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -35,6 +35,7 @@ pub enum CrackedError {
     DurationParseError(String, String),
     EmptySearchResult,
     EmptyVector(&'static str),
+    FailedToInsert,
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
@@ -120,6 +121,7 @@ impl Display for CrackedError {
             },
             Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
             Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
+            Self::FailedToInsert => f.write_str(&format!("{FAIL_INSERT}")),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),

@@ -36,9 +36,10 @@ pub const FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA: &str =
 pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
 ///?
 pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
-pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";
 pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
+pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
+pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";
 pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";
 pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
 pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";

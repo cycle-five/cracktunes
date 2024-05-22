@@ -5,14 +5,13 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    Context as CrackContext, Error,
+    Context as CrackContext, ContextExt, Error,
 };
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
-use songbird::tracks::TrackHandle;
-use songbird::Call;
 use songbird::{
     input::{AuxMetadata, Input as SongbirdInput},
-    tracks::Track,
+    tracks::{Track, TrackHandle},
+    Call,
 };
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -23,6 +22,7 @@ pub struct TrackReadyData {
     pub track: Track,
     pub metadata: MyAuxMetadata,
     pub user_id: UserId,
+    pub username: String,
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -41,12 +41,13 @@ pub async fn ready_query(
     };
     let track: Track = source.into();
 
-    // let username = ctx.user_id_to_username_or_default(user_id);
+    let username = ctx.user_id_to_username_or_default(user_id);
 
     Ok(TrackReadyData {
         track,
         metadata,
         user_id,
+        username,
     })
 }
 
@@ -66,6 +67,7 @@ pub async fn queue_track_ready_front(
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
     map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    drop(map);
     Ok(new_q)
 }
 
@@ -91,7 +93,9 @@ pub async fn queue_track_front(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone()).await?;
-    queue_track_ready_front(call, ready_track).await
+    ctx.send_track_metadata_write_msg(&ready_track);
+    let q = queue_track_ready_front(call, ready_track).await?;
+    Ok(q)
 }
 
 /// Pushes a track to the front of the queue.
@@ -101,6 +105,7 @@ pub async fn queue_track_back(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone()).await?;
+    ctx.send_track_metadata_write_msg(&ready_track);
     queue_track_ready_back(call, ready_track).await
 }
 
