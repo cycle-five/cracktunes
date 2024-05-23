@@ -2,7 +2,7 @@ use crate::connection::get_voice_channel_for_user;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_embed_response_poise;
-use crate::CrackContext;
+use crate::ContextExt as _;
 use crate::CrackedError;
 use crate::{Context, Error};
 use poise::serenity_prelude::Mentionable;
@@ -104,7 +104,7 @@ pub async fn get_call_with_fail_msg(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>
                 .await?
                 .into_message()
                 .await?;
-            ctx.add_msg_to_cache(guild_id, msg);
+            ctx.add_msg_to_cache_nonasync(guild_id, msg);
             Ok(call)
         },
         Err(err) => {

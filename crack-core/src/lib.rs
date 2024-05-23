@@ -1,4 +1,3 @@
-//#![feature(trivial_bounds)]
 use crate::handlers::event_log::LogEntry;
 use chrono::DateTime;
 use chrono::Utc;
@@ -30,6 +29,7 @@ use std::{
     fmt::Display,
     sync::{Arc, Mutex},
 };
+use tokio::sync::Mutex as TokMutex;
 
 pub mod commands;
 pub mod connection;
@@ -54,42 +54,34 @@ pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
 
-pub trait CrackContext<'a> {
-    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
-}
-
-impl<'a> CrackContext<'a> for Context<'a> {
-    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg)
-    }
-}
-
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+/// Struct for the cammed down kicking configuration.
 pub struct CamKickConfig {
-    pub cammed_down_timeout: u64,
+    pub timeout: u64,
     pub guild_id: u64,
-    pub channel_id: u64,
-    pub dc_message: String,
-    pub send_msg_deafen: bool,
-    pub send_msg_mute: bool,
-    pub send_msg_dc: bool,
+    pub chan_id: u64,
+    pub dc_msg: String,
+    pub msg_on_deafen: bool,
+    pub msg_on_mute: bool,
+    pub msg_on_dc: bool,
 }
 
+/// Default for the CamKickConfig.
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 0,
+            timeout: 0,
             guild_id: 0,
-            channel_id: 0,
-            dc_message: "You have been violated for being cammed down for too long.".to_string(),
-            send_msg_deafen: false,
-            send_msg_mute: false,
-            send_msg_dc: false,
+            chan_id: 0,
+            dc_msg: "You have been violated for being cammed down for too long.".to_string(),
+            msg_on_deafen: false,
+            msg_on_mute: false,
+            msg_on_dc: false,
         }
     }
 }
@@ -98,16 +90,13 @@ impl Default for CamKickConfig {
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
-        result.push_str(&format!(
-            "cammed_down_timeout: {:?}\n",
-            self.cammed_down_timeout
-        ));
+        result.push_str(&format!("timeout: {:?}\n", self.timeout));
         result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
-        result.push_str(&format!("channel_id: {:?}\n", self.channel_id));
-        result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
-        result.push_str(&format!("deafen: {}\n", self.send_msg_deafen));
-        result.push_str(&format!("mute: {}\n", self.send_msg_mute));
-        result.push_str(&format!("dc: {}\n", self.send_msg_dc));
+        result.push_str(&format!("chan_id: {:?}\n", self.chan_id));
+        result.push_str(&format!("dc_msg: {:?}\n", self.dc_msg));
+        result.push_str(&format!("msg_on_deafen: {}\n", self.msg_on_deafen));
+        result.push_str(&format!("msg_on_mute: {}\n", self.msg_on_mute));
+        result.push_str(&format!("msg_on_dc: {}\n", self.msg_on_dc));
 
         write!(f, "{}", result)
     }
@@ -780,17 +769,19 @@ mod lib_test {
     }
 }
 
-use tokio::sync::Mutex as TokMutex;
-
 /// Trait to extend the Context struct with additional convenience functionality.
 pub trait ContextExt {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
     /// Return the call that the bot is currently in, if it is in one.
     fn get_call(&self) -> impl Future<Output = Result<Arc<TokMutex<Call>>, CrackedError>>;
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
 }
 
+/// Implement the ContextExt trait for the Context struct.
 impl ContextExt for Context<'_> {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
         let username = ready_track.username.clone();
         let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
@@ -814,11 +805,17 @@ impl ContextExt for Context<'_> {
         }
     }
 
+    /// Return the call that the bot is currently in, if it is in one.
     async fn get_call(&self) -> Result<Arc<TokMutex<Call>>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = songbird::get(self.serenity_context())
             .await
             .ok_or(CrackedError::NotConnected)?;
         manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg)
     }
 }

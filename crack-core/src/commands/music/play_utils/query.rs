@@ -16,12 +16,7 @@ use crate::{
             video_info_to_source_and_metadata,
         },
     },
-    utils::{
-        edit_response_poise,
-        //compare_domains, edit_response_poise, get_guild_name, send_response_poise_text,
-        send_search_response,
-        yt_search_select,
-    },
+    utils::{edit_response_poise, send_search_response, yt_search_select},
     Context, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
@@ -39,14 +34,13 @@ use std::{
     process::{Output, Stdio},
     sync::Arc,
 };
-use tokio::process::Command;
-use tokio::sync::Mutex;
+use tokio::{process::Command, sync::Mutex};
 use url::Url;
 
 use super::{queue_keyword_list_back, queue_query_list_offset};
 
-/// Enum for type of possible queries we have to handle
 #[derive(Clone, Debug)]
+/// Enum for type of possible queries we have to handle
 pub enum QueryType {
     Keywords(String),
     KeywordList(Vec<String>),
@@ -678,7 +672,13 @@ impl QueryType {
                 let mut ytdl =
                     YoutubeDl::new(client, format!("ytsearch:{}", keywords_list.join(" ")));
                 tracing::warn!("ytdl: {:?}", ytdl);
-                let metdata = ytdl.aux_metadata().await.unwrap();
+                let metdata = match ytdl.aux_metadata().await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        tracing::error!("yt-dlp error: {}", e);
+                        return Err(CrackedError::AudioStream(e));
+                    },
+                };
                 let my_metadata = MyAuxMetadata::Data(metdata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
