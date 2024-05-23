@@ -741,9 +741,9 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
             for cam in cams.iter() {
                 if let Some(status) = cam_status.get(&cam.key()) {
                     if let Some(kick_conf) = channels.get(&status.chan_id.get()) {
-                        tracing::warn!("kick_conf: {}", format!("{:?}", kick_conf).blue());
+                        tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
                         if status.status != cam.status {
-                            CamChangeEvent {
+                            let cam_event = CamChangeEvent {
                                 user_id: cam.user_id,
                                 guild_id: cam.guild_id,
                                 chan_id: cam.chan_id,
@@ -755,7 +755,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                 status.user_id,
                                 cam.status
                             );
-                            cam_status.insert(cam.key(), *cam);
+                            cam_status.insert(cam_event.key(), cam_event);
                         } else {
                             tracing::info!(
                                 target = "Camera",
@@ -822,12 +822,8 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
                                                         }),
                                                     )
                                                     .await;
-                                                // cam_status.remove(&cam.key());
                                             }
                                             cam_status.remove(&cam.key());
-                                            // if state == "disconnect" {
-                                            //     cam_status.remove(&cam.key());
-                                            // }
                                         },
                                         Err(err) => {
                                             tracing::error!("Error violating user: {}", err);
@@ -843,7 +839,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
             }
             let res: i32 = new_cams
                 .iter()
-                .map(|x| Into::<i32>::into(!cam_status.insert(x.key(), **x).is_some()))
+                .map(|x| Into::<i32>::into(cam_status.insert(x.key(), **x).is_none()))
                 .sum();
 
             tracing::warn!("num new cams: {}", res);
