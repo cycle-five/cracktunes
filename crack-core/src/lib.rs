@@ -685,10 +685,10 @@ impl Data {
             .remove(&ts)
     }
 
-    /// Get the guild settings for a guild (read only)
-    pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
-        self.guild_settings_map.read().ok()?.get(&guild_id).cloned()
-    }
+    // /// Get the guild settings for a guild (read only)
+    // pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+    //     self.guild_settings_map.read().ok()?.get(&guild_id).cloned()
+    // }
 
     pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
         self.guild_settings_map

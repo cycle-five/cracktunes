@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;

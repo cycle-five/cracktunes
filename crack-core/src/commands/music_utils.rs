@@ -1,4 +1,5 @@
 use crate::connection::get_voice_channel_for_user;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_embed_response_poise;

@@ -1,3 +1,4 @@
+use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
 
 /// Get the current version of the bot.

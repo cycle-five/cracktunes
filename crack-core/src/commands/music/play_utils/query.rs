@@ -1,4 +1,6 @@
 use super::queue::{queue_track_back, queue_track_front};
+use super::{queue_keyword_list_back, queue_query_list_offset};
+use crate::guild::operations::GuildSettingsOperations;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -36,8 +38,6 @@ use std::{
 };
 use tokio::{process::Command, sync::Mutex};
 use url::Url;
-
-use super::{queue_keyword_list_back, queue_query_list_offset};
 
 #[derive(Clone, Debug)]
 /// Enum for type of possible queries we have to handle

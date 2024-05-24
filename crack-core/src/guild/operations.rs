@@ -52,6 +52,7 @@ impl GuildSettingsOperations for crate::Data {
         self.guild_settings_map
             .read()
             .unwrap()
+            //.ok()?
             .get(&guild_id)
             .cloned()
     }

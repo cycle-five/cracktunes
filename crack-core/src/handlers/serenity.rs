@@ -558,7 +558,10 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
 
 /// Check the camera statuses of all the users in voice channels per
 /// guild and if there's rules aroun camera usage, enforce them.
-async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Vec<CamChangeEvent> {
+async fn check_camera_status(
+    ctx: Arc<SerenityContext>,
+    guild_id: GuildId,
+) -> (Vec<CamPollEvent>, String) {
     let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx) {
         Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
         // Err(err) => {
@@ -566,7 +569,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
         None => {
             // let partial_guild = ctx.http().get_guild(guild_id).await.unwrap();
             tracing::error!("Guild not found {guild_id}.");
-            return vec![];
+            return (vec![], "".to_string());
         },
     };
 
@@ -599,7 +602,7 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
             let status = CamStatus::from(voice_state.self_video);
             let last_change = Instant::now();
 
-            let info = CamChangeEvent {
+            let info = CamPollEvent {
                 user_id,
                 guild_id,
                 chan_id,
@@ -614,8 +617,8 @@ async fn check_camera_status(ctx: Arc<SerenityContext>, guild_id: GuildId) -> Ve
             ));
         }
     }
-    tracing::warn!("{}", output.bright_cyan());
-    cams
+    // tracing::warn!("{}", output.bright_cyan());
+    (cams, output)
 }
 
 /// Checks the guilds' message cache for messages that are older than the timeout interval.
@@ -691,7 +694,7 @@ impl From<bool> for CamStatus {
 
 #[derive(Debug, Clone, Copy)]
 /// Struct for the our derived Camera change event.
-struct CamChangeEvent {
+struct CamPollEvent {
     user_id: UserId,
     guild_id: GuildId,
     chan_id: ChannelId,
@@ -699,25 +702,144 @@ struct CamChangeEvent {
     last_change: Instant,
 }
 
-impl CamChangeEvent {
+impl CamPollEvent {
     /// Returns the key for the Camera change event.
     fn key(&self) -> (UserId, ChannelId) {
         (self.user_id, self.chan_id)
     }
 }
 
+// /// Struct for the Camera status change event.
+// struct CamStatusChangeEvent {
+//     user_id: UserId,
+//     status: CamStatus,
+// }
+
+async fn cam_status_check(
+    cur_cam: CamPollEvent,
+    new_cam: &CamPollEvent,
+    cam_states: &mut HashMap<(UserId, ChannelId), CamPollEvent>,
+    config_map: &HashMap<u64, &CamKickConfig>,
+    //status_changes: &mut Vec<CamStatusChangeEvent>,
+    ctx: Arc<SerenityContext>,
+) -> Result<String, CrackedError> {
+    let kick_conf = config_map
+        .get(&cur_cam.chan_id.get())
+        .ok_or(CrackedError::Other("Channel not found"))?;
+    tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
+    let did_enforcement_run = if cur_cam.status != new_cam.status {
+        let cam_event = CamPollEvent {
+            last_change: Instant::now(),
+            ..*new_cam
+        };
+        // tracing::info!(
+        //     "Camera status changed for user {} to {}",
+        //     status.user_id,
+        //     cam.status
+        // );
+        // let status_change = CamStatusChangeEvent {
+        //     user_id: cur_cam.user_id,
+        //     status: new_cam.status,
+        // };
+        // status_changes.push(status_change);
+        cam_states.insert(cam_event.key(), cam_event);
+        "false"
+    } else {
+        tracing::trace!("cur: {}, prev: {}", cur_cam.status, new_cam.status);
+        tracing::trace!(
+            "elapsed: {:?}, timeout: {}",
+            cur_cam.last_change.elapsed(),
+            kick_conf.timeout
+        );
+        if cur_cam.status == CamStatus::Off
+            && cur_cam.last_change.elapsed() > Duration::from_secs(kick_conf.timeout)
+        {
+            let user = match new_cam.user_id.to_user(&ctx).await {
+                Ok(user) => user,
+                Err(err) => {
+                    tracing::error!("Error getting user: {err}");
+                    return Err(CrackedError::Other("Error getting user"));
+                },
+            };
+            tracing::info!(
+                "User {} has been cammed down for {} seconds",
+                user.name,
+                cur_cam.last_change.elapsed().as_secs()
+            );
+
+            // let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
+            let guild_id = new_cam.guild_id;
+            tracing::info!("about to deafen {:?}", new_cam.user_id);
+
+            if false {
+                run_cam_enforcement(ctx, new_cam, guild_id, user, kick_conf, cam_states).await;
+            }
+        }
+        "false"
+    };
+    Ok(String::from(did_enforcement_run))
+}
+
+async fn run_cam_enforcement(
+    ctx: Arc<SerenityContext>,
+    new_cam: &CamPollEvent,
+    guild_id: GuildId,
+    user: ::serenity::model::prelude::User,
+    kick_conf: &&CamKickConfig,
+    cam_states: &mut HashMap<(UserId, ChannelId), CamPollEvent>,
+) {
+    // WARN: Disconnect the user
+    // FIXME: Should this not be it's own function?
+    // let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
+    let dc_res1 = (
+        server_defeafen_member(ctx.clone(), *new_cam, guild_id).await,
+        "deafen",
+    );
+    let dc_res2 = (
+        server_mute_member(ctx.clone(), *new_cam, guild_id).await,
+        "mute",
+    );
+
+    for (dc_res, state) in vec![dc_res1, dc_res2] {
+        match dc_res {
+            Ok(_) => {
+                tracing::error!("User {} has been violated: {}", user.name, state);
+                if state == "deafen" && kick_conf.msg_on_deafen
+                    || state == "mute" && kick_conf.msg_on_mute
+                    || state == "disconnect" && kick_conf.msg_on_dc
+                {
+                    let channel = ChannelId::new(kick_conf.chan_id);
+                    let _ = channel
+                        .send_message(
+                            &ctx,
+                            CreateMessage::default().content({
+                                format!("{} {}: {}", user.mention(), kick_conf.dc_msg, state)
+                            }),
+                        )
+                        .await;
+                }
+                cam_states.remove(&new_cam.key());
+            },
+            Err(err) => {
+                tracing::error!("Error violating user: {}", err);
+            },
+        }
+    }
+}
+
 /// The main loop that checks the camera status of all the users in voice channels
 async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guilds: Vec<GuildId>) {
     tokio::spawn(async move {
-        tracing::trace!(
-            target = "cam_status_loop",
-            "Starting camera status check loop"
-        );
-        let cam_kick = config.cam_kick.clone().unwrap_or_default();
-        let conf_guilds = cam_kick.iter().map(|x| x.guild_id).collect::<HashSet<_>>();
-        let mut cam_status: HashMap<(UserId, ChannelId), CamChangeEvent> =
-            HashMap::<(UserId, ChannelId), CamChangeEvent>::new();
-        let channels: HashMap<u64, &CamKickConfig> = cam_kick
+        tracing::info!("Starting camera status check loop");
+        let configs = config.cam_kick.clone().unwrap_or_default();
+        let conf_guilds = configs.iter().map(|x| x.guild_id).collect::<HashSet<_>>();
+
+        // This HashMap is used to keep track of the camera status of all the users in voice.
+        // channels. It gets initialized empty here and then is updated every iteration of the loop.
+        let mut cur_cams: HashMap<(UserId, ChannelId), CamPollEvent> =
+            HashMap::<(UserId, ChannelId), CamPollEvent>::new();
+        // This is
+        let channels: HashMap<u64, &CamKickConfig> = configs
             .iter()
             .map(|x| (x.chan_id, x))
             .collect::<HashMap<_, _>>();
@@ -726,122 +848,43 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
         loop {
             // We clone Context again here, because Arc is owned, so it moves to the
             // new function.
-            // let new_cam_status = Arc::new(HashMap::<UserId, String>::new());
             tracing::error!("Checking camera status for {} guilds", guilds.len());
             // Go through all the guilds we have cached and check the camera status
             // for all the users we can see in voice channels.
-            let mut cams = vec![];
+            let mut output = String::new();
+            let mut new_cams = vec![];
             for guild_id in &guilds {
-                cams.extend(check_camera_status(Arc::clone(&ctx), *guild_id).await);
+                let (add_new_cams, add_output) =
+                    check_camera_status(Arc::clone(&ctx), *guild_id).await;
+                new_cams.extend(add_new_cams);
+                output.push_str(&add_output);
             }
 
             //let total_active_cams = cams.len();
-            let mut new_cams = vec![];
+            let mut new_cams = Vec::<&CamPollEvent>::new();
+            //let mut status_changes = Vec::<CamStatusChangeEvent>::new();
 
-            for cam in cams.iter() {
-                if let Some(status) = cam_status.get(&cam.key()) {
-                    if let Some(kick_conf) = channels.get(&status.chan_id.get()) {
-                        tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
-                        if status.status != cam.status {
-                            let cam_event = CamChangeEvent {
-                                user_id: cam.user_id,
-                                guild_id: cam.guild_id,
-                                chan_id: cam.chan_id,
-                                status: cam.status,
-                                last_change: Instant::now(),
-                            };
-                            tracing::info!(
-                                "Camera status changed for user {} to {}",
-                                status.user_id,
-                                cam.status
-                            );
-                            cam_status.insert(cam_event.key(), cam_event);
-                        } else {
-                            tracing::info!(
-                                target = "Camera",
-                                "cur: {}, prev: {}",
-                                status.status,
-                                cam.status
-                            );
-                            tracing::info!(
-                                target = "Camera",
-                                "elapsed: {:?}, timeout: {}",
-                                status.last_change.elapsed(),
-                                kick_conf.timeout
-                            );
-                            if status.status == CamStatus::Off
-                                && status.last_change.elapsed()
-                                    > Duration::from_secs(kick_conf.timeout)
-                            {
-                                let user = cam.user_id.to_user(&ctx).await.unwrap();
-                                tracing::warn!(
-                                    "User {} has been cammed down for {} seconds",
-                                    user.name,
-                                    status.last_change.elapsed().as_secs()
-                                );
-
-                                // let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
-                                let guild_id = cam.guild_id;
-                                tracing::error!("about to disconnect {:?}", cam.user_id);
-
-                                // WARN: Disconnect the user
-                                // FIXME: Should this not be it's own function?
-                                // let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
-                                let dc_res1 = (
-                                    server_defeafen_member(ctx.clone(), *cam, guild_id).await,
-                                    "deafen",
-                                );
-                                let dc_res2 = (
-                                    server_mute_member(ctx.clone(), *cam, guild_id).await,
-                                    "mute",
-                                );
-
-                                for (dc_res, state) in vec![dc_res1, dc_res2] {
-                                    match dc_res {
-                                        Ok(_) => {
-                                            tracing::error!(
-                                                "User {} has been violated: {}",
-                                                user.name,
-                                                state
-                                            );
-                                            if state == "deafen" && kick_conf.msg_on_deafen
-                                                || state == "mute" && kick_conf.msg_on_mute
-                                                || state == "disconnect" && kick_conf.msg_on_dc
-                                            {
-                                                let channel = ChannelId::new(kick_conf.chan_id);
-                                                let _ = channel
-                                                    .send_message(
-                                                        &ctx,
-                                                        CreateMessage::default().content({
-                                                            format!(
-                                                                "{} {}: {}",
-                                                                user.mention(),
-                                                                kick_conf.dc_msg,
-                                                                state
-                                                            )
-                                                        }),
-                                                    )
-                                                    .await;
-                                            }
-                                            cam_status.remove(&cam.key());
-                                        },
-                                        Err(err) => {
-                                            tracing::error!("Error violating user: {}", err);
-                                        },
-                                    }
-                                }
-                            }
-                        }
-                    }
+            for new_cam in new_cams.iter_mut() {
+                if let Some(status) = cur_cams.get(&new_cam.key()) {
+                    let _ = cam_status_check(
+                        *status,
+                        new_cam,
+                        &mut cur_cams,
+                        &channels,
+                        //&mut status_changes,
+                        Arc::clone(&ctx),
+                    )
+                    .await;
                 } else {
-                    new_cams.push(cam);
+                    cur_cams.insert(new_cam.key(), **new_cam);
                 }
             }
             let res: i32 = new_cams
                 .iter()
-                .map(|x| Into::<i32>::into(cam_status.insert(x.key(), **x).is_none()))
+                .map(|x| Into::<i32>::into(cur_cams.insert(x.key(), **x).is_none()))
                 .sum();
 
+            tracing::warn!("{}", output);
             tracing::warn!("num new cams: {}", res);
             tracing::warn!(
                 "Sleeping for {} seconds",
@@ -855,7 +898,7 @@ async fn cam_status_loop(ctx: Arc<SerenityContext>, config: Arc<BotConfig>, guil
 #[allow(dead_code)]
 async fn disconnect_member(
     ctx: Arc<SerenityContext>,
-    cam: CamChangeEvent,
+    cam: CamPollEvent,
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
@@ -865,7 +908,7 @@ async fn disconnect_member(
 
 async fn server_defeafen_member(
     ctx: Arc<SerenityContext>,
-    cam: CamChangeEvent,
+    cam: CamPollEvent,
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild
@@ -875,7 +918,7 @@ async fn server_defeafen_member(
 
 async fn server_mute_member(
     ctx: Arc<SerenityContext>,
-    cam: CamChangeEvent,
+    cam: CamPollEvent,
     guild: GuildId,
 ) -> Result<Member, SerenityError> {
     guild

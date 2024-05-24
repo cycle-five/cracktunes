@@ -1,4 +1,11 @@
+use crate::{
+    get_mod_commands,
+    get_music_commands,
+    // get_admin_commands_hashset,  get_osint_commands,
+    // get_playlist_commands, get_settings_commands,
+};
 use colored::Colorize;
+use crack_core::guild::operations::GuildSettingsOperations;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
@@ -24,13 +31,6 @@ use std::{
     process::exit,
     sync::Arc,
     time::Duration,
-};
-
-use crate::{
-    get_mod_commands,
-    get_music_commands,
-    // get_admin_commands_hashset,  get_osint_commands,
-    // get_playlist_commands, get_settings_commands,
 };
 
 #[derive(Debug, Clone)]
