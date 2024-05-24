@@ -747,7 +747,8 @@ mod lib_test {
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();
-        let want = "cammed_down_timeout: 0\nguild_id: 0\nchannel_id: 0\ndc_message: \"You have been violated for being cammed down for too long.\"\ndeafen: false\nmute: false\ndc: false\n";
+        // let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
+        let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
         assert_eq!(cam_kick.to_string(), want);
     }
 
