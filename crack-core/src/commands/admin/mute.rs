@@ -20,7 +20,7 @@ pub async fn mute(
     #[description = "User to mute"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let crack_msg = mute_impl(
+    let crack_msg = mute_internal(
         Arc::new(ctx.serenity_context().clone()),
         user,
         guild_id,
@@ -34,7 +34,7 @@ pub async fn mute(
 }
 
 /// Unmute a user.
-pub async fn mute_impl(
+pub async fn mute_internal(
     ctx: Arc<SerenityContext>,
     user: serenity::model::user::User,
     guild_id: GuildId,

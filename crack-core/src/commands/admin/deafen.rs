@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use serenity::all::Context as SerenityContext;
+use serenity::all::GuildId;
 use serenity::all::Mentionable;
 use serenity::builder::EditMember;
 
@@ -20,7 +24,13 @@ pub async fn deafen(
     #[description = "User to deafen"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let crack_msg = deafen_internal(ctx, user.clone(), true).await?;
+    let crack_msg = deafen_internal(
+        Arc::new(ctx.serenity_context().clone()),
+        guild_id,
+        user.clone(),
+        true,
+    )
+    .await?;
     // Handle error, send error message
     let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
     ctx.data().add_msg_to_cache(guild_id, sent_msg);
@@ -41,7 +51,13 @@ pub async fn undeafen(
     #[description = "User to undeafen"] user: serenity::model::user::User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let crack_msg = deafen_internal(ctx, user.clone(), false).await?;
+    let crack_msg = deafen_internal(
+        Arc::new(ctx.serenity_context().clone()),
+        guild_id,
+        user.clone(),
+        false,
+    )
+    .await?;
     // Handle error, send error message
     let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
     ctx.data().add_msg_to_cache(guild_id, sent_msg);
@@ -50,11 +66,11 @@ pub async fn undeafen(
 
 /// Deafen or undeafen a user.
 pub async fn deafen_internal(
-    ctx: Context<'_>,
+    ctx: Arc<SerenityContext>,
+    guild_id: GuildId,
     user: serenity::model::user::User,
     deafen: bool,
 ) -> Result<CrackedMessage, Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let mention = user.clone().mention();
     let id = user.clone().id;
     let msg = if let Err(e) = guild_id
