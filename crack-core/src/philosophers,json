@@ -68,5 +68,75 @@
         "background": "Sophist and pre-Socratic philosopher.",
         "famous_work": "No surviving works, known through references by Plato and others.",
         "contribution": "Famous for the statement 'Man is the measure of all things,' emphasizing relativism and the subjective nature of knowledge."
+    },
+    {
+        "name": "Gorgias",
+        "nationality": "Greek",
+        "background": "Sophist and rhetorician from Leontini in Sicily.",
+        "famous_work": "Encomium of Helen",
+        "contribution": "Known for his nihilistic philosophy, claiming that nothing exists, and if it did, it could not be known or communicated."
+    },
+    {
+        "name": "Socrates",
+        "nationality": "Greek",
+        "background": "Classical philosopher from Athens, known primarily through the accounts of his students, especially Plato.",
+        "famous_work": "No written works; known through Plato's dialogues.",
+        "contribution": "Developed the Socratic method of questioning to stimulate critical thinking and illuminate ideas."
+    },
+    {
+        "name": "Plato",
+        "nationality": "Greek",
+        "background": "Student of Socrates and teacher of Aristotle, founder of the Academy in Athens.",
+        "famous_work": "The Republic",
+        "contribution": "Developed foundational ideas in Western philosophy, including the Theory of Forms and the Allegory of the Cave."
+    },
+    {
+        "name": "Aristotle",
+        "nationality": "Greek",
+        "background": "Student of Plato and tutor to Alexander the Great, founded the Lyceum.",
+        "famous_work": "Nicomachean Ethics",
+        "contribution": "Made significant contributions to logic, metaphysics, ethics, politics, and natural sciences, emphasizing empirical observation."
+    },
+    {
+        "name": "Diogenes of Sinope",
+        "nationality": "Greek",
+        "background": "Founder of Cynicism, known for his ascetic lifestyle and disdain for societal conventions.",
+        "famous_work": "No written works; known through anecdotes and Diogenes Laërtius's accounts.",
+        "contribution": "Advocated for a life in accordance with nature and virtue, challenging social norms and materialism."
+    },
+    {
+        "name": "Epicurus",
+        "nationality": "Greek",
+        "background": "Founder of Epicureanism, established a school known as 'The Garden.'",
+        "famous_work": "Letter to Menoeceus",
+        "contribution": "Promoted the pursuit of happiness through the avoidance of pain and fear, emphasizing simple pleasures and the importance of friendship."
+    },
+    {
+        "name": "Zeno of Citium",
+        "nationality": "Greek",
+        "background": "Founder of Stoicism, taught at the Stoa Poikile in Athens.",
+        "famous_work": "No surviving works; known through later Stoic writings.",
+        "contribution": "Established Stoicism, which teaches the development of self-control and fortitude as a means to overcome destructive emotions."
+    },
+    {
+        "name": "Chrysippus",
+        "nationality": "Greek",
+        "background": "Stoic philosopher, considered the second founder of Stoicism.",
+        "famous_work": "No surviving works; known through later Stoic writings.",
+        "contribution": "Developed Stoic logic and ethics, significantly shaping the Stoic school of thought."
+    },
+    {
+        "name": "Pyrrho",
+        "nationality": "Greek",
+        "background": "Founder of Pyrrhonism, a school of Skepticism.",
+        "famous_work": "No written works; known through accounts by later philosophers like Sextus Empiricus.",
+        "contribution": "Advocated for suspending judgment (epoché) and maintaining a state of mental tranquility (ataraxia)."
+    },
+    {
+        "name": "Sextus Empiricus",
+        "nationality": "Greek",
+        "background": "Skeptic philosopher and physician, main source of our knowledge of ancient Skepticism.",
+        "famous_work": "Outlines of Pyrrhonism",
+        "contribution": "Provided comprehensive accounts of Pyrrhonian Skepticism, arguing against the possibility of certain knowledge."
     }
 ]
