@@ -36,7 +36,9 @@ pub trait GuildSettingsOperations {
     fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool;
 }
 
+/// Implementation of the guild settings operations.
 impl GuildSettingsOperations for Data {
+    /// Get the guild settings for a guild, creating them if they don't exist.
     fn get_or_create_guild_settings(
         &self,
         guild_id: GuildId,
@@ -49,15 +51,17 @@ impl GuildSettingsOperations for Data {
             settings
         })
     }
+
+    /// Get the guild settings for a guild.
     fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
         self.guild_settings_map
             .read()
             .unwrap()
-            //.ok()?
             .get(&guild_id)
             .cloned()
     }
 
+    /// Set the guild settings for a guild.
     fn set_guild_settings(
         &self,
         guild_id: GuildId,
@@ -69,6 +73,7 @@ impl GuildSettingsOperations for Data {
             .insert(guild_id, settings)
     }
 
+    /// Get the music channel for the guild.
     fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
         self.guild_settings_map
             .read()
@@ -82,6 +87,7 @@ impl GuildSettingsOperations for Data {
             })
     }
 
+    /// Set the music channel for the guild.
     fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
         self.guild_settings_map
             .write()
@@ -92,6 +98,7 @@ impl GuildSettingsOperations for Data {
             });
     }
 
+    /// Save the guild settings to the database.
     async fn save_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
         let opt_settings = self.guild_settings_map.read().unwrap().clone();
         let settings = opt_settings.get(&guild_id);
@@ -100,6 +107,7 @@ impl GuildSettingsOperations for Data {
         settings.map(|s| s.save(&pg_pool)).unwrap().await
     }
 
+    /// Get the idle timeout for the bot in VC for the guild.
     fn get_timeout(&self, guild_id: GuildId) -> Option<u32> {
         self.guild_settings_map
             .read()
@@ -108,6 +116,7 @@ impl GuildSettingsOperations for Data {
             .map(|x| x.timeout)
     }
 
+    /// Set the idle timeout for the bot in VC for the guild.
     fn set_timeout(&self, guild_id: GuildId, timeout: u32) {
         self.guild_settings_map
             .write()
@@ -119,6 +128,7 @@ impl GuildSettingsOperations for Data {
             .key();
     }
 
+    /// Get the premium status for a guild.
     fn get_premium(&self, guild_id: GuildId) -> Option<bool> {
         self.guild_settings_map
             .read()
@@ -127,6 +137,7 @@ impl GuildSettingsOperations for Data {
             .map(|x| x.premium)
     }
 
+    /// Set the premium status for a guild.
     fn set_premium(&self, guild_id: GuildId, premium: bool) {
         self.guild_settings_map
             .write()
@@ -137,6 +148,7 @@ impl GuildSettingsOperations for Data {
             });
     }
 
+    /// Get the prefix for a guild.
     fn get_prefix(&self, guild_id: GuildId) -> Option<String> {
         self.guild_settings_map
             .read()
@@ -145,6 +157,7 @@ impl GuildSettingsOperations for Data {
             .map(|x| x.prefix.clone())
     }
 
+    /// Set the prefix for a guild.
     fn set_prefix(&self, guild_id: GuildId, prefix: String) {
         self.guild_settings_map
             .write()
@@ -155,16 +168,18 @@ impl GuildSettingsOperations for Data {
             });
     }
 
+    /// Add a prefix to the additional prefixes in guild settings.
     fn add_prefix(&self, guild_id: GuildId, prefix: String) {
         self.guild_settings_map
             .write()
             .unwrap()
             .entry(guild_id)
             .and_modify(|e| {
-                e.prefix.push_str(&prefix);
+                e.additional_prefixes.push(prefix);
             });
     }
 
+    /// Get the current autopause settings.
     fn get_autopause(&self, guild_id: GuildId) -> bool {
         self.guild_settings_map
             .read()
@@ -174,6 +189,7 @@ impl GuildSettingsOperations for Data {
             .unwrap_or(false)
     }
 
+    /// Set the autopause setting.
     fn set_autopause(&self, guild_id: GuildId, autopause: bool) {
         self.guild_settings_map
             .write()
@@ -184,7 +200,7 @@ impl GuildSettingsOperations for Data {
             });
     }
 
-    /// Get the current autoplay settings
+    /// Get the current autoplay settings.
     fn get_autoplay(&self, guild_id: GuildId) -> bool {
         self.guild_cache_map
             .lock()
