@@ -1,3 +1,4 @@
+!phil-describe
 1. Thales of Miletus
 2. Anaximander
 3. Anaximenes
@@ -8,6 +9,7 @@
 8. Empedocles
 9. Anaxagoras
 10. Protagoras
+!phil-describe
 11. Gorgias
 12. Socrates
 13. Plato
@@ -18,6 +20,7 @@
 18. Chrysippus
 19. Pyrrho
 20. Sextus Empiricus
+!phil-describe
 21. Cicero
 22. Lucretius
 23. Seneca
@@ -28,6 +31,7 @@
 28. Proclus
 29. Boethius
 30. Avicenna (Ibn Sina)
+!phil-describe
 31. Al-Farabi
 32. Al-Ghazali
 33. Averroes (Ibn Rushd)
@@ -38,6 +42,7 @@
 38. William of Ockham
 39. Meister Eckhart
 40. Nicholas of Cusa
+!phil-describe
 41. Marsilio Ficino
 42. Giovanni Pico della Mirandola
 43. Niccolò Machiavelli
@@ -48,6 +53,7 @@
 48. Thomas Hobbes
 49. Baruch Spinoza
 50. John Locke
+!phil-describe
 51. George Berkeley
 52. David Hume
 53. Jean-Jacques Rousseau
@@ -58,6 +64,7 @@
 58. Arthur Schopenhauer
 59. Søren Kierkegaard
 60. Karl Marx
+!phil-describe
 61. Friedrich Nietzsche
 62. John Stuart Mill
 63. Herbert Spencer
@@ -68,6 +75,7 @@
 68. Martin Heidegger
 69. Jean-Paul Sartre
 70. Simone de Beauvoir
+!phil-describe
 71. Maurice Merleau-Ponty
 72. Michel Foucault
 73. Jacques Derrida
@@ -78,6 +86,7 @@
 78. Paul Ricoeur
 79. John Rawls
 80. Robert Nozick
+!phil-describe
 81. Martha Nussbaum
 82. Richard Rorty
 83. Alasdair MacIntyre
@@ -88,6 +97,7 @@
 88. Charles Taylor
 89. Peter Singer
 90. Thomas Nagel
+!phil-describe
 91. Derek Parfit
 92. Bernard Williams
 93. Philippa Foot
@@ -98,6 +108,7 @@
 98. Donald Davidson
 99. John Searle
 100. Daniel Dennett
+!phil-describe
 101. Alvin Plantinga
 102. David Chalmers
 103. Patricia Churchland
@@ -108,6 +119,7 @@
 108. Kwame Anthony Appiah
 109. Cornel West
 110. Elizabeth Anscombe
+!phil-describe
 111. Hannah Arendt
 112. Theodor Adorno
 113. Max Horkheimer
@@ -118,6 +130,7 @@
 118. Jean Baudrillard
 119. Luce Irigaray
 120. Iris Marion Young
+!phil-describe
 121. Nancy Fraser
 122. Seyla Benhabib
 123. Gayatri Chakravorty Spivak
@@ -128,6 +141,7 @@
 128. Michael Sandel
 129. John McDowell
 130. Hubert Dreyfus
+!phil-describe
 131. Stanley Cavell
 132. A. J. Ayer
 133. R. G. Collingwood
@@ -138,6 +152,7 @@
 138. Bas van Fraassen
 139. Ian Hacking
 140. Nancy Cartwright
+!phil-describe
 141. Hilary Putnam
 142. Saul Kripke
 143. David Lewis
@@ -148,6 +163,7 @@
 148. John McDowell
 149. Bernard Williams
 150. Galen Strawson
+!phil-describe
 151. Christine Korsgaard
 152. Susan Wolf
 153. Harry Frankfurt
@@ -158,6 +174,7 @@
 158. Donald Davidson
 159. John Searle
 160. Richard Swinburne
+!phil-describe
 161. Alvin Plantinga
 162. Richard Dawkins
 163. Daniel Dennett
@@ -168,6 +185,7 @@
 168. Frank Jackson
 169. Thomas Nagel
 170. Derek Parfit
+!phil-describe
 171. Robert Nozick
 172. John Rawls
 173. Michael Walzer
@@ -178,6 +196,7 @@
 178. Mary Midgley
 179. Elizabeth Anscombe
 180. Amartya Sen
+!phil-describe
 181. Kwame Anthony Appiah
 182. Charles Taylor
 183. Richard Rorty
@@ -188,6 +207,7 @@
 188. Judith Butler
 189. Martha Nussbaum
 190. Julia Kristeva
+!phil-describe
 191. Luce Irigaray
 192. Hélène Cixous
 193. Gayatri Chakravorty Spivak
@@ -198,6 +218,7 @@
 198. Walter Benjamin
 199. Herbert Marcuse
 200. Erich Fromm
+!phil-describe
 201. Claude Lévi-Strauss
 202. Pierre Bourdieu
 203. Jean Baudrillard
@@ -208,6 +229,7 @@
 208. Slavoj Žižek
 209. Jacques Derrida
 210. Emmanuel Levinas
+!phil-describe
 211. Paul Ricoeur
 212. Hans-Georg Gadamer
 213. Maurice Merleau-Ponty
@@ -218,6 +240,7 @@
 218. Henri Bergson
 219. Gabriel Marcel
 220. Karl Jaspers
+!phil-describe
 221. Martin Buber
 222. Emmanuel Mounier
 223. Paul Tillich
@@ -228,6 +251,7 @@
 228. R. G. Collingwood
 229. Isaiah Berlin
 230. Karl Popper
+!phil-describe
 231. Paul Feyerabend
 232. Thomas Kuhn
 233. Bas van Fraassen
@@ -238,6 +262,7 @@
 238. David Lewis
 239. Ruth Barcan Marcus
 240. Timothy Williamson
+!phil-describe
 241. Kit Fine
 242. Robert Brandom
 243. John McDowell
@@ -248,6 +273,7 @@
 248. Harry Frankfurt
 249. T. M. Scanlon
 250. Peter Strawson
+!phil-describe
 251. Gilbert Ryle
 252. J. L. Austin
 253. Donald Davidson
@@ -258,6 +284,7 @@
 258. Daniel Dennett
 259. Jerry Fodor
 260. David Chalmers
+!phil-describe
 261. Patricia Churchland
 262. Paul Churchland
 263. Frank Jackson
@@ -268,6 +295,7 @@
 268. Michael Walzer
 269. Ronald Dworkin
 270. G. E. M. Anscombe
+!phil-describe
 271. Philippa Foot
 272. Iris Murdoch
 273. Mary Midgley
@@ -278,6 +306,7 @@
 278. Richard Rorty
 279. Jürgen Habermas
 280. Axel Honneth
+!phil-describe
 281. Nancy Fraser
 282. Seyla Benhabib
 283. Judith Butler
@@ -288,6 +317,7 @@
 288. Gayatri Chakravorty Spivak
 289. Simone Weil
 290. Hannah Arendt
+!phil-describe
 291. Theodor Adorno
 292. Max Horkheimer
 293. Walter Benjamin
@@ -298,6 +328,7 @@
 298. Jean Baudrillard
 299. Michel Foucault
 Absolutely! Let's continue expanding the list further:
+!phil-describe
 
 300. Gilles Deleuze
 301. Félix Guattari
@@ -308,6 +339,7 @@ Absolutely! Let's continue expanding the list further:
 306. Paul Ricoeur
 307. Hans-Georg Gadamer
 308. Maurice Merleau-Ponty
+!phil-describe
 309. Jean-Paul Sartre
 310. Simone de Beauvoir
 311. Martin Heidegger
@@ -318,6 +350,7 @@ Absolutely! Let's continue expanding the list further:
 316. Martin Buber
 317. Emmanuel Mounier
 318. Paul Tillich
+!phil-describe
 319. Reinhold Niebuhr
 320. Ludwig Wittgenstein
 321. Bertrand Russell
@@ -328,6 +361,7 @@ Absolutely! Let's continue expanding the list further:
 326. Paul Feyerabend
 327. Thomas Kuhn
 328. Bas van Fraassen
+!phil-describe
 329. Ian Hacking
 330. Nancy Cartwright
 331. Hilary Putnam
@@ -338,6 +372,7 @@ Absolutely! Let's continue expanding the list further:
 336. Kit Fine
 337. Robert Brandom
 338. John McDowell
+!phil-describe
 339. Bernard Williams
 340. Galen Strawson
 341. Christine Korsgaard
@@ -348,6 +383,7 @@ Absolutely! Let's continue expanding the list further:
 346. Gilbert Ryle
 347. J. L. Austin
 348. Donald Davidson
+!phil-describe
 349. John Searle
 350. Richard Swinburne
 351. Alvin Plantinga
@@ -358,6 +394,7 @@ Absolutely! Let's continue expanding the list further:
 356. Patricia Churchland
 357. Paul Churchland
 358. Frank Jackson
+!phil-describe
 359. Thomas Nagel
 360. Derek Parfit
 361. Robert Nozick
@@ -368,6 +405,7 @@ Absolutely! Let's continue expanding the list further:
 366. Philippa Foot
 367. Iris Murdoch
 368. Mary Midgley
+!phil-describe
 369. Elizabeth Anscombe
 370. Amartya Sen
 371. Kwame Anthony Appiah
@@ -378,6 +416,7 @@ Absolutely! Let's continue expanding the list further:
 376. Nancy Fraser
 377. Seyla Benhabib
 378. Judith Butler
+!phil-describe
 379. Martha Nussbaum
 380. Julia Kristeva
 381. Luce Irigaray
@@ -388,6 +427,7 @@ Absolutely! Let's continue expanding the list further:
 386. Theodor Adorno
 387. Max Horkheimer
 388. Walter Benjamin
+!phil-describe
 389. Herbert Marcuse
 390. Erich Fromm
 391. Claude Lévi-Strauss
@@ -398,6 +438,7 @@ Absolutely! Let's continue expanding the list further:
 396. Félix Guattari
 397. Alain Badiou
 398. Slavoj Žižek
+!phil-describe
 399. Jacques Derrida
 400. Emmanuel Levinas
 401. Paul Ricoeur
@@ -408,6 +449,7 @@ Absolutely! Let's continue expanding the list further:
 406. Martin Heidegger
 407. Edmund Husserl
 408. Henri Bergson
+!phil-describe
 409. Gabriel Marcel
 410. Karl Jaspers
 411. Martin Buber
@@ -418,6 +460,7 @@ Absolutely! Let's continue expanding the list further:
 416. Bertrand Russell
 417. A. J. Ayer
 418. R. G. Collingwood
+!phil-describe
 419. Isaiah Berlin
 420. Karl Popper
 421. Paul Feyerabend
@@ -428,6 +471,7 @@ Absolutely! Let's continue expanding the list further:
 426. Hilary Putnam
 427. Saul Kripke
 428. David Lewis
+!phil-describe
 429. Ruth Barcan Marcus
 430. Timothy Williamson
 431. Kit Fine
@@ -438,6 +482,7 @@ Absolutely! Let's continue expanding the list further:
 436. Christine Korsgaard
 437. Susan Wolf
 438. Harry Frankfurt
+!phil-describe
 439. T. M. Scanlon
 440. Peter Strawson
 441. Gilbert Ryle
@@ -448,6 +493,7 @@ Absolutely! Let's continue expanding the list further:
 446. Alvin Plantinga
 447. Richard Dawkins
 448. Daniel Dennett
+!phil-describe
 449. Jerry Fodor
 450. David Chalmers
 451. Patricia Churchland
@@ -458,6 +504,7 @@ Absolutely! Let's continue expanding the list further:
 456. Derek Parfit
 457. Robert Nozick
 458. John Rawls
+!phil-describe
 459. Michael Walzer
 460. Ronald Dworkin
 461. G. E. M. Anscombe
@@ -468,6 +515,7 @@ Absolutely! Let's continue expanding the list further:
 466. Amartya Sen
 467. Kwame Anthony Appiah
 468. Charles Taylor
+!phil-describe
 469. Richard Rorty
 470. Jürgen Habermas
 471. Axel Honneth
@@ -478,6 +526,7 @@ Absolutely! Let's continue expanding the list further:
 476. Julia Kristeva
 477. Luce Irigaray
 478. Hélène Cixous
+!phil-describe
 479. Gayatri Chakravorty Spivak
 480. Simone Weil
 481. Hannah Arendt
@@ -488,6 +537,7 @@ Absolutely! Let's continue expanding the list further:
 486. Erich Fromm
 487. Claude Lévi-Strauss
 488. Pierre Bourdieu
+!phil-describe
 489. Jean Baudrillard
 490. Michel Foucault
 491. Gilles Deleuze
@@ -498,5 +548,6 @@ Absolutely! Let's continue expanding the list further:
 496. Emmanuel Levinas
 497. Paul Ricoeur
 498. Hans-Georg Gadamer
+!phil-describe
 499. Maurice Merleau-Ponty
 500. Jean-Paul Sartre
