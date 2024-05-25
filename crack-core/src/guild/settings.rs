@@ -701,16 +701,19 @@ impl GuildSettings {
         self
     }
 
+    /// Set allow all domains, mutating.
     pub fn set_allow_all_domains(&mut self, allow: bool) -> &mut Self {
         self.allow_all_domains = Some(allow);
         self
     }
 
+    /// Set the idle timeout for the bot, mutating.
     pub fn set_timeout(&mut self, timeout: u32) -> &mut Self {
         self.timeout = timeout;
         self
     }
 
+    /// Set the idle timeout for the bot, without mutating.
     pub fn with_timeout(self, timeout: u32) -> Self {
         Self { timeout, ..self }
     }
