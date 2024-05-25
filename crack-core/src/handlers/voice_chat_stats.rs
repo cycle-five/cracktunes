@@ -71,7 +71,7 @@ async fn check_and_enforce_cams(
         .get(&cur_cam.chan_id.get())
         .ok_or(CrackedError::Other("Channel not found"))?;
     tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
-    let _did_enforcement_run = if cur_cam.status != new_cam.status {
+    if cur_cam.status != new_cam.status {
         let cam_event = CamPollEvent {
             last_change: Instant::now(),
             ..*new_cam
@@ -225,8 +225,8 @@ async fn check_camera_status(
 
             cams.push(info);
             output.push_str(&format!(
-                "{}|{}|{}|{}|{}\n",
-                &user.name, &user.id, &channel_name, &chan_id, status,
+                "{}|{}|{}|{}|{}|{}\n",
+                guild_name, &user.name, &user.id, &channel_name, &chan_id, status,
             ));
         }
     }

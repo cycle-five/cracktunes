@@ -1,15 +1,14 @@
+use crate::{errors::CrackedError, Data, GuildSettings};
+use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
 
-use ::serenity::all::Context as SerenityContext;
-use serenity::all::{ChannelId, GuildId};
-
-use crate::errors::CrackedError;
-
-use super::settings::GuildSettings;
-
 pub trait GuildSettingsOperations {
-    fn get_guild_settings(&self, guild_id: GuildId) -> Option<crate::GuildSettings>;
-    fn set_guild_settings(&self, guild_id: GuildId, settings: crate::GuildSettings);
+    fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings>;
+    fn set_guild_settings(
+        &self,
+        guild_id: GuildId,
+        settings: GuildSettings,
+    ) -> Option<GuildSettings>;
     fn get_or_create_guild_settings(
         &self,
         guild_id: GuildId,
@@ -33,9 +32,11 @@ pub trait GuildSettingsOperations {
     fn set_autopause(&self, guild_id: GuildId, autopause: bool);
     fn get_autoplay(&self, guild_id: GuildId) -> bool;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool);
+    fn get_reply_with_embed_nonasync(&self, guild_id: GuildId) -> bool;
+    fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool;
 }
 
-impl GuildSettingsOperations for crate::Data {
+impl GuildSettingsOperations for Data {
     fn get_or_create_guild_settings(
         &self,
         guild_id: GuildId,
@@ -48,7 +49,7 @@ impl GuildSettingsOperations for crate::Data {
             settings
         })
     }
-    fn get_guild_settings(&self, guild_id: GuildId) -> Option<crate::GuildSettings> {
+    fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
         self.guild_settings_map
             .read()
             .unwrap()
@@ -57,11 +58,15 @@ impl GuildSettingsOperations for crate::Data {
             .cloned()
     }
 
-    fn set_guild_settings(&self, guild_id: GuildId, settings: crate::GuildSettings) {
+    fn set_guild_settings(
+        &self,
+        guild_id: GuildId,
+        settings: GuildSettings,
+    ) -> Option<GuildSettings> {
         self.guild_settings_map
             .write()
             .unwrap()
-            .insert(guild_id, settings);
+            .insert(guild_id, settings)
     }
 
     fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
@@ -197,6 +202,24 @@ impl GuildSettingsOperations for crate::Data {
             .entry(guild_id)
             .or_default()
             .autoplay = autoplay;
+    }
+
+    /// Get the current reply with embed setting.
+    fn get_reply_with_embed_nonasync(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .unwrap()
+            .get(&guild_id)
+            .map_or(true, |x| x.reply_with_embed)
+    }
+
+    /// Set the reply with embed setting.
+    fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool {
+        self.guild_settings_map
+            .read()
+            .unwrap()
+            .get(&guild_id)
+            .map_or(as_embed, |x| x.reply_with_embed)
     }
 }
 

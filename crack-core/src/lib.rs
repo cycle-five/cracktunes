@@ -611,18 +611,7 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
-    /// Non async insert of guild settings.
-    pub fn insert_guild_non_async(
-        &self,
-        guild_id: GuildId,
-        guild_settings: GuildSettings,
-    ) -> Result<GuildSettings, CrackedError> {
-        self.guild_settings_map
-            .write()
-            .unwrap()
-            .insert(guild_id, guild_settings)
-            .ok_or(CrackedError::FailedToInsert)
-    }
+
 
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
@@ -685,11 +674,7 @@ impl Data {
             .remove(&ts)
     }
 
-    // /// Get the guild settings for a guild (read only)
-    // pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
-    //     self.guild_settings_map.read().ok()?.get(&guild_id).cloned()
-    // }
-
+    /// Add the guild settings for a guild.
     pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
         self.guild_settings_map
             .write()
@@ -697,22 +682,10 @@ impl Data {
             .insert(guild_id, settings);
     }
 
-    // /// Get the guild settings for a guild (read)
-    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-    //     let mut asdf = self.guild_settings_map.write().unwrap().clone();
-    //     let qwer = asdf.get_mut(&guild_id);
-    //     qwer
-    // }
-
     /// Set the guild settings for a guild and return a new copy.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))
     }
-
-    // /// Get the guild settings for a guild (mutable)
-    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-    //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
-    // }
 }
 
 #[cfg(test)]

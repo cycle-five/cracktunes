@@ -24,27 +24,18 @@ pub async fn kick(
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let reply_with_embed = ctx
-        .data()
-        .get_guild_settings(guild_id)
-        .map(|x| x.reply_with_embed)
-        .ok_or(CrackedError::Other("No guild settings"))?;
+    let as_embed = ctx.data().get_reply_with_embed_nonasync(guild_id);
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.kick(&ctx, id).await {
         send_response_poise(
             ctx,
             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
-            reply_with_embed,
+            as_embed,
         )
         .await?;
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserKicked { id, mention },
-            reply_with_embed,
-        )
-        .await?;
+        send_response_poise(ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
     }
     Ok(())
 }

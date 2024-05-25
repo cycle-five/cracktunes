@@ -22,6 +22,11 @@ pub enum CrackedMessage {
         channel_name: String,
     },
     CountryName(String),
+    ChannelSizeSet {
+        id: serenity::ChannelId,
+        name: String,
+        size: u32,
+    },
     ChannelDeleted {
         channel_id: serenity::ChannelId,
         channel_name: String,
@@ -186,6 +191,9 @@ impl Display for CrackedMessage {
             Self::CountryName(name) => f.write_str(name),
             Self::Clear => f.write_str(CLEARED),
             Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
+            Self::ChannelSizeSet { id, name, size } => {
+                f.write_str(&format!("{} {} {} {}", CHANNEL_SIZE_SET, name, id, size))
+            },
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
