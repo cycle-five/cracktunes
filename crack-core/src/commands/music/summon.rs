@@ -49,10 +49,7 @@ pub async fn summon(
                 let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
                 Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
             } else {
-                manager.join(guild_id, channel_id).await.map_err(|e| {
-                    tracing::error!("Error joining channel: {:?}", e);
-                    CrackedError::JoinChannelError(e)
-                })
+                Ok(call.clone())
             }
         },
         None => manager.join(guild_id, channel_id).await.map_err(|e| {
