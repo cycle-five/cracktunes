@@ -28,6 +28,8 @@ pub trait GuildSettingsOperations {
     fn get_prefix(&self, guild_id: GuildId) -> Option<String>;
     fn set_prefix(&self, guild_id: GuildId, prefix: String);
     fn add_prefix(&self, guild_id: GuildId, prefix: String);
+    fn get_additional_prefixes(&self, guild_id: GuildId) -> Vec<String>;
+    fn set_additional_prefixes(&self, guild_id: GuildId, prefixes: Vec<String>);
     fn get_autopause(&self, guild_id: GuildId) -> bool;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool);
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
@@ -176,6 +178,27 @@ impl GuildSettingsOperations for Data {
             .entry(guild_id)
             .and_modify(|e| {
                 e.additional_prefixes.push(prefix);
+            });
+    }
+
+    /// Get the additional prefixes
+    fn get_additional_prefixes(&self, guild_id: GuildId) -> Vec<String> {
+        self.guild_settings_map
+            .read()
+            .unwrap()
+            .get(&guild_id)
+            .map(|x| x.additional_prefixes.clone())
+            .unwrap_or_default()
+    }
+
+    /// Add a prefix to the additional prefixes in guild settings.
+    fn set_additional_prefixes(&self, guild_id: GuildId, prefixes: Vec<String>) {
+        self.guild_settings_map
+            .write()
+            .unwrap()
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.additional_prefixes = prefixes;
             });
     }
 
@@ -529,7 +552,11 @@ mod test {
 
         data.add_prefix(guild_id, "?".to_string());
 
-        assert_eq!(data.get_prefix(guild_id), Some("!?".to_string()));
+        assert_eq!(data.get_prefix(guild_id), Some("!".to_string()));
+        assert_eq!(
+            data.get_additional_prefixes(guild_id),
+            vec!["?".to_string()]
+        );
     }
 
     #[test]
