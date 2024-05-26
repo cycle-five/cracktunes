@@ -23,7 +23,13 @@ pub async fn create(
     #[description = "Optional initial perms"] icon: Option<Attachment>,
 ) -> EmptyResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    C
+    let icon = match icon {
+        Some(attachment) => {
+            let url = attachment.url.clone();
+            Some(CreateAttachment::url(ctx, &url).await?)
+        },
+        None => None,
+    };
 
     let role = create_role_internal(
         ctx,
@@ -53,7 +59,6 @@ pub async fn create(
 }
 
 /// Internal create role function.
-/// TODO: Flesh out the params.
 pub async fn create_role_internal(
     ctx: Context<'_>,
     guild_id: GuildId,
@@ -69,7 +74,7 @@ pub async fn create_role_internal(
 ) -> Result<Role, CrackedError> {
     let perms = Permissions::from_bits(permissions.unwrap_or_default())
         .ok_or(CrackedError::InvalidPermissions)?;
-    let colour = colour.map(Colour::new).transpose()?;
+    let colour = colour.map(Colour::new).unwrap_or_default();
     let audit_log_reason = audit_log_reason.unwrap_or_default();
     let role_builder = EditRole::default()
         .name(name)
