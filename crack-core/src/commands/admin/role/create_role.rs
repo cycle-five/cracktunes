@@ -6,7 +6,6 @@ use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
-//use crate::Error;
 
 /// Create role.
 #[poise::command(prefix_command, owners_only, ephemeral)]
