@@ -60,6 +60,7 @@ pub async fn create(
 }
 
 /// Internal create role function.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_role_internal(
     ctx: Context<'_>,
     guild_id: GuildId,
