@@ -9,6 +9,7 @@ use crate::utils::send_response_poise;
 use crate::Context;
 
 /// Create role.
+#[allow(clippy::too_many_arguments)]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn create(
     ctx: Context<'_>,
