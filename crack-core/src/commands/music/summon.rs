@@ -39,7 +39,7 @@ pub async fn summon(
     let channel_id =
         get_channel_id_for_summon(channel, channel_id_str, guild.clone(), user_id).await?;
 
-    let call: Arc<Mutex<Call>> = match manager.get(guild.id) {
+    let call: Arc<Mutex<Call>> = match manager.get(guild_id) {
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
@@ -49,10 +49,13 @@ pub async fn summon(
                 let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
                 Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
             } else {
-                Ok(call.clone())
+                manager.join(guild_id, channel_id).await.map_err(|e| {
+                    tracing::error!("Error joining channel: {:?}", e);
+                    CrackedError::JoinChannelError(e)
+                })
             }
         },
-        None => manager.join(guild.id, channel_id).await.map_err(|e| {
+        None => manager.join(guild_id, channel_id).await.map_err(|e| {
             tracing::error!("Error joining channel: {:?}", e);
             CrackedError::JoinChannelError(e)
         }),
