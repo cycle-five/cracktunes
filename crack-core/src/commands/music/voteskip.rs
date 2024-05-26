@@ -86,13 +86,13 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
 // This is to prevent users from voting to skip a track, then leaving the voice channel.
 // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
 pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), Error> {
-    match data.guild_cache_map.lock() {
-        Ok(mut lock) => {
-            lock.entry(guild_id)
-                .and_modify(|cache| cache.current_skip_votes = HashSet::new())
-                .or_default();
-            Ok(())
-        },
-        Err(e) => Err(CrackedError::PoisonError(e.to_string().into()).into()),
-    }
+    let _res = data
+        .guild_cache_map
+        .lock()
+        .await
+        .entry(guild_id)
+        .and_modify(|cache| cache.current_skip_votes = HashSet::new())
+        .or_default();
+
+    Ok(())
 }

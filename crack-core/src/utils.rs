@@ -840,7 +840,7 @@ pub async fn forget_queue_message(
     message: &Message,
     guild_id: GuildId,
 ) -> Result<(), CrackedError> {
-    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
+    let mut cache_map = data.guild_cache_map.lock().await;
 
     let cache = cache_map
         .get_mut(&guild_id)

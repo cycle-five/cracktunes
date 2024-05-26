@@ -172,7 +172,7 @@ pub async fn handle_event(
                 let _ = data_global
                     .guild_cache_map
                     .lock()
-                    .unwrap()
+                    .await
                     .get_mut(&guild_id)
                     .map(|x| x.time_ordered_messages.insert(now, new_message.clone()))
                     .unwrap_or_default();

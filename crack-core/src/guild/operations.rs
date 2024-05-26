@@ -30,8 +30,8 @@ pub trait GuildSettingsOperations {
     fn add_prefix(&self, guild_id: GuildId, prefix: String);
     fn get_autopause(&self, guild_id: GuildId) -> bool;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool);
-    fn get_autoplay(&self, guild_id: GuildId) -> bool;
-    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool);
+    fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn get_reply_with_embed_nonasync(&self, guild_id: GuildId) -> bool;
     fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool;
 }
@@ -201,20 +201,20 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the current autoplay settings.
-    fn get_autoplay(&self, guild_id: GuildId) -> bool {
+    async fn get_autoplay(&self, guild_id: GuildId) -> bool {
         self.guild_cache_map
             .lock()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|settings| settings.autoplay)
             .unwrap_or(true)
     }
 
     /// Set the autoplay setting
-    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
+    async fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
         self.guild_cache_map
             .lock()
-            .unwrap()
+            .await
             .entry(guild_id)
             .or_default()
             .autoplay = autoplay;

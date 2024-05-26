@@ -49,15 +49,8 @@ pub struct ModifyQueueHandler {
 impl EventHandler for TrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         tracing::error!("TrackEndHandler");
-        let autoplay = {
-            self.data
-                .guild_cache_map
-                .lock()
-                .unwrap()
-                .entry(self.guild_id)
-                .or_default()
-                .autoplay
-        };
+        let autoplay = self.data.get_autoplay(self.guild_id).await;
+
         tracing::error!("Autoplay: {}", autoplay);
 
         let (autopause, volume) = {
@@ -276,7 +269,7 @@ pub async fn update_queue_messages(
     tracks: &[TrackHandle],
     guild_id: GuildId,
 ) {
-    let cache_map = data.guild_cache_map.lock().unwrap().clone();
+    let cache_map = data.guild_cache_map.lock().await;
 
     let mut messages = match cache_map.get(&guild_id) {
         Some(cache) => cache.queue_messages.clone(),

@@ -78,7 +78,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
     data.guild_cache_map
         .lock()
-        .unwrap()
+        .await
         .entry(guild_id)
         .or_default()
         .queue_messages

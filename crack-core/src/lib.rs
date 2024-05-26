@@ -305,7 +305,7 @@ pub struct DataInner {
     #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
-    pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    pub guild_cache_map: Arc<tokio::sync::Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
@@ -581,7 +581,7 @@ impl Default for DataInner {
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             gld_sttngs_mp: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_cache_map: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             event_log_async: EventLogAsync::default(),
@@ -611,8 +611,6 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
-
-
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
