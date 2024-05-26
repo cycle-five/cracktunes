@@ -1,18 +1,19 @@
 use serenity::builder::EditRole;
 
 use crate::commands::ConvertToEmptyResult;
+use crate::commands::EmptyResult;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
-use crate::Error;
+//use crate::Error;
 
 /// Create role.
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn create(
     ctx: Context<'_>,
     #[description = "Name of the role to create"] role_name: String,
-) -> Result<(), Error> {
+) -> EmptyResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
 
     let role = guild_id

@@ -23,10 +23,10 @@ use serenity::all::Message;
 pub use settings::*;
 pub use version::*;
 
-use crate::{errors::CrackedError, Error};
+pub use crate::errors::CrackedError;
 
 pub type MessageResult = Result<Message, CrackedError>;
-pub type EmptyResult = Result<(), Error>;
+pub type EmptyResult = Result<(), crate::Error>;
 
 pub trait ConvertToEmptyResult {
     fn convert(self) -> EmptyResult;
