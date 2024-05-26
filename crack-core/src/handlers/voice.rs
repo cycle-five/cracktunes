@@ -137,11 +137,11 @@ impl VoiceEventHandler for Receiver {
                 };
                 self.insert(slice_u8).await;
 
-                println!(
-                    "Audio packet's first 5 samples: {:?}",
-                    data.packet.get(..5.min(beg.len()))
-                );
-                tracing::trace!("RTP packet received: {:?}", data.packet);
+                // println!(
+                //     "Audio packet's first 5 samples: {:?}",
+                //     data.packet.get(..5.min(beg.len()))
+                // );
+                // tracing::trace!("RTP packet received: {:?}", data.packet);
             },
             Ctx::RtcpPacket(data) => {
                 // An event which fires for every received rtcp packet,
