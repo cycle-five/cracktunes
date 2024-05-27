@@ -23,17 +23,17 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
     ];
     let config = ModelConfigurationBuilder::default()
         .api_url(
-            Url::parse("https://api.pawan.krd/v1/chat/completions")
+            Url::parse("https://cyclefiveazureopenai.openai.azure.com")
                 .map_err(|e| chatgpt::err::Error::ParsingError(e.to_string()))?,
         )
         .temperature(1.0)
-        .engine(ChatGPTEngine::Custom("pai-001-light-beta"))
+        .engine(ChatGPTEngine::Gpt4)
+        .top_p(1.0)
+        .frequency_penalty(0.5)
+        .presence_penalty(0.0)
+        .max_tokens(150)
         .build()
         .unwrap();
-    // .top_p(1.0)
-    // .frequency_penalty(0.5)
-    // .presence_penalty(0.0)
-    // .max_tokens(150)
     let client = ChatGPT::new_with_config(key, config)?;
 
     tracing::info!("Client created.");
