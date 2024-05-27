@@ -525,9 +525,13 @@ pub async fn handle_event(
                     tracing::debug!(title);
                 },
             }
-            event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new, event))
+            event_log
+                .write_log_obj_note_async(event_name, Some(notes), &(old_if_available, new, event))
+                .await
         },
-        FullEvent::GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
+        FullEvent::GuildMembersChunk { chunk } => {
+            event_log.write_log_obj_async(event_name, chunk).await
+        },
         FullEvent::GuildRoleCreate { new } => {
             log_event!(
                 log_guild_role_create,
@@ -592,7 +596,7 @@ pub async fn handle_event(
             )
         },
         FullEvent::GuildScheduledEventCreate { event } => {
-            // event_log.write_log_obj(event_name, event)
+            // event_log.write_log_obj_async(event_name, event)
             let log_data = event;
             log_event!(
                 log_guild_scheduled_event_create,
@@ -674,7 +678,9 @@ pub async fn handle_event(
             )
         },
         FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
-            event_log.write_log_obj(event_name, &(entry, guild_id))
+            event_log
+                .write_log_obj_async(event_name, &(entry, guild_id))
+                .await
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildUpdate {
@@ -814,7 +820,11 @@ pub async fn handle_event(
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
-        } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
+        } => {
+            event_log
+                .write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id))
+                .await
+        },
         #[cfg(not(feature = "cache"))]
         FullEvent::MessageUpdate {
             old_if_available,
@@ -874,7 +884,7 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-            // event_log.write_log_obj(event_name, &(old_if_available, new, event))
+            // event_log.write_log_obj_async(event_name, &(old_if_available, new, event))
         },
         FullEvent::ReactionAdd { add_reaction } => {
             log_event!(
@@ -903,38 +913,62 @@ pub async fn handle_event(
         FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
-        } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
+        } => {
+            event_log
+                .write_log_obj_async(event_name, &(channel_id, removed_from_message_id))
+                .await
+        },
         FullEvent::Ready { data_about_bot } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
-            event_log.write_log_obj(event_name, data_about_bot)
+            event_log
+                .write_log_obj_async(event_name, data_about_bot)
+                .await
         },
-        FullEvent::Resume { event } => event_log.write_log_obj(event_name, event),
+        FullEvent::Resume { event } => event_log.write_log_obj_async(event_name, event).await,
         FullEvent::StageInstanceCreate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
         FullEvent::StageInstanceDelete { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
         FullEvent::StageInstanceUpdate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
-        FullEvent::ThreadCreate { thread } => event_log.write_log_obj(event_name, thread),
+        FullEvent::ThreadCreate { thread } => {
+            event_log.write_log_obj_async(event_name, thread).await
+        },
         FullEvent::ThreadDelete {
             thread,
 
             full_thread_data: _,
-        } => event_log.write_log_obj(event_name, thread),
+        } => event_log.write_log_obj_async(event_name, thread).await,
         FullEvent::ThreadListSync { thread_list_sync } => {
-            event_log.write_log_obj(event_name, thread_list_sync)
+            event_log
+                .write_log_obj_async(event_name, thread_list_sync)
+                .await
         },
         FullEvent::ThreadMemberUpdate { thread_member } => {
-            event_log.write_log_obj(event_name, thread_member)
+            event_log
+                .write_log_obj_async(event_name, thread_member)
+                .await
         },
         FullEvent::ThreadMembersUpdate {
             thread_members_update,
-        } => event_log.write_log_obj(event_name, thread_members_update),
-        FullEvent::ThreadUpdate { old, new } => event_log.write_log_obj(event_name, &(old, new)),
-        // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
+        } => {
+            event_log
+                .write_log_obj_async(event_name, thread_members_update)
+                .await
+        },
+        FullEvent::ThreadUpdate { old, new } => {
+            event_log.write_log_obj_async(event_name, &(old, new)).await
+        },
+        // FullEvent::Unknown { name, raw } => event_log.write_log_obj_async(event_name, &(name, raw)),
         FullEvent::UserUpdate { old_data, new } => {
             let log_data = (old_data, new);
             let guild_id = new.member.as_ref().unwrap().guild_id.unwrap();
@@ -949,11 +983,13 @@ pub async fn handle_event(
                 event_name
             )
         },
-        FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
+        FullEvent::VoiceServerUpdate { event } => {
+            event_log.write_log_obj_async(event_name, event).await
+        },
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
-        } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
+        } => event_log.write_obj(&(guild_id, belongs_to_channel_id)).await,
         FullEvent::CacheReady { guilds } => {
             tracing::info!(
                 "{}: {}",

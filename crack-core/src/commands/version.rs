@@ -6,11 +6,7 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 #[poise::command(slash_command, prefix_command)]
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let reply_with_embed = ctx
-        .data()
-        .get_guild_settings(guild_id)
-        .unwrap()
-        .reply_with_embed;
+    let reply_with_embed = ctx.data().get_reply_with_embed(guild_id).await;
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| "Unknown");
     let hash = option_env!("GIT_HASH").unwrap_or_else(|| "Unknown");
     let msg = send_response_poise(
@@ -22,6 +18,6 @@ pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
         reply_with_embed,
     )
     .await?;
-    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
+    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

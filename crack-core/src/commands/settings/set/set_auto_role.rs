@@ -21,7 +21,7 @@ pub async fn auto_role(
         .data()
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| {
             e.set_auto_role(Some(auto_role_id));

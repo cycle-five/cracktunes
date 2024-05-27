@@ -300,10 +300,9 @@ pub struct DataInner {
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
     pub guild_settings_map_non_async: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
     pub guild_settings_map:
         Arc<tokio::sync::RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    #[serde(skip)]
-    pub gld_sttngs_mp: ArcTRwMap<GuildId, GuildSettings>,
     #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
@@ -583,7 +582,6 @@ impl Default for DataInner {
             authorized_users: Default::default(),
             guild_settings_map_non_async: Arc::new(RwLock::new(HashMap::new())),
             guild_settings_map: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            gld_sttngs_mp: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
@@ -620,7 +618,7 @@ impl Data {
         guild_id: GuildId,
         guild_settings: GuildSettings,
     ) -> Result<GuildSettings, CrackedError> {
-        self.gld_sttngs_mp
+        self.guild_settings_map
             .write()
             .await
             .insert(guild_id, guild_settings)
@@ -666,7 +664,11 @@ impl Data {
     }
 
     /// Remove and return a message from the cache based on the guild_id and timestamp.
-    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    pub async fn remove_msg_from_cache(
+        &self,
+        guild_id: GuildId,
+        ts: DateTime<Utc>,
+    ) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
             .get_mut(&guild_id)
@@ -676,10 +678,10 @@ impl Data {
     }
 
     /// Add the guild settings for a guild.
-    pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
+    pub async fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .insert(guild_id, settings);
     }
 

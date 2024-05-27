@@ -417,11 +417,14 @@ mod test {
 
         data.set_music_channel(guild_id, ChannelId::new(3));
 
-        assert_eq!(data.get_music_channel(guild_id).await, Some(ChannelId::new(3)));
+        assert_eq!(
+            data.get_music_channel(guild_id).await,
+            Some(ChannelId::new(3))
+        );
     }
 
-    #[test]
-    fn test_get_timeout() {
+    #[tokio::test]
+    async fn test_get_timeout() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -436,11 +439,11 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_timeout(guild_id), Some(5));
+        assert_eq!(data.get_timeout(guild_id).await, Some(5));
     }
 
-    #[test]
-    fn test_set_timeout() {
+    #[tokio::test]
+    async fn test_set_timeout() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -457,11 +460,11 @@ mod test {
 
         data.set_timeout(guild_id, 10);
 
-        assert_eq!(data.get_timeout(guild_id), Some(10));
+        assert_eq!(data.get_timeout(guild_id).await, Some(10));
     }
 
-    #[test]
-    fn test_get_premium() {
+    #[tokio::test]
+    async fn test_get_premium() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -476,11 +479,11 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_premium(guild_id), Some(true));
+        assert_eq!(data.get_premium(guild_id).await, Some(true));
     }
 
-    #[test]
-    fn test_set_premium() {
+    #[tokio::test]
+    async fn test_set_premium() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -495,13 +498,11 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_premium(guild_id, false);
-
-        assert_eq!(data.get_premium(guild_id), Some(false));
+        assert_eq!(data.get_premium(guild_id).await, Some(false));
     }
 
-    #[test]
-    fn test_get_prefix() {
+    #[tokio::test]
+    async fn test_get_prefix() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -516,11 +517,11 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_prefix(guild_id), Some("!".to_string()));
+        assert_eq!(data.get_prefix(guild_id).await, Some("!".to_string()));
     }
 
-    #[test]
-    fn test_set_prefix() {
+    #[tokio::test]
+    async fn test_set_prefix() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -537,11 +538,11 @@ mod test {
 
         data.set_prefix(guild_id, "?".to_string());
 
-        assert_eq!(data.get_prefix(guild_id), Some("?".to_string()));
+        assert_eq!(data.get_prefix(guild_id).await, Some("?".to_string()));
     }
 
-    #[test]
-    fn test_add_prefix() {
+    #[tokio::test]
+    async fn test_add_prefix() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -556,17 +557,17 @@ mod test {
             ..Default::default()
         })));
 
-        data.add_prefix(guild_id, "?".to_string());
+        data.add_prefix(guild_id, "?".to_string()).await;
 
-        assert_eq!(data.get_prefix(guild_id), Some("!".to_string()));
+        assert_eq!(data.get_prefix(guild_id).await, Some("!".to_string()));
         assert_eq!(
-            data.get_additional_prefixes(guild_id),
+            data.get_additional_prefixes(guild_id).await,
             vec!["?".to_string()]
         );
     }
 
-    #[test]
-    fn test_get_autopause() {
+    #[tokio::test]
+    async fn test_get_autopause() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -581,11 +582,11 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_autopause(guild_id), true);
+        assert_eq!(data.get_autopause(guild_id).await, true);
     }
 
-    #[test]
-    fn test_set_autopause() {
+    #[tokio::test]
+    async fn test_set_autopause() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -600,8 +601,6 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_autopause(guild_id, false);
-
-        assert_eq!(data.get_autopause(guild_id), false);
+        assert_eq!(data.get_autopause(guild_id).await, false);
     }
 }

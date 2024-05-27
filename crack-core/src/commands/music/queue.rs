@@ -12,7 +12,8 @@ use ::serenity::builder::{
 use ::serenity::futures::StreamExt;
 use poise::CreateReply;
 use songbird::{Event, TrackEvent};
-use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
+use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 const EMBED_TIMEOUT: u64 = 3600;
 
