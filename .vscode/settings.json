@@ -29,7 +29,7 @@
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": true,
-    "gitdoc.enabled": false,
+    "gitdoc.enabled": true,
     "editor.fontFamily": "0xProto Nerd Font Mono",
 }
 // "rust-analyzer.cargo.features": "all",
