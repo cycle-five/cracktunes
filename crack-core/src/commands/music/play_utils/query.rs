@@ -819,6 +819,7 @@ pub async fn query_type_from_url(
     let guild_settings = ctx
         .data()
         .get_guild_settings(guild_id)
+        .await
         .ok_or(CrackedError::NoGuildSettings)?;
     check_banned_domains(&guild_settings, query_type).map_err(Into::into)
 }

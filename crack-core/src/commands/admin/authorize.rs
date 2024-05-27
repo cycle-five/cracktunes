@@ -31,7 +31,7 @@ pub async fn authorize(
         .data()
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| {
             e.authorized_users.insert(id.get(), 0);

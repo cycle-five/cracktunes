@@ -24,7 +24,7 @@ pub async fn kick(
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let as_embed = ctx.data().get_reply_with_embed_nonasync(guild_id);
+    let as_embed = ctx.data().get_reply_with_embed(guild_id).await;
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.kick(&ctx, id).await {
         send_response_poise(

@@ -24,9 +24,9 @@ pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
         let prefix = Some(prefix.as_str());
         let mut guild_settings = ctx
             .data()
-            .get_or_create_guild_settings(guild_id, name, prefix);
+            .get_or_create_guild_settings(guild_id, name, prefix)
+            .await;
         guild_settings.toggle_autopause();
-        // guild_settings.save(&pool).await?;
         guild_settings.autopause
     };
     let msg = if autopause {

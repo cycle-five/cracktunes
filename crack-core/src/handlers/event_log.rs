@@ -31,12 +31,13 @@ impl<T: Serialize> Serialize for LogEntry<T> {
     }
 }
 
-pub fn get_log_channel(
+/// Gets the log channel for a given guild.
+pub async fn get_log_channel(
     channel_name: &str,
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.read().unwrap().clone();
+    let guild_settings_map = data.guild_settings_map.read().await.clone();
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -98,8 +99,8 @@ pub async fn handle_event(
 
     use crate::log_event_async;
 
-    let event_log = Arc::new(&data_global.event_log);
-    let event_log_async = Arc::new(&data_global.event_log_async);
+    // let event_log = Arc::new(&data_global.event_log);
+    let event_log = Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
 

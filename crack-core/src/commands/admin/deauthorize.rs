@@ -32,7 +32,7 @@ pub async fn deauthorize(
         .data()
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|settings| {
             settings.authorized_users.remove(&id.get());

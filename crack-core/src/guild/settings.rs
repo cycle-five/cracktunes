@@ -1059,7 +1059,7 @@ impl TypeMapKey for AtomicU16Key {
 
 /// Convenience type for the GuildSettingsMap
 pub type GuildSettingsMapParam =
-    std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
+    std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
 
 #[cfg(test)]
 mod test {

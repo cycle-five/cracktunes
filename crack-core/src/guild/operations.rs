@@ -3,83 +3,88 @@ use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
 
 pub trait GuildSettingsOperations {
-    fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings>;
+    fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
     fn set_guild_settings(
         &self,
         guild_id: GuildId,
         settings: GuildSettings,
-    ) -> Option<GuildSettings>;
+    ) -> impl Future<Output = Option<GuildSettings>>;
     fn get_or_create_guild_settings(
         &self,
         guild_id: GuildId,
         name: Option<String>,
         prefix: Option<&str>,
-    ) -> GuildSettings;
+    ) -> impl Future<Output = GuildSettings>;
     fn save_guild_settings(
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<(), CrackedError>>;
-    fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId>;
-    fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId);
-    fn get_timeout(&self, guild_id: GuildId) -> Option<u32>;
-    fn set_timeout(&self, guild_id: GuildId, timeout: u32);
-    fn get_premium(&self, guild_id: GuildId) -> Option<bool>;
-    fn set_premium(&self, guild_id: GuildId, premium: bool);
-    fn get_prefix(&self, guild_id: GuildId) -> Option<String>;
-    fn set_prefix(&self, guild_id: GuildId, prefix: String);
-    fn add_prefix(&self, guild_id: GuildId, prefix: String);
-    fn get_additional_prefixes(&self, guild_id: GuildId) -> Vec<String>;
-    fn set_additional_prefixes(&self, guild_id: GuildId, prefixes: Vec<String>);
-    fn get_autopause(&self, guild_id: GuildId) -> bool;
-    fn set_autopause(&self, guild_id: GuildId, autopause: bool);
+    fn get_music_channel(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+    fn set_music_channel(
+        &self,
+        guild_id: GuildId,
+        channel_id: ChannelId,
+    ) -> impl Future<Output = ()>;
+    fn get_timeout(&self, guild_id: GuildId) -> impl Future<Output = Option<u32>>;
+    fn set_timeout(&self, guild_id: GuildId, timeout: u32) -> impl Future<Output = ()>;
+    fn get_premium(&self, guild_id: GuildId) -> impl Future<Output = Option<bool>>;
+    fn set_premium(&self, guild_id: GuildId, premium: bool) -> impl Future<Output = ()>;
+    fn get_prefix(&self, guild_id: GuildId) -> impl Future<Output = Option<String>>;
+    fn set_prefix(&self, guild_id: GuildId, prefix: String) -> impl Future<Output = ()>;
+    fn add_prefix(&self, guild_id: GuildId, prefix: String) -> impl Future<Output = ()>;
+    fn get_additional_prefixes(&self, guild_id: GuildId) -> impl Future<Output = Vec<String>>;
+    fn set_additional_prefixes(
+        &self,
+        guild_id: GuildId,
+        prefixes: Vec<String>,
+    ) -> impl Future<Output = ()>;
+    fn get_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn set_autopause(&self, guild_id: GuildId, autopause: bool) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
-    fn get_reply_with_embed_nonasync(&self, guild_id: GuildId) -> bool;
-    fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool;
+    fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
+        -> impl Future<Output = bool>;
 }
 
 /// Implementation of the guild settings operations.
 impl GuildSettingsOperations for Data {
     /// Get the guild settings for a guild, creating them if they don't exist.
-    fn get_or_create_guild_settings(
+    async fn get_or_create_guild_settings(
         &self,
         guild_id: GuildId,
         name: Option<String>,
         prefix: Option<&str>,
     ) -> GuildSettings {
-        self.get_guild_settings(guild_id).unwrap_or({
+        self.get_guild_settings(guild_id).await.unwrap_or({
             let settings = GuildSettings::new(guild_id, prefix, name);
-            self.set_guild_settings(guild_id, settings.clone());
+            self.set_guild_settings(guild_id, settings.clone()).await;
             settings
         })
     }
 
     /// Get the guild settings for a guild.
-    fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
-        self.guild_settings_map
-            .read()
-            .unwrap()
-            .get(&guild_id)
-            .cloned()
+    async fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+        self.guild_settings_map.read().await.get(&guild_id).cloned()
     }
 
     /// Set the guild settings for a guild.
-    fn set_guild_settings(
+    async fn set_guild_settings(
         &self,
         guild_id: GuildId,
         settings: GuildSettings,
     ) -> Option<GuildSettings> {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .insert(guild_id, settings)
     }
 
     /// Get the music channel for the guild.
-    fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
+    async fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .and_then(|x| {
                 x.command_channels
@@ -90,10 +95,10 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Set the music channel for the guild.
-    fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
+    async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.set_music_channel(channel_id.get());
@@ -102,7 +107,7 @@ impl GuildSettingsOperations for Data {
 
     /// Save the guild settings to the database.
     async fn save_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
-        let opt_settings = self.guild_settings_map.read().unwrap().clone();
+        let opt_settings = self.guild_settings_map.read().await;
         let settings = opt_settings.get(&guild_id);
 
         let pg_pool = self.database_pool.clone().unwrap();
@@ -110,19 +115,19 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the idle timeout for the bot in VC for the guild.
-    fn get_timeout(&self, guild_id: GuildId) -> Option<u32> {
+    async fn get_timeout(&self, guild_id: GuildId) -> Option<u32> {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|x| x.timeout)
     }
 
     /// Set the idle timeout for the bot in VC for the guild.
-    fn set_timeout(&self, guild_id: GuildId, timeout: u32) {
+    async fn set_timeout(&self, guild_id: GuildId, timeout: u32) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.timeout = timeout;
@@ -131,19 +136,19 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the premium status for a guild.
-    fn get_premium(&self, guild_id: GuildId) -> Option<bool> {
+    async fn get_premium(&self, guild_id: GuildId) -> Option<bool> {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|x| x.premium)
     }
 
     /// Set the premium status for a guild.
-    fn set_premium(&self, guild_id: GuildId, premium: bool) {
+    async fn set_premium(&self, guild_id: GuildId, premium: bool) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.premium = premium;
@@ -151,19 +156,19 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the prefix for a guild.
-    fn get_prefix(&self, guild_id: GuildId) -> Option<String> {
+    async fn get_prefix(&self, guild_id: GuildId) -> Option<String> {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|x| x.prefix.clone())
     }
 
     /// Set the prefix for a guild.
-    fn set_prefix(&self, guild_id: GuildId, prefix: String) {
+    async fn set_prefix(&self, guild_id: GuildId, prefix: String) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.prefix = prefix;
@@ -171,10 +176,10 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Add a prefix to the additional prefixes in guild settings.
-    fn add_prefix(&self, guild_id: GuildId, prefix: String) {
+    async fn add_prefix(&self, guild_id: GuildId, prefix: String) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.additional_prefixes.push(prefix);
@@ -182,20 +187,20 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the additional prefixes
-    fn get_additional_prefixes(&self, guild_id: GuildId) -> Vec<String> {
+    async fn get_additional_prefixes(&self, guild_id: GuildId) -> Vec<String> {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|x| x.additional_prefixes.clone())
             .unwrap_or_default()
     }
 
     /// Add a prefix to the additional prefixes in guild settings.
-    fn set_additional_prefixes(&self, guild_id: GuildId, prefixes: Vec<String>) {
+    async fn set_additional_prefixes(&self, guild_id: GuildId, prefixes: Vec<String>) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.additional_prefixes = prefixes;
@@ -203,20 +208,20 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the current autopause settings.
-    fn get_autopause(&self, guild_id: GuildId) -> bool {
+    async fn get_autopause(&self, guild_id: GuildId) -> bool {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map(|x| x.autopause)
             .unwrap_or(false)
     }
 
     /// Set the autopause setting.
-    fn set_autopause(&self, guild_id: GuildId, autopause: bool) {
+    async fn set_autopause(&self, guild_id: GuildId, autopause: bool) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .entry(guild_id)
             .and_modify(|e| {
                 e.autopause = autopause;
@@ -244,19 +249,19 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the current reply with embed setting.
-    fn get_reply_with_embed_nonasync(&self, guild_id: GuildId) -> bool {
+    async fn get_reply_with_embed(&self, guild_id: GuildId) -> bool {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map_or(true, |x| x.reply_with_embed)
     }
 
     /// Set the reply with embed setting.
-    fn set_reply_with_embed_nonasync(&self, guild_id: GuildId, as_embed: bool) -> bool {
+    async fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool) -> bool {
         self.guild_settings_map
             .read()
-            .unwrap()
+            .await
             .get(&guild_id)
             .map_or(as_embed, |x| x.reply_with_embed)
     }
@@ -283,10 +288,10 @@ mod test {
     };
     use serenity::model::id::ChannelId;
     use std::collections::HashMap;
-    use std::sync::RwLock;
+    use tokio::sync::RwLock;
 
-    #[test]
-    fn test_get_guild_settings() {
+    #[tokio::test]
+    async fn test_get_guild_settings() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -301,15 +306,15 @@ mod test {
         }));
 
         assert_eq!(
-            data.get_guild_settings(guild_id),
+            data.get_guild_settings(guild_id).await,
             Some(crate::GuildSettings {
                 ..Default::default()
             })
         );
     }
 
-    #[test]
-    fn test_get_or_create_guild_settings() {
+    #[tokio::test]
+    async fn test_get_or_create_guild_settings() {
         let guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let data = Data(Arc::new(DataInner {
@@ -318,7 +323,8 @@ mod test {
         }));
 
         assert_eq!(
-            data.get_or_create_guild_settings(guild_id, None, None),
+            data.get_or_create_guild_settings(guild_id, None, None)
+                .await,
             crate::GuildSettings {
                 guild_id,
                 ..Default::default()
@@ -326,8 +332,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_set_guild_settings() {
+    #[tokio::test]
+    async fn test_set_guild_settings() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
@@ -349,15 +355,15 @@ mod test {
         );
 
         assert_eq!(
-            data.get_guild_settings(guild_id),
+            data.get_guild_settings(guild_id).await,
             Some(crate::GuildSettings {
                 ..Default::default()
             })
         );
     }
 
-    #[test]
-    fn test_get_music_channel() {
+    #[tokio::test]
+    async fn test_get_music_channel() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);
@@ -381,7 +387,7 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_music_channel(guild_id), Some(channel_id));
+        assert_eq!(data.get_music_channel(guild_id).await, Some(channel_id));
     }
 
     #[test]
@@ -411,7 +417,7 @@ mod test {
 
         data.set_music_channel(guild_id, ChannelId::new(3));
 
-        assert_eq!(data.get_music_channel(guild_id), Some(ChannelId::new(3)));
+        assert_eq!(data.get_music_channel(guild_id).await, Some(ChannelId::new(3)));
     }
 
     #[test]

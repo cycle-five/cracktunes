@@ -1308,7 +1308,9 @@ pub async fn log_message(
 #[macro_export]
 macro_rules! log_event {
     ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $http:expr, $event_log:expr, $event_name:expr) => {{
-        $event_log.write_log_obj($event_name, $log_data)?;
+        $event_log
+            .write_log_obj_async($event_name, $log_data)
+            .await?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
         $log_func(channel_id, $http, $log_data).await.map(|_| ())
     }};

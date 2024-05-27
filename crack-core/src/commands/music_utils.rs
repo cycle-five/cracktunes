@@ -36,6 +36,7 @@ pub async fn set_global_handlers(
 
     let guild_settings = data
         .get_guild_settings(guild_id)
+        .await
         .ok_or(CrackedError::NoGuildSettings)?;
 
     let timeout = guild_settings.timeout;

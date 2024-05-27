@@ -299,7 +299,9 @@ pub struct DataInner {
     // TODO: Make this a HashMap, pointing to a settings struct containiong
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    pub guild_settings_map_non_async: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    pub guild_settings_map:
+        Arc<tokio::sync::RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub gld_sttngs_mp: ArcTRwMap<GuildId, GuildSettings>,
     #[serde(skip)]
@@ -579,7 +581,8 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
+            guild_settings_map_non_async: Arc::new(RwLock::new(HashMap::new())),
+            guild_settings_map: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             gld_sttngs_mp: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
