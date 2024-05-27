@@ -11,7 +11,7 @@ pub fn set_volume(
     guild_id: GuildId,
     vol: f32,
 ) -> (f32, f32) {
-    let mut guild_settings_mut = guild_settings_map.write().unwrap();
+    let mut guild_settings_mut = guild_settings_map.write().await;
     guild_settings_mut
         .entry(guild_id)
         .and_modify(|e| {

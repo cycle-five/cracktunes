@@ -15,7 +15,7 @@ use crate::{Context, Error};
 pub async fn idle_timeout(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let idle_timeout = {
-        let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
+        let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
         let settings = guild_settings_map
             .entry(guild_id)
             .or_insert(GuildSettings::new(

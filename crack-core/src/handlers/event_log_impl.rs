@@ -355,35 +355,27 @@ pub async fn log_guild_scheduled_event_update(
     .map(|_| ())
 }
 
-type RwGuildSettingsMap = RwLock<HashMap<GuildId, GuildSettings>>;
-
+use crate::ArcTRwMap;
 /// Logs a guild create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
     channel_id: ChannelId,
     http: &impl CacheHttp,
-    log_data: &(&Guild, &Option<bool>, &Arc<RwGuildSettingsMap>),
+    log_data: &(&Guild, &Option<bool>),
 ) -> Result<(), Error> {
     let &(guild, is_new, guild_settings_map) = log_data;
     let guild_id = guild.id;
     let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
 
     // make sure we have the guild stored or store it
-    let _guild_settings = {
-        let map = guild_settings_map.read().await.clone();
-        let opt = map.get(&guild_id).or(None);
-        if let Some(guild_setting) = opt {
-            guild_setting.clone()
-        } else {
-            let new_settings =
-                GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
-            guild_settings_map
-                .write()
-                .unwrap()
-                .insert(guild_id, new_settings.clone());
-            new_settings.clone()
-        }
-    };
+    if guild_settings_map.read().await.get(&guild_id).is_none() {
+        let new_settings =
+            GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
+        guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, new_settings.clone());
+    }
 
     let title = format!("Guild Create: {}", guild.name);
     let is_new_str = if !is_new.is_some() || !is_new.unwrap() {

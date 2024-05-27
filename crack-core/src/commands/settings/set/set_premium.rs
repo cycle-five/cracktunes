@@ -21,7 +21,7 @@ pub async fn do_set_premium(
     guild_settings_map: TSGuildSettingsMap,
     premium: bool,
 ) -> Result<GuildSettings, Error> {
-    let mut write_guard = guild_settings_map.write().unwrap();
+    let mut write_guard = guild_settings_map.write().await;
     let settings = write_guard
         .entry(guild_id)
         .and_modify(|e| {

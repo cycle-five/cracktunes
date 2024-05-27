@@ -192,7 +192,7 @@ async fn play_internal(
 
     // FIXME: What was the point of this again?
     // let _volume = {
-    //     let mut settings = ctx.data().guild_settings_map.write().unwrap(); // .clone();
+    //     let mut settings = ctx.data().guild_settings_map.write().await; // .clone();
     //     let guild_settings = settings.entry(guild_id).or_insert_with(|| {
     //         GuildSettings::new(
     //             guild_id,

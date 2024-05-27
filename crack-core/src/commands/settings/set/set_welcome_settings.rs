@@ -81,7 +81,7 @@ pub async fn set_welcome_settings(
     let channel_id = init_welcome_settings.channel_id.unwrap();
     let message = init_welcome_settings.message.as_ref().unwrap();
     let res = {
-        let mut write_guard = guild_settings_map.write().unwrap();
+        let mut write_guard = guild_settings_map.write().await;
         write_guard
             .entry(guild_id)
             .and_modify(|e| {

@@ -108,7 +108,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         let tracks = call.lock().await.queue().current_queue();
 
         let page_num = {
-            let mut page_wlock = page.write().unwrap();
+            let mut page_wlock = page.write().await;
 
             *page_wlock = match btn_id.as_str() {
                 "<<" => 0,

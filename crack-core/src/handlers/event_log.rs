@@ -354,7 +354,7 @@ pub async fn handle_event(
                 log_guild_create,
                 guild_settings,
                 event_in,
-                &(guild, is_new, guild_settings),
+                &(guild, is_new),
                 &guild.id,
                 &ctx,
                 event_log,
