@@ -596,6 +596,7 @@ impl GuildSettings {
         Ok(())
     }
 
+    /// Set the premium status, mutating.
     pub fn with_premium(self, premium: bool) -> Self {
         Self { premium, ..self }
     }
