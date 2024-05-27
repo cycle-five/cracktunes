@@ -50,37 +50,34 @@ pub async fn get_channel_id(
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
-    let x = {
-        let guild_settings_map = guild_settings_map.read().await;
+    let guild_settings_map = guild_settings_map.read().await;
 
-        let guild_settings = guild_settings_map
-            .get(guild_id)
-            .map(Ok)
-            .unwrap_or_else(|| {
-                tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
-                Err(CrackedError::LogChannelWarning(
-                    event.snake_case_name(),
-                    *guild_id,
-                ))
-            })?
-            .clone();
-        match guild_settings.get_log_channel_type_fe(event) {
-            Some(channel_id) => {
-                if guild_settings.ignored_channels.contains(&channel_id.get()) {
-                    return Err(CrackedError::LogChannelWarning(
-                        event.snake_case_name(),
-                        *guild_id,
-                    ));
-                }
-                Ok(channel_id)
-            },
-            None => Err(CrackedError::LogChannelWarning(
+    let guild_settings = guild_settings_map
+        .get(guild_id)
+        .map(Ok)
+        .unwrap_or_else(|| {
+            tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
+            Err(CrackedError::LogChannelWarning(
                 event.snake_case_name(),
                 *guild_id,
-            )),
-        }
-    };
-    x
+            ))
+        })?
+        .clone();
+    match guild_settings.get_log_channel_type_fe(event) {
+        Some(channel_id) => {
+            if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                return Err(CrackedError::LogChannelWarning(
+                    event.snake_case_name(),
+                    *guild_id,
+                ));
+            }
+            Ok(channel_id)
+        },
+        None => Err(CrackedError::LogChannelWarning(
+            event.snake_case_name(),
+            *guild_id,
+        )),
+    }
 }
 
 /// Handles (routes and logs) an event.
