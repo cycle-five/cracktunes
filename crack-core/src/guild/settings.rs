@@ -718,11 +718,13 @@ impl GuildSettings {
         Self { timeout, ..self }
     }
 
+    /// Set the welcome settings, mutating
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
         self.welcome_settings = Some(welcome_settings);
         self
     }
 
+    /// Set the welcome settings, without mutating.
     pub fn with_welcome_settings(self, welcome_settings: Option<WelcomeSettings>) -> Self {
         Self {
             welcome_settings,
@@ -730,6 +732,7 @@ impl GuildSettings {
         }
     }
 
+    /// Another set welcome settings
     pub fn set_welcome_settings2(
         &mut self,
         channel_id: u64,
@@ -745,6 +748,7 @@ impl GuildSettings {
         self
     }
 
+    /// And a third.
     pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
@@ -760,6 +764,7 @@ impl GuildSettings {
         self
     }
 
+    /// Set the auto role,without mutating.
     pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
         let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
             WelcomeSettings {
@@ -779,6 +784,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the auto role, mutating.
     pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
@@ -874,6 +880,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the command channels, notmutating.
     pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
         Self {
             command_channels,
@@ -881,6 +888,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the server join/leave log channel, mutating.
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
