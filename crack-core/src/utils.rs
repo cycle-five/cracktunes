@@ -835,6 +835,7 @@ pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     max(1, num_pages)
 }
 
+/// Forget the current cache of queue messages we need to update.
 pub async fn forget_queue_message(
     data: &Data,
     message: &Message,
