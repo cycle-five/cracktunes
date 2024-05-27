@@ -39,7 +39,7 @@ regex = "1.10.4"
 serde_json = "1.0.116"
 serde_with = "3.7.0"
 url = "2.5.0"
-serde = { version = "1.0.198", features = ["derive", "rc"] }
+serde = { version = "1.0.203", features = ["derive", "rc"] }
 sys-info = "0.9.1"
 prometheus = { version = "0.13.3", features = ["process"], optional = true }
 proc-macro2 = "1.0.81"
