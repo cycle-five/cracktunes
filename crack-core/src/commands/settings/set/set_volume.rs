@@ -6,7 +6,7 @@ use crate::{
 use serenity::all::GuildId;
 
 /// Get the current `volume` and `old_volume` setting for the guild.
-pub fn set_volume(
+pub async fn set_volume(
     guild_settings_map: &GuildSettingsMapParam,
     guild_id: GuildId,
     vol: f32,
@@ -34,7 +34,7 @@ pub async fn volume(
 
     let (vol, old_vol) = {
         let guild_settings_map = &ctx.data().guild_settings_map;
-        set_volume(guild_settings_map, guild_id, volume)
+        set_volume(guild_settings_map, guild_id, volume).await
     };
 
     let msg = ctx
@@ -52,31 +52,31 @@ mod test {
     use crate::guild::settings::{GuildSettingsMapParam, DEFAULT_VOLUME_LEVEL};
     use serenity::model::id::GuildId;
 
-    #[test]
-    fn test_set_volume() {
+    #[tokio::test]
+    async fn test_set_volume() {
         let guild_id = GuildId::new(1);
         let guild_settings_map = GuildSettingsMapParam::default();
 
-        let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.5);
+        let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.5).await;
         assert_eq!(vol, 0.5);
         assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
         assert_eq!(
             guild_settings_map
                 .read()
-                .unwrap()
+                .await
                 .get(&guild_id)
                 .unwrap()
                 .volume,
             vol
         );
 
-        let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.6);
+        let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.6).await;
         assert_eq!(vol, 0.6);
         assert_eq!(old_vol, 0.5);
         assert_eq!(
             guild_settings_map
                 .read()
-                .unwrap()
+                .await
                 .get(&guild_id)
                 .unwrap()
                 .volume,
