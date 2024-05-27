@@ -390,8 +390,8 @@ mod test {
         assert_eq!(data.get_music_channel(guild_id).await, Some(channel_id));
     }
 
-    #[test]
-    fn test_set_music_channel() {
+    #[tokio::test]
+    async fn test_set_music_channel() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);

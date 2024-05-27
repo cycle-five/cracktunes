@@ -15,7 +15,7 @@ pub async fn add_prefix(
     let guild_id = ctx.guild_id().unwrap();
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
     let additional_prefixes = {
-        let mut settings = ctx.data().guild_settings_map.write().unwrap();
+        let mut settings = ctx.data().guild_settings_map.write().await;
         let new_settings = settings
             .entry(guild_id)
             .and_modify(|e| {
@@ -55,7 +55,7 @@ pub async fn clear_prefixes(
     let guild_id = ctx.guild_id().unwrap();
     let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
     let additional_prefixes = {
-        let mut settings = ctx.data().guild_settings_map.write().unwrap();
+        let mut settings = ctx.data().guild_settings_map.write().await;
         let new_settings = settings
             .entry(guild_id)
             .and_modify(|e| {
@@ -86,7 +86,7 @@ pub async fn clear_prefixes(
 pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let additional_prefixes = {
-        let settings = ctx.data().guild_settings_map.read().unwrap();
+        let settings = ctx.data().guild_settings_map.read().await;
         settings
             .get(&guild_id)
             .map(|e| e.additional_prefixes.clone())

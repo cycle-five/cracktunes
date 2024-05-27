@@ -740,7 +740,7 @@ mod lib_test {
 
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
-        assert!(new_data.guild_settings_map.read().unwrap().is_empty());
+        assert!(new_data.guild_settings_map.read().await.is_empty());
     }
 }
 

@@ -370,7 +370,7 @@ pub async fn log_guild_create(
 
     // make sure we have the guild stored or store it
     let _guild_settings = {
-        let map = guild_settings_map.read().unwrap().clone();
+        let map = guild_settings_map.read().await.clone();
         let opt = map.get(&guild_id).or(None);
         if let Some(guild_setting) = opt {
             guild_setting.clone()

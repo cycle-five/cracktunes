@@ -2,7 +2,7 @@ use super::event_log_impl::*;
 
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, ArcRwMap, Data, Error,
+    utils::send_log_embed_thumb, ArcRwMap, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -37,7 +37,7 @@ pub async fn get_log_channel(
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.read().await.clone();
+    let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -46,13 +46,12 @@ pub async fn get_log_channel(
 
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
-    //guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
-    guild_settings_map: &ArcRwMap<GuildId, GuildSettings>,
+    guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
     let x = {
-        let guild_settings_map = guild_settings_map.read().unwrap().clone();
+        let guild_settings_map = guild_settings_map.read().await;
 
         let guild_settings = guild_settings_map
             .get(guild_id)
@@ -182,14 +181,14 @@ pub async fn handle_event(
             if new_message.author.bot {
                 return Ok(());
             }
-            log_event_async!(
+            log_event!(
                 log_message,
                 guild_settings,
                 event_in,
                 new_message,
                 &new_message.guild_id.unwrap(),
                 &ctx,
-                event_log_async,
+                event_log,
                 event_name
             )
         },
@@ -446,7 +445,7 @@ pub async fn handle_event(
                 .to_guild_cached(&ctx.cache)
                 .map(|x| x.name.clone())
                 .unwrap_or_default();
-            let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
+            let guild_settings = data_global.guild_settings_map.read().await.clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)

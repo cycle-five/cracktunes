@@ -250,7 +250,7 @@ pub async fn poise_framework(
                             GuildId::new(1)
                         },
                     };
-                    let guild_settings_map = data.guild_settings_map.read().unwrap();
+                    let guild_settings_map = data.guild_settings_map.read().await;
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefixes = &guild_settings.additional_prefixes;
@@ -534,7 +534,7 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
-        let guilds = data2.guild_settings_map.read().unwrap().clone();
+        let guilds = data2.guild_settings_map.read().await.clone();
         let pool = data2.clone().database_pool.clone();
         // let pool = match pool {
         //     Ok(p) => Some(p),

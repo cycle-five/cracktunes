@@ -3,8 +3,8 @@ use serenity::all::GuildId;
 use crate::{Context, Data, Error};
 
 /// Get the current `premium` setting for the guild.
-pub fn get_premium(data: &Data, guild_id: GuildId) -> bool {
-    let guild_settings_map = data.guild_settings_map.read().unwrap();
+pub async fn get_premium(data: &Data, guild_id: GuildId) -> bool {
+    let guild_settings_map = data.guild_settings_map.read().await;
     let guild_settings = guild_settings_map.get(&guild_id).unwrap();
     guild_settings.premium
 }

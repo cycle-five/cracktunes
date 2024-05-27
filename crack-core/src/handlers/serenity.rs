@@ -77,7 +77,7 @@ impl EventHandler for SerenityHandler {
             new_member.to_string().white()
         );
         let guild_id = new_member.guild_id;
-        let guild_settings_map = self.data.guild_settings_map.read().unwrap().clone();
+        let guild_settings_map = self.data.guild_settings_map.read().await.clone();
         let guild_settings = guild_settings_map.get(&guild_id);
         // let guild_settings = guild_settings_map.get_mut(&guild_id);
         // guild_settings.cloned()
@@ -277,7 +277,7 @@ impl EventHandler for SerenityHandler {
             let ctx1 = arc_ctx.clone();
             let lock = ctx1.data.read().await;
             let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.write().unwrap();
+            let mut data_write = self.data.guild_settings_map.write().await;
 
             let mut x = 0;
             for (key, value) in guild_settings_map.clone().iter() {
@@ -465,7 +465,7 @@ impl SerenityHandler {
                     .await
                     .unwrap();
             // .map_err(Into::into)?;
-            let mut guild_settings_map = self.data.guild_settings_map.write().unwrap();
+            let mut guild_settings_map = self.data.guild_settings_map.write().await;
 
             // let _ = default..map_err(|err| {
             //     tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);

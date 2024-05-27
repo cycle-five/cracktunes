@@ -54,7 +54,7 @@ impl EventHandler for TrackEndHandler {
         tracing::error!("Autoplay: {}", autoplay);
 
         let (autopause, volume) = {
-            let settings = self.data.guild_settings_map.read().unwrap().clone();
+            let settings = self.data.guild_settings_map.read().await.clone();
             let autopause = settings
                 .get(&self.guild_id)
                 .map(|guild_settings| guild_settings.autopause)
@@ -279,9 +279,9 @@ pub async fn update_queue_messages(
     for (message, page_lock) in messages.iter_mut() {
         // has the page size shrunk?
         let num_pages = calculate_num_pages(tracks);
-        let page = *page_lock.read().unwrap();
+        let page = *page_lock.read().await;
         let page_val = usize::min(page, num_pages - 1);
-        *page_lock.write().unwrap() = page_val;
+        *page_lock.write().await = page_val;
 
         let embed = create_queue_embed(tracks, page_val).await;
 

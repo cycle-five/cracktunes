@@ -34,7 +34,7 @@ pub async fn music_channel(
             e.set_music_channel(channel_id.get());
         });
 
-    let opt_settings = data.guild_settings_map.read().unwrap().clone();
+    let opt_settings = data.guild_settings_map.read().await.clone();
     let settings = opt_settings.get(&guild_id);
 
     let pg_pool = ctx.data().database_pool.clone().unwrap();
