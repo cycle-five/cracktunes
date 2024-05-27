@@ -49,8 +49,8 @@ pub async fn join_leave_log_channel(
             e.set_join_leave_log_channel(channel_id.get());
         });
 
-        let settings
-    let settings = .as_ref();
+    let settings_temp = data.get_guild_settings(guild_id).await;
+    let settings = settings_temp.as_ref();
 
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
