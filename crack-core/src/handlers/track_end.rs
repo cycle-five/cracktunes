@@ -89,7 +89,7 @@ impl EventHandler for TrackEndHandler {
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
-        let music_channel = self.data.get_music_channel(self.guild_id);
+        let music_channel = self.data.get_music_channel(self.guild_id).await;
 
         let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
             let (sb_chan_id, my_metadata, cur_pos) = {
@@ -249,7 +249,7 @@ impl EventHandler for ModifyQueueHandler {
             handler.queue().current_queue()
         };
         let vol = {
-            let guild_settings = self.data.get_guild_settings(self.guild_id);
+            let guild_settings = self.data.get_guild_settings(self.guild_id).await;
             guild_settings.map(|x| x.volume)
         };
 
