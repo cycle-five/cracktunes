@@ -727,8 +727,8 @@ mod lib_test {
     }
 
     use serde_json::json;
-    #[test]
-    fn test_with_data_inner() {
+    #[tokio::test]
+    async fn test_with_data_inner() {
         let data = DataInner::default();
         let new_data = data.with_bot_settings(BotConfig::default());
         assert_eq!(json!(new_data.bot_settings), json!(BotConfig::default()));
