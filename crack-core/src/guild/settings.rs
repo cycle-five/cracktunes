@@ -601,16 +601,19 @@ impl GuildSettings {
         Self { premium, ..self }
     }
 
+    /// Toggle the autopause setting, mutating.
     pub fn toggle_autopause(&mut self) -> &mut Self {
         self.autopause = !self.autopause;
         self
     }
 
+    /// Toggle the autoplay setting, mutating.
     pub fn toggle_self_deafen(&mut self) -> &mut Self {
         self.self_deafen = !self.self_deafen;
         self
     }
 
+    /// Set the allowed domains, mutating.
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {
         let allowed = allowed_str
             .split(';')
@@ -621,6 +624,7 @@ impl GuildSettings {
         self.allowed_domains = allowed;
     }
 
+    /// Set the banned domains, mutating.
     pub fn set_banned_domains(&mut self, banned_str: &str) {
         let banned = banned_str
             .split(';')
