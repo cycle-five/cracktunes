@@ -1,10 +1,5 @@
 use super::serenity::voice_state_diff_str;
-use crate::{
-    guild::settings::{GuildSettings, DEFAULT_PREFIX},
-    http_utils::get_guild_name,
-    utils::send_log_embed_thumb,
-    Error,
-};
+use crate::{http_utils::get_guild_name, utils::send_log_embed_thumb, Error};
 use colored::Colorize;
 use serde::Serialize;
 use serenity::all::{
@@ -14,10 +9,7 @@ use serenity::all::{
     IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId,
     MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
 };
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(

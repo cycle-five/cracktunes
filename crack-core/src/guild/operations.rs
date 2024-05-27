@@ -352,7 +352,8 @@ mod test {
             crate::GuildSettings {
                 ..Default::default()
             },
-        );
+        )
+        .await;
 
         assert_eq!(
             data.get_guild_settings(guild_id).await,
@@ -415,7 +416,7 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_music_channel(guild_id, ChannelId::new(3));
+        data.set_music_channel(guild_id, ChannelId::new(3)).await;
 
         assert_eq!(
             data.get_music_channel(guild_id).await,

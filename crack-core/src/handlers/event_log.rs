@@ -1,8 +1,7 @@
 use super::event_log_impl::*;
-
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, ArcRwMap, ArcTRwMap, Data, Error,
+    utils::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -10,6 +9,8 @@ use poise::{
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
+use serenity::all::User;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -92,14 +93,8 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
-    use std::sync::Arc;
-
-    use serenity::all::User;
-
-    use crate::log_event_async;
-
     // let event_log = Arc::new(&data_global.event_log);
-    let event_log = Arc::new(&data_global.event_log_async);
+    let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
 
@@ -989,7 +984,11 @@ pub async fn handle_event(
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
-        } => event_log.write_obj(&(guild_id, belongs_to_channel_id)).await,
+        } => {
+            event_log
+                .write_obj(&(guild_id, belongs_to_channel_id))
+                .await
+        },
         FullEvent::CacheReady { guilds } => {
             tracing::info!(
                 "{}: {}",
