@@ -630,6 +630,7 @@ impl GuildSettings {
         self.banned_domains = banned;
     }
 
+    /// Set the music channel, without mutating.
     pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
         self.command_channels.set_music_channel(
             ChannelId::new(channel_id),
@@ -639,6 +640,7 @@ impl GuildSettings {
         self
     }
 
+    /// Update the allowed domains.
     pub fn update_domains(&mut self) {
         if !self.allowed_domains.is_empty() && !self.banned_domains.is_empty() {
             self.banned_domains.clear();
@@ -650,37 +652,45 @@ impl GuildSettings {
         }
     }
 
+    /// Authorize a user.
     pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
         self.authorized_users.entry(user_id as u64).or_insert(0);
         self
     }
 
+    /// Deauthorize a user.
     pub fn deauthorize_user(&mut self, user_id: i64) {
         if self.authorized_users.contains_key(&(user_id as u64)) {
             self.authorized_users.remove(&(user_id as u64));
         }
     }
 
+    /// Check if the user is authorized.
     pub fn check_authorized(&self, user_id: u64) -> bool {
         self.authorized_users.contains_key(&user_id)
     }
 
+    /// Check if the user is authorized.
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.contains_key(&user_id.into())
     }
 
+    /// Check if the user is a mod.
     pub fn check_mod(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
     }
 
+    /// Check if the user is a mod.
     pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
     }
 
+    /// Check if the user is an admin.
     pub fn check_admin(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
     }
 
+    /// Check if the user is an admin.
     pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
@@ -820,11 +830,13 @@ impl GuildSettings {
         }
     }
 
+    /// Set the guild name, mutating.
     pub fn set_prefix(&mut self, prefix: &str) -> &mut Self {
         self.prefix = prefix.to_string();
         self
     }
 
+    /// Set the default additional prefixes, mutating.
     pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
         self.additional_prefixes = ADDITIONAL_PREFIXES
             .to_vec()
