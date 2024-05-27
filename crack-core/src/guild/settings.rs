@@ -834,11 +834,13 @@ impl GuildSettings {
         self
     }
 
+    /// Set the ignored channels, mutating.
     pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
         self.ignored_channels = ignored_channels;
         self
     }
 
+    /// Get the guild name.
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
             self.guild_id.to_string()
@@ -847,10 +849,12 @@ impl GuildSettings {
         }
     }
 
+    /// Get the prefix.
     pub fn get_prefix(&self) -> &str {
         &self.prefix
     }
 
+    /// Set the all log channel, with mutating.
     pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
@@ -862,6 +866,7 @@ impl GuildSettings {
         self
     }
 
+    /// Set the join/leave log channel, without mutating.
     pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
         let log_settings = if let Some(log_settings) = self.log_settings.clone() {
             LogSettings {
