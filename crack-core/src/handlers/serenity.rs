@@ -213,7 +213,7 @@ impl EventHandler for SerenityHandler {
                 .data
                 .guild_settings_map
                 .read()
-                .unwrap()
+                .await
                 .get(&new.guild_id.unwrap())
                 .map(|x| x.self_deafen)
                 .unwrap_or_else(|| true);
@@ -413,7 +413,7 @@ impl SerenityHandler {
             self.data
                 .guild_settings_map
                 .write()
-                .unwrap()
+                .await
                 .insert(guild_id, default.clone());
 
             match default.save(&pool).await {
