@@ -355,7 +355,6 @@ pub async fn log_guild_scheduled_event_update(
     .map(|_| ())
 }
 
-use crate::ArcTRwMap;
 /// Logs a guild create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
@@ -363,19 +362,19 @@ pub async fn log_guild_create(
     http: &impl CacheHttp,
     log_data: &(&Guild, &Option<bool>),
 ) -> Result<(), Error> {
-    let &(guild, is_new, guild_settings_map) = log_data;
-    let guild_id = guild.id;
+    let &(guild, is_new) = log_data;
     let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
 
-    // make sure we have the guild stored or store it
-    if guild_settings_map.read().await.get(&guild_id).is_none() {
-        let new_settings =
-            GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
-        guild_settings_map
-            .write()
-            .await
-            .insert(guild_id, new_settings.clone());
-    }
+    // FIXME!
+    // // make sure we have the guild stored or store it
+    // if guild_settings_map.read().await.get(&guild_id).is_none() {
+    //     let new_settings =
+    //         GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
+    //     guild_settings_map
+    //         .write()
+    //         .await
+    //         .insert(guild_id, new_settings.clone());
+    // }
 
     let title = format!("Guild Create: {}", guild.name);
     let is_new_str = if !is_new.is_some() || !is_new.unwrap() {
@@ -1311,7 +1310,9 @@ macro_rules! log_event {
 #[macro_export]
 macro_rules! log_event2 {
     ($log_func:expr, $guild_settings:expr, $event:expr, $log_data:expr, $guild_id:expr, $ctx:expr, $event_log:expr, $event_name:expr) => {{
-        $event_log.write_log_obj($event_name, $log_data)?;
+        $event_log
+            .write_log_obj_async($event_name, $log_data)
+            .await?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
         $log_func(channel_id, $ctx, $log_data).await.map(|_| ())
     }};
