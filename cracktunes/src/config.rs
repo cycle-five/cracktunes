@@ -25,13 +25,14 @@ use poise::{
     CreateReply,
 };
 use songbird::serenity::SerenityInit;
-use std::{borrow::Cow, sync::RwLock};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     process::exit,
     sync::Arc,
     time::Duration,
 };
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct CommandCategories {
@@ -379,7 +380,7 @@ pub async fn poise_framework(
                         },
                     };
 
-                    match ctx.data().get_guild_settings(guild_id) {
+                    match ctx.data().get_guild_settings(guild_id).await {
                         Some(guild_settings) => {
                             let command_channel = guild_settings.command_channels.music_channel;
                             let opt_allowed_channel = command_channel.map(|x| x.channel_id);

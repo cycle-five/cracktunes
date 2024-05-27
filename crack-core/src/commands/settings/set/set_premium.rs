@@ -1,13 +1,6 @@
-use serenity::all::GuildId;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
 use crate::commands::CrackedError;
 use crate::db::GuildEntity;
-use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::get_guild_name;
 use crate::utils::send_response_poise;
 use crate::{Context, Error};
 
