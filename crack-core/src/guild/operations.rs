@@ -459,7 +459,7 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_timeout(guild_id, 10);
+        data.set_timeout(guild_id, 10).await;
 
         assert_eq!(data.get_timeout(guild_id).await, Some(10));
     }
@@ -537,7 +537,7 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_prefix(guild_id, "?".to_string());
+        data.set_prefix(guild_id, "?".to_string()).await;
 
         assert_eq!(data.get_prefix(guild_id).await, Some("?".to_string()));
     }
