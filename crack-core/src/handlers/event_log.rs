@@ -10,7 +10,6 @@ use poise::{
 };
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::all::User;
-use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
