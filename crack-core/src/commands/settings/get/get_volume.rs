@@ -34,10 +34,10 @@ pub async fn volume(ctx: Context<'_>) -> Result<(), Error> {
 
 #[cfg(test)]
 mod test {
-        use super::get_volume;
-        use crate::guild::settings::GuildSettings;
-        use serenity::model::id::GuildId;
-        use super::{Arc, RwLock};
+    use super::get_volume;
+    use super::{Arc, RwLock};
+    use crate::guild::settings::GuildSettings;
+    use serenity::model::id::GuildId;
 
     use crate::guild::settings::DEFAULT_VOLUME_LEVEL;
 
