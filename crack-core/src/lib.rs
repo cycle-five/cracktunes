@@ -1,15 +1,12 @@
 use crate::handlers::event_log::LogEntry;
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use commands::play_utils::TrackReadyData;
 use commands::MyAuxMetadata;
 use db::worker_pool::MetadataMsg;
-use db::PlayLog;
-use db::TrackReaction;
+use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
-use guild::settings::GuildSettings;
-use guild::settings::GuildSettingsMapParam;
+use guild::settings::{GuildSettings, GuildSettingsMapParam};
 use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
@@ -17,19 +14,22 @@ use guild::settings::{
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, Message};
 use songbird::Call;
-use std::fs;
-use std::future::Future;
-use std::io::Write;
-use std::sync::RwLock;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
+    fs,
     fs::File,
+    future::Future,
+    io::Write,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex as SyncMutex, RwLock as SyncRwLock},
 };
-use tokio::sync::Mutex as TokMutex;
+use tokio::sync::{Mutex, RwLock};
+// Channel for sending queries to the database write worke pool.
+use tokio::sync::mpsc::Sender;
 
+#[cfg(feature = "crack-gpt")]
+pub mod chatgpt;
 pub mod commands;
 pub mod connection;
 pub mod db;
@@ -58,8 +58,8 @@ pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
 /// Struct for the cammed down kicking configuration.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
     pub timeout: u64,
     pub guild_id: u64,
@@ -285,27 +285,20 @@ impl PhoneCodeData {
     }
 }
 
-use tokio::sync::mpsc::Sender;
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
-    // #[serde(skip)]
-    // pub rt_handle: Arc<RwLock<Option<tokio::runtime::Handle>>>,
-    #[serde(skip)]
-    pub phone_data: PhoneCodeData,
     pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
-    // TODO: Make this a HashMap, pointing to a settings struct containiong
+    // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map_non_async: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    //
+    // Non-serializable below here. What did I even decide to make this Serializable for?
+    // I doubt it's doing anything, most fields aren't.
+    //
     #[serde(skip)]
-    pub guild_settings_map:
-        Arc<tokio::sync::RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    #[serde(skip)]
-    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
-    pub guild_cache_map: Arc<tokio::sync::Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    pub phone_data: PhoneCodeData,
     #[serde(skip)]
     pub event_log: EventLog,
     #[serde(skip)]
@@ -316,8 +309,17 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    // #[serde(skip, default = "default_topgg_client")]
-    // pub topgg_client: topgg::Client,
+    // Synchronous settings and caches. These are going away.
+    pub guild_settings_map_non_async:
+        Arc<SyncRwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_msg_cache_ordered: Arc<SyncMutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+
+    // Async access fields, will switch entirely to these
+    #[serde(skip)]
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
 }
 
 // /// Get the default topgg client
@@ -385,10 +387,10 @@ impl DataInner {
 
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
-pub struct EventLog(pub Arc<Mutex<File>>);
+pub struct EventLog(pub Arc<SyncMutex<File>>);
 
 impl std::ops::Deref for EventLog {
-    type Target = Arc<Mutex<File>>;
+    type Target = Arc<SyncMutex<File>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -451,7 +453,7 @@ impl Default for EventLog {
                     .expect("Should be able to have a file object to write too.")
             },
         };
-        Self(Arc::new(Mutex::new(log_file)))
+        Self(Arc::new(SyncMutex::new(log_file)))
     }
 }
 
@@ -579,10 +581,10 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
-            guild_settings_map_non_async: Arc::new(RwLock::new(HashMap::new())),
-            guild_settings_map: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            guild_cache_map: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
+            guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
+            guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
+            guild_msg_cache_ordered: Arc::new(SyncMutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
@@ -690,6 +692,76 @@ impl Data {
     }
 }
 
+/// Trait to extend the Context struct with additional convenience functionality.
+pub trait ContextExt {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// Return the call that the bot is currently in, if it is in one.
+    fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+}
+
+/// Implement the ContextExt trait for the Context struct.
+impl ContextExt for Context<'_> {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
+        let username = ready_track.username.clone();
+        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+        match &self.data().db_channel {
+            Some(channel) => {
+                let write_data: MetadataMsg = MetadataMsg {
+                    user_id,
+                    aux_metadata,
+                    username,
+                    guild_id,
+                    channel_id,
+                };
+                if let Err(e) = channel.try_send(write_data) {
+                    tracing::error!("Error sending metadata to db_channel: {}", e);
+                }
+            },
+            None => {},
+        }
+    }
+
+    /// Return the call that the bot is currently in, if it is in one.
+    async fn get_call(&self) -> Result<Arc<Mutex<Call>>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(self.serenity_context())
+            .await
+            .ok_or(CrackedError::NotConnected)?;
+        manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg)
+    }
+
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
+        let serenity_context = self.serenity_context();
+        let manager = songbird::get(serenity_context)
+            .await
+            .expect("Failed to get songbird manager")
+            .clone();
+
+        let call_lock = manager.get(guild_id)?;
+        let call = call_lock.lock().await;
+
+        let channel_id = call.current_channel()?;
+        let serenity_channel_id = ChannelId::new(channel_id.0.into());
+
+        Some(serenity_channel_id)
+    }
+}
+
 #[cfg(test)]
 mod lib_test {
     use super::*;
@@ -742,75 +814,5 @@ mod lib_test {
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().await.is_empty());
-    }
-}
-
-/// Trait to extend the Context struct with additional convenience functionality.
-pub trait ContextExt {
-    /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
-    /// Return the call that the bot is currently in, if it is in one.
-    fn get_call(&self) -> impl Future<Output = Result<Arc<TokMutex<Call>>, CrackedError>>;
-    /// Add a message to the cache
-    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
-    /// Gets the channel id that the bot is currently playing in for a given guild.
-    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
-}
-
-/// Implement the ContextExt trait for the Context struct.
-impl ContextExt for Context<'_> {
-    /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
-        let username = ready_track.username.clone();
-        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
-        let user_id = ready_track.user_id;
-        let guild_id = self.guild_id().unwrap();
-        let channel_id = self.channel_id();
-        match &self.data().db_channel {
-            Some(channel) => {
-                let write_data: MetadataMsg = MetadataMsg {
-                    user_id,
-                    aux_metadata,
-                    username,
-                    guild_id,
-                    channel_id,
-                };
-                if let Err(e) = channel.try_send(write_data) {
-                    tracing::error!("Error sending metadata to db_channel: {}", e);
-                }
-            },
-            None => {},
-        }
-    }
-
-    /// Return the call that the bot is currently in, if it is in one.
-    async fn get_call(&self) -> Result<Arc<TokMutex<Call>>, CrackedError> {
-        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let manager = songbird::get(self.serenity_context())
-            .await
-            .ok_or(CrackedError::NotConnected)?;
-        manager.get(guild_id).ok_or(CrackedError::NotConnected)
-    }
-
-    /// Add a message to the cache
-    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg)
-    }
-
-    /// Gets the channel id that the bot is currently playing in for a given guild.
-    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
-        let serenity_context = self.serenity_context();
-        let manager = songbird::get(serenity_context)
-            .await
-            .expect("Failed to get songbird manager")
-            .clone();
-
-        let call_lock = manager.get(guild_id)?;
-        let call = call_lock.lock().await;
-
-        let channel_id = call.current_channel()?;
-        let serenity_channel_id = ChannelId::new(channel_id.0.into());
-
-        Some(serenity_channel_id)
     }
 }

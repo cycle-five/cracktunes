@@ -145,36 +145,6 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
-/// Parameter structure for functions that send messages to a channel.
-pub struct SendMessageParams {
-    pub channel: ChannelId,
-    // pub http: &impl CacheHttp,
-    pub as_embed: bool,
-    pub ephemeral: bool,
-    pub reply: bool,
-    pub msg: CrackedMessage,
-}
-
-/// Sends a message to a channel.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_channel_message(
-    cache_http: impl CacheHttp,
-    params: SendMessageParams,
-) -> Result<Message, CrackedError> {
-    let channel = params.channel;
-    let content = format!("{}", params.msg);
-    let msg = if params.as_embed {
-        let embed = CreateEmbed::default().description(content);
-        CreateMessage::new().add_embed(embed)
-    } else {
-        CreateMessage::new().content(content)
-    };
-    channel
-        .send_message(cache_http, msg)
-        .await
-        .map_err(Into::into)
-}
-
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_response_poise(

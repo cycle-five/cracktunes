@@ -12,7 +12,7 @@
         }
     ],
     "rust-analyzer.cargo.cfgs": {
-        "crack-gpt": "",
+        "crack-gpt": "true",
         "crack-osint": "",
         "crack-core": "",
         "crack-telemetry": "",

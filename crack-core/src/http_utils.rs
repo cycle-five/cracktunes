@@ -1,11 +1,23 @@
+use once_cell::sync::Lazy;
+use reqwest::Client;
 use std::future::Future;
 
 use crate::errors::CrackedError;
-use serenity::all::{CacheHttp, ChannelId, GuildId, Http, UserId};
+use crate::messaging::message::CrackedMessage;
+use serenity::all::{
+    CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
+};
 
-use once_cell::sync::Lazy;
-use reqwest::Client;
+/// Parameter structure for functions that send messages to a channel.
+pub struct SendMessageParams {
+    pub channel: ChannelId,
+    pub as_embed: bool,
+    pub ephemeral: bool,
+    pub reply: bool,
+    pub msg: CrackedMessage,
+}
 
+/// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
     fn cache(&self) -> Option<impl CacheHttp>;
     fn http(&self) -> Option<&Http>;
@@ -15,8 +27,13 @@ pub trait CacheHttpExt {
         &self,
         channel_id: ChannelId,
     ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+    fn send_channel_message(
+        &self,
+        params: SendMessageParams,
+    ) -> impl Future<Output = Result<serenity::model::channel::Message, CrackedError>> + Send;
 }
 
+/// Implement the CacheHttpExt trait for any type that implements CacheHttp.
 impl<T: CacheHttp> CacheHttpExt for T {
     fn cache(&self) -> Option<impl CacheHttp> {
         Some(self)
@@ -39,6 +56,23 @@ impl<T: CacheHttp> CacheHttpExt for T {
         channel_id: ChannelId,
     ) -> Result<String, CrackedError> {
         get_guild_name(self, channel_id).await
+    }
+
+    /// Sends a message to a channel.
+    #[cfg(not(tarpaulin_include))]
+    async fn send_channel_message(
+        &self,
+        params: SendMessageParams,
+    ) -> Result<Message, CrackedError> {
+        let channel = params.channel;
+        let content = format!("{}", params.msg);
+        let msg = if params.as_embed {
+            let embed = CreateEmbed::default().description(content);
+            CreateMessage::new().add_embed(embed)
+        } else {
+            CreateMessage::new().content(content)
+        };
+        channel.send_message(self, msg).await.map_err(Into::into)
     }
 }
 
@@ -64,7 +98,6 @@ pub async fn init_http_client() -> Result<(), CrackedError> {
     tracing::info!("HTTP client initialized successfully: {:?}", res);
     Ok(())
 }
-
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
