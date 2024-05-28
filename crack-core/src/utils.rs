@@ -1170,7 +1170,7 @@ pub async fn handle_error(
 
 #[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!("counting command: {}", command);
+    tracing::warn!("counting command: {}, {}", command, is_prefix);
     match COMMAND_EXECUTIONS
         .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
     {
@@ -1181,31 +1181,14 @@ pub fn count_command(command: &str, is_prefix: bool) {
             tracing::error!("Failed to get metric: {}", e);
         },
     };
-    #[cfg(not(feature = "crack-metrics"))]
-    tracing::warn!("crack-metrics feature not enabled");
 }
 #[cfg(not(feature = "crack-metrics"))]
 pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!("counting command: {}, {}", command, is_prefix);
-}
-
-/// Gets the channel id that the bot is currently playing in for a given guild.
-pub async fn get_current_voice_channel_id(
-    ctx: &SerenityContext,
-    guild_id: serenity::GuildId,
-) -> Option<serenity::ChannelId> {
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Failed to get songbird manager")
-        .clone();
-
-    let call_lock = manager.get(guild_id)?;
-    let call = call_lock.lock().await;
-
-    let channel_id = call.current_channel()?;
-    let serenity_channel_id = serenity::ChannelId::new(channel_id.0.into());
-
-    Some(serenity_channel_id)
+    tracing::warn!(
+        "crack-metrics feature not enabled!\ncommand: {}, {}",
+        command,
+        is_prefix
+    );
 }
 
 pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {

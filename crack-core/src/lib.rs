@@ -14,19 +14,18 @@ use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
 };
-use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
-use serenity::all::Message;
+use serenity::all::{ChannelId, GuildId, Message};
 use songbird::Call;
 use std::fs;
-use std::fs::File;
 use std::future::Future;
 use std::io::Write;
-use std::path::Path;
 use std::sync::RwLock;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
+    fs::File,
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tokio::sync::Mutex as TokMutex;
@@ -754,6 +753,8 @@ pub trait ContextExt {
     fn get_call(&self) -> impl Future<Output = Result<Arc<TokMutex<Call>>, CrackedError>>;
     /// Add a message to the cache
     fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -794,5 +795,22 @@ impl ContextExt for Context<'_> {
     /// Add a message to the cache
     fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         self.data().add_msg_to_cache(guild_id, msg)
+    }
+
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
+        let serenity_context = self.serenity_context();
+        let manager = songbird::get(serenity_context)
+            .await
+            .expect("Failed to get songbird manager")
+            .clone();
+
+        let call_lock = manager.get(guild_id)?;
+        let call = call_lock.lock().await;
+
+        let channel_id = call.current_channel()?;
+        let serenity_channel_id = ChannelId::new(channel_id.0.into());
+
+        Some(serenity_channel_id)
     }
 }
