@@ -1,6 +1,6 @@
 use crate::utils::check_reply;
 use crate::{Context, Error};
-use crack_gpt::get_chatgpt_response;
+use crack_gpt::openai_azure_response;
 use poise::CreateReply;
 
 /// Talk with chatgpt.
@@ -13,7 +13,7 @@ pub async fn chatgpt(
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
-    let response = get_chatgpt_response(query).await?;
+    let response = openai_azure_response(query).await?;
 
     check_reply(
         ctx.send(CreateReply::default().content(response).reply(true))

@@ -499,6 +499,8 @@ mod test {
             ..Default::default()
         })));
 
+        data.set_premium(guild_id, false).await;
+
         assert_eq!(data.get_premium(guild_id).await, Some(false));
     }
 
@@ -601,6 +603,8 @@ mod test {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
         })));
+
+        data.set_autopause(guild_id, false).await;
 
         assert_eq!(data.get_autopause(guild_id).await, false);
     }
