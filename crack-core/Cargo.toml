@@ -19,7 +19,7 @@ shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
-crack-gpt = ["dep:crack-gpt", "dep:chatgpt_rs"]
+crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]
@@ -47,7 +47,6 @@ sys-info = "0.9.1"
 prometheus = { version = "0.13.4", features = ["process"], optional = true }
 proc-macro2 = "1.0.82"
 typemap_rev = "0.3.0"
-chatgpt_rs = { git = "https://github.com/cycle-five/chatgpt_rs", version = "1.2.4", branch = "master", optional = true }
 either = "1.11.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 once_cell = "1.19.0"

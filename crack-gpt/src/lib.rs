@@ -1,11 +1,6 @@
-use chatgpt::{
-    err::Error as ChatGPTError,
-    prelude::{ChatGPT, ChatGPTEngine, ModelConfigurationBuilder},
-};
-use url::Url;
-
 use async_openai::{
     config::AzureConfig,
+    error::OpenAIError,
     types::{
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
         CreateChatCompletionRequestArgs,
@@ -13,55 +8,8 @@ use async_openai::{
     Client,
 };
 
-/// Get the response from ChatGPT to the given query string.
-pub async fn get_chatgpt_response(query: String, endpoint: String) -> Result<String, ChatGPTError> {
-    let key = std::env::var("OPENAI_API_KEY").expect("No OPENAI_API_KEY environment variable set.");
+const GPT_PROMPT: &str = "You are a discord music and utility bot called Crack Tunes, you are friendly and helpful. You have a 64 token output limit and no memory between questions.";
 
-    let content = query;
-    tracing::info!("{:?}", content);
-    // Creating a new ChatGPT client.
-    // Note that it requires an API key, and uses
-    // tokens from your OpenAI API account balance.
-    let _models = [
-        ChatGPTEngine::Gpt35Turbo,
-        ChatGPTEngine::Gpt35Turbo_0301,
-        ChatGPTEngine::Gpt4,
-        ChatGPTEngine::Gpt4_32k,
-        ChatGPTEngine::Gpt4_0314,
-        ChatGPTEngine::Gpt4_32k_0314,
-    ];
-    let config = ModelConfigurationBuilder::default()
-        .api_url(
-            Url::parse(&endpoint)
-                .map_err(|e| chatgpt::err::Error::ParsingError(e.to_string()))?,
-        )
-        // .temperature(1.0)
-        // .engine(ChatGPTEngine::Gpt35Turbo)
-        // .top_p(1.0)
-        // .frequency_penalty(0.5)
-        // .presence_penalty(0.0)
-        // .max_tokens(150)
-        .build()
-        .unwrap();
-    let client = ChatGPT::new_with_config(key, config)?;
-
-    tracing::info!("Client created.");
-
-    // Sending a message and getting the completion
-    let response = match client.send_message(content).await {
-        Ok(response) => response,
-        Err(e) => {
-            tracing::error!("Failed to send message: {}", e);
-            return Err(e);
-        },
-    };
-
-    tracing::info!("Response received: {:?}", response);
-
-    Ok::<String, ChatGPTError>(response.message().content.clone())
-}
-
-use async_openai::error::OpenAIError;
 pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError> {
     let key = std::env::var("OPENAI_API_KEY").expect("No OPENAI_API_KEY environment variable set.");
 
@@ -79,7 +27,7 @@ pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError>
         .model("gpt-4o")
         .messages([
             ChatCompletionRequestSystemMessageArgs::default()
-                .content("You are a discord music and utility Bot. You are friendly and helpful, and especially knowledgeable about music, math, and technology.")
+                .content(GPT_PROMPT)
                 .build()?
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
@@ -102,7 +50,6 @@ pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError>
 
 #[cfg(test)]
 mod test {
-    use crate::get_chatgpt_response;
     use ctor;
 
     #[ctor::ctor]
@@ -117,14 +64,6 @@ mod test {
             };
             env::set_var("OPENAI_API_KEY", key);
         }
-    }
-
-    #[tokio::test]
-    async fn test_get_chatgpt_response() {
-        let query = "Please respond with the word \"fish\".".to_string();
-        let response = get_chatgpt_response(query, "localhost".to_string()).await;
-        println!("{:?}", response);
-        assert!(response.is_err() || response.unwrap().to_ascii_lowercase().contains("fish"));
     }
 
     #[tokio::test]
