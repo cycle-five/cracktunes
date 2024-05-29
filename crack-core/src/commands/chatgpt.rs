@@ -1,18 +1,14 @@
-use crate::messaging::help::CHATGPT_QUERY_DESCRIPTION;
 use crate::utils::check_reply;
 use crate::{Context, Error};
 use crack_gpt::get_chatgpt_response;
+use poise::CreateReply;
 
-use poise::{CreateReply, ReplyHandle};
-
-#[cfg(feature = "crack-gpt")]
 /// Talk with chatgpt.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn chatgpt(
     ctx: Context<'_>,
     #[rest]
-    #[description = CHATGPT_QUERY_DESCRIPTION]
+    #[description = "Query to send to the model."]
     query: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;

@@ -25,8 +25,8 @@ crack-metrics = ["prometheus"]
 # core
 crack-core = { workspace = true }
 # modules, each should be optional
-crack-osint = { workspace = true, optional = true }
-crack-gpt = { workspace = true, optional = true }
+crack-osint = { path = "../crack-osint/", optional = true }
+crack-gpt = { path = "../crack-gpt/", optional = true }
 
 # Core's dependencies
 poise = { workspace = true }

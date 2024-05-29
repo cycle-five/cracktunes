@@ -6,12 +6,12 @@ use crate::{Context, Error};
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
-    ping_(ctx).await
+    ping_internal(ctx).await
 }
 
-/// Ping the bot implementation
+/// Ping the bot internal function
 #[cfg(not(tarpaulin_include))]
-pub async fn ping_(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn ping_internal(ctx: Context<'_>) -> Result<(), Error> {
     let start = std::time::Instant::now();
     let msg = ctx.say("Pong!").await?;
     let end = std::time::Instant::now();

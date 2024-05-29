@@ -19,7 +19,7 @@ shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
-crack-gpt = ["dep:crack-gpt"]
+crack-gpt = ["dep:crack-gpt", "dep:chatgpt_rs"]
 crack-osint = ["dep:crack-osint"]
 
 [dependencies]

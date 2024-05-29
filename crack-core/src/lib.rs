@@ -28,8 +28,6 @@ use tokio::sync::{Mutex, RwLock};
 // Channel for sending queries to the database write worke pool.
 use tokio::sync::mpsc::Sender;
 
-#[cfg(feature = "crack-gpt")]
-pub mod chatgpt;
 pub mod commands;
 pub mod connection;
 pub mod db;

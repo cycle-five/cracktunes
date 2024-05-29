@@ -11,17 +11,19 @@
             "password": "mysecretpassword"
         }
     ],
-    "rust-analyzer.cargo.cfgs": {
-        "crack-gpt": "true",
-        "crack-osint": "",
-        "crack-core": "",
-        "crack-telemetry": "",
-        "crack-tracing": "",
-        "db": "",
-        "playlist": "",
-        "cache": "",
-        "ignore-presence-log": "",
-    },
+    "rust-analyzer.cargo.features": [
+        "crack-gpt"
+    ],
+    //     "crack-osint",
+    //     "crack-core",
+    //     "crack-telemetry",
+    //     "crack-tracing",
+    //     "db",
+    //     "playlist",
+    //     "cache",
+    //     "ignore-presence-log",
+    // ],
+    // "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",
@@ -32,4 +34,3 @@
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
 }
-// "rust-analyzer.cargo.features": "all",

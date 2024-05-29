@@ -195,7 +195,6 @@ pub async fn poise_framework(
             commands::autoplay(),
             commands::clear(),
             commands::clean(),
-            //commands::downvote(),
             commands::help(),
             commands::invite(),
             commands::leave(),
@@ -220,7 +219,6 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
-            // commands::voteskip(),
             commands::queue(),
             #[cfg(feature = "crack-osint")]
             commands::osint(),
@@ -235,7 +233,8 @@ pub async fn poise_framework(
             // commands::rolldice(),
             // commands::boop(),
             // all ai commands
-            // commands::chatgpt(),
+            #[cfg(feature = "crack-gpt")]
+            commands::chatgpt(),
             commands::music::vote(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
@@ -400,8 +399,8 @@ pub async fn poise_framework(
                     }
                 }
 
-                // Default case fail to be on the safe side.
-                Ok(false)
+                // Default case true
+                Ok(true)
             })
         }),
         // Enforce command checks even for owners (enforced by default)

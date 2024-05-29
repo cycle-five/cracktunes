@@ -23,15 +23,15 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
     ];
     let config = ModelConfigurationBuilder::default()
         .api_url(
-            Url::parse("https://cyclefiveazureopenai.openai.azure.com")
+            Url::parse("https://openai-research-prod.openai.azure.com")
                 .map_err(|e| chatgpt::err::Error::ParsingError(e.to_string()))?,
         )
-        .temperature(1.0)
-        .engine(ChatGPTEngine::Gpt4)
-        .top_p(1.0)
-        .frequency_penalty(0.5)
-        .presence_penalty(0.0)
-        .max_tokens(150)
+        // .temperature(1.0)
+        // .engine(ChatGPTEngine::Gpt4)
+        // .top_p(1.0)
+        // .frequency_penalty(0.5)
+        // .presence_penalty(0.0)
+        // .max_tokens(150)
         .build()
         .unwrap();
     let client = ChatGPT::new_with_config(key, config)?;
@@ -39,17 +39,17 @@ pub async fn get_chatgpt_response(query: String) -> Result<String, Error> {
     tracing::info!("Client created.");
 
     // Sending a message and getting the completion
-    let response = client.send_message(content).await.map_or_else(
-        |e| {
+    let response = match client.send_message(content).await {
+        Ok(response) => response,
+        Err(e) => {
             tracing::error!("Failed to send message: {}", e);
-            e.to_string()
+            return Err(e);
         },
-        |k| k.message().content.clone(),
-    );
+    };
 
     tracing::info!("Response received: {:?}", response);
 
-    Ok::<String, Error>(response)
+    Ok::<String, Error>(response.message().content.clone())
 }
 
 #[cfg(test)]
@@ -62,11 +62,10 @@ mod test {
         let response = get_chatgpt_response(query).await;
         println!("{:?}", response);
         assert!(
-            response.is_err()
-                || response
-                    .as_ref()
-                    .expect("Can't happen")
-                    .contains("invalid_request_error")
+            response
+                .as_ref()
+                .expect("Can't happen")
+                .contains("invalid_request_error")
                 || response.unwrap().contains("fish")
         );
     }
