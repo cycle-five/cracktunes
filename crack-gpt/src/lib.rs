@@ -93,7 +93,11 @@ pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError>
     let response = res1.unwrap();
     let asdf = response.choices.first().expect("No choices in response.");
 
-    Ok(asdf.message.content.clone().expect("No content in message."))
+    Ok(asdf
+        .message
+        .content
+        .clone()
+        .expect("No content in message."))
 }
 
 #[cfg(test)]
