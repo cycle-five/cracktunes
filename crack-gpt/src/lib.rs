@@ -2,13 +2,60 @@ use async_openai::{
     config::AzureConfig,
     error::OpenAIError,
     types::{
-        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-        CreateChatCompletionRequestArgs,
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
     },
     Client,
 };
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use ttl_cache::TtlCache;
 
 const GPT_PROMPT: &str = "You are a discord music and utility bot called Crack Tunes, you are friendly and helpful. You have a 64 token output limit and no memory between questions.";
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+
+#[derive(Clone)]
+/// A context struct for our GPT command.
+pub struct GptContext {
+    pub msg_cache: Arc<RwLock<TtlCache<u64, Vec<ChatCompletionRequestMessage>>>>,
+    pub key: Option<String>,
+}
+
+impl Default for GptContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GptContext {
+    pub fn new() -> Self {
+        GptContext {
+            msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
+            key: None,
+        }
+    }
+
+    /// Load the key from environment variables if it is not already set.
+    pub fn load_key_if_empty(&mut self) -> Result<String, Error> {
+        if let Some(key) = &self.key {
+            return Ok(key.clone());
+        };
+
+        match std::env::var("OPENAI_API_KEY") {
+            Ok(key) => {
+                self.key = Some(key.clone());
+                Ok(key)
+            },
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
+    /// Set the key for the context.
+    pub fn set_key(&mut self, key: String) {
+        self.key = Some(key);
+    }
+}
 
 pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError> {
     let key = std::env::var("OPENAI_API_KEY").expect("No OPENAI_API_KEY environment variable set.");
