@@ -18,6 +18,13 @@ pub struct User {
     pub last_seen: chrono::NaiveDate,
 }
 
+/// UserTrace is a struct that represents a trace of a user's activity.
+pub struct UserTrace {
+    pub user_id: i64,
+    pub ts: chrono::NaiveDateTime,
+    pub whence: Option<String>,
+}
+
 /// UserVote is a struct that represents a vote from a user for the bot on a toplist site.
 #[derive(sqlx::FromRow)]
 pub struct UserVote {
@@ -61,6 +68,18 @@ impl User {
                 None
             },
         }
+    }
+
+    /// Records the last seen time of a user.
+    /// This probably should be brough out of the db part of the code.
+    pub async fn record_last_seen(pool: &PgPool, user_id: i64) -> Result<UserTrace, sqlx::Error> {
+        sqlx::query_as!(
+            UserTrace,
+            r#"INSERT INTO public.user_trace (user_id, ts, whence) VALUES ($1, now(), NULL) RETURNING user_id, ts, whence"#,
+            user_id
+        )
+        .fetch_one(pool)
+        .await
     }
 
     /// Insert a user into the database if it's new, update the username and lastseen otherwise.

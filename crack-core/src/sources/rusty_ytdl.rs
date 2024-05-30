@@ -1,15 +1,75 @@
-use std::{fmt::Display, time::Duration};
-
-use crate::{commands::QueryType, errors::CrackedError, http_utils};
+use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
+use bytes::Buf;
+use bytes::BytesMut;
+use rusty_ytdl::stream::Stream;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
     Video, VideoInfo,
 };
-use songbird::input::AuxMetadata;
+use serenity::async_trait;
+use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::{fmt::Display, time::Duration};
+use symphonia::core::io::MediaSource;
+use tokio::sync::RwLock;
 
-/// Out strucut to wrap the rusty-ytdl search instance
-//TODO expand to go beyond search
+use super::ytdl::HANDLE;
+/// Hacky, why did I do this? `AsString`
+pub trait AsString {
+    fn as_string(&self) -> String;
+}
+
+/// Implement the `AsString` trait for the `SearchResult` enum.
+impl AsString for SearchResult {
+    fn as_string(&self) -> String {
+        match self {
+            SearchResult::Video(video) => video.title.clone(),
+            SearchResult::Playlist(playlist) => playlist.name.clone(),
+            SearchResult::Channel(channel) => channel.name.clone(),
+        }
+    }
+}
+
+/// Implement the `AsString` trait for the `VideoInfo` struct.
+impl AsString for VideoInfo {
+    fn as_string(&self) -> String {
+        self.video_details.title.clone()
+    }
+}
+
+/// Implement the `AsString` trait for the `Playlist` struct.
+impl AsString for Playlist {
+    fn as_string(&self) -> String {
+        self.name.clone()
+    }
+}
+
+/// Implement the `AsString` trait for the `YouTube` struct.
+impl AsString for YouTube {
+    fn as_string(&self) -> String {
+        "YouTube".to_string()
+    }
+}
+
+/// Implement the `AsString` trait for the `YoutubeDl` struct.
+impl AsString for YoutubeDl {
+    fn as_string(&self) -> String {
+        "YoutubeDl".to_string()
+    }
+}
+
+/// Implement the `AsString` trait for the `RustyYoutubeClient` struct.
+impl AsString for RustyYoutubeClient {
+    fn as_string(&self) -> String {
+        self.to_string()
+    }
+}
+
 #[derive(Clone, Debug)]
+/// Our strucut to wrap the rusty-ytdl search instance
+//TODO expand to go beyond search
 pub struct RustyYoutubeClient {
     pub rusty_ytdl: YouTube,
     pub client: reqwest::Client,
@@ -27,9 +87,30 @@ impl Display for RustyYoutubeClient {
 
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeSearch {
-    rusty_ytdl: RustyYoutubeClient,
-    metadata: Option<AuxMetadata>,
-    query: QueryType,
+    pub rusty_ytdl: RustyYoutubeClient,
+    pub metadata: Option<AuxMetadata>,
+    pub query: QueryType,
+}
+
+/// More general struct to wrap the search instances. Name this better.
+#[derive(Clone, Debug)]
+pub struct FastYoutubeSearch {
+    pub query: QueryType,
+    pub client: reqwest::Client,
+    pub ytdl: either::Either<RustyYoutubeClient, YoutubeDl>,
+    pub metadata: Option<AuxMetadata>,
+}
+
+impl Display for FastYoutubeSearch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            r#"FastYT: Query: {:?}
+            ytdl: {:?}"#,
+            self.query.build_query(),
+            either::for_both!(&self.ytdl, ytdl => ytdl.as_string()),
+        )
+    }
 }
 
 impl Display for RustyYoutubeSearch {
@@ -97,7 +178,10 @@ impl RustyYoutubeClient {
 
     pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
         let mut metadata = AuxMetadata::default();
-        tracing::warn!("{:?}", video.video_details);
+        tracing::info!(
+            "video_info_to_aux_metadata: {:?}",
+            video.video_details.title
+        );
         let details = &video.video_details;
         metadata.artist = None;
         metadata.album = None;
@@ -126,7 +210,7 @@ impl RustyYoutubeClient {
         //     ..Default::default()
         // };
         // let video = Video::new_with_options(&url, vid_options)?;
-        let video = Video::new(&url).unwrap();
+        let video = Video::new(&url)?;
         video.get_basic_info().await.map_err(|e| e.into())
     }
 
@@ -155,6 +239,192 @@ impl RustyYoutubeClient {
     }
 }
 
+impl From<RustyYoutubeSearch> for Input {
+    fn from(val: RustyYoutubeSearch) -> Self {
+        Input::Lazy(Box::new(val))
+    }
+}
+
+#[async_trait]
+impl Compose for RustyYoutubeSearch {
+    fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        Err(AudioStreamError::Unsupported)
+    }
+
+    async fn create_async(
+        &mut self,
+    ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        let query_str = self
+            .query
+            .build_query()
+            .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
+        let search_res = self
+            .rusty_ytdl
+            .one_shot(query_str)
+            .await?
+            .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
+        let search_video = match search_res {
+            SearchResult::Video(video) => video,
+            SearchResult::Playlist(playlist) => {
+                let video = playlist.videos.first().unwrap();
+                video.clone()
+            },
+            _ => {
+                return Err(Into::into(CrackedError::AudioStreamRustyYtdlMetadata));
+            },
+        };
+        Video::new(&search_video.url)
+            .map_err(CrackedError::from)?
+            .stream()
+            .await
+            .map(|input| {
+                // let stream = AsyncAdapterStream::new(input, 64 * 1024);
+                let stream = Box::into_pin(input).into_media_source();
+
+                AudioStream {
+                    input: Box::new(stream) as Box<dyn MediaSource>,
+                    hint: None,
+                }
+            })
+            .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
+    }
+
+    fn should_create_async(&self) -> bool {
+        true
+    }
+
+    async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
+        if let Some(meta) = self.metadata.as_ref() {
+            return Ok(meta.clone());
+        }
+
+        self.rusty_ytdl
+            .one_shot(self.query.build_query().unwrap())
+            .await?;
+
+        self.metadata
+            .clone()
+            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
+    }
+}
+
+pub trait StreamExt {
+    fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream;
+}
+
+impl StreamExt for dyn Stream + Sync + Send {
+    fn into_media_source(self: Pin<Box<Self>>) -> MediaSourceStream
+    where
+        Self: Sync + Send + 'static,
+    {
+        MediaSourceStream {
+            stream: self,
+            buffer: Arc::new(RwLock::new(BytesMut::new())),
+            position: Arc::new(RwLock::new(0)),
+        }
+    }
+}
+
+pub struct MediaSourceStream {
+    stream: Pin<Box<dyn Stream + Sync + Send>>,
+    buffer: Arc<RwLock<BytesMut>>,
+    position: Arc<RwLock<u64>>,
+}
+
+impl MediaSourceStream {
+    async fn read_async(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let opt_bytes = if self.buffer.read().await.is_empty() {
+            either::Left(
+                self.stream
+                    .chunk()
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+            )
+        } else {
+            either::Right(())
+        };
+
+        let chunk = match opt_bytes {
+            either::Left(Some(chunk)) => Some(chunk),
+            either::Left(None) => return Ok(0), // End of stream
+            either::Right(_) => None,
+        };
+
+        let mut buffer = self.buffer.write().await;
+        let mut position = self.position.write().await;
+
+        if let Some(chunk) = chunk {
+            buffer.extend_from_slice(&chunk);
+        }
+
+        let len = std::cmp::min(buf.len(), buffer.len());
+        buf[..len].copy_from_slice(&buffer[..len]);
+        buffer.advance(len);
+        *position += len as u64;
+
+        Ok(len)
+    }
+}
+
+impl Read for MediaSourceStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // Get the current tokio runtime
+        let handle = HANDLE.lock().unwrap().clone().unwrap();
+        tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
+    }
+}
+
+impl Seek for MediaSourceStream {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match pos {
+            SeekFrom::End(offset) => {
+                let len = self.byte_len().ok_or(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid seek position",
+                ))?;
+                let new_position = len as i64 + offset;
+                if new_position < 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid seek position",
+                    ));
+                }
+                let mut position = self.position.blocking_write();
+                *position = new_position as u64;
+                Ok(*position)
+            },
+            SeekFrom::Start(offset) => {
+                let mut position = self.position.blocking_write();
+                *position = offset;
+                Ok(*position)
+            },
+            SeekFrom::Current(offset) => {
+                let mut position = self.position.blocking_write();
+                let new_position = (*position as i64) + offset;
+                if new_position < 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid seek position",
+                    ));
+                }
+                *position = new_position as u64;
+                Ok(*position)
+            },
+        }
+    }
+}
+
+impl MediaSource for MediaSourceStream {
+    fn is_seekable(&self) -> bool {
+        false
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        // Some(self.stream.content_length() as u64)
+        Some(0)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::http_utils;
@@ -169,32 +439,28 @@ mod test {
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
-        if playlist.is_err() {
-            assert!(playlist
-                .unwrap_err()
-                .to_string()
-                .contains("Your IP is likely being blocked"));
-        } else {
-            let playlist_val = playlist.unwrap().unwrap();
-            let metadata =
-                crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
-                    &playlist_val,
-                );
-            println!("{:?}", metadata);
+        match playlist {
+            Ok(Some(playlist)) => {
+                let metadata =
+                    crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
+                        &playlist,
+                    );
+                println!("{:?}", metadata);
+            },
+            Ok(None) => {
+                assert!(false)
+            },
+            Err(e) => {
+                assert!(e.to_string().contains("Your IP is likely being blocked"))
+            },
         }
     }
 
     #[tokio::test]
     async fn test_rusty_ytdl() {
-        // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
 
-        // let client = reqwest::ClientBuilder::new()
-        //     .use_rustls_tls()
-        //     .build()
-        //     .unwrap();
         let rusty_ytdl = YouTube::new().unwrap();
-        // let mut all_res = Vec::new();
         for search in searches {
             let res = rusty_ytdl.search_one(search.to_string(), None).await;
             println!("{res:?}");
@@ -205,7 +471,6 @@ mod test {
                         .to_string()
                         .contains("Your IP is likely being blocked")
             );
-            // all_res.push(res.unwrap().clone());
         }
     }
 
@@ -226,7 +491,6 @@ mod test {
             .unwrap();
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
-        // let mut all_res = Vec::new();
         for search in searches {
             let res = ytdl.one_shot(search.to_string()).await;
             assert!(
@@ -236,7 +500,6 @@ mod test {
                         .to_string()
                         .contains("Your IP is likely being blocked")
             );
-            // all_res.push(res.unwrap().clone());
         }
     }
 
@@ -265,57 +528,6 @@ mod test {
             res_all.push(res);
         }
 
-        // assert!(res_all.len() == 5);
-
         println!("{:?}", res_all);
     }
-    // #[tokio::test]
-    // async fn test_ytdl_parallel() {
-    //     // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-    //     let searches = vec![
-    //         "The Night Chicago Died".to_string(),
-    //         "The Devil Went Down to Georgia".to_string(),
-    //         "Hit That The Offspring".to_string(),
-    //         "Nightwish I Wish I had an Angel".to_string(),
-    //         "Oh Shit I'm Feeling It".to_string(),
-    //     ];
-    //     let ytdl = crate::sources::rusty_ytdl::MyRustyYoutubeDl::new(None).unwrap();
-    //     let ytdl = Arc::new(ytdl);
-    //     use tokio::task::JoinSet;
-
-    //     {
-    //         let ytdl2 = ytdl.clone();
-    //         let mut futures = Vec::with_capacity(searches.len());
-    //         for search in searches {
-    //             let fut = ytdl2.clone().one_shot(search);
-    //             futures.push(fut);
-    //         }
-
-    //         let mut set = JoinSet::new();
-
-    //         for fut in futures {
-    //             set.spawn(fut);
-    //         }
-
-    //         let mut results = Vec::with_capacity(futures.len());
-    //         while let Some(res) = set.join_next().await {
-    //             let out = &mut res.unwrap().unwrap();
-    //             results.append(out);
-    //         }
-
-    //         assert!(results.len() == 5);
-    //         println!("{:?}", results);
-    //     }
-    //     println!("{:?}", ytdl)
-    //     // for search in searches {
-    //     //     let join_handle =
-    //     //         tokio::spawn(async move { ytdl.clone().one_shot(search.to_string()) });
-    //     //     handles.push(join_handle);
-    //     // }
-
-    //     // for handle in handles {
-    //     //     results.push(handle.await.unwrap())
-    //     // }
-    //     //tokio::join!(all_res);
-    // }
 }

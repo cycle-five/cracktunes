@@ -1,9 +1,9 @@
-use serenity::all::Channel;
-
+use crate::guild::operations::GuildSettingsOperations;
 use crate::{
     errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
     Error,
 };
+use serenity::all::Channel;
 
 #[poise::command(prefix_command, required_permissions = "ADMINISTRATOR")]
 pub async fn music_channel(
@@ -25,27 +25,21 @@ pub async fn music_channel(
     };
 
     let data = ctx.data();
-    let _ = data
-        .guild_settings_map
-        .write()
-        .unwrap()
-        .entry(guild_id)
-        .and_modify(|e| {
-            e.set_music_channel(channel_id.get());
-        });
+    let _ = data.set_music_channel(guild_id, channel_id).await;
 
-    let opt_settings = data.guild_settings_map.read().unwrap().clone();
+    let opt_settings = data.guild_settings_map.read().await.clone();
     let settings = opt_settings.get(&guild_id);
 
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
-    send_response_poise(
+    let msg = send_response_poise(
         ctx,
         CrackedMessage::Other(format!("Music channel set to {}", channel_id)),
         true,
     )
     .await?;
+    data.add_msg_to_cache(guild_id, msg);
 
     Ok(())
 }

@@ -5,7 +5,7 @@ use crate::{
     http_utils,
     messaging::message::CrackedMessage,
     sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
-    utils::send_embed_response_str,
+    utils::send_response_poise,
     Context, CrackedError, Error,
 };
 use songbird::input::AuxMetadata;
@@ -101,7 +101,7 @@ pub async fn loadspotify(
     let len = metadata_vec.len();
 
     // Send the embed
-    send_embed_response_str(ctx, CrackedMessage::PlaylistCreated(name, len).to_string()).await?;
+    send_response_poise(ctx, CrackedMessage::PlaylistCreated(name, len), false).await?;
 
     Ok(())
 }

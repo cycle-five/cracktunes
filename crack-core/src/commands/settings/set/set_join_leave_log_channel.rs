@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
@@ -42,14 +43,14 @@ pub async fn join_leave_log_channel(
     let _ = data
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| {
             e.set_join_leave_log_channel(channel_id.get());
         });
 
-    let opt_settings = data.guild_settings_map.read().unwrap().clone();
-    let settings = opt_settings.get(&guild_id);
+    let settings_temp = data.get_guild_settings(guild_id).await;
+    let settings = settings_temp.as_ref();
 
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;

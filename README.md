@@ -6,7 +6,6 @@
 [![GitHub CI workflow status](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml/badge.svg)](https://github.com/cycle-five/cracktunes/actions/workflows/ci_workflow.yml)
 [![Dependency status](https://deps.rs/repo/github/cycle-five/cracktunes/status.svg)](https://deps.rs/repo/github/cycle-five/cracktunes)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cycle-five/cracktunes/blob/main/LICENSE)
-[![Rust Version](https://img.shields.io/badge/rustc-1.76-blue.svg)](https://github.com/cycle-five/cracktunes/)
 [![Rust Version](https://img.shields.io/badge/rustc-1.78-blue.svg)](https://github.com/cycle-five/cracktunes/)
 
 ## Aknowledgements
@@ -66,25 +65,64 @@ pip install -U yt-dlp
 If you are using Windows Subsystem for Linux (WSL), you should follow the [Linux/MacOS](#linuxmacos) guide, and, in addition to the other required packages, install pkg-config, which you may do by running:
 
 ```shell
-apt install pkg-config
+apt install -y pkg-config
 ```
 
-## Testing **FIXME**
+## Testing
 
-Tests are available inside the `src/tests` folder. They can be run via `cargo test`. It's recommended that you run the tests before submitting your Pull Request.
-Increasing the test coverage is also welcome.
+The following command will run all tests:
 
-### Docker **FIXME**
+```shell
+cargo +nightly test --all
+```
+
+Some tests are available inside the `src/tests` folder, others are in their respective
+files. It's recommended that you run the tests before submitting a Pull Request.
+Increasing the test coverage is also welcome. Test coverage is tracked using
+[tarpaulin]().
+
+```shell
+cargo +nightly tarpaulin --all
+```
+
+### Docker Compose
 
 Within the project folder, simply run the following:
 
 ```shell
 docker build -t cracktunes .
-docker run -d --env-file .env cracktunes
+docker compose up -d
 ```
 
 
 # ~~Roadmap~~ Change Log
+## v0.3.7 (2024/05/29)
+- [x] crackgpt 0.2.0!
+      Added back chatgpt support, which I am now self hosting for CrackTunes
+      and is backed by GPT 4o.
+- [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
+- [x] Remove the grafana dashboard.
+- [x] Switch to async logging.
+- [x] Add an async service to handle the database (accept writes on a channel,
+      and write to the database in a separate thread).
+      Eventually this could be a seperate service (REST / GRPC).
+## v0.3.6 (2024/05/03)
+- Music channel setting (can lock music playing command and responses to a specific channel)
+- Fixes in logging
+- Fixes in admin commands
+- Lots of refactoring code cleanup.
+## v0.3.5 (2024/04/23)
+- Significantly improved loading speed of songs into the queue.
+- Fix Youtube Playlists.
+- Lots of refactoring.
+- Can load spotify playlists very quickly
+- Option to vote for Crack Tunes on top.gg for 12 hours of premium access.
+## v0.3.4
+- playlist loadspotify and playlist play commands
+- Invite and voting links
+- Updated serenity / poise / songbird to latest versions
+- Refactored functions for creating embeds and sending messages to it's own module
+
 ## v0.3.3 (2024/04/??)
 - `/loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
 - voting tracking

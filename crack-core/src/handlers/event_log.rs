@@ -1,13 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
-
 use super::event_log_impl::*;
-
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, Data, Error,
+    utils::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
 use poise::{
@@ -15,6 +9,7 @@ use poise::{
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
+use serenity::all::User;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -36,12 +31,13 @@ impl<T: Serialize> Serialize for LogEntry<T> {
     }
 }
 
-pub fn get_log_channel(
+/// Gets the log channel for a given guild.
+pub async fn get_log_channel(
     channel_name: &str,
     guild_id: &GuildId,
     data: &Data,
 ) -> Option<serenity::model::id::ChannelId> {
-    let guild_settings_map = data.guild_settings_map.read().unwrap().clone();
+    let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
         .get(&guild_id.into())
         .map(|x| x.get_log_channel(channel_name))
@@ -50,41 +46,38 @@ pub fn get_log_channel(
 
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
-    guild_settings_map: &Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+    guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
     guild_id: &GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
-    let x = {
-        let guild_settings_map = guild_settings_map.read().unwrap().clone();
+    let guild_settings_map = guild_settings_map.read().await;
 
-        let guild_settings = guild_settings_map
-            .get(guild_id)
-            .map(Ok)
-            .unwrap_or_else(|| {
-                tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
-                Err(CrackedError::LogChannelWarning(
-                    event.snake_case_name(),
-                    *guild_id,
-                ))
-            })?
-            .clone();
-        match guild_settings.get_log_channel_type_fe(event) {
-            Some(channel_id) => {
-                if guild_settings.ignored_channels.contains(&channel_id.get()) {
-                    return Err(CrackedError::LogChannelWarning(
-                        event.snake_case_name(),
-                        *guild_id,
-                    ));
-                }
-                Ok(channel_id)
-            },
-            None => Err(CrackedError::LogChannelWarning(
+    let guild_settings = guild_settings_map
+        .get(guild_id)
+        .map(Ok)
+        .unwrap_or_else(|| {
+            tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
+            Err(CrackedError::LogChannelWarning(
                 event.snake_case_name(),
                 *guild_id,
-            )),
-        }
-    };
-    x
+            ))
+        })?
+        .clone();
+    match guild_settings.get_log_channel_type_fe(event) {
+        Some(channel_id) => {
+            if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                return Err(CrackedError::LogChannelWarning(
+                    event.snake_case_name(),
+                    *guild_id,
+                ));
+            }
+            Ok(channel_id)
+        },
+        None => Err(CrackedError::LogChannelWarning(
+            event.snake_case_name(),
+            *guild_id,
+        )),
+    }
 }
 
 /// Handles (routes and logs) an event.
@@ -96,9 +89,8 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: &Data,
 ) -> Result<(), Error> {
-    use serenity::all::User;
-
-    let event_log = Arc::new(&data_global.event_log);
+    // let event_log = Arc::new(&data_global.event_log);
+    let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
 
@@ -111,7 +103,7 @@ pub async fn handle_event(
                 event_in,
                 new_data,
                 &new_data.guild_id.unwrap(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -128,7 +120,7 @@ pub async fn handle_event(
                 event_in,
                 new_member,
                 &new_member.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -145,7 +137,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -171,7 +163,7 @@ pub async fn handle_event(
                 let _ = data_global
                     .guild_cache_map
                     .lock()
-                    .unwrap()
+                    .await
                     .get_mut(&guild_id)
                     .map(|x| x.time_ordered_messages.insert(now, new_message.clone()))
                     .unwrap_or_default();
@@ -186,7 +178,7 @@ pub async fn handle_event(
                 event_in,
                 new_message,
                 &new_message.guild_id.unwrap(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -199,7 +191,7 @@ pub async fn handle_event(
                 event_in,
                 event,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -211,7 +203,7 @@ pub async fn handle_event(
                 event_in,
                 permission,
                 &permission.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -223,7 +215,7 @@ pub async fn handle_event(
                 event_in,
                 execution,
                 &execution.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -234,7 +226,7 @@ pub async fn handle_event(
             event_in,
             &rule,
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -244,7 +236,7 @@ pub async fn handle_event(
             event_in,
             &(event_name.to_string(), rule.clone()),
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -254,7 +246,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, rule),
             &rule.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -264,7 +256,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, category),
             &category.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -274,7 +266,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, category),
             &category.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -284,7 +276,7 @@ pub async fn handle_event(
             event_in,
             &(channel, messages),
             &channel.guild_id,
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -294,7 +286,7 @@ pub async fn handle_event(
             event_in,
             &(event_name, pin),
             &pin.guild_id.unwrap_or_default(),
-            &ctx.http,
+            &ctx,
             event_log,
             event_name
         ),
@@ -310,7 +302,7 @@ pub async fn handle_event(
                 event_in,
                 &(event_name, old, new),
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -326,7 +318,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -342,7 +334,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -353,9 +345,9 @@ pub async fn handle_event(
                 log_guild_create,
                 guild_settings,
                 event_in,
-                &(guild, is_new, guild_settings),
+                &(guild, is_new),
                 &guild.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -368,7 +360,7 @@ pub async fn handle_event(
                 event_in,
                 &(guild, is_new, guild_settings),
                 &guild.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -382,7 +374,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &incomplete.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -396,7 +388,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &incomplete.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -412,7 +404,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -425,22 +417,26 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
+        // FIXME: Do a better diff of the old and new member data.
+        // FIXME: Do we rely always on the cache from serenity or implement
+        //        our in for any reason? (probably not needed).
         FullEvent::GuildMemberUpdate {
             old_if_available,
             new,
             event,
         } => {
+            // let local_event: GuildMemberUpdateEvent = event.clone();
             let guild_name = event
                 .guild_id
                 .to_guild_cached(&ctx.cache)
                 .map(|x| x.name.clone())
                 .unwrap_or_default();
-            let guild_settings = data_global.guild_settings_map.read().unwrap().clone();
+            let guild_settings = data_global.guild_settings_map.read().await.clone();
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
@@ -507,7 +503,7 @@ pub async fn handle_event(
                     send_log_embed_thumb(
                         &guild_name,
                         &channel_id,
-                        &ctx.http,
+                        &ctx,
                         &id.to_string(),
                         &title,
                         &description,
@@ -520,9 +516,13 @@ pub async fn handle_event(
                     tracing::debug!(title);
                 },
             }
-            event_log.write_log_obj_note(event_name, Some(notes), &(old_if_available, new))
+            event_log
+                .write_log_obj_note_async(event_name, Some(notes), &(old_if_available, new, event))
+                .await
         },
-        FullEvent::GuildMembersChunk { chunk } => event_log.write_log_obj(event_name, chunk),
+        FullEvent::GuildMembersChunk { chunk } => {
+            event_log.write_log_obj_async(event_name, chunk).await
+        },
         FullEvent::GuildRoleCreate { new } => {
             log_event!(
                 log_guild_role_create,
@@ -530,7 +530,7 @@ pub async fn handle_event(
                 event_in,
                 &new,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -547,7 +547,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -564,7 +564,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -581,13 +581,13 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
         FullEvent::GuildScheduledEventCreate { event } => {
-            // event_log.write_log_obj(event_name, event)
+            // event_log.write_log_obj_async(event_name, event)
             let log_data = event;
             log_event!(
                 log_guild_scheduled_event_create,
@@ -595,7 +595,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -608,7 +608,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -621,7 +621,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -634,7 +634,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &subscribed.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -647,7 +647,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &unsubscribed.guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -663,13 +663,15 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
         FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
-            event_log.write_log_obj(event_name, &(entry, guild_id))
+            event_log
+                .write_log_obj_async(event_name, &(entry, guild_id))
+                .await
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildUpdate {
@@ -683,7 +685,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new_data.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -700,7 +702,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &new_data.id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -708,12 +710,12 @@ pub async fn handle_event(
         FullEvent::IntegrationCreate { integration } => {
             let log_data = integration;
             log_event!(
-                log_unimplemented_event,
+                log_integration_create,
                 guild_settings,
                 event_in,
                 &log_data,
                 &integration.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -721,12 +723,12 @@ pub async fn handle_event(
         FullEvent::IntegrationUpdate { integration } => {
             let log_data = integration;
             log_event!(
-                log_unimplemented_event,
+                log_integration_update,
                 guild_settings,
                 event_in,
                 &log_data,
                 &integration.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -738,25 +740,27 @@ pub async fn handle_event(
         } => {
             let log_data = &(integration_id, guild_id, application_id);
             log_event!(
-                log_unimplemented_event,
+                log_integration_delete,
                 guild_settings,
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
         FullEvent::InteractionCreate { interaction } => {
             let log_data = interaction;
+            let guild_id =
+                crate::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
             log_event!(
-                log_unimplemented_event,
+                log_interaction_create,
                 guild_settings,
                 event_in,
                 &log_data,
-                &GuildId::new(1),
-                &ctx.http,
+                &guild_id,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -769,7 +773,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &data.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -781,7 +785,7 @@ pub async fn handle_event(
                 event_in,
                 data,
                 &data.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -798,7 +802,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -807,7 +811,11 @@ pub async fn handle_event(
             channel_id,
             multiple_deleted_messages_ids,
             guild_id,
-        } => event_log.write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id)),
+        } => {
+            event_log
+                .write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id))
+                .await
+        },
         #[cfg(not(feature = "cache"))]
         FullEvent::MessageUpdate {
             old_if_available,
@@ -833,7 +841,7 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -863,11 +871,11 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &event.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
-            // event_log.write_log_obj(event_name, &(old_if_available, new, event))
+            // event_log.write_log_obj_async(event_name, &(old_if_available, new, event))
         },
         FullEvent::ReactionAdd { add_reaction } => {
             log_event!(
@@ -876,7 +884,7 @@ pub async fn handle_event(
                 event_in,
                 add_reaction,
                 &add_reaction.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -888,7 +896,7 @@ pub async fn handle_event(
                 event_in,
                 removed_reaction,
                 &removed_reaction.guild_id.unwrap_or_default(),
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -896,38 +904,62 @@ pub async fn handle_event(
         FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
-        } => event_log.write_log_obj(event_name, &(channel_id, removed_from_message_id)),
+        } => {
+            event_log
+                .write_log_obj_async(event_name, &(channel_id, removed_from_message_id))
+                .await
+        },
         FullEvent::Ready { data_about_bot } => {
             tracing::info!("{} is connected!", data_about_bot.user.name);
-            event_log.write_log_obj(event_name, data_about_bot)
+            event_log
+                .write_log_obj_async(event_name, data_about_bot)
+                .await
         },
-        FullEvent::Resume { event } => event_log.write_log_obj(event_name, event),
+        FullEvent::Resume { event } => event_log.write_log_obj_async(event_name, event).await,
         FullEvent::StageInstanceCreate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
         FullEvent::StageInstanceDelete { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
         FullEvent::StageInstanceUpdate { stage_instance } => {
-            event_log.write_log_obj(event_name, stage_instance)
+            event_log
+                .write_log_obj_async(event_name, stage_instance)
+                .await
         },
-        FullEvent::ThreadCreate { thread } => event_log.write_log_obj(event_name, thread),
+        FullEvent::ThreadCreate { thread } => {
+            event_log.write_log_obj_async(event_name, thread).await
+        },
         FullEvent::ThreadDelete {
             thread,
 
             full_thread_data: _,
-        } => event_log.write_log_obj(event_name, thread),
+        } => event_log.write_log_obj_async(event_name, thread).await,
         FullEvent::ThreadListSync { thread_list_sync } => {
-            event_log.write_log_obj(event_name, thread_list_sync)
+            event_log
+                .write_log_obj_async(event_name, thread_list_sync)
+                .await
         },
         FullEvent::ThreadMemberUpdate { thread_member } => {
-            event_log.write_log_obj(event_name, thread_member)
+            event_log
+                .write_log_obj_async(event_name, thread_member)
+                .await
         },
         FullEvent::ThreadMembersUpdate {
             thread_members_update,
-        } => event_log.write_log_obj(event_name, thread_members_update),
-        FullEvent::ThreadUpdate { old, new } => event_log.write_log_obj(event_name, &(old, new)),
-        // FullEvent::Unknown { name, raw } => event_log.write_log_obj(event_name, &(name, raw)),
+        } => {
+            event_log
+                .write_log_obj_async(event_name, thread_members_update)
+                .await
+        },
+        FullEvent::ThreadUpdate { old, new } => {
+            event_log.write_log_obj_async(event_name, &(old, new)).await
+        },
+        // FullEvent::Unknown { name, raw } => event_log.write_log_obj_async(event_name, &(name, raw)),
         FullEvent::UserUpdate { old_data, new } => {
             let log_data = (old_data, new);
             let guild_id = new.member.as_ref().unwrap().guild_id.unwrap();
@@ -937,16 +969,22 @@ pub async fn handle_event(
                 event_in,
                 &log_data,
                 &guild_id,
-                &ctx.http,
+                &ctx,
                 event_log,
                 event_name
             )
         },
-        FullEvent::VoiceServerUpdate { event } => event_log.write_log_obj(event_name, event),
+        FullEvent::VoiceServerUpdate { event } => {
+            event_log.write_log_obj_async(event_name, event).await
+        },
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,
-        } => event_log.write_obj(&(guild_id, belongs_to_channel_id)),
+        } => {
+            event_log
+                .write_obj(&(guild_id, belongs_to_channel_id))
+                .await
+        },
         FullEvent::CacheReady { guilds } => {
             tracing::info!(
                 "{}: {}",

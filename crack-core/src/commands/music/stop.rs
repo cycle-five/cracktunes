@@ -12,7 +12,7 @@ use crate::{
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    ctx.data().set_autoplay(guild_id, false);
+    ctx.data().set_autoplay(guild_id, false).await;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
     let call = manager.get(guild_id).unwrap();
 

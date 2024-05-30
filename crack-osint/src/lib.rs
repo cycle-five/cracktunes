@@ -61,7 +61,8 @@ pub use virustotal::*;
 
 //     Ok(())
 // }
-
+#[cfg(test)]
+mod test;
 // #[cfg(test)]
 // mod test {
 //     use crate::osint;

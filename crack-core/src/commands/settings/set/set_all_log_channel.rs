@@ -63,7 +63,7 @@ pub async fn set_all_log_channel_data(
     Ok(data
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| {
             e.set_all_log_channel(channel_id.into());

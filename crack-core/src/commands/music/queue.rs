@@ -1,9 +1,9 @@
 use crate::{
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    interface::{build_nav_btns, create_queue_embed},
+    messaging::interface::{create_nav_btns, create_queue_embed},
     messaging::messages::QUEUE_EXPIRED,
-    utils::{calculate_num_pages, forget_queue_message, get_interaction},
+    utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
 use ::serenity::builder::{
@@ -12,7 +12,8 @@ use ::serenity::builder::{
 use ::serenity::futures::StreamExt;
 use poise::CreateReply;
 use songbird::{Event, TrackEvent};
-use std::{cmp::min, ops::Add, sync::Arc, sync::RwLock, time::Duration};
+use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 const EMBED_TIMEOUT: u64 = 3600;
 
@@ -20,6 +21,8 @@ const EMBED_TIMEOUT: u64 = 3600;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
+    use crate::utils::get_interaction_new;
+
     tracing::info!("queue called");
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     tracing::info!("guild_id: {}", guild_id);
@@ -40,15 +43,15 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction(ctx) {
-        Some(interaction) => {
+    let mut message = match get_interaction_new(ctx) {
+        Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
             interaction
                 .create_response(
                     &ctx.serenity_context().http,
                     CreateInteractionResponse::Message(
                         CreateInteractionResponseMessage::new()
                             .embed(create_queue_embed(&tracks, 0).await)
-                            .components(build_nav_btns(0, num_pages)),
+                            .components(create_nav_btns(0, num_pages)),
                     ),
                 )
                 .await?;
@@ -61,7 +64,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
                 .send(
                     CreateReply::default()
                         .embed(create_queue_embed(&tracks, 0).await)
-                        .components(build_nav_btns(0, num_pages)),
+                        .components(create_nav_btns(0, num_pages)),
                 )
                 .await?;
             reply.into_message().await?
@@ -76,7 +79,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
     data.guild_cache_map
         .lock()
-        .unwrap()
+        .await
         .entry(guild_id)
         .or_default()
         .queue_messages
@@ -87,7 +90,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
             http: ctx.serenity_context().http.clone(),
-            _cache: ctx.serenity_context().cache.clone(),
+            cache: ctx.serenity_context().cache.clone(),
             data: data.clone(),
             call: call.clone(),
             guild_id,
@@ -106,7 +109,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         let tracks = call.lock().await.queue().current_queue();
 
         let page_num = {
-            let mut page_wlock = page.write().unwrap();
+            let mut page_wlock = page.write().await;
 
             *page_wlock = match btn_id.as_str() {
                 "<<" => 0,
@@ -123,7 +126,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
                     .add_embed(create_queue_embed(&tracks, page_num).await)
-                    .components(build_nav_btns(page_num, num_pages)),
+                    .components(create_nav_btns(page_num, num_pages)),
             ),
         )
         .await?;

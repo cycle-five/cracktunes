@@ -7,8 +7,8 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let autoplay = ctx.data().get_autoplay(guild_id);
-    ctx.data().set_autoplay(guild_id, !autoplay);
+    let autoplay = ctx.data().get_autoplay(guild_id).await;
+    ctx.data().set_autoplay(guild_id, !autoplay).await;
 
     let msg = if autoplay {
         send_response_poise(ctx, CrackedMessage::AutoplayOff, true)

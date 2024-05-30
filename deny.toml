@@ -18,14 +18,14 @@ deny = [
     # term is not fully maintained, and termcolor is replacing it
     { name = "term" },
 ]
-# skip-tree = [
-#     { name = "windows-sys" },
-#     { name = "hermit-abi" },
-#     { name = "syn" },
-#     { name = "bitflags" },
-#     { name = "indexmap" },
-#     { name = "examples" },
-# ]
+skip-tree = [
+    { name = "windows-sys" },
+    { name = "hermit-abi" },
+    { name = "syn" },
+    { name = "bitflags" },
+    { name = "indexmap" },
+    { name = "examples" },
+]
 
 [licenses]
 unlicensed = "deny"

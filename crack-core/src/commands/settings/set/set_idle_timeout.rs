@@ -25,7 +25,7 @@ pub async fn idle_timeout(
     let _res = data
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| e.timeout = timeout)
         .or_insert_with(|| {

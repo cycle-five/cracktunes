@@ -1,6 +1,6 @@
 use crate::{
-    errors::CrackedError, interface::create_now_playing_embed, utils::send_embed_response_poise,
-    Context, Error,
+    errors::CrackedError, messaging::interface::create_now_playing_embed,
+    utils::send_embed_response_poise, Context, Error,
 };
 use serenity::all::GuildId;
 use serenity::prelude::Mutex;

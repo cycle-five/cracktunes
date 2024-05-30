@@ -21,7 +21,7 @@ pub async fn all(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let settings_ro = {
-        let mut guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
+        let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
         let settings = guild_settings_map
             .entry(guild_id)
             .or_insert(GuildSettings::new(

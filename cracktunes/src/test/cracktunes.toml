@@ -1,27 +1,27 @@
 prefix = "rs!"
 video_status_poll_interval = 120
-sys_log_channel_id = 0
+sys_log_chan_id = 0
 self_deafen = true
 volume = 0.3
 database_url = "postgres://./data/crackedmusic.db"
 
 [[cam_kick]]
-cammed_down_timeout = 0
+timeout = 0
 guild_id = 1
-channel_id = 0
-dc_message = "You have been violated from the voice channel for not having a camera on."
-send_msg_deafen = false
-send_msg_mute = false
-send_msg_dc = false
+chan_id = 0
+dc_msg = "You have been violated from the voice channel for not having a camera on."
+msg_on_deafen = false
+msg_on_mute = false
+msg_on_dc = false
 
 [[cam_kick]]
-cammed_down_timeout = 0
+timeout = 0
 guild_id = 2
-channel_id = 0
-dc_message = "You have been violated from the voice channel for not having a camera on."
-send_msg_deafen = false
-send_msg_mute = false
-send_msg_dc = false
+chan_id = 0
+dc_msg = "You have been violated from the voice channel for not having a camera on."
+msg_on_deafen = false
+msg_on_mute = false
+msg_on_dc = false
 
 [[guild_settings_map]]
 prefix = "m!"
@@ -36,7 +36,7 @@ self_deafen = true
 volume = 0.3
 timeout = 0
 [guild_settings_map.welcome_settings]
-channel_id = 0
+chan_id = 0
 autorole = 0
 
 [[guild_settings_map]]

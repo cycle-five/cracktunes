@@ -218,6 +218,7 @@ pub struct WelcomeSettings {
     pub channel_id: Option<u64>,
     pub message: Option<String>,
     pub auto_role: Option<u64>,
+    pub password: Option<String>,
 }
 
 impl Display for WelcomeSettings {
@@ -236,11 +237,50 @@ impl From<WelcomeSettingsRead> for WelcomeSettings {
             channel_id: settings_db.channel_id.map(|x| x as u64),
             message: settings_db.message,
             auto_role: settings_db.auto_role.map(|x| x as u64),
+            password: None,
         }
     }
 }
 
 impl WelcomeSettings {
+    /// Create a new empty welcome settings struct.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Set the channel id, returning a new WelcomeSettings.
+    pub fn with_channel_id(self, channel_id: u64) -> Self {
+        Self {
+            channel_id: Some(channel_id),
+            ..self
+        }
+    }
+
+    /// Set the message, returning a new WelcomeSettings.
+    pub fn with_message(self, message: String) -> Self {
+        Self {
+            message: Some(message),
+            ..self
+        }
+    }
+
+    /// Set the auto role, returning a new WelcomeSettings.
+    pub fn with_auto_role(self, auto_role: u64) -> Self {
+        Self {
+            auto_role: Some(auto_role),
+            ..self
+        }
+    }
+
+    /// Set the password, returning a new WelcomeSettings.
+    pub fn with_password(self, password: String) -> Self {
+        Self {
+            password: Some(password),
+            ..self
+        }
+    }
+
+    /// Save the welcome settings to the database.
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
         crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
             .await
@@ -556,20 +596,24 @@ impl GuildSettings {
         Ok(())
     }
 
+    /// Set the premium status, mutating.
     pub fn with_premium(self, premium: bool) -> Self {
         Self { premium, ..self }
     }
 
+    /// Toggle the autopause setting, mutating.
     pub fn toggle_autopause(&mut self) -> &mut Self {
         self.autopause = !self.autopause;
         self
     }
 
+    /// Toggle the autoplay setting, mutating.
     pub fn toggle_self_deafen(&mut self) -> &mut Self {
         self.self_deafen = !self.self_deafen;
         self
     }
 
+    /// Set the allowed domains, mutating.
     pub fn set_allowed_domains(&mut self, allowed_str: &str) {
         let allowed = allowed_str
             .split(';')
@@ -580,6 +624,7 @@ impl GuildSettings {
         self.allowed_domains = allowed;
     }
 
+    /// Set the banned domains, mutating.
     pub fn set_banned_domains(&mut self, banned_str: &str) {
         let banned = banned_str
             .split(';')
@@ -590,6 +635,7 @@ impl GuildSettings {
         self.banned_domains = banned;
     }
 
+    /// Set the music channel, without mutating.
     pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
         self.command_channels.set_music_channel(
             ChannelId::new(channel_id),
@@ -599,6 +645,7 @@ impl GuildSettings {
         self
     }
 
+    /// Update the allowed domains.
     pub fn update_domains(&mut self) {
         if !self.allowed_domains.is_empty() && !self.banned_domains.is_empty() {
             self.banned_domains.clear();
@@ -610,37 +657,45 @@ impl GuildSettings {
         }
     }
 
+    /// Authorize a user.
     pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
         self.authorized_users.entry(user_id as u64).or_insert(0);
         self
     }
 
+    /// Deauthorize a user.
     pub fn deauthorize_user(&mut self, user_id: i64) {
         if self.authorized_users.contains_key(&(user_id as u64)) {
             self.authorized_users.remove(&(user_id as u64));
         }
     }
 
+    /// Check if the user is authorized.
     pub fn check_authorized(&self, user_id: u64) -> bool {
         self.authorized_users.contains_key(&user_id)
     }
 
+    /// Check if the user is authorized.
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.contains_key(&user_id.into())
     }
 
+    /// Check if the user is a mod.
     pub fn check_mod(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
     }
 
+    /// Check if the user is a mod.
     pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
     }
 
+    /// Check if the user is an admin.
     pub fn check_admin(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
     }
 
+    /// Check if the user is an admin.
     pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
@@ -661,25 +716,30 @@ impl GuildSettings {
         self
     }
 
+    /// Set allow all domains, mutating.
     pub fn set_allow_all_domains(&mut self, allow: bool) -> &mut Self {
         self.allow_all_domains = Some(allow);
         self
     }
 
+    /// Set the idle timeout for the bot, mutating.
     pub fn set_timeout(&mut self, timeout: u32) -> &mut Self {
         self.timeout = timeout;
         self
     }
 
+    /// Set the idle timeout for the bot, without mutating.
     pub fn with_timeout(self, timeout: u32) -> Self {
         Self { timeout, ..self }
     }
 
+    /// Set the welcome settings, mutating
     pub fn set_welcome_settings(&mut self, welcome_settings: WelcomeSettings) -> &mut Self {
         self.welcome_settings = Some(welcome_settings);
         self
     }
 
+    /// Set the welcome settings, without mutating.
     pub fn with_welcome_settings(self, welcome_settings: Option<WelcomeSettings>) -> Self {
         Self {
             welcome_settings,
@@ -687,6 +747,7 @@ impl GuildSettings {
         }
     }
 
+    /// Another set welcome settings
     pub fn set_welcome_settings2(
         &mut self,
         channel_id: u64,
@@ -697,10 +758,12 @@ impl GuildSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
             auto_role,
+            ..Default::default()
         });
         self
     }
 
+    /// And a third.
     pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
@@ -710,10 +773,13 @@ impl GuildSettings {
                 .clone()
                 .map(|x| x.auto_role)
                 .unwrap_or_default(),
+
+            ..Default::default()
         });
         self
     }
 
+    /// Set the auto role,without mutating.
     pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
         let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
             WelcomeSettings {
@@ -733,6 +799,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the auto role, mutating.
     pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
@@ -768,11 +835,13 @@ impl GuildSettings {
         }
     }
 
+    /// Set the guild name, mutating.
     pub fn set_prefix(&mut self, prefix: &str) -> &mut Self {
         self.prefix = prefix.to_string();
         self
     }
 
+    /// Set the default additional prefixes, mutating.
     pub fn set_default_additional_prefixes(&mut self) -> &mut Self {
         self.additional_prefixes = ADDITIONAL_PREFIXES
             .to_vec()
@@ -782,11 +851,13 @@ impl GuildSettings {
         self
     }
 
+    /// Set the ignored channels, mutating.
     pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
         self.ignored_channels = ignored_channels;
         self
     }
 
+    /// Get the guild name.
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
             self.guild_id.to_string()
@@ -795,10 +866,12 @@ impl GuildSettings {
         }
     }
 
+    /// Get the prefix.
     pub fn get_prefix(&self) -> &str {
         &self.prefix
     }
 
+    /// Set the all log channel, with mutating.
     pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
@@ -810,6 +883,7 @@ impl GuildSettings {
         self
     }
 
+    /// Set the join/leave log channel, without mutating.
     pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
         let log_settings = if let Some(log_settings) = self.log_settings.clone() {
             LogSettings {
@@ -828,6 +902,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the command channels, notmutating.
     pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
         Self {
             command_channels,
@@ -835,6 +910,7 @@ impl GuildSettings {
         }
     }
 
+    /// Set the server join/leave log channel, mutating.
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
@@ -983,7 +1059,7 @@ impl TypeMapKey for AtomicU16Key {
 
 /// Convenience type for the GuildSettingsMap
 pub type GuildSettingsMapParam =
-    std::sync::Arc<std::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
+    std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
 
 #[cfg(test)]
 mod test {

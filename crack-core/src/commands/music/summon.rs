@@ -39,7 +39,7 @@ pub async fn summon(
     let channel_id =
         get_channel_id_for_summon(channel, channel_id_str, guild.clone(), user_id).await?;
 
-    let call: Arc<Mutex<Call>> = match manager.get(guild.id) {
+    let call: Arc<Mutex<Call>> = match manager.get(guild_id) {
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
@@ -52,7 +52,7 @@ pub async fn summon(
                 Ok(call.clone())
             }
         },
-        None => manager.join(guild.id, channel_id).await.map_err(|e| {
+        None => manager.join(guild_id, channel_id).await.map_err(|e| {
             tracing::error!("Error joining channel: {:?}", e);
             CrackedError::JoinChannelError(e)
         }),
@@ -83,10 +83,10 @@ pub async fn summon(
         handler.remove_all_global_events();
     }
     {
-        let _ = register_voice_handlers(buffer, call.clone()).await;
+        let _ = register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await;
         let mut handler = call.lock().await;
         {
-            let guild_settings_map = ctx.data().guild_settings_map.write().unwrap();
+            let guild_settings_map = ctx.data().guild_settings_map.write().await;
 
             // guild_settings_map
             //     .entry(guild_id)

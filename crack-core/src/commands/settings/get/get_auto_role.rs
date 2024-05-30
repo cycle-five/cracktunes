@@ -16,7 +16,8 @@ use crate::{Context, Data, Error};
 pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
-    get_auto_role(data, guild_id)
+    get_auto_role_internal(data, guild_id)
+        .await
         .map_or_else(
             || {
                 send_response_poise(
@@ -39,8 +40,8 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get the auto role for the server.
-pub fn get_auto_role(data: &Data, guild_id: GuildId) -> Option<RoleId> {
-    let guild_settings_map = data.guild_settings_map.read().unwrap();
+pub async fn get_auto_role_internal(data: &Data, guild_id: GuildId) -> Option<RoleId> {
+    let guild_settings_map = data.guild_settings_map.read().await;
     let guild_settings = guild_settings_map.get(&guild_id)?;
     guild_settings
         .welcome_settings

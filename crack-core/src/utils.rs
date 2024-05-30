@@ -1,11 +1,11 @@
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
-    commands::{music::doplay::RequestingUser, MyAuxMetadata},
+    commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
     db::Playlist,
-    interface::create_now_playing_embed,
-    interface::{build_nav_btns, requesting_user_to_string},
+    guild::settings::DEFAULT_PREMIUM,
     messaging::{
+        interface::{create_nav_btns, create_now_playing_embed, requesting_user_to_string},
         message::CrackedMessage,
         messages::{
             INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
@@ -15,10 +15,12 @@ use crate::{
     Context as CrackContext, CrackedError, Data, Error,
 };
 use ::serenity::{
-    all::{ChannelId, GuildId, Interaction, UserId},
-    builder::CreateEmbed,
+    all::{
+        CacheHttp, ChannelId, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
+        CreateSelectMenuOption, EmbedField, GuildId, Interaction, UserId,
+    },
     builder::{
-        CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
+        CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
@@ -36,6 +38,7 @@ use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
     cmp::{max, min},
+    collections::HashMap,
     fmt::Write,
     ops::Add,
     time::Duration,
@@ -47,6 +50,27 @@ use url::Url;
 use songbird::Call;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
+
+pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
+    match interaction {
+        Interaction::Command(int) => int.guild_id,
+        Interaction::Component(int) => int.guild_id,
+        Interaction::Modal(int) => int.guild_id,
+        Interaction::Autocomplete(int) => int.guild_id,
+        Interaction::Ping(_) => None,
+        _ => None,
+    }
+}
+
+/// Convert a duration to a string.
+pub fn duration_to_string(duration: Duration) -> String {
+    let mut secs = duration.as_secs();
+    let hours = secs / 3600;
+    secs %= 3600;
+    let minutes = secs / 60;
+    secs %= 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+}
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
@@ -90,7 +114,7 @@ pub async fn build_log_embed_thumb(
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &serenity::ChannelId,
-    http: &Arc<Http>,
+    cache_http: &impl CacheHttp,
     id: &str,
     title: &str,
     description: &str,
@@ -99,7 +123,7 @@ pub async fn send_log_embed_thumb(
     let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
-        .send_message(http, CreateMessage::new().embed(embed))
+        .send_message(cache_http, CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }
@@ -108,7 +132,7 @@ pub async fn send_log_embed_thumb(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed(
     channel: &serenity::ChannelId,
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     title: &str,
     description: &str,
     avatar_url: &str,
@@ -121,34 +145,6 @@ pub async fn send_log_embed(
         .map_err(Into::into)
 }
 
-/// Parameter structure for functions that send messages to a channel.
-pub struct SendMessageParams {
-    pub channel: ChannelId,
-    // pub http: &Arc<Http>,
-    pub as_embed: bool,
-    pub ephemeral: bool,
-    pub reply: bool,
-    pub msg: CrackedMessage,
-}
-
-/// Sends a message to a channel.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_channel_message(
-    http: Arc<&Http>,
-    params: SendMessageParams,
-) -> Result<Message, CrackedError> {
-    let channel = params.channel;
-    // let http = params.http;
-    let content = format!("{}", params.msg);
-    let msg = if params.as_embed {
-        let embed = CreateEmbed::default().description(content);
-        CreateMessage::new().add_embed(embed)
-    } else {
-        CreateMessage::new().content(content)
-    };
-    channel.send_message(http, msg).await.map_err(Into::into)
-}
-
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_response_poise(
@@ -156,8 +152,16 @@ pub async fn send_response_poise(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<Message, CrackedError> {
+    use ::serenity::all::Colour;
+
+    let color = match message {
+        CrackedMessage::CrackedError(_) => Colour::RED,
+        _ => Colour::BLUE,
+    };
     if as_embed {
-        let embed = CreateEmbed::default().description(format!("{message}"));
+        let embed = CreateEmbed::default()
+            .color(color)
+            .description(format!("{message}"));
         send_embed_response_poise(ctx, embed).await
     } else {
         send_nonembed_response_poise(ctx, format!("{message}")).await
@@ -170,9 +174,7 @@ pub async fn send_response_poise_text(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
-    let message_str = format!("{message}");
-
-    send_embed_response_str(ctx, message_str).await
+    send_response_poise(ctx, message, false).await
 }
 
 /// Create an embed to send as a response.
@@ -204,15 +206,13 @@ pub async fn edit_response_poise(
     let embed = CreateEmbed::default().description(format!("{message}"));
 
     match get_interaction_new(ctx) {
-        Some(interaction) => {
-            edit_embed_response(&ctx.serenity_context().http, &interaction, embed).await
-        },
+        Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
         None => send_embed_response_poise(ctx, embed).await,
     }
 }
 
 pub async fn edit_response(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
@@ -221,30 +221,12 @@ pub async fn edit_response(
 }
 
 pub async fn edit_response_text(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
-}
-
-/// Sends a reply response as an embed.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_embed_response_str(
-    ctx: CrackContext<'_>,
-    message_str: String,
-) -> Result<Message, CrackedError> {
-    ctx.send(
-        CreateReply::default()
-            .embed(CreateEmbed::new().description(message_str))
-            .reply(true),
-    )
-    .await
-    .unwrap()
-    .into_message()
-    .await
-    .map_err(Into::into)
 }
 
 /// Send the current track information as an ebmed to the given channel.
@@ -288,17 +270,150 @@ pub async fn send_now_playing(
         .map_err(|e| e.into())
 }
 
+async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
+    tracing::warn!("num elems: {:?}", elems.len());
+    let mut fields = vec![];
+    // let tmp = "".to_string();
+    for elem in elems.into_iter() {
+        let title = elem.title.unwrap_or_default();
+        let link = elem.source_url.unwrap_or_default();
+        let duration = elem.duration.unwrap_or_default();
+        let elem = format!("({}) - {}", link, duration_to_string(duration));
+        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
+    }
+    fields
+}
+
+#[cfg(not(tarpaulin_include))]
+/// Interactive youtube search and selection.
+pub async fn yt_search_select(
+    ctx: SerenityContext,
+    channel_id: ChannelId,
+    metadata: Vec<AuxMetadata>,
+) -> Result<QueryType, Error> {
+    let res = metadata.iter().map(|x| {
+        let title = x.title.clone().unwrap_or_default();
+        let link = x.source_url.clone().unwrap_or_default();
+        let duration = x.duration.unwrap_or_default();
+        let elem = format!("{}: {}", duration_to_string(duration), title);
+        let len = min(elem.len(), 99);
+        let elem = elem[..len].to_string();
+        tracing::warn!("elem: {}", elem);
+        (elem, link)
+    });
+    let rev_map = res
+        .clone()
+        .map(|(elem, link)| (link, elem))
+        .collect::<HashMap<_, _>>();
+    // Ask the user for its favorite animal
+    let m = channel_id
+        .send_message(
+            &ctx,
+            CreateMessage::new().content("Search results").select_menu(
+                CreateSelectMenu::new(
+                    "song_select",
+                    CreateSelectMenuKind::String {
+                        options: res
+                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
+                            .collect(),
+                    },
+                )
+                .custom_id("song_select")
+                .placeholder("Select Song to Play"),
+            ),
+        )
+        .await?;
+
+    // Wait for the user to make a selection
+    // This uses a collector to wait for an incoming event without needing to listen for it
+    // manually in the EventHandler.
+    let interaction = match m
+        .await_component_interaction(&ctx.shard)
+        .timeout(Duration::from_secs(60 * 3))
+        .await
+    {
+        Some(x) => x,
+        None => {
+            m.reply(&ctx, "Timed out").await.unwrap();
+            return Err(CrackedError::Other("Timed out").into());
+        },
+    };
+
+    // data.values contains the selected value from each select menus. We only have one menu,
+    // so we retrieve the first
+    let url = match &interaction.data.kind {
+        ComponentInteractionDataKind::StringSelect { values } => &values[0],
+        _ => panic!("unexpected interaction data kind"),
+    };
+
+    tracing::error!("url: {}", url);
+
+    let qt = QueryType::VideoLink(url.to_string());
+    tracing::error!("url: {:?}", qt);
+
+    // Acknowledge the interaction and edit the message
+    let res = interaction
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
+                    title: rev_map.get(url).unwrap().to_string(),
+                    url: url.to_owned(),
+                }),
+            ),
+        )
+        .await
+        .map_err(|e| e.into())
+        .map(|_| qt);
+
+    m.delete(&ctx).await.unwrap();
+    res
+}
+
+/// Send the search results to the user.
+pub async fn send_search_response(
+    ctx: CrackContext<'_>,
+    guild_id: GuildId,
+    user_id: UserId,
+    query: String,
+    res: Vec<AuxMetadata>,
+) -> Result<Message, CrackedError> {
+    use poise::serenity_prelude::Mentionable;
+    let author = ctx.author_member().await.unwrap();
+    let name = if DEFAULT_PREMIUM {
+        author.mention().to_string()
+    } else {
+        author.display_name().to_string()
+    };
+
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let fields = build_embed_fields(res).await;
+    let author = CreateEmbedAuthor::new(name);
+    let title = format!("Search results for: {}", query);
+    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let embed = CreateEmbed::new()
+        .author(author)
+        .title(title)
+        .footer(footer)
+        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
+
+    send_embed_response_poise(ctx, embed).await
+}
+
 /// Sends a reply response with an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
+    let is_prefix = crate::is_prefix(ctx);
+    let is_ephemeral = !is_prefix;
+    let is_reply = is_prefix;
     ctx.send(
         CreateReply::default()
             .embed(embed)
-            .ephemeral(false)
-            .reply(true),
+            .ephemeral(is_ephemeral)
+            .reply(is_reply),
     )
     .await?
     .into_message()
@@ -328,12 +443,7 @@ pub async fn send_embed_response_prefix(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
-    ctx.send(CreateReply::default().embed(embed))
-        .await
-        .unwrap()
-        .into_message()
-        .await
-        .map_err(Into::into)
+    send_embed_response_poise(ctx, embed).await
 }
 
 pub async fn send_embed_response(
@@ -344,8 +454,10 @@ pub async fn send_embed_response(
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
             tracing::warn!("CommandOrMessageInteraction::Command");
-            create_response_interaction(&ctx.serenity_context().http, int, embed, false).await
+            create_response_interaction(&ctx, &Interaction::Command(int.clone()), embed, false)
+                .await
         },
+        // Under what circusmtances does this get called?
         CommandOrMessageInteraction::Message(_interaction) => {
             tracing::warn!("CommandOrMessageInteraction::Message");
             ctx.channel_id()
@@ -357,7 +469,7 @@ pub async fn send_embed_response(
 }
 
 pub async fn edit_reponse_interaction(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
@@ -384,10 +496,10 @@ pub async fn edit_reponse_interaction(
     }
 }
 
-/// Create a response to an interaction.
+/// Create (and send) a response to an interaction.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_response_interaction(
-    http: &Arc<Http>,
+    cache_http: &impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
     _defer: bool,
@@ -411,18 +523,18 @@ pub async fn create_response_interaction(
             let res = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().embed(embed.clone()),
             );
-            let message = int.get_response(http).await;
+            let message = int.get_response(cache_http.http()).await;
             match message {
                 Ok(message) => {
                     message
                         .clone()
-                        .edit(http, EditMessage::default().embed(embed.clone()))
+                        .edit(cache_http, EditMessage::default().embed(embed.clone()))
                         .await?;
                     Ok(message)
                 },
                 Err(_) => {
-                    int.create_response(http, res).await?;
-                    let message = int.get_response(http).await?;
+                    int.create_response(cache_http, res).await?;
+                    let message = int.get_response(cache_http.http()).await?;
                     Ok(message)
                 },
             }
@@ -431,13 +543,14 @@ pub async fn create_response_interaction(
         | Interaction::Component(..)
         | Interaction::Modal(..)
         | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented")),
-        _ => todo!(),
+        _ => unimplemented!(),
     }
 }
 
 /// Defers a response to an interaction.
+/// TODO: use a macro to reduce code here?
 pub async fn defer_response_interaction(
-    http: &Arc<Http>,
+    http: impl CacheHttp,
     interaction: &Interaction,
     embed: CreateEmbed,
 ) -> Result<(), CrackedError> {
@@ -483,14 +596,35 @@ pub async fn defer_response_interaction(
     }
 }
 
+/// Edit the embed response of the given message.
+#[cfg(not(tarpaulin_include))]
+pub async fn edit_embed_response2(
+    ctx: CrackContext<'_>,
+    embed: CreateEmbed,
+    mut msg: Message,
+) -> Result<Message, Error> {
+    match get_interaction(ctx) {
+        Some(interaction) => interaction
+            .edit_response(ctx, EditInteractionResponse::new().add_embed(embed))
+            .await
+            .map_err(Into::into),
+        None => msg
+            .edit(ctx, EditMessage::new().embed(embed))
+            .await
+            .map(|_| msg)
+            .map_err(Into::into),
+    }
+}
+
+/// WHY ARE THERE TWO OF THESE?
 pub async fn edit_embed_response(
-    http: &Arc<Http>,
+    http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
-            edit_reponse_interaction(http, int, embed).await
+            edit_reponse_interaction(http, &Interaction::Command(int.clone()), embed).await
         },
         CommandOrMessageInteraction::Message(msg) => match msg {
             Some(_msg) => {
@@ -527,18 +661,19 @@ pub async fn edit_embed_response_poise(
 ) -> Result<Message, CrackedError> {
     match get_interaction_new(ctx) {
         Some(interaction1) => match interaction1 {
-            CommandOrMessageInteraction::Command(interaction2) => match interaction2 {
-                Interaction::Command(interaction3) => {
-                    tracing::warn!("CommandInteraction");
-                    interaction3
-                        .edit_response(
-                            &ctx.serenity_context().http,
-                            EditInteractionResponse::new().content(" ").embed(embed),
-                        )
-                        .await
-                        .map_err(Into::into)
-                },
-                _ => Err(CrackedError::Other("not implemented")),
+            CommandOrMessageInteraction::Command(interaction2) => {
+                // match interaction2 {
+                //     Interaction::Command(interaction3) => {
+                //         tracing::warn!("CommandInteraction");
+                interaction2
+                    .edit_response(
+                        &ctx.serenity_context().http,
+                        EditInteractionResponse::new().content(" ").embed(embed),
+                    )
+                    .await
+                    .map_err(Into::into)
+                //     },
+                //     _ => Err(CrackedError::Other("not implemented")),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
@@ -670,12 +805,13 @@ pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
     max(1, num_pages)
 }
 
+/// Forget the current cache of queue messages we need to update.
 pub async fn forget_queue_message(
     data: &Data,
     message: &Message,
     guild_id: GuildId,
 ) -> Result<(), CrackedError> {
-    let mut cache_map = data.guild_cache_map.lock().unwrap().clone();
+    let mut cache_map = data.guild_cache_map.lock().await;
 
     let cache = cache_map
         .get_mut(&guild_id)
@@ -764,7 +900,7 @@ pub async fn create_paged_embed(
                             .description(page_getter(0))
                             .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
                     )
-                    .components(build_nav_btns(0, num_pages)),
+                    .components(create_nav_btns(0, num_pages)),
             )
             .await?;
         reply.into_message().await?
@@ -801,7 +937,7 @@ pub async fn create_paged_embed(
                             *page_wlock + 1,
                             num_pages
                         )))])
-                    .components(build_nav_btns(*page_wlock, num_pages)),
+                    .components(create_nav_btns(*page_wlock, num_pages)),
             ),
         )
         .await?;
@@ -949,7 +1085,7 @@ pub fn check_interaction(result: Result<(), Error>) {
 }
 
 pub enum CommandOrMessageInteraction {
-    Command(Interaction),
+    Command(CommandInteraction),
     Message(Option<Box<MessageInteraction>>),
 }
 
@@ -960,7 +1096,7 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
         //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
         //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
         // },
-        // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
+        // CrackContext::Prefix(prefix_ctx) => Some(prefix_ctx.msg.interaction.into()),
         CrackContext::Prefix(_ctx) => None,
     }
 }
@@ -968,9 +1104,9 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => {
-            Some(CommandOrMessageInteraction::Command(Interaction::Command(
+            Some(CommandOrMessageInteraction::Command(
                 app_ctx.interaction.clone(),
-            )))
+            ))
             // match app_ctx.interaction {
             // CommandOrAutocompleteInteraction::Command(x) => Some(
             //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
@@ -984,16 +1120,6 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
     }
 }
 
-// pub fn get_interaction_new(ctx: Context<'_>) -> Option<ApplicationCommandOrMessageInteraction> {
-//     match ctx {
-//         Context::Application(app_ctx) => match app_ctx.interaction {
-//             ApplicationCommandOrMessageInteraction::ApplicationCommand(x) => Some(x.clone().into()),
-//             ApplicationCommandOrMessageInteraction::Autocomplete(_) => None,
-//         },
-//         Context::Prefix(ctx) => ctx.msg.interaction.clone().map(|x| x.into()),
-//     }
-// }
-
 /// Get the user id from a context.
 pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
     match ctx {
@@ -1001,31 +1127,6 @@ pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
         CrackContext::Prefix(ctx) => ctx.msg.author.id,
     }
 }
-
-// /// Get the channel id from a context.
-// pub fn get_channel_id(ctx: &CrackContext) -> serenity::ChannelId {
-//     match ctx {
-//         CrackContext::Application(ctx) => ctx.interaction.channel_id,
-//         CrackContext::Prefix(ctx) => ctx.msg.channel_id,
-//     }
-// }
-
-// pub async fn summon_short(ctx: CrackContext<'_>) -> Result<(), FrameworkError<Data, Error>> {
-//     match ctx {
-//         CrackContext::Application(_ctx) => {
-//             tracing::warn!("summoning via slash command");
-//             // summon().slash_action.unwrap()(ctx).await
-//             // FIXME
-//             Ok(())
-//         }
-//         CrackContext::Prefix(_ctx) => {
-//             tracing::warn!("summoning via prefix command");
-//             // summon().prefix_action.unwrap()(ctx).await
-//             // FIXME
-//             Ok(())
-//         }
-//     }
-// }
 
 pub async fn handle_error(
     ctx: CrackContext<'_>,
@@ -1039,7 +1140,7 @@ pub async fn handle_error(
 
 #[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!("counting command: {}", command);
+    tracing::warn!("counting command: {}, {}", command, is_prefix);
     match COMMAND_EXECUTIONS
         .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
     {
@@ -1050,31 +1151,14 @@ pub fn count_command(command: &str, is_prefix: bool) {
             tracing::error!("Failed to get metric: {}", e);
         },
     };
-    #[cfg(not(feature = "crack-metrics"))]
-    tracing::warn!("crack-metrics feature not enabled");
 }
 #[cfg(not(feature = "crack-metrics"))]
 pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!("counting command: {}, {}", command, is_prefix);
-}
-
-/// Gets the channel id that the bot is currently playing in for a given guild.
-pub async fn get_current_voice_channel_id(
-    ctx: &SerenityContext,
-    guild_id: serenity::GuildId,
-) -> Option<serenity::ChannelId> {
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Failed to get songbird manager")
-        .clone();
-
-    let call_lock = manager.get(guild_id)?;
-    let call = call_lock.lock().await;
-
-    let channel_id = call.current_channel()?;
-    let serenity_channel_id = serenity::ChannelId::new(channel_id.0.into());
-
-    Some(serenity_channel_id)
+    tracing::warn!(
+        "crack-metrics feature not enabled!\ncommand: {}, {}",
+        command,
+        is_prefix
+    );
 }
 
 pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {
@@ -1087,7 +1171,7 @@ mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 
-    use crate::interface::build_single_nav_btn;
+    use crate::messaging::interface::create_single_nav_btn;
 
     use super::*;
 
@@ -1122,7 +1206,7 @@ mod test {
 
     #[test]
     fn test_build_single_nav_btn() {
-        let creat_btn = build_single_nav_btn("<<", true);
+        let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
         let btn = serde_json::from_str::<Button>(&s).unwrap();
@@ -1134,7 +1218,7 @@ mod test {
 
     #[test]
     fn test_build_nav_btns() {
-        let nav_btns_vev = build_nav_btns(0, 1);
+        let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
             for btn in nav_btns {

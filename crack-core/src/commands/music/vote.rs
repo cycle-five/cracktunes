@@ -32,7 +32,7 @@ pub async fn vote_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     tracing::info!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
 
-    let bot_id: UserId = http_utils::get_bot_id(ctx.http()).await?;
+    let bot_id: UserId = http_utils::get_bot_id(ctx).await?;
     tracing::info!("bot_id: {:?}", bot_id);
     let has_voted = match check_and_record_vote(
         ctx.data().database_pool.as_ref().unwrap(),

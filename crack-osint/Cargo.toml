@@ -27,3 +27,14 @@ reqwest = { version = "0.12.4", default-features = false, features = [
     "rustls-tls",
     "cookies",
 ] }
+
+[features]
+default = []
+checkpass = []
+phone = []
+social = []
+wayback = []
+whois = []
+virustotal = []
+scan = []
+ip = []

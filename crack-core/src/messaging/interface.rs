@@ -1,19 +1,22 @@
-/// Contains functions for creating embeds and other messages which are used
-/// to communicate with the user.
+use super::messages::REQUESTED_BY;
 use crate::errors::CrackedError;
 use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
     QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
 };
-use crate::utils::calculate_num_pages;
 use crate::utils::EMBED_PAGE_SIZE;
+use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::Context as CrackContext;
+use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
     utils::{
         get_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
     },
 };
+/// Contains functions for creating embeds and other messages which are used
+/// to communicate with the user.
+use lyric_finder::LyricResult;
 use poise::CreateReply;
 use serenity::all::UserId;
 use serenity::{
@@ -32,9 +35,9 @@ pub fn requesting_user_to_string(user_id: UserId) -> String {
     }
 }
 
-/// Builds a page of the queue.
+/// Creates a page of the queue.
 #[cfg(not(tarpaulin_include))]
-async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
+async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
     let queue: Vec<&TrackHandle> = tracks
         .iter()
@@ -69,7 +72,7 @@ async fn build_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     description
 }
 
-/// Builds the queue embed.
+/// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !tracks.is_empty() {
         let metadata = get_track_metadata(&tracks[0]).await;
@@ -103,7 +106,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
     CreateEmbed::default()
         .thumbnail(thumbnail)
         .field(QUEUE_NOW_PLAYING, &description, false)
-        .field(QUEUE_UP_NEXT, build_queue_page(tracks, page).await, false)
+        .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
             "{} {} {} {}",
             QUEUE_PAGE,
@@ -127,13 +130,13 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
         Ok(user_id) => (
-            "Requested By",
+            REQUESTED_BY,
             format!(">>> {}", requesting_user_to_string(user_id)),
             true,
         ),
         Err(error) => {
             tracing::error!("error getting requesting user: {:?}", error);
-            ("Requested By", ">>> N/A".to_string(), true)
+            (REQUESTED_BY, ">>> N/A".to_string(), true)
         },
     };
 
@@ -183,11 +186,20 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
 #[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
-    track: String,
-    artists: String,
-    lyric: String,
+    lyric_res: LyricResult,
 ) -> Result<(), CrackedError> {
-    use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
+    let (track, artists, lyric) = match lyric_res {
+        LyricResult::Some {
+            track,
+            artists,
+            lyric,
+        } => (track, artists, lyric),
+        LyricResult::None => (
+            "Unknown".to_string(),
+            "Unknown".to_string(),
+            "No lyrics found!".to_string(),
+        ),
+    };
 
     create_paged_embed(
         ctx,
@@ -200,7 +212,7 @@ pub async fn create_lyrics_embed(
 }
 
 /// Builds a single navigation button for the queue.
-pub fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
+pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
@@ -209,14 +221,39 @@ pub fn build_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn build_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
+pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(vec![
-        build_single_nav_btn("<<", cant_left),
-        build_single_nav_btn("<", cant_left),
-        build_single_nav_btn(">", cant_right),
-        build_single_nav_btn(">>", cant_right),
+        create_single_nav_btn("<<", cant_left),
+        create_single_nav_btn("<", cant_left),
+        create_single_nav_btn(">", cant_right),
+        create_single_nav_btn(">>", cant_right),
     ])]
+}
+
+/// Sends a message to the user indicating that the search failed.
+pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+    let guild_id = ctx.guild_id().unwrap();
+    let embed = CreateEmbed::default()
+        .description(format!(
+            "{}",
+            CrackedError::Other("Something went wrong while parsing your query!")
+        ))
+        .footer(CreateEmbedFooter::new("Search failed!"));
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
+}
+
+/// Sends a message to the user indicating that no query was provided.
+pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let embed = CreateEmbed::default()
+        .description(format!("{}", CrackedError::Other("No query provided!")))
+        .footer(CreateEmbedFooter::new("No query provided!"));
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data().add_msg_to_cache(guild_id, msg);
+    Ok(())
 }
 
 #[cfg(test)]

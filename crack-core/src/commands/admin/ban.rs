@@ -3,6 +3,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use poise::serenity_prelude::Mentionable;
 use serenity::all::User;
 
 /// Ban a user from the server.
@@ -29,6 +30,8 @@ pub async fn ban(
     #[description = "Reason to the ban."]
     reason: Option<String>,
 ) -> Result<(), Error> {
+    let mention = user.mention();
+    let id = user.id;
     let dmd = dmd.unwrap_or(0);
     let reason = reason.unwrap_or("No reason provided".to_string());
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -43,15 +46,7 @@ pub async fn ban(
         .await?;
     } else {
         // Send success message
-        send_response_poise(
-            ctx,
-            CrackedMessage::UserBanned {
-                user: user.name.clone(),
-                user_id: user.clone().id,
-            },
-            true,
-        )
-        .await?;
+        send_response_poise(ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
     }
     Ok(())
 }

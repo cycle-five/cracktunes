@@ -1,6 +1,7 @@
 use config_file::FromConfigFile;
 use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
+use crack_core::sources::ytdl::HANDLE;
 use crack_core::BotConfig;
 pub use crack_core::PhoneCodeData;
 use crack_core::{BotCredentials, EventLog};
@@ -36,12 +37,10 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[cfg(not(tarpaulin_include))]
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    use tokio::runtime::Handle;
+
+    *HANDLE.lock().unwrap() = Some(Handle::current());
     let event_log = EventLog::default();
-    // let rt = tokio::runtime::Builder::new_multi_thread()
-    //     //.worker_threads(16)
-    //     .enable_all()
-    //     .build()
-    //     .unwrap();
 
     dotenvy::dotenv().ok();
     // rt.block_on(async {
@@ -53,6 +52,7 @@ async fn main() -> Result<(), Error> {
 
     init_telemetry(url).await;
     main_async(event_log).await?;
+
     Ok(())
 }
 
@@ -88,8 +88,8 @@ async fn main_async(event_log: EventLog) -> Result<(), Error> {
 
     drop(data_global);
 
-    let bot = client.start_shards(2);
-    // let bot = client.start_autosharded();
+    // let bot = client.start_shards(2);
+    let bot = client.start_autosharded();
 
     #[cfg(feature = "crack-metrics")]
     {

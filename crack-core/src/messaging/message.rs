@@ -6,7 +6,7 @@ use ::serenity::builder::CreateEmbed;
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude::{self as serenity, UserId};
 
-use crate::messaging::messages::*;
+use crate::{errors::CrackedError, messaging::messages::*};
 
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -22,12 +22,18 @@ pub enum CrackedMessage {
         channel_name: String,
     },
     CountryName(String),
+    ChannelSizeSet {
+        id: serenity::ChannelId,
+        name: String,
+        size: u32,
+    },
     ChannelDeleted {
         channel_id: serenity::ChannelId,
         channel_name: String,
     },
     Clear,
     Clean(i32),
+    CrackedError(CrackedError),
     DomainInfo(String),
     Error,
     ErrorHttp(serenity::http::HttpError),
@@ -101,50 +107,58 @@ pub enum CrackedMessage {
         channel_id: serenity::ChannelId,
         channel_name: String,
     },
-
     UserAuthorized {
-        user_id: UserId,
-        user_name: String,
+        id: UserId,
+        mention: Mention,
         guild_id: serenity::GuildId,
         guild_name: String,
     },
     UserDeauthorized {
-        user_id: UserId,
-        user_name: String,
+        id: UserId,
+        mention: Mention,
         guild_id: serenity::GuildId,
         guild_name: String,
     },
     UserTimeout {
-        user: String,
-        user_id: String,
+        id: UserId,
+        mention: Mention,
         timeout_until: String,
     },
     UserKicked {
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
     },
     UserBanned {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
     },
     UserUnbanned {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
     },
     UserMuted {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
     },
     UserUnmuted {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
     },
     UserDeafened {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
+    },
+    UserDeafenedFail {
+        mention: Mention,
+        id: UserId,
     },
     UserUndeafened {
-        user: String,
-        user_id: UserId,
+        mention: Mention,
+        id: UserId,
+    },
+    UserUndeafenedFail {
+        mention: Mention,
+        id: UserId,
     },
     Version {
         current: String,
@@ -177,6 +191,9 @@ impl Display for CrackedMessage {
             Self::CountryName(name) => f.write_str(name),
             Self::Clear => f.write_str(CLEARED),
             Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
+            Self::ChannelSizeSet { id, name, size } => {
+                f.write_str(&format!("{} {} {} {}", CHANNEL_SIZE_SET, name, id, size))
+            },
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
@@ -184,6 +201,7 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 CHANNEL_DELETED, channel_id, channel_name
             )),
+            Self::CrackedError(err) => f.write_str(&format!("{}", err)),
             Self::DomainInfo(info) => f.write_str(info),
             Self::Error => f.write_str(ERROR),
             Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),
@@ -261,50 +279,49 @@ impl Display for CrackedMessage {
                 CATEGORY_CREATED, channel_id, channel_name
             )),
             Self::UserAuthorized {
-                user_id,
-                user_name,
+                id,
+                mention,
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
                 "{}\n User: {} ({}) Guild: {} ({})",
-                AUTHORIZED, user_name, user_id, guild_name, guild_id
+                AUTHORIZED, mention, id, guild_name, guild_id
             )),
             Self::UserDeauthorized {
-                user_id,
-                user_name,
+                id,
+                mention,
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
                 "{}\n User: {} ({}) Guild: {} ({})",
-                DEAUTHORIZED, user_name, user_id, guild_name, guild_id
+                DEAUTHORIZED, mention, id, guild_name, guild_id
             )),
             Self::UserTimeout {
-                user: _,
-                user_id,
+                mention,
+                id,
                 timeout_until,
             } => f.write_str(&format!(
-                "User timed out: {} for {}",
-                user_id, timeout_until
+                "{TIMEOUT}\n{mention} ({id})\n{UNTIL}: {timeout_until}"
             )),
-            Self::UserKicked { user_id } => f.write_str(&format!("{} {}", KICKED, user_id)),
-            Self::UserBanned { user, user_id } => {
-                f.write_str(&format!("{} {} {}", BANNED, user, user_id))
+            Self::UserKicked { mention, id } => f.write_str(&format!("{KICKED}\n{mention} ({id})")),
+            Self::UserBanned { mention, id } => f.write_str(&format!("{BANNED}\n{mention} ({id})")),
+            Self::UserUnbanned { mention, id } => {
+                f.write_str(&format!("{UNBANNED}\n{mention} ({id})"))
             },
-            Self::UserUnbanned { user, user_id } => {
-                f.write_str(&format!("{} {} {}", UNBANNED, user, user_id))
+            Self::UserUndeafened { mention, id } => {
+                f.write_str(&format!("{} {} {}", UNDEAFENED, mention, id))
             },
-            Self::UserUndeafened { user, user_id } => {
-                f.write_str(&format!("{} {} {}", UNDEAFENED, user, user_id))
+            Self::UserDeafened { mention, id } => {
+                f.write_str(&format!("{DEAFENED}\n{mention}({id})"))
             },
-            Self::UserDeafened { user, user_id } => {
-                f.write_str(&format!("{} {} {}", DEAFENED, user, user_id))
+            Self::UserDeafenedFail { mention, id } => {
+                f.write_str(&format!("{DEAFENED_FAIL}\n{mention} ({id})"))
             },
-            Self::UserMuted { user, user_id } => {
-                f.write_str(&format!("{} {} {}", MUTED, user, user_id))
+            Self::UserUndeafenedFail { mention, id } => {
+                f.write_str(&format!("{UNDEAFENED_FAIL}\n{mention} ({id})"))
             },
-            Self::UserUnmuted { user, user_id } => {
-                f.write_str(&format!("{} {} {}", UNMUTED, user, user_id))
-            },
+            Self::UserMuted { mention, id } => f.write_str(&format!("{MUTED}\n{mention} {id}")),
+            Self::UserUnmuted { mention, id } => f.write_str(&format!("{UNMUTED}\n{mention} {id}")),
             Self::Version { current, hash } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}/tree/{})",
                 VERSION,

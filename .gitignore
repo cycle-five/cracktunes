@@ -8,6 +8,11 @@
 /logs/
 scratch
 
+# replit
+.cargo/git/
+.cargo/registry/
+.cargo/
+
 # configuration / secrets
 Secrets.toml
 .env
@@ -20,3 +25,4 @@ cracktunes.toml
 
 # code coverage
 cobertura.xml
+**/*.profraw

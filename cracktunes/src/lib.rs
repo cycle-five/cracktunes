@@ -99,6 +99,7 @@ pub fn get_admin_commands() -> Vec<&'static str> {
         "timeout",
         "mute",
         "unmute",
+        "undeafen",
         "role",
         "create_role",
         "assign_role",

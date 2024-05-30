@@ -1,40 +1,116 @@
-use crate::errors::CrackedError;
-use serenity::all::{ChannelId, GuildId, Http, UserId};
-
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use std::future::Future;
 
+use crate::errors::CrackedError;
+use crate::messaging::message::CrackedMessage;
+use serenity::all::{
+    CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
+};
+
+/// Parameter structure for functions that send messages to a channel.
+pub struct SendMessageParams {
+    pub channel: ChannelId,
+    pub as_embed: bool,
+    pub ephemeral: bool,
+    pub reply: bool,
+    pub msg: CrackedMessage,
+}
+
+/// Extension trait for CacheHttp to add some utility functions.
+pub trait CacheHttpExt {
+    fn cache(&self) -> Option<impl CacheHttp>;
+    fn http(&self) -> Option<&Http>;
+    fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
+    fn user_id_to_username_or_default(&self, user_id: UserId) -> String;
+    fn channel_id_to_guild_name(
+        &self,
+        channel_id: ChannelId,
+    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+    fn send_channel_message(
+        &self,
+        params: SendMessageParams,
+    ) -> impl Future<Output = Result<serenity::model::channel::Message, CrackedError>> + Send;
+}
+
+/// Implement the CacheHttpExt trait for any type that implements CacheHttp.
+impl<T: CacheHttp> CacheHttpExt for T {
+    fn cache(&self) -> Option<impl CacheHttp> {
+        Some(self)
+    }
+
+    fn http(&self) -> Option<&Http> {
+        Some(self.http())
+    }
+
+    async fn get_bot_id(&self) -> Result<UserId, CrackedError> {
+        get_bot_id(self).await
+    }
+
+    fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
+        cache_to_username_or_default(self, user_id)
+    }
+
+    async fn channel_id_to_guild_name(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<String, CrackedError> {
+        get_guild_name(self, channel_id).await
+    }
+
+    /// Sends a message to a channel.
+    #[cfg(not(tarpaulin_include))]
+    async fn send_channel_message(
+        &self,
+        params: SendMessageParams,
+    ) -> Result<Message, CrackedError> {
+        let channel = params.channel;
+        let content = format!("{}", params.msg);
+        let msg = if params.as_embed {
+            let embed = CreateEmbed::default().description(content);
+            CreateMessage::new().add_embed(embed)
+        } else {
+            CreateMessage::new().content(content)
+        };
+        channel.send_message(self, msg).await.map_err(Into::into)
+    }
+}
+
+/// This is a hack to get around the fact that we can't use async in statics. Is it?
 static CLIENT: Lazy<Client> = Lazy::new(|| {
-    println!("Creating a new client..."); // Optional: for demonstration
+    println!("Creating a new reqwest client...");
+    tracing::info!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()
         .expect("Failed to build reqwest client")
 });
 
+/// Get a reference to the lazy, static, global reqwest client.
 pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
+/// Initialize the static, global reqwest client.
 pub async fn init_http_client() -> Result<(), CrackedError> {
     let client = get_client().clone();
     let res = client.get("https://httpbin.org/ip").send().await?;
     tracing::info!("HTTP client initialized successfully: {:?}", res);
     Ok(())
 }
-
-// /// Get a new reqwest client with consistent settings.
-// pub fn new_reqwest_client() -> &'static Client {
-//     &CLIENT
-// }
-
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
+pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
     let tune_titan_id = UserId::new(1124707756750934159);
     let rusty_bot_id = UserId::new(1111844110597374042);
     let cracktunes_id = UserId::new(1115229568006103122);
-    let bot_id = http.get_current_user().await?.id;
+    let bot_id = match cache_http.cache() {
+        Some(cache) => cache.current_user().id,
+        None => {
+            tracing::warn!("cache_http.cache() returned None");
+            return Err(CrackedError::Other("cache_http.cache() returned None"));
+        },
+    };
 
     // If the bot is tune titan or rusty bot, return cracktunes ID
     if bot_id == tune_titan_id || bot_id == rusty_bot_id {
@@ -46,24 +122,18 @@ pub async fn get_bot_id(http: &Http) -> Result<UserId, CrackedError> {
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
-pub fn cache_to_username_or_default(cache: &serenity::all::Cache, user_id: UserId) -> String {
-    match cache.user(user_id) {
-        Some(x) => x.name.clone(),
-        None => {
-            tracing::warn!("cache.user returned None");
-            "Unknown".to_string()
+pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
+    // let asdf = cache.cache()?.user(user_id);
+    match cache_http.cache() {
+        Some(cache) => match cache.user(user_id) {
+            Some(x) => x.name.clone(),
+            None => {
+                tracing::warn!("cache.user returned None");
+                "Unknown".to_string()
+            },
         },
-    }
-}
-
-/// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
-#[cfg(not(tarpaulin_include))]
-//#[allow(dead_code)]
-pub async fn http_to_username_or_default(http: &Http, user_id: UserId) -> String {
-    match http.get_user(user_id).await {
-        Ok(x) => x.name,
-        Err(e) => {
-            tracing::error!("http.get_user error: {}", e);
+        None => {
+            tracing::warn!("cache_http.cache() returned None");
             "Unknown".to_string()
         },
     }
@@ -85,30 +155,33 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 
 /// Gets the guild_name for a channel_id.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_guild_name(http: &Http, channel_id: ChannelId) -> Result<String, CrackedError> {
+pub async fn get_guild_name(
+    cache_http: &impl CacheHttp,
+    channel_id: ChannelId,
+) -> Result<String, CrackedError> {
     channel_id
-        .to_channel(http)
+        .to_channel(cache_http)
         .await?
         .guild()
         .map(|x| x.guild_id)
         .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
-        .to_partial_guild(http)
+        .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
-        .map_err(|e| e.into())
+        .map_err(Into::into)
 }
 
 // Get the guild name from the guild id and an http client.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_guild_name_from_guild_id(
-    http: &Http,
+pub async fn guild_name_from_guild_id(
+    cache_http: impl CacheHttp,
     guild_id: GuildId,
 ) -> Result<String, CrackedError> {
     guild_id
-        .to_partial_guild(http)
+        .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
-        .map_err(|e| e.into())
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

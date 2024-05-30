@@ -42,6 +42,14 @@ services:
     ports:
       - "127.0.0.1:5050:80"
     restart: always
+# For IPv6 address rotating to escape YouTube blocking.
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 2001:0DB9::/112
+          gateway: 2001:0DB9::1
 volumes:
   pgdata:
     external: true

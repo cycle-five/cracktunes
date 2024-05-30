@@ -1,5 +1,5 @@
 use crate::{
-    commands::QueryType,
+    commands::play_utils::QueryType,
     errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
 };
@@ -14,7 +14,12 @@ use rspotify::{
     },
     ClientCredsSpotify, ClientResult, Config, Credentials,
 };
-use std::{env, str::FromStr, time::Duration};
+use std::{
+    env,
+    ops::{Deref, DerefMut},
+    str::FromStr,
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -69,6 +74,7 @@ impl FromStr for MediaType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ParsedSpotifyUrl {
     media_type: MediaType,
     media_id: String,
@@ -76,7 +82,25 @@ pub struct ParsedSpotifyUrl {
 
 type SpotifyCreds = Credentials;
 
+#[derive(Debug, Clone)]
+pub struct SpotifyPlaylist(FullPlaylist);
+
+impl Deref for SpotifyPlaylist {
+    type Target = FullPlaylist;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SpotifyPlaylist {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 /// Spotify source.
+#[derive(Debug, Clone)]
 pub struct Spotify {}
 
 /// Implementation of Spotify source.
@@ -489,7 +513,11 @@ impl From<rspotify::model::FullTrack> for SpotifyTrack {
 
 #[cfg(test)]
 mod test {
+    use crate::commands::MyAuxMetadata;
+
     use super::*;
+    use rspotify::model::{FullTrack, SimplifiedAlbum};
+    use std::collections::HashMap;
 
     // // Mock ClientCredsSpotify
     // struct MockClientCredsSpotify {}
@@ -563,4 +591,46 @@ mod test {
     //     .unwrap();
     //     assert_eq!(tracks.len(), 50);
     // }
+    #[test]
+    fn test_from_spotify_track() {
+        let track = SpotifyTrack::new(FullTrack {
+            id: None,
+            name: "asdf".to_string(),
+            artists: vec![],
+            album: SimplifiedAlbum {
+                album_type: None,
+                album_group: None,
+                artists: vec![],
+                available_markets: vec![],
+                external_urls: HashMap::new(),
+                href: None,
+                id: None,
+                images: vec![],
+                name: "zxcv".to_string(),
+                release_date: Some("2012".to_string()),
+                release_date_precision: None,
+                restrictions: None,
+            },
+            track_number: 0,
+            disc_number: 0,
+            explicit: false,
+            external_urls: HashMap::new(),
+            href: None,
+            preview_url: None,
+            popularity: 0,
+            is_playable: None,
+            linked_from: None,
+            restrictions: None,
+            external_ids: HashMap::new(),
+            is_local: false,
+            available_markets: vec![],
+            duration: chrono::TimeDelta::new(60, 0).unwrap(),
+        });
+        let res = MyAuxMetadata::from_spotify_track(&track);
+        let metadata = res.metadata();
+        assert_eq!(metadata.title, Some("asdf".to_string()));
+        assert_eq!(metadata.artist, Some("".to_string()));
+        assert_eq!(metadata.album, Some("zxcv".to_string()));
+        assert_eq!(metadata.duration.unwrap().as_secs(), 60);
+    }
 }

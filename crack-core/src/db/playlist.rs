@@ -1,8 +1,6 @@
-use crate::db::user::User;
-use songbird::tracks::TrackHandle;
-use sqlx::{postgres::PgQueryResult, query, PgPool};
-
+use crate::db::{user::User, Metadata, MetadataRead};
 use crate::CrackedError;
+use sqlx::{postgres::PgQueryResult, query, PgPool};
 
 /// Playlist db structure (does not old the tracks)
 #[derive(Debug, Default)]
@@ -23,15 +21,11 @@ pub struct PlaylistTrack {
     pub channel_id: Option<i64>,
 }
 
+/// Implementation of the Playlist struct for writing to the database
 impl Playlist {
+    /// Create a new playlist for a user.
     pub async fn create(pool: &PgPool, name: &str, user_id: i64) -> Result<Playlist, CrackedError> {
         if User::get_user(pool, user_id).await.is_none() {
-            // match User::insert_user(pool, user_id, "FAKENAME".to_string()).await {
-            //     Ok(_) => (),
-            //     Err(e) => {
-            //         return Err(CrackedError::SQLX(e));
-            //     }
-            // }
             return Err(CrackedError::Other(
                 "(playlist::create) User does not exist",
             ));
@@ -48,6 +42,7 @@ impl Playlist {
         Ok(rec)
     }
 
+    /// Add a track to a playlist.
     pub async fn add_track(
         pool: &PgPool,
         playlist_id: i32,
@@ -193,12 +188,14 @@ impl Playlist {
         .await
     }
 
+    /// Get the metadata for the tracks for a playlist. This is what is needed
+    /// to queue the playlist.
     pub async fn get_track_metadata_for_playlist(
         pool: &PgPool,
         playlist_id: i32,
-    ) -> Result<Vec<crate::db::Metadata>, sqlx::Error> {
+    ) -> Result<Vec<Metadata>, sqlx::Error> {
         sqlx::query_as!(
-            crate::db::MetadataRead,
+            MetadataRead,
             r#"
                 SELECT
                     metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
@@ -213,13 +210,14 @@ impl Playlist {
         .map(|r| r.into_iter().map(|r| r.into()).collect())
     }
 
+    /// Gets the metadata for a playlist for a user by playlist name.
     pub async fn get_track_metadata_for_playlist_name(
         pool: &PgPool,
         playlist_name: String,
         user_id: i64,
-    ) -> Result<Vec<crate::db::Metadata>, sqlx::Error> {
+    ) -> Result<Vec<Metadata>, sqlx::Error> {
         sqlx::query_as!(
-            crate::db::MetadataRead,
+            MetadataRead,
             r#"
                 SELECT
                     metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
@@ -231,7 +229,7 @@ impl Playlist {
         )
         .fetch_all(pool)
         .await
-        .map(|r| r.into_iter().map(|r| r.into()).collect())
+        .map(|r| r.into_iter().map(Into::into).collect())
     }
 
     /// Delete a playlist by playlist name and user ID
@@ -257,83 +255,4 @@ impl Playlist {
 
         Self::delete_playlist(pool, playlist_id).await.map(|_| ())
     }
-}
-
-use crate::db::metadata::Metadata;
-
-pub async fn track_handle_to_db_structures(
-    _pool: &PgPool,
-    _track_handle: TrackHandle,
-    _playlist_id: i64,
-    _guild_id: i64,
-    _channel_id: i64,
-) -> Result<(Metadata, PlaylistTrack), CrackedError> {
-    // 1. Extract metadata from TrackHandle
-    Err(CrackedError::Other("not implemented"))
-    // track_handle.action(View).await?;
-    // track_handle.get
-    // let track = track_handle.metadata().track.clone();
-    // let title = track_handle.metadata().title.clone();
-    // let artist = track_handle.metadata().artist.clone();
-    // let album = Some("".to_string());
-    // let date = track_handle
-    //     .metadata()
-    //     .date
-    //     .clone()
-    //     .map(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").unwrap_or_default());
-    // let channels = track_handle.metadata().channels;
-    // let channel = Some(channel_id);
-    // let start_time = track_handle
-    //     .metadata()
-    //     .start_time
-    //     .map(|d| d.as_secs() as i64);
-    // let duration = track_handle.metadata().duration.map(|d| d.as_secs() as i64);
-    // let sample_rate = track_handle.metadata().sample_rate.map(i64::from);
-    // let source_url = track_handle.metadata().source_url.clone();
-    // let thumbnail = track_handle.metadata().thumbnail.clone();
-
-    // let metadata = sqlx::query_as!(
-    //     Metadata,
-    //     r#"INSERT INTO
-    //         metadata (track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail)
-    //         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    //         RETURNING id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail
-    //         "#,
-    //     track,
-    //     artist,
-    //     album,
-    //     date,
-    //     channels,
-    //     channel,
-    //     start_time,
-    //     duration,
-    //     sample_rate,
-    //     source_url,
-    //     title,
-    //     thumbnail
-    // )
-    // .fetch_one(pool)
-    // .await
-    // .map_err(CrackedError::SQLX)?;
-
-    // let guild_id_opt = Some(guild_id);
-    // let channel_id_opt = Some(channel_id);
-    // // 3. Populate the PlaylistTrack structure
-    // let playlist_track = sqlx::query_as!(
-    //     PlaylistTrack,
-    //     r#"INSERT INTO playlist_track
-    //         (playlist_id, metadata_id, guild_id, channel_id)
-    //         VALUES (?, ?, ?, ?)
-    //         RETURNING id, playlist_id, metadata_id, guild_id, channel_id
-    //         "#,
-    //     playlist_id,
-    //     metadata.id,
-    //     guild_id_opt,
-    //     channel_id_opt
-    // )
-    // .fetch_one(pool)
-    // .await
-    // .map_err(CrackedError::SQLX)?;
-
-    // Ok((metadata, playlist_track))
 }

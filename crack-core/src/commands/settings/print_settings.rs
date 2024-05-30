@@ -9,7 +9,7 @@ use serenity::{
 
 #[poise::command(prefix_command, owners_only, ephemeral, hide_in_help)]
 pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_settings_map = ctx.data().guild_settings_map.read().unwrap().clone(); //.unwrap().clone();
+    let guild_settings_map = ctx.data().guild_settings_map.read().await.clone(); //.unwrap().clone();
 
     for (guild_id, settings) in guild_settings_map.iter() {
         send_response_poise(

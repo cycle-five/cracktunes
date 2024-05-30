@@ -1,4 +1,3 @@
-#[cfg(feature = "crack-osint")]
 #[cfg(test)]
 mod test {
     use crack_osint::check_password_pwned;

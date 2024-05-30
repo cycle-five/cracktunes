@@ -1,29 +1,32 @@
 use crate::handlers::event_log::LogEntry;
-use chrono::DateTime;
-use chrono::Utc;
-use db::PlayLog;
-use db::TrackReaction;
+use chrono::{DateTime, Utc};
+use commands::play_utils::TrackReadyData;
+use commands::MyAuxMetadata;
+#[cfg(feature = "crack-gpt")]
+use crack_gpt::GptContext;
+use db::worker_pool::MetadataMsg;
+use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
-use guild::settings::GuildSettings;
-use guild::settings::GuildSettingsMapParam;
+use guild::settings::{GuildSettings, GuildSettingsMapParam};
 use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
 };
-use poise::serenity_prelude::GuildId;
 use serde::{Deserialize, Serialize};
-use serenity::all::Message;
-use std::fs;
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-use std::sync::RwLock;
+use serenity::all::{ChannelId, GuildId, Message};
+use songbird::Call;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
-    sync::{Arc, Mutex},
+    fs,
+    fs::File,
+    future::Future,
+    io::Write,
+    path::Path,
+    sync::{Arc, Mutex as SyncMutex, RwLock as SyncRwLock},
 };
+use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 pub mod commands;
 pub mod connection;
@@ -32,52 +35,50 @@ pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
-pub mod interface;
 pub mod messaging;
 pub mod metrics;
 pub mod sources;
+#[cfg(test)]
+pub mod test;
 pub mod utils;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
-pub use Result;
-
-pub trait CrackContext<'a> {
-    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
-}
-
-impl<'a> CrackContext<'a> for Context<'a> {
-    fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg)
-    }
-}
+pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
+pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
+pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
+pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
+pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
+pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
 
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))
 }
 
+/// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CamKickConfig {
-    pub cammed_down_timeout: u64,
+    pub timeout: u64,
     pub guild_id: u64,
-    pub channel_id: u64,
-    pub dc_message: String,
-    pub send_msg_deafen: bool,
-    pub send_msg_mute: bool,
-    pub send_msg_dc: bool,
+    pub chan_id: u64,
+    pub dc_msg: String,
+    pub msg_on_deafen: bool,
+    pub msg_on_mute: bool,
+    pub msg_on_dc: bool,
 }
 
+/// Default for the CamKickConfig.
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
-            cammed_down_timeout: 0,
+            timeout: 0,
             guild_id: 0,
-            channel_id: 0,
-            dc_message: "You have been violated for being cammed down for too long.".to_string(),
-            send_msg_deafen: false,
-            send_msg_mute: false,
-            send_msg_dc: false,
+            chan_id: 0,
+            dc_msg: "You have been violated for being cammed down for too long.".to_string(),
+            msg_on_deafen: false,
+            msg_on_mute: false,
+            msg_on_dc: false,
         }
     }
 }
@@ -86,16 +87,13 @@ impl Default for CamKickConfig {
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
-        result.push_str(&format!(
-            "cammed_down_timeout: {:?}\n",
-            self.cammed_down_timeout
-        ));
+        result.push_str(&format!("timeout: {:?}\n", self.timeout));
         result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
-        result.push_str(&format!("channel_id: {:?}\n", self.channel_id));
-        result.push_str(&format!("dc_message: {:?}\n", self.dc_message));
-        result.push_str(&format!("deafen: {}\n", self.send_msg_deafen));
-        result.push_str(&format!("mute: {}\n", self.send_msg_mute));
-        result.push_str(&format!("dc: {}\n", self.send_msg_dc));
+        result.push_str(&format!("chan_id: {:?}\n", self.chan_id));
+        result.push_str(&format!("dc_msg: {:?}\n", self.dc_msg));
+        result.push_str(&format!("msg_on_deafen: {}\n", self.msg_on_deafen));
+        result.push_str(&format!("msg_on_mute: {}\n", self.msg_on_mute));
+        result.push_str(&format!("msg_on_dc: {}\n", self.msg_on_dc));
 
         write!(f, "{}", result)
     }
@@ -288,26 +286,41 @@ impl PhoneCodeData {
 /// User data, which is stored and accessible in all command invocations
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DataInner {
-    #[serde(skip)]
-    pub phone_data: PhoneCodeData,
     pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
-    // TODO: Make this a HashMap, pointing to a settings struct containiong
+    // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
-    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    //
+    // Non-serializable below here. What did I even decide to make this Serializable for?
+    // I doubt it's doing anything, most fields aren't.
+    //
     #[serde(skip)]
-    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
-    pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    pub phone_data: PhoneCodeData,
     #[serde(skip)]
     pub event_log: EventLog,
+    #[serde(skip)]
+    pub event_log_async: EventLogAsync,
+    #[serde(skip)]
+    pub db_channel: Option<Sender<MetadataMsg>>,
     #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    // #[serde(skip, default = "default_topgg_client")]
-    // pub topgg_client: topgg::Client,
+    // Synchronous settings and caches. These are going away.
+    pub guild_settings_map_non_async:
+        Arc<SyncRwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_msg_cache_ordered: Arc<SyncMutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+
+    // Async access fields, will switch entirely to these
+    #[serde(skip)]
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    #[serde(skip)]
+    pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    #[serde(skip)]
+    #[cfg(feature = "crack-gpt")]
+    pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
 
 // /// Get the default topgg client
@@ -333,6 +346,8 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
+        #[cfg(feature = "crack-gpt")]
+        result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
         write!(f, "{}", result)
@@ -340,7 +355,7 @@ impl std::fmt::Debug for DataInner {
 }
 
 impl DataInner {
-    /// Set the bot settings for the data
+    /// Set the bot settings for the data.
     pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self {
             bot_settings,
@@ -348,7 +363,7 @@ impl DataInner {
         }
     }
 
-    /// Set the database pool for the data
+    /// Set the database pool for the data.
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
             database_pool: Some(database_pool),
@@ -356,7 +371,24 @@ impl DataInner {
         }
     }
 
-    /// Set the guild settings map for the data
+    /// Set the channel for the database pool communication.
+    pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
+        Self {
+            db_channel: Some(db_channel),
+            ..self.clone()
+        }
+    }
+
+    /// Set the GPT context for the data.
+    #[cfg(feature = "crack-gpt")]
+    pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
+        Self {
+            gpt_ctx: Arc::new(RwLock::new(Some(gpt_ctx))),
+            ..self.clone()
+        }
+    }
+
+    /// Set the guild settings map for the data.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {
             guild_settings_map: guild_settings,
@@ -367,10 +399,10 @@ impl DataInner {
 
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
-pub struct EventLog(pub Arc<Mutex<File>>);
+pub struct EventLog(pub Arc<SyncMutex<File>>);
 
 impl std::ops::Deref for EventLog {
-    type Target = Arc<Mutex<File>>;
+    type Target = Arc<SyncMutex<File>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -380,6 +412,42 @@ impl std::ops::Deref for EventLog {
 impl std::ops::DerefMut for EventLog {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+/// General log for events that the bot reveices from Discord.
+#[derive(Clone, Debug)]
+pub struct EventLogAsync(pub ArcTMutex<File>);
+
+impl std::ops::Deref for EventLogAsync {
+    type Target = ArcTMutex<File>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for EventLogAsync {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Default for EventLogAsync {
+    fn default() -> Self {
+        let log_path = format!("{}/events2.log", get_log_prefix());
+        let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
+        let log_file = match File::create(log_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error creating log file: {}", e);
+                // FIXME: Maybe use io::null()?
+                // I went down this path with sink and it was a mistake.
+                File::create("/dev/null")
+                    .expect("Should be able to have a file object to write too.")
+            },
+        };
+        Self(Arc::new(tokio::sync::Mutex::new(log_file)))
     }
 }
 
@@ -397,7 +465,63 @@ impl Default for EventLog {
                     .expect("Should be able to have a file object to write too.")
             },
         };
-        Self(Arc::new(Mutex::new(log_file)))
+        Self(Arc::new(SyncMutex::new(log_file)))
+    }
+}
+
+impl EventLogAsync {
+    /// Create a new EventLog, calls default
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Write an object to the log file without a note async.
+    pub async fn write_log_obj_async<T: serde::Serialize>(
+        &self,
+        name: &str,
+        obj: &T,
+    ) -> Result<(), Error> {
+        self.write_log_obj_note_async(name, None, obj).await
+    }
+
+    /// Write an object to the log file with a note.
+    pub async fn write_log_obj_note_async<T: serde::Serialize>(
+        &self,
+        name: &str,
+        notes: Option<&str>,
+        obj: &T,
+    ) -> Result<(), Error> {
+        let entry = LogEntry {
+            name: name.to_string(),
+            notes: notes.unwrap_or("").to_string(),
+            event: obj,
+        };
+        let mut buf = serde_json::to_vec(&entry).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    /// Write an object to the log file.
+    pub async fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
+        let mut buf = serde_json::to_vec(obj).unwrap();
+        let _ = buf.write(&[b'\n']);
+        let buf: &[u8] = buf.as_slice();
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
+    }
+
+    /// Write a buffer to the log file.
+    pub async fn write(self, buf: &[u8]) -> Result<(), Error> {
+        self.lock()
+            .await
+            .write_all(buf)
+            .map_err(|e| CrackedError::IO(e).into())
     }
 }
 
@@ -457,17 +581,29 @@ impl EventLog {
 impl Default for DataInner {
     fn default() -> Self {
         // let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
+        // let runtime = tokio::runtime::Builder::new_multi_thread()
+        //     .worker_threads(4)
+        //     .enable_all()
+        //     .build()
+        //     .unwrap();
+        // let rt_handle = Arc::new(RwLock::new(Some(runtime.handle().clone())));
         Self {
+            // rt_handle,
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
             bot_settings: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
-            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
+            guild_msg_cache_ordered: Arc::new(SyncMutex::new(BTreeMap::new())),
             event_log: EventLog::default(),
+            event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
+            db_channel: None,
+            #[cfg(feature = "crack-gpt")]
+            gpt_ctx: Arc::new(RwLock::new(None)),
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }
@@ -491,6 +627,19 @@ impl std::ops::Deref for Data {
 }
 
 impl Data {
+    /// Insert a guild into the guild settings map.
+    pub async fn insert_guild(
+        &self,
+        guild_id: GuildId,
+        guild_settings: GuildSettings,
+    ) -> Result<GuildSettings, CrackedError> {
+        self.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, guild_settings)
+            .ok_or(CrackedError::FailedToInsert)
+    }
+
     /// Create a new Data, calls default
     pub async fn downvote_track(
         &self,
@@ -530,7 +679,11 @@ impl Data {
     }
 
     /// Remove and return a message from the cache based on the guild_id and timestamp.
-    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    pub async fn remove_msg_from_cache(
+        &self,
+        guild_id: GuildId,
+        ts: DateTime<Utc>,
+    ) -> Option<Message> {
         let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
         guild_msg_cache_ordered
             .get_mut(&guild_id)
@@ -539,42 +692,92 @@ impl Data {
             .remove(&ts)
     }
 
-    /// Get the guild settings for a guild (read only)
-    pub fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
-        self.guild_settings_map
-            .read()
-            .unwrap()
-            .get(&guild_id)
-            .cloned()
-    }
-
-    pub fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
+    /// Add the guild settings for a guild.
+    pub async fn add_guild_settings(&self, guild_id: GuildId, settings: GuildSettings) {
         self.guild_settings_map
             .write()
-            .unwrap()
+            .await
             .insert(guild_id, settings);
     }
-
-    // /// Get the guild settings for a guild (read only)
-    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-    //     let mut asdf = self.guild_settings_map.write().unwrap().clone();
-    //     let qwer = asdf.get_mut(&guild_id);
-    //     qwer
-    // }
 
     /// Set the guild settings for a guild and return a new copy.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))
     }
+}
 
-    // /// Get the guild settings for a guild (mutable)
-    // pub fn get_guild_settings_mut(&self, guild_id: GuildId) -> Option<&mut GuildSettings> {
-    //     self.guild_settings_map.write().unwrap().get_mut(&guild_id)
-    // }
+/// Trait to extend the Context struct with additional convenience functionality.
+pub trait ContextExt {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// Return the call that the bot is currently in, if it is in one.
+    fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+}
+
+/// Implement the ContextExt trait for the Context struct.
+impl ContextExt for Context<'_> {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
+        let username = ready_track.username.clone();
+        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+        match &self.data().db_channel {
+            Some(channel) => {
+                let write_data: MetadataMsg = MetadataMsg {
+                    user_id,
+                    aux_metadata,
+                    username,
+                    guild_id,
+                    channel_id,
+                };
+                if let Err(e) = channel.try_send(write_data) {
+                    tracing::error!("Error sending metadata to db_channel: {}", e);
+                }
+            },
+            None => {},
+        }
+    }
+
+    /// Return the call that the bot is currently in, if it is in one.
+    async fn get_call(&self) -> Result<Arc<Mutex<Call>>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(self.serenity_context())
+            .await
+            .ok_or(CrackedError::NotConnected)?;
+        manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Add a message to the cache
+    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg)
+    }
+
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
+        let serenity_context = self.serenity_context();
+        let manager = songbird::get(serenity_context)
+            .await
+            .expect("Failed to get songbird manager")
+            .clone();
+
+        let call_lock = manager.get(guild_id)?;
+        let call = call_lock.lock().await;
+
+        let channel_id = call.current_channel()?;
+        let serenity_channel_id = ChannelId::new(channel_id.0.into());
+
+        Some(serenity_channel_id)
+    }
 }
 
 #[cfg(test)]
-mod test {
+mod lib_test {
     use super::*;
 
     #[test]
@@ -605,13 +808,14 @@ mod test {
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();
-        let want = "cammed_down_timeout: 0\nguild_id: 0\nchannel_id: 0\ndc_message: \"You have been violated for being cammed down for too long.\"\ndeafen: false\nmute: false\ndc: false\n";
+        // let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
+        let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
         assert_eq!(cam_kick.to_string(), want);
     }
 
     use serde_json::json;
-    #[test]
-    fn test_with_data_inner() {
+    #[tokio::test]
+    async fn test_with_data_inner() {
         let data = DataInner::default();
         let new_data = data.with_bot_settings(BotConfig::default());
         assert_eq!(json!(new_data.bot_settings), json!(BotConfig::default()));
@@ -623,6 +827,6 @@ mod test {
 
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
-        assert!(new_data.guild_settings_map.read().unwrap().is_empty());
+        assert!(new_data.guild_settings_map.read().await.is_empty());
     }
 }

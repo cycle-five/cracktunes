@@ -38,7 +38,7 @@ pub async fn toggle_self_deafen(
     let res = data
         .guild_settings_map
         .write()
-        .unwrap()
+        .await
         .entry(guild_id)
         .and_modify(|e| {
             e.toggle_self_deafen();

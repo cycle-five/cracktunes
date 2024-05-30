@@ -3,8 +3,9 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::Context;
 use crate::Error;
+use poise::serenity_prelude::Mentionable;
 use regex::Regex;
-use serenity::all::{User, UserId};
+use serenity::all::User;
 use serenity::builder::EditMember;
 use std::time::Duration;
 
@@ -20,34 +21,17 @@ use std::time::Duration;
 )]
 pub async fn timeout(
     ctx: Context<'_>,
-    #[description = "User to timout."] user: Option<User>,
-    #[description = "UserId to timeout"] user_id: Option<UserId>,
+    #[description = "User to timout."] user: User,
     #[description = "Amount of time"] duration: String,
 ) -> Result<(), Error> {
     // Debugging print the params
-    tracing::error!(
-        "User: {:?}, User_id: {:?}, Duration: {}",
-        user,
-        user_id,
-        duration
-    );
+    let id = user.id;
+    let mention = user.mention();
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    tracing::error!("Guild_id: {}", guild_id);
-
-    let user_id = {
-        if let Some(user) = user {
-            user.id
-        } else if let Some(user_id) = user_id {
-            user_id
-        } else {
-            return Err(CrackedError::Other("No user or user_id provided").into());
-        }
-    };
-    tracing::error!("User_id: {}", user_id);
 
     let timeout_duration = parse_duration(&duration)?;
-    tracing::error!("Timeout duration: {:?}", timeout_duration);
+    tracing::info!("Timeout duration: {:?}", timeout_duration);
 
     let now = chrono::Utc::now();
     let timeout_until = now + timeout_duration;
@@ -63,7 +47,7 @@ pub async fn timeout(
     if let Err(e) = guild
         .edit_member(
             &ctx,
-            user_id,
+            id,
             EditMember::default().disable_communication_until(timeout_until.clone()),
         )
         .await
@@ -79,8 +63,8 @@ pub async fn timeout(
     } else {
         // Send success message
         let msg = CrackedMessage::UserTimeout {
-            user: user_id.to_user(&ctx).await?.name,
-            user_id: format!("{}", user_id),
+            id,
+            mention,
             timeout_until: timeout_until.clone(),
         };
         tracing::info!("User timed out: {}", msg);

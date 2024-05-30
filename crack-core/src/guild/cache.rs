@@ -4,11 +4,12 @@ use self::serenity::model::{
 };
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
-use std::{collections::BTreeMap, sync::RwLock};
+use std::collections::BTreeMap;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use tokio::sync::RwLock;
 use typemap_rev::TypeMapKey;
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);

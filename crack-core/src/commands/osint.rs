@@ -2,11 +2,12 @@ use crate::utils::send_channel_message;
 pub use crate::{
     messaging::message::CrackedMessage,
     utils::{send_response_poise, SendMessageParams},
-    Context, Error, Result,
+    Context, Error,
 };
 use crack_osint::VirusTotalClient;
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
+use std::result::Result;
 use std::sync::Arc;
 
 /// Osint Commands
