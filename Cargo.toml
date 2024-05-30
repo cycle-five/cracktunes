@@ -68,7 +68,7 @@ default-features = true
 features = ["cache", "chrono"]
 
 [workspace.dependencies.tokio]
-version = "1.37.0"
+version = "1.38.0"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
 
