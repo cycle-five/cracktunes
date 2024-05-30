@@ -2,6 +2,8 @@ use crate::handlers::event_log::LogEntry;
 use chrono::{DateTime, Utc};
 use commands::play_utils::TrackReadyData;
 use commands::MyAuxMetadata;
+#[cfg(feature = "crack-gpt")]
+use crack_gpt::GptContext;
 use db::worker_pool::MetadataMsg;
 use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
@@ -24,10 +26,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex as SyncMutex, RwLock as SyncRwLock},
 };
-use tokio::sync::{Mutex, RwLock};
-// Channel for sending queries to the database write worke pool.
-use crack_gpt::GptContext;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 pub mod commands;
 pub mod connection;
@@ -320,6 +319,7 @@ pub struct DataInner {
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
+    #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
 
@@ -346,6 +346,7 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
+        #[cfg(feature = "crack-gpt")]
         result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
@@ -379,6 +380,7 @@ impl DataInner {
     }
 
     /// Set the GPT context for the data.
+    #[cfg(feature = "crack-gpt")]
     pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
         Self {
             gpt_ctx: Arc::new(RwLock::new(Some(gpt_ctx))),
@@ -600,6 +602,7 @@ impl Default for DataInner {
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             db_channel: None,
+            #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             // topgg_client: topgg::Client::new(topgg_token),
         }
