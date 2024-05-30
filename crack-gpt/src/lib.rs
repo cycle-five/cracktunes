@@ -1,3 +1,4 @@
+#![feature(const_format_args)]
 use async_openai::{
     config::AzureConfig,
     error::OpenAIError,
@@ -7,11 +8,16 @@ use async_openai::{
     },
     Client,
 };
-use std::sync::Arc;
+use const_format::concatcp;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use ttl_cache::TtlCache;
 
-const GPT_PROMPT: &str = "You are a discord music and utility bot called Crack Tunes, you are friendly and helpful. You have a 64 token output limit and no memory between questions.";
+const TOKEN_LIMIT: u16 = 128;
+const GPT_PROMPT: &str = concatcp!(
+    "You are a discord music and utility bot called Crack Tunes, you are friendly and helpful.",
+    "Here is a menu of commands you can use:\n",
+);
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -20,6 +26,9 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub struct GptContext {
     pub msg_cache: Arc<RwLock<TtlCache<u64, Vec<ChatCompletionRequestMessage>>>>,
     pub key: Option<String>,
+    pub help: String,
+    pub config: AzureConfig,
+    pub client: Option<Client<AzureConfig>>,
 }
 
 impl Default for GptContext {
@@ -32,8 +41,20 @@ impl GptContext {
     pub fn new() -> Self {
         GptContext {
             msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
-            key: None,
+            key: std::env::var("OPENAI_API_KEY")
+                .unwrap_or_else(|_| "".to_string())
+                .into(),
+            config: AzureConfig::default()
+                .with_api_base("https://openai-resource-prod.openai.azure.com")
+                .with_deployment_id("gpt-4o-prod")
+                .with_api_version("2024-02-01"),
+            help: "chat: Chat with Crack Tunes using GPT-4o.".to_string(),
+            client: None,
         }
+    }
+
+    pub fn set_help(&mut self, help: String) {
+        self.help = help;
     }
 
     /// Load the key from environment variables if it is not already set.
@@ -53,51 +74,90 @@ impl GptContext {
 
     /// Set the key for the context.
     pub fn set_key(&mut self, key: String) {
-        self.key = Some(key);
+        self.key = Some(key.clone());
+        self.config = self.config.clone().with_api_key(key);
+        self.client = Some(Client::with_config(self.config.clone()));
     }
-}
 
-pub async fn openai_azure_response(query: String) -> Result<String, OpenAIError> {
-    let key = std::env::var("OPENAI_API_KEY").expect("No OPENAI_API_KEY environment variable set.");
-
-    let config = AzureConfig::new()
-        .with_api_base("https://openai-resource-prod.openai.azure.com")
-        .with_api_key(key)
-        .with_deployment_id("gpt-4o-prod")
-        .with_api_version("2024-02-01");
-
-    let client = Client::with_config(config);
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(64u16)
-        //.model("gpt-3.5-turbo")
-        .model("gpt-4o")
-        .messages([
+    async fn init_convo(&self, query: String) -> Vec<ChatCompletionRequestMessage> {
+        let prompt = format!("{}{}", GPT_PROMPT, self.help);
+        vec![
             ChatCompletionRequestSystemMessageArgs::default()
-                .content(GPT_PROMPT)
-                .build()?
+                .content(prompt)
+                .build()
+                .unwrap()
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
                 .content(query)
-                .build()?
+                .build()
+                .unwrap()
                 .into(),
-        ])
-        .build()?;
+        ]
+    }
 
-    let res1 = client.chat().create(request).await;
-    let response = res1.unwrap();
-    let asdf = response.choices.first().expect("No choices in response.");
+    /// Create a user message for the chat completion request.
+    fn make_user_message(&self, query: String) -> ChatCompletionRequestMessage {
+        ChatCompletionRequestUserMessageArgs::default()
+            .content(query)
+            .build()
+            .unwrap()
+            .into()
+    }
 
-    Ok(asdf
-        .message
-        .content
-        .clone()
-        .expect("No content in message."))
+    /// Query openai via azure for a response to a prompt.
+    pub async fn openai_azure_response(
+        &self,
+        query: String,
+        user_id: u64,
+    ) -> Result<String, OpenAIError> {
+        let client = self
+            .client
+            .clone()
+            .unwrap_or(Client::with_config(self.config.clone()));
+
+        // let mut entry = self.msg_cache.write().await.entry(user_id);
+        let messages = match self.msg_cache.write().await.entry(user_id) {
+            ttl_cache::Entry::Occupied(mut messages) => {
+                let asdf = messages.get_mut();
+                asdf.push(self.make_user_message(query));
+                asdf.clone()
+            },
+            ttl_cache::Entry::Vacant(messages) => messages
+                .insert(self.init_convo(query).await, Duration::from_secs(60 * 10))
+                .clone(),
+        };
+        // let asdf = messages.entry(user_id).or_insert(self.init_convo(query));
+        // let messages = match messages {
+        //     Some(messages) => {
+        //         messages.push(self.make_user_message(query));
+        //         messages
+        //     },
+        //     None => self.init_convo(query),
+        // };
+
+        let request = CreateChatCompletionRequestArgs::default()
+            .max_tokens(TOKEN_LIMIT)
+            .model("gpt-4o")
+            .messages(messages.clone())
+            .build()?;
+
+        let res1 = client.chat().create(request).await;
+        let response = res1.unwrap();
+        let asdf = response.choices.first().expect("No choices in response.");
+
+        Ok(asdf
+            .message
+            .content
+            .clone()
+            .expect("No content in message."))
+    }
 }
 
 #[cfg(test)]
 mod test {
     use ctor;
+
+    use crate::GptContext;
 
     #[ctor::ctor]
     fn set_env() {
@@ -116,7 +176,8 @@ mod test {
     #[tokio::test]
     async fn test_openai_azure_response() {
         let query = "Please respond with the word \"fish\".".to_string();
-        let response = crate::openai_azure_response(query).await;
+        let ctx = GptContext::default();
+        let response = ctx.openai_azure_response(query, 1).await;
         println!("{:?}", response);
         assert!(response.is_err() || response.unwrap().to_ascii_lowercase().contains("fish"));
     }

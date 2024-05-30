@@ -16,5 +16,6 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 async-openai = "0.21.0"
 ctor = "0.2.8"
 ttl_cache = "0.5.1"
+const_format = "0.2.32"
 tracing = { workspace = true }
 tokio = { workspace = true }

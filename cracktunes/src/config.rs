@@ -234,7 +234,7 @@ pub async fn poise_framework(
             // commands::boop(),
             // all ai commands
             #[cfg(feature = "crack-gpt")]
-            commands::chatgpt(),
+            commands::chat(),
             commands::music::vote(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {

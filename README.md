@@ -96,15 +96,32 @@ docker compose up -d
 
 
 # ~~Roadmap~~ Change Log
-## v0.3.7 (2024/04/??)
+## v0.3.7 (2024/05/29)
+- [x] Added back chatgpt support, which I am now self hosting for CrackTunes
+      and is backed by GPT 4o.
 - [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
 - [x] Remove the grafana dashboard.
-- [ ] Switch to async logging.
-- [ ] Add an async service to handle the database (accept writes on a channel,
+- [x] Switch to async logging.
+- [x] Add an async service to handle the database (accept writes on a channel,
       and write to the database in a separate thread).
       Eventually this could be a seperate service (REST / GRPC).
-## v0.3.6 (2024/04/??)
-## v0.3.5 (2024/04/??)
+## v0.3.6 (2024/05/03)
+- Music channel setting (can lock music playing command and responses to a specific channel)
+- Fixes in logging
+- Fixes in admin commands
+- Lots of refactoring code cleanup.
+## v0.3.5 (2024/04/23)
+- Significantly improved loading speed of songs into the queue.
+- Fix Youtube Playlists.
+- Lots of refactoring.
+- Can load spotify playlists very quickly
+- Option to vote for Crack Tunes on top.gg for 12 hours of premium access.
+## v0.3.4
+- playlist loadspotify and playlist play commands
+- Invite and voting links
+- Updated serenity / poise / songbird to latest versions
+- Refactored functions for creating embeds and sending messages to it's own module
+
 ## v0.3.3 (2024/04/??)
 - `/loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
 - voting tracking
