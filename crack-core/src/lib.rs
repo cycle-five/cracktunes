@@ -26,6 +26,7 @@ use std::{
 };
 use tokio::sync::{Mutex, RwLock};
 // Channel for sending queries to the database write worke pool.
+use crack_gpt::GptContext;
 use tokio::sync::mpsc::Sender;
 
 pub mod commands;
@@ -318,6 +319,8 @@ pub struct DataInner {
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    #[serde(skip)]
+    pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
 
 // /// Get the default topgg client
@@ -343,6 +346,7 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
+        result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
         write!(f, "{}", result)
@@ -350,7 +354,7 @@ impl std::fmt::Debug for DataInner {
 }
 
 impl DataInner {
-    /// Set the bot settings for the data
+    /// Set the bot settings for the data.
     pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self {
             bot_settings,
@@ -358,7 +362,7 @@ impl DataInner {
         }
     }
 
-    /// Set the database pool for the data
+    /// Set the database pool for the data.
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
             database_pool: Some(database_pool),
@@ -366,7 +370,7 @@ impl DataInner {
         }
     }
 
-    /// Set the channel for the database pool communication
+    /// Set the channel for the database pool communication.
     pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
         Self {
             db_channel: Some(db_channel),
@@ -374,7 +378,15 @@ impl DataInner {
         }
     }
 
-    /// Set the guild settings map for the data
+    /// Set the GPT context for the data.
+    pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
+        Self {
+            gpt_ctx: Arc::new(RwLock::new(Some(gpt_ctx))),
+            ..self.clone()
+        }
+    }
+
+    /// Set the guild settings map for the data.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {
             guild_settings_map: guild_settings,
@@ -588,6 +600,7 @@ impl Default for DataInner {
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             db_channel: None,
+            gpt_ctx: Arc::new(RwLock::new(None)),
             // topgg_client: topgg::Client::new(topgg_token),
         }
     }

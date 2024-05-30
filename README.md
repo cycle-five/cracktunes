@@ -97,7 +97,8 @@ docker compose up -d
 
 # ~~Roadmap~~ Change Log
 ## v0.3.7 (2024/05/29)
-- [x] Added back chatgpt support, which I am now self hosting for CrackTunes
+- [x] crackgpt 0.2.0!
+      Added back chatgpt support, which I am now self hosting for CrackTunes
       and is backed by GPT 4o.
 - [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
 - [x] Remove the grafana dashboard.
