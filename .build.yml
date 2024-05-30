@@ -2,6 +2,7 @@ image: debian/bookworm
 secrets:
         - 5ec53080-dbed-4207-ab0f-d6056a62bb46
         - dbe97eb1-5978-43b3-83f2-8f1e6b815fcb
+        - d9aab5c9-6631-4095-8a7a-73e2401ac04c
 tasks:
         - install-dependencies: |
                   export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
@@ -63,6 +64,7 @@ tasks:
         - test: |
                   . "$HOME/.cargo/env"
                   export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
+                  export OPENAI_API_KEY=$(cat ~/OPENAI_API_KEY)
                   export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   export VIRUSTOTAL_API_KEY=$(cat ~/VIRUSTOTAL_API_KEY)
                   export SQLX_OFFLINE=true
