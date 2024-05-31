@@ -1,7 +1,6 @@
-use crate::db::PlayLog;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
-use crate::{Context, Error};
+use crate::{Context, ContextExt, Error};
 
 /// Get recently played tracks form the guild.
 #[cfg(not(tarpaulin_include))]
@@ -15,12 +14,7 @@ pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let last_played = PlayLog::get_last_played(
-        ctx.data().database_pool.as_ref().unwrap(),
-        None,
-        Some(guild_id.get() as i64),
-    )
-    .await?;
+    let last_played = ctx.get_last_played().await?;
 
     let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg);
@@ -40,12 +34,7 @@ pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let user_id = ctx.author().id;
 
-    let last_played = PlayLog::get_last_played(
-        ctx.data().database_pool.as_ref().unwrap(),
-        Some(user_id.get() as i64),
-        Some(guild_id.get() as i64),
-    )
-    .await?;
+    let last_played = ctx.get_last_played_by_user(user_id).await?;
 
     let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg);

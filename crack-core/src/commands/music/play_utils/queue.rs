@@ -1,7 +1,7 @@
 use super::QueryType;
 use crate::{
     commands::{Mode, MyAuxMetadata, RequestingUser},
-    db::{aux_metadata_to_db_structures, Metadata, PlayLog, User},
+    db::{aux_metadata_to_db_structures, Metadata, MetadataAnd, PlayLog, User},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
@@ -262,7 +262,7 @@ pub async fn write_metadata_pg(
     channel_id: ChannelId,
 ) -> Result<Metadata, CrackedError> {
     let returned_metadata = {
-        let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
+        let MetadataAnd::Track(metadata, _) = match aux_metadata_to_db_structures(
             &aux_metadata,
             guild_id.get() as i64,
             channel_id.get() as i64,

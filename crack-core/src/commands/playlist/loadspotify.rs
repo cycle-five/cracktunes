@@ -41,6 +41,8 @@ pub async fn loadspotify_(
     name: String,
     spotifyurl: String,
 ) -> Result<Vec<AuxMetadata>, Error> {
+    use crate::db::MetadataAnd;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
@@ -63,7 +65,7 @@ pub async fn loadspotify_(
         metadata_vec.push(m.clone());
         let res = aux_metadata_to_db_structures(&m, guild_id_i64, channel_id_i64);
         match res {
-            Ok((in_metadata, _track)) => {
+            Ok(MetadataAnd::Track(in_metadata, _)) => {
                 let metadata = Metadata::get_or_create(db_pool, &in_metadata).await?;
 
                 let _res = Playlist::add_track(

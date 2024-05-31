@@ -31,7 +31,7 @@ impl Display for MetadataMsg {
         )
     }
 }
-
+use crate::db::metadata::MetadataAnd;
 /// Writes metadata to the database for a playing track.
 pub async fn write_metadata_pg(
     database_pool: &PgPool,
@@ -45,7 +45,7 @@ pub async fn write_metadata_pg(
         channel_id,
     } = data;
     let returned_metadata = {
-        let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
+        let MetadataAnd::Track(metadata, _) = match aux_metadata_to_db_structures(
             &aux_metadata,
             guild_id.get() as i64,
             channel_id.get() as i64,

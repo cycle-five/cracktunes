@@ -14,7 +14,7 @@ use guild::settings::{
     DEFAULT_VOLUME_LEVEL,
 };
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, GuildId, Message};
+use serenity::all::{ChannelId, GuildId, Message, UserId};
 use songbird::Call;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -646,11 +646,9 @@ impl Data {
         guild_id: GuildId,
         _track: &str,
     ) -> Result<TrackReaction, CrackedError> {
-        let play_log_id = PlayLog::get_last_played_by_guild_metadata(
-            self.database_pool.as_ref().unwrap(),
-            guild_id.into(),
-        )
-        .await?;
+        let pool = self.get_db_pool()?;
+        let play_log_id =
+            PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into()).await?;
         let pool = self.database_pool.as_ref().unwrap();
         let id = *play_log_id.first().unwrap() as i32;
         let _ = TrackReaction::insert(pool, id).await;
@@ -704,14 +702,31 @@ impl Data {
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))
     }
+
+    pub fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
+        self.database_pool
+            .as_ref()
+            .ok_or(CrackedError::NoDatabasePool)
+            .cloned()
+    }
 }
 
 /// Trait to extend the Context struct with additional convenience functionality.
 pub trait ContextExt {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// Gets the log of last played songs on the bot by a specific user
+    fn get_last_played_by_user(
+        &self,
+        user_id: UserId,
+    ) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
+
+    /// Gets the log of last played songs on the bot
+    fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
     /// Return the call that the bot is currently in, if it is in one.
     fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Return the db pool for database operations.
+    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError>;
     /// Add a message to the cache
     fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
@@ -720,6 +735,27 @@ pub trait ContextExt {
 
 /// Implement the ContextExt trait for the Context struct.
 impl ContextExt for Context<'_> {
+    async fn get_last_played_by_user(&self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        PlayLog::get_last_played(
+            self.data().database_pool.as_ref().unwrap(),
+            Some(user_id.get() as i64),
+            Some(guild_id.get() as i64),
+        )
+        .await
+        .map_err(|e| e.into())
+    }
+    async fn get_last_played(&self) -> Result<Vec<String>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        PlayLog::get_last_played(
+            self.data().database_pool.as_ref().unwrap(),
+            None,
+            Some(guild_id.get() as i64),
+        )
+        .await
+        .map_err(|e| e.into())
+    }
+
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
         let username = ready_track.username.clone();
@@ -751,6 +787,11 @@ impl ContextExt for Context<'_> {
             .await
             .ok_or(CrackedError::NotConnected)?;
         manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Get the database pool
+    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
+        self.data().get_db_pool()
     }
 
     /// Add a message to the cache
