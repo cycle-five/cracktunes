@@ -32,15 +32,7 @@ crack-gpt = { path = "../crack-gpt/", optional = true }
 poise = { workspace = true }
 tokio = { workspace = true }
 songbird = { workspace = true }
-sqlx = { version = "0.7.4", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "macros",
-    "postgres",
-    "chrono",
-    "migrate",
-    "json",
-] }
+sqlx = { workspace = true }
 async-trait = { version = "0.1.80" }
 # mockall = { version = "0.12.1" }
 config-file = { version = "0.2.3", features = ["json"] }

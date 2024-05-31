@@ -30,10 +30,11 @@ use ::serenity::{
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-        MessageInteraction,
     },
     CreateReply, ReplyHandle,
 };
+#[allow(deprecated)]
+use serenity::MessageInteraction;
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
@@ -638,11 +639,13 @@ pub async fn edit_embed_response(
     }
 }
 
+#[allow(deprecated)]
 pub enum ApplicationCommandOrMessageInteraction {
     Command(CommandInteraction),
     Message(MessageInteraction),
 }
 
+#[allow(deprecated)]
 impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
     fn from(message: MessageInteraction) -> Self {
         Self::Message(message)
@@ -1084,6 +1087,7 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
+#[allow(deprecated)]
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
     Message(Option<Box<MessageInteraction>>),
@@ -1101,6 +1105,7 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
     }
 }
 
+#[allow(deprecated)]
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => {
