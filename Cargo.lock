@@ -3954,7 +3954,7 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.1"
-source = "git+https://github.com/CycleFive/serenity?branch=current#b2e932cd2985bcc90242ede5b1435b4f40802cab"
+source = "git+https://github.com/CycleFive/serenity?branch=current#0baafc9a0788c9141d3c189a19018fb4302d3e1e"
 dependencies = [
  "arrayvec",
  "async-trait",
