@@ -148,7 +148,7 @@ dependencies = [
  "derive_builder",
  "futures",
  "rand",
- "reqwest",
+ "reqwest 0.12.4",
  "reqwest-eventsource",
  "secrecy",
  "serde",
@@ -789,13 +789,13 @@ dependencies = [
  "prometheus",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.12.4",
  "rspotify",
  "rusty_ytdl",
  "serde",
  "serde_json",
  "serde_with",
- "serenity",
+ "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
  "serenity-voice-model",
  "songbird",
  "sqlx",
@@ -825,7 +825,7 @@ name = "crack-osint"
 version = "0.1.4"
 dependencies = [
  "ipinfo",
- "reqwest",
+ "reqwest 0.12.4",
  "serde",
  "serde_json",
  "sha1",
@@ -1554,6 +1554,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
+name = "h2"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81fe527a889e1532da5c525686d96d4c2e74cdd345badf8dfef9f6b39dd5f5e8"
+dependencies = [
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "futures-util",
+ "http 0.2.12",
+ "indexmap 2.2.6",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1681,6 +1700,17 @@ dependencies = [
 
 [[package]]
 name = "http-body"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
+dependencies = [
+ "bytes",
+ "http 0.2.12",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "http-body"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cac85db508abc24a2e48553ba12a996e87244a0395ce011e62b37158745d643"
@@ -1698,7 +1728,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "http 1.1.0",
- "http-body",
+ "http-body 1.0.0",
  "pin-project-lite",
 ]
 
@@ -1707,6 +1737,36 @@ name = "httparse"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d897f394bad6a705d5f4104762e116a75639e470d80901eed05a860a95cb1904"
+
+[[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "hyper"
+version = "0.14.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf96e135eb83a2a8ddf766e426a841d8ddd7449d5f00d34ea02b41d2f19eef80"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "httparse",
+ "httpdate",
+ "itoa",
+ "pin-project-lite",
+ "socket2",
+ "tokio",
+ "tower-service",
+ "tracing",
+ "want",
+]
 
 [[package]]
 name = "hyper"
@@ -1718,7 +1778,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "http 1.1.0",
- "http-body",
+ "http-body 1.0.0",
  "httparse",
  "itoa",
  "pin-project-lite",
@@ -1729,13 +1789,27 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec3efd23720e2049821a693cbc7e65ea87c72f1c58ff2f9522ff332b1491e590"
+dependencies = [
+ "futures-util",
+ "http 0.2.12",
+ "hyper 0.14.28",
+ "rustls 0.21.12",
+ "tokio",
+ "tokio-rustls 0.24.1",
+]
+
+[[package]]
+name = "hyper-rustls"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0bea761b46ae2b24eb4aef630d8d1c398157b6fc29e6350ecf090a0b70c952c"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper",
+ "hyper 1.3.1",
  "hyper-util",
  "rustls 0.22.4",
  "rustls-pki-types",
@@ -1754,8 +1828,8 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "http 1.1.0",
- "http-body",
- "hyper",
+ "http-body 1.0.0",
+ "hyper 1.3.1",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -2002,7 +2076,7 @@ dependencies = [
  "ipnetwork",
  "lazy_static",
  "lru",
- "reqwest",
+ "reqwest 0.12.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2146,7 +2220,7 @@ dependencies = [
  "html5ever 0.27.0",
  "log",
  "markup5ever_rcdom",
- "reqwest",
+ "reqwest 0.12.4",
  "serde",
 ]
 
@@ -2797,15 +2871,16 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#1c3418473636a3e3648e36b2e852bb6f4d9e7993"
 dependencies = [
  "async-trait",
  "derivative",
  "futures-util",
+ "indexmap 2.2.6",
  "parking_lot 0.12.3",
  "poise_macros",
  "regex",
- "serenity",
+ "serenity 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "tracing",
  "trim-in-place",
@@ -2814,7 +2889,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#1c3418473636a3e3648e36b2e852bb6f4d9e7993"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -3188,6 +3263,50 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
+version = "0.11.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
+dependencies = [
+ "base64 0.21.7",
+ "bytes",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "hyper 0.14.28",
+ "hyper-rustls 0.24.2",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "mime_guess",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustls 0.21.12",
+ "rustls-pemfile 1.0.4",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "system-configuration",
+ "tokio",
+ "tokio-rustls 0.24.1",
+ "tokio-util",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "webpki-roots 0.25.4",
+ "winreg 0.50.0",
+]
+
+[[package]]
+name = "reqwest"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "566cafdd92868e0939d3fb961bd0dc25fcfaaed179291093b3d43e6b3150ea10"
@@ -3201,10 +3320,10 @@ dependencies = [
  "futures-core",
  "futures-util",
  "http 1.1.0",
- "http-body",
+ "http-body 1.0.0",
  "http-body-util",
- "hyper",
- "hyper-rustls",
+ "hyper 1.3.1",
+ "hyper-rustls 0.26.0",
  "hyper-util",
  "ipnet",
  "js-sys",
@@ -3233,7 +3352,7 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "webpki-roots 0.26.1",
- "winreg",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -3248,7 +3367,7 @@ dependencies = [
  "mime",
  "nom",
  "pin-project-lite",
- "reqwest",
+ "reqwest 0.12.4",
  "thiserror",
 ]
 
@@ -3261,7 +3380,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "http 1.1.0",
- "reqwest",
+ "reqwest 0.12.4",
  "serde",
  "thiserror",
  "tower-service",
@@ -3279,9 +3398,9 @@ dependencies = [
  "futures",
  "getrandom",
  "http 1.1.0",
- "hyper",
+ "hyper 1.3.1",
  "parking_lot 0.11.2",
- "reqwest",
+ "reqwest 0.12.4",
  "reqwest-middleware",
  "retry-policies",
  "tokio",
@@ -3421,7 +3540,7 @@ dependencies = [
  "async-trait",
  "log",
  "maybe-async",
- "reqwest",
+ "reqwest 0.12.4",
  "serde_json",
  "thiserror",
 ]
@@ -3541,6 +3660,7 @@ version = "0.21.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
+ "log",
  "ring 0.17.8",
  "rustls-webpki 0.101.7",
  "sct",
@@ -3669,7 +3789,7 @@ dependencies = [
  "once_cell",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.12.4",
  "reqwest-middleware",
  "reqwest-retry",
  "scraper",
@@ -3954,11 +4074,12 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.1"
-source = "git+https://github.com/CycleFive/serenity?branch=current#b2e932cd2985bcc90242ede5b1435b4f40802cab"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c64da29158bb55d70677cacd4f4f8eab1acef005fb830d9c3bea411b090e96a9"
 dependencies = [
  "arrayvec",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.21.7",
  "bitflags 2.5.0",
  "bytes",
  "chrono",
@@ -3967,10 +4088,40 @@ dependencies = [
  "futures",
  "fxhash",
  "mime_guess",
+ "parking_lot 0.12.3",
+ "percent-encoding",
+ "reqwest 0.11.27",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tracing",
+ "typemap_rev",
+ "typesize",
+ "url",
+]
+
+[[package]]
+name = "serenity"
+version = "0.12.1"
+source = "git+https://github.com/CycleFive/serenity?branch=current#0baafc9a0788c9141d3c189a19018fb4302d3e1e"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "base64 0.22.1",
+ "bitflags 2.5.0",
+ "bytes",
+ "dashmap",
+ "flate2",
+ "futures",
+ "fxhash",
+ "mime_guess",
  "mini-moka",
  "parking_lot 0.12.3",
  "percent-encoding",
- "reqwest",
+ "reqwest 0.12.4",
  "secrecy",
  "serde",
  "serde_cow",
@@ -4128,14 +4279,14 @@ dependencies = [
  "parking_lot 0.12.3",
  "pin-project",
  "rand",
- "reqwest",
+ "reqwest 0.12.4",
  "ringbuf",
  "rubato",
  "rusty_pool",
  "serde",
  "serde-aux",
  "serde_json",
- "serenity",
+ "serenity 0.12.1 (git+https://github.com/CycleFive/serenity?branch=current)",
  "serenity-voice-model",
  "socket2",
  "streamcatcher",
@@ -4744,6 +4895,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "system-configuration"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3a3adc5c275d719af8cb4272ea1c4a6d668a777f37e115f6d11ddbc1c8e0e7"
+dependencies = [
+ "bitflags 1.3.2",
+ "core-foundation",
+ "system-configuration-sys",
+]
+
+[[package]]
+name = "system-configuration-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+]
+
+[[package]]
 name = "tagptr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4918,6 +5090,16 @@ dependencies = [
  "rustls 0.20.9",
  "tokio",
  "webpki",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28327cf380ac148141087fbfb9de9d7bd4e84ab5d2c28fbc911d753de8a7081"
+dependencies = [
+ "rustls 0.21.12",
+ "tokio",
 ]
 
 [[package]]
@@ -5900,6 +6082,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.50.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
