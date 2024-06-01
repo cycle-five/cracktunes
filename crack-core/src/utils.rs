@@ -746,7 +746,7 @@ pub fn create_now_playing_embed_metadata(
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
-    let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
+    let (footer_text, footer_icon_url, vanity) = build_footer_info(&source_url);
 
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
@@ -1012,7 +1012,8 @@ pub fn create_page_getter_newline(
     }
 }
 
-pub fn get_footer_info(url: &str) -> (String, String, String) {
+/// Build the strings used for the footer of an embed from a given url.
+pub fn build_footer_info(url: &str) -> (String, String, String) {
     let vanity = format!(
         "[{}]({}) • [{}]({})",
         VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
@@ -1108,30 +1109,16 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 #[allow(deprecated)]
 pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => {
-            Some(CommandOrMessageInteraction::Command(
-                app_ctx.interaction.clone(),
-            ))
-            // match app_ctx.interaction {
-            // CommandOrAutocompleteInteraction::Command(x) => Some(
-            //     CommandOrMessageInteraction::Command(Interaction::Command(x.clone())),
-            // ),
-            // CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        },
-        // Context::Prefix(_ctx) => None, //Some(ctx.msg.interaction.clone().into()),
+        CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
+            app_ctx.interaction.clone(),
+        )),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
             ctx.msg.interaction.clone(),
         )),
     }
 }
 
-/// Get the user id from a context.
-pub fn get_user_id(ctx: &CrackContext) -> serenity::UserId {
-    match ctx {
-        CrackContext::Application(ctx) => ctx.interaction.user.id,
-        CrackContext::Prefix(ctx) => ctx.msg.author.id,
-    }
-}
+
 
 pub async fn handle_error(
     ctx: CrackContext<'_>,
@@ -1203,7 +1190,7 @@ mod test {
 
     #[test]
     fn test_get_footer_info() {
-        let (text, icon_url, vanity) = get_footer_info("https://www.rust-lang.org/");
+        let (text, icon_url, vanity) = build_footer_info("https://www.rust-lang.org/");
         assert_eq!(text, "Streaming via rust-lang.org");
         assert!(icon_url.contains("rust-lang.org"));
         assert!(vanity.contains("vote"));

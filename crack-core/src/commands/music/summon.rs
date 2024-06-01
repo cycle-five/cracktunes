@@ -1,11 +1,10 @@
-use self::serenity::{model::id::ChannelId, Mentionable};
 use crate::handlers::IdleHandler;
 use crate::{
     connection::get_voice_channel_for_user, errors::CrackedError, handlers::TrackEndHandler,
-    messaging::message::CrackedMessage, utils::get_user_id, Context, Error,
+    messaging::message::CrackedMessage, Context, ContextExt, Error,
 };
-use ::serenity::all::{Channel, Guild, UserId};
-use poise::{serenity_prelude as serenity, CreateReply};
+use ::serenity::all::{Channel, ChannelId, Guild, Mentionable, UserId};
+use poise::CreateReply;
 use songbird::Call;
 use songbird::{Event, TrackEvent};
 use std::sync::Arc;
@@ -34,7 +33,7 @@ pub async fn summon(
         .clone();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
 
-    let user_id = get_user_id(&ctx);
+    let user_id = ctx.get_user_id();
 
     let channel_id =
         get_channel_id_for_summon(channel, channel_id_str, guild.clone(), user_id).await?;

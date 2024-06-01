@@ -11,7 +11,7 @@ use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed
 use crate::{
     messaging::message::CrackedMessage,
     utils::{
-        get_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
+        build_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
     },
 };
 /// Contains functions for creating embeds and other messages which are used
@@ -142,7 +142,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
 
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
-    let (footer_text, footer_icon_url, vanity) = get_footer_info(&source_url);
+    let (footer_text, footer_icon_url, vanity) = build_footer_info(&source_url);
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
         .title(title.clone())

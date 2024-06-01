@@ -13,6 +13,7 @@ use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
 };
+use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, Message, UserId};
 use songbird::Call;
@@ -715,6 +716,8 @@ impl Data {
 pub trait ContextExt {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// The the user id for the author of the message that created this context.
+    fn get_user_id(&self) -> serenity::UserId;
     /// Gets the log of last played songs on the bot by a specific user
     fn get_last_played_by_user(
         &self,
@@ -735,6 +738,13 @@ pub trait ContextExt {
 
 /// Implement the ContextExt trait for the Context struct.
 impl ContextExt for Context<'_> {
+    /// Get the user id from a context.
+    fn get_user_id(&self) -> serenity::UserId {
+        match self {
+            Context::Application(ctx) => ctx.interaction.user.id,
+            Context::Prefix(ctx) => ctx.msg.author.id,
+        }
+    }
     async fn get_last_played_by_user(&self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         PlayLog::get_last_played(

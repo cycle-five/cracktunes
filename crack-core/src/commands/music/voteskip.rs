@@ -1,14 +1,14 @@
-use self::serenity::{model::id::GuildId, Mentionable};
 use crate::{
     commands::music::{create_skip_response, force_skip_top_track},
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
-    utils::{get_user_id, send_response_poise_text},
-    Context, Data, Error,
+    utils::send_response_poise_text,
+    Context, ContextExt, Data, Error,
 };
 use poise::serenity_prelude as serenity;
+use serenity::{model::id::GuildId, Mentionable};
 use std::collections::HashSet;
 
 /// Vote to skip the current track
@@ -39,7 +39,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
     let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
     let cache = cache_map.entry(guild_id).or_default();
-    let user_id = get_user_id(&ctx);
+    let user_id = ctx.get_user_id();
     cache.current_skip_votes.insert(user_id);
 
     let guild_users = ctx
@@ -71,7 +71,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         send_response_poise_text(
             ctx,
             CrackedMessage::VoteSkip {
-                mention: get_user_id(&ctx).mention(),
+                mention: ctx.get_user_id().mention(),
                 missing: skip_threshold - cache.current_skip_votes.len(),
             },
         )
