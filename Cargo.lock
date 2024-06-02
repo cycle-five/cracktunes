@@ -765,6 +765,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-bf"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "crack-core"
 version = "0.3.7"
 dependencies = [
@@ -775,6 +783,7 @@ dependencies = [
  "bytes",
  "chrono",
  "colored",
+ "crack-bf",
  "crack-gpt",
  "crack-osint",
  "ctor",

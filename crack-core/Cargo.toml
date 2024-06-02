@@ -21,6 +21,7 @@ cache = ["serenity/cache", "poise/cache"]
 crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
+crack-bf = ["dep:crack-bf"]
 
 [dependencies]
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "v0.7.2-boa", features = [
@@ -60,6 +61,7 @@ reqwest = { version = "0.12.4", default-features = false, features = [
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
+crack-bf = { path = "../crack-bf", optional = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }

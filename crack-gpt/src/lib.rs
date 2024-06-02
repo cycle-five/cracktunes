@@ -98,15 +98,15 @@ impl Debug for GptContext {
 
 impl GptContext {
     pub fn new() -> Self {
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
         GptContext {
             msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
-            key: std::env::var("OPENAI_API_KEY")
-                .unwrap_or_else(|_| "".to_string())
-                .into(),
+            key: Some(api_key.clone()),
             config: AzureConfig::default()
                 .with_api_base("https://openai-resource-prod.openai.azure.com")
                 .with_deployment_id("gpt-4o-prod")
-                .with_api_version("2024-02-01"),
+                .with_api_version("2024-02-01")
+                .with_api_key(api_key),
             help: HELP_STR.to_string(),
             client: None,
         }
@@ -172,7 +172,7 @@ impl GptContext {
         let messages = match self.msg_cache.write().await.entry(user_id) {
             ttl_cache::Entry::Occupied(mut messages) => {
                 let asdf = messages.get_mut();
-                asdf.push(make_user_message(query));
+                asdf.insert(0, make_user_message(query));
                 asdf.clone()
             },
             ttl_cache::Entry::Vacant(messages) => messages

@@ -1004,7 +1004,10 @@ impl GuildSettings {
                 // );
                 log_settings.get_all_log_channel()
             }
-            _ => todo!(),
+            _ => {
+                tracing::warn!("Event Not Implemented: {:?}", event);
+                None
+            },
         }
     }
 
