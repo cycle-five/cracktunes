@@ -79,8 +79,14 @@ impl BrainfuckProgram {
                 },
                 b',' => {
                     let mut input = [0u8; 1];
-                    reader.read_exact(&mut input)?;
-                    cells[ptr] = input[0];
+                    match reader.read_exact(&mut input) {
+                        Ok(_) => {
+                            cells[ptr] = input[0];
+                        },
+                        Err(_) => {
+                            cells[ptr] = 0;
+                        },
+                    }
                 },
                 _ => {},
             }
@@ -95,6 +101,39 @@ mod tests {
     use std::io::BufReader;
 
     use super::*;
+
+    use std::io::Cursor;
+
+    #[test]
+    fn test_hello_world_cursor() {
+        // let program = String::from("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++.>.+++.------.--------.>+.>.");
+        let program = String::from("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.");
+        let mut bf = BrainfuckProgram::new(program);
+
+        let input = Cursor::new(vec![]);
+        let mut output = Cursor::new(vec![]);
+
+        bf.run(input, &mut output).unwrap();
+
+        let result = String::from_utf8(output.into_inner()).unwrap();
+        assert_eq!(result, "Hello World!\n");
+    }
+
+    #[test]
+    fn test_input_output() {
+        let program = String::from(",[.,]");
+        let mut bf = BrainfuckProgram::new(program);
+
+        let input_data = b"Brainfuck\n".to_vec();
+        let input = Cursor::new(input_data);
+        let mut output = Cursor::new(vec![]);
+
+        bf.run(input, &mut output).unwrap();
+
+        let result = String::from_utf8(output.into_inner()).unwrap();
+        println!("{}", result.clone());
+        assert_eq!(result, "Brainfuck\n");
+    }
 
     #[test]
     fn test_hello_world() {
