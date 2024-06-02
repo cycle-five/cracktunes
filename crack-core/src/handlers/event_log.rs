@@ -977,6 +977,24 @@ pub async fn handle_event(
         FullEvent::VoiceServerUpdate { event } => {
             event_log.write_log_obj_async(event_name, event).await
         },
+        FullEvent::VoiceChannelStatusUpdate {
+            old,
+            status,
+            id,
+            guild_id,
+        } => {
+            let log_data = (old, status, id, guild_id);
+            log_event!(
+                log_voice_channel_status_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx,
+                event_log,
+                event_name
+            )
+        },
         FullEvent::WebhookUpdate {
             guild_id,
             belongs_to_channel_id,

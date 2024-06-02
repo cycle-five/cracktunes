@@ -182,22 +182,23 @@ pub async fn send_response_poise_text(
 #[cfg(not(tarpaulin_include))]
 pub async fn create_response(
     ctx: CrackContext<'_>,
-    interaction: &CommandOrMessageInteraction,
+    _interaction: &CommandOrMessageInteraction,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
-    send_embed_response(ctx, interaction, embed).await
+    send_embed_response_poise(ctx, embed).await
 }
 
 /// Create an embed to send as a response.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
-    interaction: &CommandOrMessageInteraction,
+    _interaction: &CommandOrMessageInteraction,
     content: &str,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
-    send_embed_response(ctx, interaction, embed).await
+    //send_embed_response(ctx, interaction, embed).await
+    send_embed_response_poise(ctx, embed).await
 }
 
 pub async fn edit_response_poise(
@@ -447,27 +448,27 @@ pub async fn send_embed_response_prefix(
     send_embed_response_poise(ctx, embed).await
 }
 
-pub async fn send_embed_response(
-    ctx: CrackContext<'_>,
-    interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        CommandOrMessageInteraction::Command(int) => {
-            tracing::warn!("CommandOrMessageInteraction::Command");
-            create_response_interaction(&ctx, &Interaction::Command(int.clone()), embed, false)
-                .await
-        },
-        // Under what circusmtances does this get called?
-        CommandOrMessageInteraction::Message(_interaction) => {
-            tracing::warn!("CommandOrMessageInteraction::Message");
-            ctx.channel_id()
-                .send_message(ctx.http(), CreateMessage::new().embed(embed))
-                .await
-                .map_err(Into::into)
-        },
-    }
-}
+// pub async fn send_embed_response(
+//     ctx: CrackContext<'_>,
+//     interaction: &CommandOrMessageInteraction,
+//     embed: CreateEmbed,
+// ) -> Result<Message, CrackedError> {
+//     match interaction {
+//         CommandOrMessageInteraction::Command(int) => {
+//             tracing::warn!("CommandOrMessageInteraction::Command");
+//             create_response_interaction(&ctx, &Interaction::Command(int.clone()), embed, false)
+//                 .await
+//         },
+//         // Under what circusmtances does this get called?
+//         CommandOrMessageInteraction::Message(_interaction) => {
+//             tracing::warn!("CommandOrMessageInteraction::Message");
+//             ctx.channel_id()
+//                 .send_message(ctx.http(), CreateMessage::new().embed(embed))
+//                 .await
+//                 .map_err(Into::into)
+//         },
+//     }
+// }
 
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
@@ -507,38 +508,27 @@ pub async fn create_response_interaction(
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => {
-            // Is this "acknowledging" the interaction?
-            // if defer {
-            //     int.defer(http).await.unwrap();
-            // }
-            // let res = if defer {
-            //     CreateInteractionResponse::Defer(
-            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
-            //     )
-            // } else {
-            //     CreateInteractionResponse::Message(
-            //         CreateInteractionResponseMessage::new().embed(embed.clone()),
-            //     )
-            // };
-
-            let res = CreateInteractionResponse::Message(
+            let out_res = CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new().embed(embed.clone()),
             );
-            let message = int.get_response(cache_http.http()).await;
-            match message {
-                Ok(message) => {
-                    message
-                        .clone()
-                        .edit(cache_http, EditMessage::default().embed(embed.clone()))
-                        .await?;
-                    Ok(message)
-                },
-                Err(_) => {
-                    int.create_response(cache_http, res).await?;
-                    let message = int.get_response(cache_http.http()).await?;
-                    Ok(message)
-                },
-            }
+            int.create_response(cache_http, out_res).await?;
+            let msg = int.get_response(cache_http.http()).await?;
+            Ok(msg)
+            // let message = int.get_response(cache_http.http()).await;
+            // match message {
+            //     Ok(message) => {
+            //         message
+            //             .clone()
+            //             .edit(cache_http, EditMessage::default().embed(embed.clone()))
+            //             .await?;
+            //         Ok(message)
+            //     },
+            //     Err(_) => {
+            //         int.create_response(cache_http, res).await?;
+            //         let message = int.get_response(cache_http.http()).await?;
+            //         Ok(message)
+            //     },
+            // }
         },
         Interaction::Ping(..)
         | Interaction::Component(..)
@@ -548,54 +538,54 @@ pub async fn create_response_interaction(
     }
 }
 
-/// Defers a response to an interaction.
-/// TODO: use a macro to reduce code here?
-pub async fn defer_response_interaction(
-    http: impl CacheHttp,
-    interaction: &Interaction,
-    embed: CreateEmbed,
-) -> Result<(), CrackedError> {
-    match interaction {
-        Interaction::Command(int) => int
-            .create_response(
-                http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                ),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Component(int) => int
-            .create_response(
-                http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                ),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Modal(int) => int
-            .create_response(
-                http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                ),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Autocomplete(int) => int
-            .create_response(
-                http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new().embed(embed.clone()),
-                ),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Ping(_int) => Ok(()),
-        _ => todo!(),
-    }
-}
+// /// Defers a response to an interaction.
+// /// TODO: use a macro to reduce code here?
+// pub async fn defer_response_interaction(
+//     http: impl CacheHttp,
+//     interaction: &Interaction,
+//     embed: CreateEmbed,
+// ) -> Result<(), CrackedError> {
+//     match interaction {
+//         Interaction::Command(int) => int
+//             .create_response(
+//                 http,
+//                 CreateInteractionResponse::Message(
+//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
+//                 ),
+//             )
+//             .await
+//             .map_err(Into::into),
+//         Interaction::Component(int) => int
+//             .create_response(
+//                 http,
+//                 CreateInteractionResponse::Message(
+//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
+//                 ),
+//             )
+//             .await
+//             .map_err(Into::into),
+//         Interaction::Modal(int) => int
+//             .create_response(
+//                 http,
+//                 CreateInteractionResponse::Message(
+//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
+//                 ),
+//             )
+//             .await
+//             .map_err(Into::into),
+//         Interaction::Autocomplete(int) => int
+//             .create_response(
+//                 http,
+//                 CreateInteractionResponse::Message(
+//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
+//                 ),
+//             )
+//             .await
+//             .map_err(Into::into),
+//         Interaction::Ping(_int) => Ok(()),
+//         _ => todo!(),
+//     }
+// }
 
 /// Edit the embed response of the given message.
 #[cfg(not(tarpaulin_include))]
@@ -1117,8 +1107,6 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
         )),
     }
 }
-
-
 
 pub async fn handle_error(
     ctx: CrackContext<'_>,

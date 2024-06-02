@@ -1179,6 +1179,31 @@ pub async fn log_presence_update(
 
 /// Log a voice state update event.
 #[cfg(not(tarpaulin_include))]
+pub async fn log_voice_channel_status_update(
+    channel_id: ChannelId,
+    ctx: &SerenityContext,
+    log_data: &(&Option<String>, &Option<String>, &ChannelId, &GuildId),
+) -> Result<serenity::model::prelude::Message, Error> {
+    let &(old, status, _, _) = log_data;
+    let title = format!("Voice Channel Status Update: {:?} -> {:?}", old, status);
+
+    let description = "";
+    let avatar_url = "";
+    let guild_name = get_guild_name(&ctx, channel_id).await?;
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        &ctx,
+        &channel_id.to_string(),
+        &title,
+        &description,
+        &avatar_url,
+    )
+    .await
+}
+
+/// Log a voice state update event.
+#[cfg(not(tarpaulin_include))]
 pub async fn log_voice_state_update(
     channel_id: ChannelId,
     ctx: &SerenityContext,
