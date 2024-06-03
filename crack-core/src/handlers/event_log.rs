@@ -1,7 +1,7 @@
 use super::event_log_impl::*;
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, ArcTRwMap, Data, Error,
+    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
 use poise::{

@@ -1,31 +1,101 @@
-use super::messages::REQUESTED_BY;
 use crate::errors::CrackedError;
 use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
-    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
-use crate::Context as CrackContext;
 use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
     utils::{
         build_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
     },
+    Context as CrackContext, Error,
 };
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
 use poise::CreateReply;
-use serenity::all::UserId;
 use serenity::{
-    all::Mentionable,
-    all::{ButtonStyle, CreateEmbed},
+    all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
+    all::{CacheHttp, ChannelId, Mentionable, UserId},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
+
+/// Create and sends an log message as an embed.
+/// FIXME: The avatar_url won't always be available. How do we best handle this?
+pub async fn build_log_embed(
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, CrackedError> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer = CreateEmbedFooter::new(now_time_str);
+    Ok(CreateEmbed::default()
+        .title(title)
+        .description(description)
+        .thumbnail(avatar_url)
+        .footer(footer))
+}
+
+/// Build a log embed with(out?) a thumbnail.
+pub async fn build_log_embed_thumb(
+    guild_name: &str,
+    title: &str,
+    id: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<CreateEmbed, CrackedError> {
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
+    let footer = CreateEmbedFooter::new(footer_str);
+    let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
+    Ok(CreateEmbed::default()
+        .author(author)
+        // .title(title)
+        .description(description)
+        // .thumbnail(avatar_url)
+        .footer(footer))
+}
+
+/// Send a log message as a embed with a thumbnail.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_log_embed_thumb(
+    guild_name: &str,
+    channel: &ChannelId,
+    cache_http: &impl CacheHttp,
+    id: &str,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, Error> {
+    let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
+
+    channel
+        .send_message(cache_http, CreateMessage::new().embed(embed))
+        .await
+        .map_err(Into::into)
+}
+
+/// Create and sends an log message as an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_log_embed(
+    channel: &ChannelId,
+    http: &impl CacheHttp,
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Message, CrackedError> {
+    let embed = build_log_embed(title, description, avatar_url).await?;
+
+    channel
+        .send_message(http, CreateMessage::new().embed(embed))
+        .await
+        .map_err(Into::into)
+}
 
 /// Converts a user id to a string, with special handling for autoplay.
 pub fn requesting_user_to_string(user_id: UserId) -> String {

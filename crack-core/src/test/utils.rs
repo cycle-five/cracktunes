@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::utils::build_log_embed;
+    use crate::messaging::interface::build_log_embed;
 
     #[tokio::test]
     async fn test_build_log_embed() {
