@@ -1196,8 +1196,8 @@ pub async fn log_voice_channel_status_update(
         &ctx,
         &channel_id.to_string(),
         &title,
-        &description,
-        &avatar_url,
+        description,
+        avatar_url,
     )
     .await
 }

@@ -17,7 +17,7 @@ use crack_core::{
     utils::{
         check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
     },
-    BotConfig, Data, DataInner, Error, EventLog, PhoneCodeData,
+    BotConfig, Data, DataInner, Error, EventLog, EventLogAsync, PhoneCodeData,
 };
 use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
 use poise::{
@@ -172,6 +172,7 @@ pub async fn poise_framework(
     config: BotConfig,
     //TODO: can this be create in this function instead of passed in?
     event_log: EventLog,
+    event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
@@ -195,18 +196,20 @@ pub async fn poise_framework(
             commands::autoplay(),
             commands::clear(),
             commands::clean(),
+            commands::grab(),
             commands::help(),
             commands::invite(),
             commands::leave(),
             commands::lyrics(),
-            commands::grab(),
             commands::nowplaying(),
+            commands::optplay(),
             commands::pause(),
+            commands::ping(),
             commands::play(),
             commands::playnext(),
             commands::playlog(),
-            commands::optplay(),
-            commands::ping(),
+            commands::playlist(),
+            commands::queue(),
             commands::remove(),
             commands::resume(),
             commands::repeat(),
@@ -219,15 +222,10 @@ pub async fn poise_framework(
             commands::summon(),
             commands::version(),
             commands::volume(),
-            commands::queue(),
+            commands::music::vote(),
             #[cfg(feature = "crack-osint")]
             commands::osint(),
             // all playlist commands
-            commands::playlist(),
-            // all admin commands
-            commands::admin(),
-            // all settings commands
-            commands::settings(),
             // all gambling commands
             // commands::coinflip(),
             // commands::rolldice(),
@@ -235,7 +233,10 @@ pub async fn poise_framework(
             // all ai commands
             #[cfg(feature = "crack-gpt")]
             commands::chat(),
-            commands::music::vote(),
+            // all settings commands
+            commands::settings(),
+            // all admin commands
+            commands::admin(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
@@ -442,6 +443,7 @@ pub async fn poise_framework(
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log,
+        event_log_async,
         database_pool: pool_opts,
         db_channel: channel,
         ..Default::default()
@@ -640,7 +642,7 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
 #[cfg(test)]
 mod test {
-    use crack_core::{BotConfig, EventLog};
+    use crack_core::{BotConfig, EventLog, EventLogAsync};
     use std::collections::HashSet;
 
     use crate::config::{
@@ -669,7 +671,8 @@ mod test {
     async fn test_build_framework() {
         let config = BotConfig::default();
         let event_log = EventLog::new();
-        let client = super::poise_framework(config, event_log).await;
+        let event_log_async = EventLogAsync::new();
+        let client = super::poise_framework(config, event_log, event_log_async).await;
         assert!(client.is_ok());
     }
 

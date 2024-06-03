@@ -1,6 +1,8 @@
 use std::io::{BufRead, Write};
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+/// Representation of a brainfuck program.
+#[derive(Clone, Debug)]
 pub struct BrainfuckProgram {
     pub code: Vec<u8>,
     pub cells: [u8; 30000],
@@ -8,6 +10,7 @@ pub struct BrainfuckProgram {
     pub pc: usize,
 }
 
+/// Implementation of the representation and execution of a brainfuck program.
 impl BrainfuckProgram {
     pub fn new(program: String) -> Self {
         let program = program
@@ -24,6 +27,9 @@ impl BrainfuckProgram {
         }
     }
 
+    /// Match a bracket b'[' to the matching b']' on the same level of
+    /// precedence. Returns the new PC pointer.
+    /// TODO: Add some error handling.
     fn match_bracket_forward(cells: &[u8], ptr: usize, code: &[u8], pc: usize) -> usize {
         let mut pc = pc;
         if cells[ptr] == 0 {
@@ -40,6 +46,9 @@ impl BrainfuckProgram {
         pc
     }
 
+    /// Match a bracket b']' to the matching b'[' on the same level of
+    /// precedence. Returns the new PC pointer.
+    /// TODO: Add some error handling.
     fn match_bracket_backward(cells: &[u8], ptr: usize, code: &[u8], pc: usize) -> usize {
         let mut pc = pc;
         if cells[ptr] != 0 {
@@ -56,6 +65,25 @@ impl BrainfuckProgram {
         pc
     }
 
+    /// Write the current cell to the writer.
+    #[allow(dead_code)]
+    fn write_cell(&self, writer: &mut impl Write) -> Result<(), Error> {
+        let val = self.cells[self.ptr];
+        match writer.write_all(&[val]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
+    // async fn write_cell_async(&self, writer: &mut impl AsyncWrite) -> Result<(), Error> {
+    //     let val = self.cells[self.ptr];
+    //     match w {
+    //         Ok(_) => Ok(()),
+    //         Err(e) => Err(Box::new(e)),
+    //     }
+    // }
+
+    /// Run the brainfuck program.
     pub fn run<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<(), Error>
     where
         R: BufRead,
@@ -75,7 +103,12 @@ impl BrainfuckProgram {
                 b']' => pc = Self::match_bracket_backward(&cells, ptr, code, pc),
                 b'.' => {
                     let val = cells[ptr];
-                    writer.write_all(&[val])?;
+                    match writer.write_all(&[val]) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            return Err(Box::new(e));
+                        },
+                    }
                 },
                 b',' => {
                     let mut input = [0u8; 1];
@@ -106,7 +139,6 @@ mod tests {
 
     #[test]
     fn test_hello_world_cursor() {
-        // let program = String::from("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++.>.+++.------.--------.>+.>.");
         let program = String::from("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.");
         let mut bf = BrainfuckProgram::new(program);
 

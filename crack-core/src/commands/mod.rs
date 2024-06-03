@@ -1,4 +1,6 @@
 pub mod admin;
+#[cfg(feature = "crack-bf")]
+pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
 pub mod music;
@@ -11,6 +13,8 @@ pub mod settings;
 pub mod version;
 
 pub use admin::*;
+#[cfg(feature = "crack-bf")]
+pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
 pub use music::*;
@@ -19,11 +23,11 @@ pub use music_utils::*;
 pub use osint::*;
 pub use ping::*;
 pub use playlist::playlist;
-use serenity::all::Message;
 pub use settings::*;
 pub use version::*;
 
 pub use crate::errors::CrackedError;
+use serenity::all::Message;
 
 pub type MessageResult = Result<Message, CrackedError>;
 pub type EmptyResult = Result<(), crate::Error>;

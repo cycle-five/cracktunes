@@ -89,8 +89,7 @@ pub async fn build_log_embed(
         .footer(footer))
 }
 
-/// Create and sends an log message as an embed.
-/// FIXME: The avatar_url won't always be available. How do we best handle this?
+/// Build a log embed with(out?) a thumbnail.
 pub async fn build_log_embed_thumb(
     guild_name: &str,
     title: &str,
