@@ -299,8 +299,8 @@ pub struct DataInner {
     //
     #[serde(skip)]
     pub phone_data: PhoneCodeData,
-    #[serde(skip)]
-    pub event_log: EventLog,
+    // #[serde(skip)]
+    // pub event_log: EventLog,
     #[serde(skip)]
     pub event_log_async: EventLogAsync,
     #[serde(skip)]
@@ -346,7 +346,7 @@ impl std::fmt::Debug for DataInner {
             self.guild_msg_cache_ordered
         ));
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
-        result.push_str(&format!("event_log: {:?}\n", self.event_log));
+        result.push_str(&format!("event_log: {:?}\n", self.event_log_async));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
         #[cfg(feature = "crack-gpt")]
         result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
@@ -599,7 +599,7 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(SyncMutex::new(BTreeMap::new())),
-            event_log: EventLog::default(),
+            // event_log: EventLog::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
@@ -849,10 +849,10 @@ mod lib_test {
     }
 
     /// Test the creation of a default EventLog
-    #[test]
-    fn test_event_log_default() {
-        let event_log = EventLog::default();
-        let file = event_log.lock().unwrap();
+    #[tokio::test]
+    async fn test_event_log_default() {
+        let event_log = EventLogAsync::default();
+        let file = event_log.lock().await;
         assert_eq!(file.metadata().unwrap().len(), 0);
     }
 
@@ -860,7 +860,6 @@ mod lib_test {
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();
-        // let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
         let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
         assert_eq!(cam_kick.to_string(), want);
     }

@@ -3,9 +3,9 @@ use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
 use crack_core::sources::ytdl::HANDLE;
 use crack_core::BotConfig;
+use crack_core::BotCredentials;
 use crack_core::EventLogAsync;
 pub use crack_core::PhoneCodeData;
-use crack_core::{BotCredentials, EventLog};
 use cracktunes::poise_framework;
 use std::collections::HashMap;
 use std::env;
@@ -36,38 +36,47 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+//#[tokio::main]
+fn main() -> Result<(), Error> {
     use tokio::runtime::Handle;
 
     *HANDLE.lock().unwrap() = Some(Handle::current());
-    let event_log = EventLog::default();
+    // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();
 
     dotenvy::dotenv().ok();
-    // rt.block_on(async {
-    //     init_telemetry("").await;
-    //     main_async(event_log).await
-    // })
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        init_telemetry("").await;
+        match main_async(event_log_async).await {
+            Ok(_) => (),
+            Err(error) => {
+                tracing::error!("Error: {:?}", error);
+            },
+        }
+    });
 
-    let url = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp";
+    // let url = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp";
 
-    init_telemetry(url).await;
-    main_async(event_log, event_log_async).await?;
+    // init_telemetry(url).await;
+    // main_async(event_log_async).await?;
 
     Ok(())
 }
 
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
-async fn main_async(event_log: EventLog, event_log_async: EventLogAsync) -> Result<(), Error> {
+async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
     init_metrics();
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let mut client = poise_framework(config, event_log, event_log_async).await?;
+    let mut client = poise_framework(config, event_log_async).await?;
 
     // Force the client to init.
     http_utils::init_http_client().await?;

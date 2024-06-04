@@ -237,23 +237,7 @@ pub fn init_convo(help_msg: String, query: String) -> Vec<ChatCompletionRequestM
 
 #[cfg(test)]
 mod test {
-    use ctor;
-
     use crate::GptContext;
-
-    #[ctor::ctor]
-    fn set_env() {
-        use std::env;
-        if env::var("OPENAI_API_KEY").is_err() {
-            // Read the API key from a file called ~/openai_api_key
-            // and set it as an environment variable.
-            let key = match std::fs::read_to_string("/home/lothrop/openai_api_key") {
-                Ok(key) => key,
-                Err(_) => "ASDF".to_string(),
-            };
-            env::set_var("OPENAI_API_KEY", key);
-        }
-    }
 
     #[tokio::test]
     async fn test_openai_azure_response() {

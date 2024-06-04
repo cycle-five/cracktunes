@@ -17,7 +17,7 @@ use crack_core::{
     utils::{
         check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
     },
-    BotConfig, Data, DataInner, Error, EventLog, EventLogAsync, PhoneCodeData,
+    BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
 use poise::{
@@ -171,7 +171,7 @@ fn is_authorized_admin(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> 
 pub async fn poise_framework(
     config: BotConfig,
     //TODO: can this be create in this function instead of passed in?
-    event_log: EventLog,
+    //event_log: EventLog,
     event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
@@ -442,7 +442,7 @@ pub async fn poise_framework(
         phone_data: PhoneCodeData::load().unwrap(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
-        event_log,
+        // event_log,
         event_log_async,
         database_pool: pool_opts,
         db_channel: channel,
@@ -642,7 +642,7 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
 #[cfg(test)]
 mod test {
-    use crack_core::{BotConfig, EventLog, EventLogAsync};
+    use crack_core::{BotConfig, EventLogAsync};
     use std::collections::HashSet;
 
     use crate::config::{
@@ -670,9 +670,9 @@ mod test {
     #[tokio::test]
     async fn test_build_framework() {
         let config = BotConfig::default();
-        let event_log = EventLog::new();
+        // let event_log = EventLog::new();
         let event_log_async = EventLogAsync::new();
-        let client = super::poise_framework(config, event_log, event_log_async).await;
+        let client = super::poise_framework(config, event_log_async).await;
         assert!(client.is_ok());
     }
 
