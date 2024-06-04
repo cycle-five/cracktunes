@@ -6,8 +6,10 @@ use crate::{errors::CrackedError, Context, Error};
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, aliases("save"), guild_only)]
 pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NotConnected)?;
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     let channel = ctx
         .author()

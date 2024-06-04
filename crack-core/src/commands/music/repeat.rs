@@ -12,10 +12,11 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NoSongbird)?;
-    let call = manager.get(guild_id).ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
     let track = handler.queue().current().unwrap();
+    drop(handler);
 
     let was_looping = track.get_info().await.unwrap().loops == LoopState::Infinite;
     let toggler = if was_looping {

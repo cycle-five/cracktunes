@@ -20,9 +20,11 @@ pub async fn remove(
     #[description = "Start index in the track queue to remove"] b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let remove_index = b_index;
     let remove_until = match e_index {

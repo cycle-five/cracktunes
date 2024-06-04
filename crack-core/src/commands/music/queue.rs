@@ -23,16 +23,11 @@ const EMBED_TIMEOUT: u64 = 3600;
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     use crate::utils::get_interaction_new;
 
-    tracing::info!("queue called");
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NotConnected)?;
-    tracing::trace!("manager: {:?}", manager);
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
-
-    tracing::trace!("call: {:?}", call);
 
     // FIXME
     let handler = call.lock().await;
