@@ -3,16 +3,24 @@ use crate::{
     errors::CrackedError,
     BotConfig, CamKickConfig,
 };
-use ::serenity::builder::CreateMessage;
+use poise::serenity_prelude as serenity;
+
+use ::serenity::all::CacheHttp;
 use colored::Colorize;
-use poise::serenity_prelude::{self as serenity, Channel, Mentionable, UserId};
-use serenity::{model::id::GuildId, ChannelId, Context as SerenityContext};
+use serenity::{
+    builder::CreateMessage, model::id::GuildId, Channel, ChannelId, Context as SerenityContext,
+    Mentionable, UserId, VoiceState,
+};
 use std::{
     cmp::{Eq, PartialEq},
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use tokio::time::{Duration, Instant};
+use tokio::{
+    task::JoinHandle,
+    time::{Duration, Instant},
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Enum for the Camera status.
 enum CamStatus {
@@ -65,7 +73,8 @@ async fn check_and_enforce_cams(
     cam_states: &mut HashMap<(UserId, ChannelId), CamPollEvent>,
     config_map: &HashMap<u64, &CamKickConfig>,
     //status_changes: &mut Vec<CamStatusChangeEvent>,
-    ctx: Arc<SerenityContext>,
+    //ctx: Arc<SerenityContext>,
+    cache_http: &impl CacheHttp,
 ) -> Result<(), CrackedError> {
     let kick_conf = config_map
         .get(&cur_cam.chan_id.get())
@@ -88,7 +97,7 @@ async fn check_and_enforce_cams(
         if cur_cam.status == CamStatus::Off
             && cur_cam.last_change.elapsed() > Duration::from_secs(kick_conf.timeout)
         {
-            let user = match new_cam.user_id.to_user(&ctx).await {
+            let user = match new_cam.user_id.to_user(cache_http).await {
                 Ok(user) => user,
                 Err(err) => {
                     tracing::error!("Error getting user: {err}");
@@ -106,7 +115,8 @@ async fn check_and_enforce_cams(
             tracing::info!("about to deafen {:?}", new_cam.user_id);
 
             if false {
-                run_cam_enforcement(ctx, new_cam, guild_id, user, kick_conf, cam_states).await;
+                run_cam_enforcement(cache_http, new_cam, guild_id, user, kick_conf, cam_states)
+                    .await;
             }
         }
     };
@@ -115,7 +125,8 @@ async fn check_and_enforce_cams(
 
 /// Run the camera enforcement rules.
 async fn run_cam_enforcement(
-    ctx: Arc<SerenityContext>,
+    //ctx: Arc<SerenityContext>,
+    cache_http: &impl CacheHttp,
     new_cam: &CamPollEvent,
     guild_id: GuildId,
     user: ::serenity::model::prelude::User,
@@ -126,11 +137,11 @@ async fn run_cam_enforcement(
     // FIXME: Should this not be it's own function?
     // let dc_res = disconnect_member(ctx.clone(), *cam, guild).await;
     let dc_res1 = (
-        deafen_internal(ctx.clone(), guild_id, user.clone(), true).await,
+        deafen_internal(cache_http, guild_id, user.clone(), true).await,
         "deafen",
     );
     let dc_res2 = (
-        mute_internal(ctx.clone(), user.clone(), guild_id, true).await,
+        mute_internal(cache_http, user.clone(), guild_id, true).await,
         "deafen",
     );
     // let dc_res1 = (
@@ -153,7 +164,7 @@ async fn run_cam_enforcement(
                     let channel = ChannelId::new(kick_conf.chan_id);
                     let _ = channel
                         .send_message(
-                            &ctx,
+                            cache_http,
                             CreateMessage::default().content({
                                 format!("{} {}: {}", user.mention(), kick_conf.dc_msg, state)
                             }),
@@ -175,27 +186,25 @@ async fn check_camera_status(
     ctx: Arc<SerenityContext>,
     guild_id: GuildId,
 ) -> (Vec<CamPollEvent>, String) {
-    let (voice_states, guild_name) = match guild_id.to_guild_cached(&ctx) {
-        Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
-        // Err(err) => {
-        //    tracing::error!("{err}");
-        None => {
-            // let partial_guild = ctx.http().get_guild(guild_id).await.unwrap();
-            tracing::error!("Guild not found {guild_id}.");
-            return (vec![], "".to_string());
-        },
-    };
+    let (voice_states, guild_name): (HashMap<UserId, VoiceState>, String) =
+        match guild_id.to_guild_cached(&ctx) {
+            Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
+            None => {
+                tracing::error!("Guild not found {guild_id}.");
+                return (vec![], "".to_string());
+            },
+        };
 
     let mut cams = Vec::new();
     let mut output: String = format!("{}\n", guild_name.bright_green());
 
     for (user_id, voice_state) in voice_states {
         if let Some(chan_id) = voice_state.channel_id {
-            let user = match user_id.to_user(&ctx).await {
-                Ok(user) => user,
+            let user_name = match user_id.to_user(&ctx).await {
+                Ok(user) => user.name,
                 Err(err) => {
                     tracing::error!("Error getting user: {err}");
-                    continue;
+                    "Unknown".to_string()
                 },
             };
             let channel_name = match chan_id.to_channel(&ctx).await {
@@ -226,11 +235,10 @@ async fn check_camera_status(
             cams.push(info);
             output.push_str(&format!(
                 "{}|{}|{}|{}|{}|{}\n",
-                guild_name, &user.name, &user.id, &channel_name, &chan_id, status,
+                guild_name, &user_name, &user_id, &channel_name, &chan_id, status,
             ));
         }
     }
-    // tracing::warn!("{}", output.bright_cyan());
     (cams, output)
 }
 
@@ -239,7 +247,7 @@ pub async fn cam_status_loop(
     ctx: Arc<SerenityContext>,
     config: Arc<BotConfig>,
     guilds: Vec<GuildId>,
-) {
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Starting camera status check loop");
         let configs = config.cam_kick.clone().unwrap_or_default();
@@ -277,15 +285,9 @@ pub async fn cam_status_loop(
 
             for new_cam in new_cams.iter_mut() {
                 if let Some(status) = cur_cams.get(&new_cam.key()) {
-                    let _ = check_and_enforce_cams(
-                        *status,
-                        new_cam,
-                        &mut cur_cams,
-                        &channels,
-                        //&mut status_changes,
-                        Arc::clone(&ctx),
-                    )
-                    .await;
+                    let _ =
+                        check_and_enforce_cams(*status, new_cam, &mut cur_cams, &channels, &ctx)
+                            .await;
                 } else {
                     cur_cams.insert(new_cam.key(), **new_cam);
                 }
@@ -303,5 +305,94 @@ pub async fn cam_status_loop(
             );
             tokio::time::sleep(Duration::from_secs(config.get_video_status_poll_interval())).await;
         }
-    });
+    })
+}
+
+#[cfg(test)]
+mod test {
+    // Test CamStatus enum
+    use super::*;
+
+    #[test]
+    fn test_cam_status() {
+        let on = CamStatus::On;
+        let off = CamStatus::Off;
+        assert_eq!(on, CamStatus::On);
+        assert_eq!(off, CamStatus::Off);
+    }
+
+    #[test]
+    fn test_cam_status_display() {
+        let on = CamStatus::On;
+        let off = CamStatus::Off;
+        assert_eq!(format!("{}", on), "On");
+        assert_eq!(format!("{}", off), "Off");
+    }
+
+    #[test]
+    fn test_cam_status_from_bool() {
+        let on = CamStatus::from(true);
+        let off = CamStatus::from(false);
+        assert_eq!(on, CamStatus::On);
+        assert_eq!(off, CamStatus::Off);
+    }
+
+    // CamPollEvent tests
+    #[test]
+    fn test_cam_poll_event_key() {
+        let user_id = UserId::new(123);
+        let chan_id = ChannelId::new(456);
+        let cam = CamPollEvent {
+            user_id,
+            guild_id: GuildId::new(789),
+            chan_id,
+            status: CamStatus::On,
+            last_change: Instant::now(),
+        };
+        assert_eq!(cam.key(), (user_id, chan_id));
+    }
+
+    #[tokio::test]
+    async fn test_check_and_enforce_cams() {
+        let user_id = UserId::new(123);
+        let chan_id = ChannelId::new(456);
+        let cam = CamPollEvent {
+            user_id,
+            guild_id: GuildId::new(789),
+            chan_id,
+            status: CamStatus::On,
+            last_change: Instant::now(),
+        };
+        let mut cam_states = HashMap::<(UserId, ChannelId), CamPollEvent>::new();
+        let config_map = HashMap::<u64, &CamKickConfig>::new();
+        let http = poise::serenity_prelude::http::Http::new("");
+        let cache = Arc::new(poise::serenity_prelude::Cache::new());
+        let cache_http = (&cache, &http);
+        // let ctx = Arc::new(SerenityContext::new());
+        let res =
+            check_and_enforce_cams(cam, &cam, &mut cam_states, &config_map, &cache_http).await;
+        let want = CrackedError::Other("Channel not found");
+        assert_eq!(res, Err(want));
+    }
+
+    // fn new_serenity_context() -> Arc<SerenityContext> {
+    //     let token = std::env::var("DISCORD_BOT_TOKEN")?;
+    //     let shard_info = ShardInfo {
+    //         id: ShardId(0),
+    //         total: 1,
+    //     };
+
+    //     // retrieve the gateway response, which contains the URL to connect to
+    //     let gateway = Arc::new(Mutex::new(http.get_gateway().await?.url));
+    //     let shard = Shard::new(gateway, &token, shard_info, GatewayIntents::all(), None).await?;
+    //     Arc::new(SerenityContext {
+    //         data: Arc::new(tokio::sync::RwLock::new(
+    //             poise::serenity_prelude::prelude::TypeMap::new(),
+    //         )),
+    //         http: Arc::new(poise::serenity_prelude::http::Http::new("")),
+    //         shard: poise::serenity_prelude::Shard::new("".to_string(), "".to_string()),
+    //         cache: Arc::new(poise::serenity_prelude::Cache::new()),
+    //         shard_id: poise::serenity_prelude::ShardId(0),
+    //     })
+    // }
 }
