@@ -1210,7 +1210,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ffccbb6966c05b32ef8fbac435df276c4ae4d3dc55a8cd0eb9745e6c12f546a"
 dependencies = [
- "heck",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn 2.0.66",
@@ -1598,6 +1598,12 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 dependencies = [
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
@@ -2806,11 +2812,12 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#e5f05908320b443a6eb4f6fa9fdd132567402513"
 dependencies = [
  "async-trait",
  "derivative",
  "futures-util",
+ "indexmap 2.2.6",
  "parking_lot 0.12.3",
  "poise_macros",
  "regex",
@@ -2823,7 +2830,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#e5f05908320b443a6eb4f6fa9fdd132567402513"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2941,9 +2948,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.84"
+version = "1.0.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec96c6a92621310b51366f1e28d05ef11489516e93be030060e5fc12024a49d6"
+checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
 dependencies = [
  "unicode-ident",
 ]
@@ -3399,9 +3406,9 @@ dependencies = [
 
 [[package]]
 name = "rspotify"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efe9fecaed050e72eefa9a07702c3734abb0e82b70d7c867b32789e6f8fb5663"
+checksum = "0b2487556b568b6471cbbdcca0d23e1eff885e993cf057254813dc46c3837922"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3423,9 +3430,9 @@ dependencies = [
 
 [[package]]
 name = "rspotify-http"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612220388516c12ab0fc23917dd02a6693488dbb5ac615436ff60e7e88130ec1"
+checksum = "9424544350d142db73534967503205030162c4e650b2f17fe1729f5dc5c8edff"
 dependencies = [
  "async-trait",
  "log",
@@ -3437,15 +3444,15 @@ dependencies = [
 
 [[package]]
 name = "rspotify-macros"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6396935068e8615651966a7e44f1dbcfab7be02544862fb3ae65f1e086ad9a93"
+checksum = "475cd14f84b46cc8d96389e0c892940cd2bd32a9240d1ba6fefcdfd8432ab9d1"
 
 [[package]]
 name = "rspotify-model"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b94f104ee213b5cb53e6d797efc7e1825bb42981213265a2db7268efd51ecaff"
+checksum = "496322604d8dfe61c10a37a88bb4ecac955e2d66fdbe148b2c44a844048b1ca2"
 dependencies = [
  "chrono",
  "enum_dispatch",
@@ -3962,8 +3969,8 @@ dependencies = [
 
 [[package]]
 name = "serenity"
-version = "0.12.1"
-source = "git+https://github.com/CycleFive/serenity?branch=current#0baafc9a0788c9141d3c189a19018fb4302d3e1e"
+version = "0.12.2"
+source = "git+https://github.com/CycleFive/serenity?branch=current#c3e62a76a58c0666408ea3a8135ed03dc5c6e60a"
 dependencies = [
  "arrayvec",
  "async-trait",
@@ -4120,7 +4127,7 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.4.1"
-source = "git+https://github.com/cycle-five/songbird?branch=current#75c42b2b4243f6429e7e0116008628339002e457"
+source = "git+https://github.com/cycle-five/songbird?branch=current#7071af0ab18dffed530fb5b149e9503aca3c6c4f"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -4281,7 +4288,7 @@ checksum = "5833ef53aaa16d860e92123292f1f6a3d53c34ba8b1969f152ef1a7bb803f3c8"
 dependencies = [
  "dotenvy",
  "either",
- "heck",
+ "heck 0.4.1",
  "hex",
  "once_cell",
  "proc-macro2",
@@ -4491,11 +4498,11 @@ dependencies = [
 
 [[package]]
 name = "strum_macros"
-version = "0.26.2"
+version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6cf59daf282c0a494ba14fd21610a0325f9f90ec9d1231dea26bcb1d696c946"
+checksum = "f7993a8e3a9e88a00351486baae9522c91b123a088f76469e5bd5cc17198ea87"
 dependencies = [
- "heck",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "rustversion",

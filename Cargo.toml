@@ -36,7 +36,7 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-version = "0.12.1"
+version = "0.12.2"
 git = "https://github.com/CycleFive/serenity"
 branch = "current"
 default-features = false
