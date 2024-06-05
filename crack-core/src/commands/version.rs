@@ -18,6 +18,6 @@ pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
         reply_with_embed,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

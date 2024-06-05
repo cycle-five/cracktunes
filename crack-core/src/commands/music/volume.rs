@@ -2,7 +2,7 @@ use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::utils::{get_guild_name, send_embed_response_poise};
-use crate::{Context, Error};
+use crate::{Context, ContextExt, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
@@ -14,6 +14,8 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "Set the volume of the bot"] level: Option<u32>,
 ) -> Result<(), Error> {
+    use crate::guild::operations::GuildSettingsOperations;
+
     tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = match ctx.guild_id() {
@@ -36,7 +38,7 @@ pub async fn volume(
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg);
+                ctx.data().add_msg_to_cache(guild_id, msg).await;
                 return Ok(());
             },
         };
@@ -47,7 +49,7 @@ pub async fn volume(
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
                 let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg);
+                ctx.data().add_msg_to_cache(guild_id, msg).await;
                 return Ok(());
             },
         };
@@ -63,26 +65,17 @@ pub async fn volume(
                     Some(handle) => handle.get_info().await.unwrap().volume,
                     None => 0.1,
                 };
+                let prefix = Some(&prefix).map(|s| s.as_str());
+                let name = get_guild_name(ctx.serenity_context(), guild_id);
                 ctx.data()
-                    .guild_settings_map
-                    .write()
-                    .await
-                    .entry(guild_id)
-                    .or_insert_with(|| {
-                        GuildSettings::new(
-                            guild_id,
-                            Some(&prefix),
-                            get_guild_name(ctx.serenity_context(), guild_id),
-                        )
-                    });
+                    .get_or_create_guild_settings(guild_id, name, prefix)
+                    .await;
+
                 let guild_settings = ctx
-                    .data()
-                    .guild_settings_map
-                    .read()
+                    .get_guild_settings(guild_id)
                     .await
-                    .get(&guild_id)
-                    .unwrap()
-                    .clone();
+                    .ok_or(CrackedError::NoGuildSettings)?;
+
                 let asdf = guild_settings.volume;
 
                 tracing::warn!(
@@ -96,7 +89,7 @@ pub async fn volume(
                     volume_track * 100.0
                 ));
                 let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg);
+                ctx.data().add_msg_to_cache(guild_id, msg).await;
                 return Ok(());
             },
         };
@@ -136,24 +129,19 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                return send_embed_response_poise(ctx, embed)
-                    .await
-                    .map(|m| {
-                        ctx.data().add_msg_to_cache(guild_id, m);
-                    })
-                    .map_err(Into::into);
+                let msg = send_embed_response_poise(ctx, embed).await?;
+                ctx.data().add_msg_to_cache(guild_id, msg).await;
+                return Ok(());
             },
         };
 
         track_handle.set_volume(new_vol).unwrap();
         embed
     };
-    send_embed_response_poise(ctx, embed)
-        .await
-        .map(|m| {
-            ctx.data().add_msg_to_cache(guild_id, m);
-        })
-        .map_err(Into::into)
+    let msg = send_embed_response_poise(ctx, embed).await?;
+
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    Ok(())
 }
 
 pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {

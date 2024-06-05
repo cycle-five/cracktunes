@@ -21,7 +21,7 @@ pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
 
     let embed = create_now_playing_embed(&track).await;
     let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

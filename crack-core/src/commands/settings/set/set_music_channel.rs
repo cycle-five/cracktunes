@@ -39,7 +39,7 @@ pub async fn music_channel(
         true,
     )
     .await?;
-    data.add_msg_to_cache(guild_id, msg);
+    data.add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

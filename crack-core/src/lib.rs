@@ -8,6 +8,7 @@ use crack_gpt::GptContext;
 use db::worker_pool::MetadataMsg;
 use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
+use guild::operations::GuildSettingsOperations;
 use guild::settings::get_log_prefix;
 use guild::settings::{GuildSettings, GuildSettingsMapParam};
 use guild::settings::{
@@ -26,7 +27,7 @@ use std::{
     future::Future,
     io::Write,
     path::Path,
-    sync::{Arc, Mutex as SyncMutex, RwLock as SyncRwLock},
+    sync::Arc,
 };
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
@@ -309,11 +310,11 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    // Synchronous settings and caches. These are going away.
-    pub guild_settings_map_non_async:
-        Arc<SyncRwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    // // Synchronous settings and caches. These are going away.
+    // pub guild_settings_map_non_async:
+    //     Arc<SyncRwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
-    pub guild_msg_cache_ordered: Arc<SyncMutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
 
     // Async access fields, will switch entirely to these
     #[serde(skip)]
@@ -399,23 +400,23 @@ impl DataInner {
     }
 }
 
-/// General log for events that the bot reveices from Discord.
-#[derive(Clone, Debug)]
-pub struct EventLog(pub Arc<SyncMutex<File>>);
+// /// General log for events that the bot reveices from Discord.
+// #[derive(Clone, Debug)]
+// pub struct EventLog(pub Arc<SyncMutex<File>>);
 
-impl std::ops::Deref for EventLog {
-    type Target = Arc<SyncMutex<File>>;
+// impl std::ops::Deref for EventLog {
+//     type Target = Arc<SyncMutex<File>>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
 
-impl std::ops::DerefMut for EventLog {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+// impl std::ops::DerefMut for EventLog {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
 
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
@@ -453,23 +454,23 @@ impl Default for EventLogAsync {
     }
 }
 
-impl Default for EventLog {
-    fn default() -> Self {
-        let log_path = format!("{}/events.log", get_log_prefix());
-        let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
-        let log_file = match File::create(log_path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("Error creating log file: {}", e);
-                // FIXME: Maybe use io::null()?
-                // I went down this path with sink and it was a mistake.
-                File::create("/dev/null")
-                    .expect("Should be able to have a file object to write too.")
-            },
-        };
-        Self(Arc::new(SyncMutex::new(log_file)))
-    }
-}
+// impl Default for EventLog {
+//     fn default() -> Self {
+//         let log_path = format!("{}/events.log", get_log_prefix());
+//         let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
+//         let log_file = match File::create(log_path) {
+//             Ok(f) => f,
+//             Err(e) => {
+//                 eprintln!("Error creating log file: {}", e);
+//                 // FIXME: Maybe use io::null()?
+//                 // I went down this path with sink and it was a mistake.
+//                 File::create("/dev/null")
+//                     .expect("Should be able to have a file object to write too.")
+//             },
+//         };
+//         Self(Arc::new(Mutex::new(log_file)))
+//     }
+// }
 
 impl EventLogAsync {
     /// Create a new EventLog, calls default
@@ -527,58 +528,58 @@ impl EventLogAsync {
     }
 }
 
-/// impl of EventLog
-impl EventLog {
-    /// Create a new EventLog, calls default
-    pub fn new() -> Self {
-        Self::default()
-    }
+// /// impl of EventLog
+// impl EventLog {
+//     /// Create a new EventLog, calls default
+//     pub fn new() -> Self {
+//         Self::default()
+//     }
 
-    /// Write an object to the log file without a note.
-    pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
-        self.write_log_obj_note(name, None, obj)
-    }
+//     /// Write an object to the log file without a note.
+//     pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
+//         self.write_log_obj_note(name, None, obj)
+//     }
 
-    /// Write an object to the log file with a note.
-    pub fn write_log_obj_note<T: serde::Serialize>(
-        &self,
-        name: &str,
-        notes: Option<&str>,
-        obj: &T,
-    ) -> Result<(), Error> {
-        let entry = LogEntry {
-            name: name.to_string(),
-            notes: notes.unwrap_or("").to_string(),
-            event: obj,
-        };
-        let mut buf = serde_json::to_vec(&entry).unwrap();
-        let _ = buf.write(&[b'\n']);
-        let buf: &[u8] = buf.as_slice();
-        self.lock()
-            .unwrap()
-            .write_all(buf)
-            .map_err(|e| CrackedError::IO(e).into())
-    }
+//     /// Write an object to the log file with a note.
+//     pub fn write_log_obj_note<T: serde::Serialize>(
+//         &self,
+//         name: &str,
+//         notes: Option<&str>,
+//         obj: &T,
+//     ) -> Result<(), Error> {
+//         let entry = LogEntry {
+//             name: name.to_string(),
+//             notes: notes.unwrap_or("").to_string(),
+//             event: obj,
+//         };
+//         let mut buf = serde_json::to_vec(&entry).unwrap();
+//         let _ = buf.write(&[b'\n']);
+//         let buf: &[u8] = buf.as_slice();
+//         self.lock()
+//             .unwrap()
+//             .write_all(buf)
+//             .map_err(|e| CrackedError::IO(e).into())
+//     }
 
-    /// Write an object to the log file.
-    pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
-        let mut buf = serde_json::to_vec(obj).unwrap();
-        let _ = buf.write(&[b'\n']);
-        let buf: &[u8] = buf.as_slice();
-        self.lock()
-            .unwrap()
-            .write_all(buf)
-            .map_err(|e| CrackedError::IO(e).into())
-    }
+//     /// Write an object to the log file.
+//     pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
+//         let mut buf = serde_json::to_vec(obj).unwrap();
+//         let _ = buf.write(&[b'\n']);
+//         let buf: &[u8] = buf.as_slice();
+//         self.lock()
+//             .unwrap()
+//             .write_all(buf)
+//             .map_err(|e| CrackedError::IO(e).into())
+//     }
 
-    /// Write a buffer to the log file.
-    pub fn write(self, buf: &[u8]) -> Result<(), Error> {
-        self.lock()
-            .unwrap()
-            .write_all(buf)
-            .map_err(|e| CrackedError::IO(e).into())
-    }
-}
+//     /// Write a buffer to the log file.
+//     pub fn write(self, buf: &[u8]) -> Result<(), Error> {
+//         self.lock()
+//             .unwrap()
+//             .write_all(buf)
+//             .map_err(|e| CrackedError::IO(e).into())
+//     }
+// }
 
 impl Default for DataInner {
     fn default() -> Self {
@@ -597,8 +598,8 @@ impl Default for DataInner {
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
-            guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
-            guild_msg_cache_ordered: Arc::new(SyncMutex::new(BTreeMap::new())),
+            //guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
+            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             // event_log: EventLog::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
@@ -658,19 +659,19 @@ impl Data {
     }
 
     /// Add a message to the cache
-    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+    pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(guild_id, now, msg)
+        self.add_msg_to_cache_ts(guild_id, now, msg).await
     }
 
     /// Add msg to the cache with a timestamp.
-    pub fn add_msg_to_cache_ts(
+    pub async fn add_msg_to_cache_ts(
         &self,
         guild_id: GuildId,
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
         guild_msg_cache_ordered
             .entry(guild_id)
             .or_default()
@@ -684,7 +685,7 @@ impl Data {
         guild_id: GuildId,
         ts: DateTime<Utc>,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().unwrap();
+        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
         guild_msg_cache_ordered
             .get_mut(&guild_id)
             .unwrap()
@@ -725,6 +726,8 @@ pub trait ContextExt {
         user_id: UserId,
     ) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
 
+    fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
+
     /// Gets the log of last played songs on the bot
     fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
     /// Return the call that the bot is currently in, if it is in one.
@@ -732,7 +735,11 @@ pub trait ContextExt {
     /// Return the db pool for database operations.
     fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError>;
     /// Add a message to the cache
-    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message>;
+    fn add_msg_to_cache(
+        &self,
+        guild_id: GuildId,
+        msg: Message,
+    ) -> impl Future<Output = Option<Message>>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
     fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
 }
@@ -746,6 +753,13 @@ impl ContextExt for Context<'_> {
             Context::Prefix(ctx) => ctx.msg.author.id,
         }
     }
+
+    /// Get the guild settings for a guild.
+    async fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+        self.data().get_guild_settings(guild_id).await
+    }
+
+    /// Get the last played songs for a user.
     async fn get_last_played_by_user(&self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         PlayLog::get_last_played(
@@ -756,6 +770,8 @@ impl ContextExt for Context<'_> {
         .await
         .map_err(|e| e.into())
     }
+
+    /// Get the last played songs for a guild.
     async fn get_last_played(&self) -> Result<Vec<String>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         PlayLog::get_last_played(
@@ -805,9 +821,8 @@ impl ContextExt for Context<'_> {
         self.data().get_db_pool()
     }
 
-    /// Add a message to the cache
-    fn add_msg_to_cache_nonasync(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg)
+    async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg).await
     }
 
     /// Gets the channel id that the bot is currently playing in for a given guild.

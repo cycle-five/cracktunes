@@ -11,7 +11,7 @@ const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
 pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let time_ordered_messages = {
-        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().unwrap();
+        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await;
         &mut message_cache
             .get_mut(&guild_id)
             .ok_or(CrackedError::Other("No messages in cache"))?

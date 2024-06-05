@@ -29,6 +29,6 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     let msg = send_response_poise_text(ctx, CrackedMessage::Stop).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

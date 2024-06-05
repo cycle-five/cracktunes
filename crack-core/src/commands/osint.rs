@@ -39,7 +39,9 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
         .await?
         .into_message()
         .await?;
-    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
+    ctx.data()
+        .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
+        .await;
     tracing::warn!("{}", msg_str.clone());
 
     Ok(())

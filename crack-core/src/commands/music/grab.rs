@@ -25,13 +25,13 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     let reply_handle = ctx.say("Sent you a DM with the current track").await?;
 
     let msg = reply_handle.into_message().await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

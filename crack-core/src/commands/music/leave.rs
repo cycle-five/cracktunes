@@ -38,6 +38,6 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let msg = send_response_poise(ctx, crack_msg, true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

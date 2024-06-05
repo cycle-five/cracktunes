@@ -16,6 +16,6 @@ pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
         send_response_poise(ctx, CrackedMessage::AutoplayOn, true)
     }
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

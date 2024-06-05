@@ -565,16 +565,8 @@ async fn check_delete_old_messages(
     let mut to_delete = Vec::<Message>::new();
     for guild_id in guild_ids.iter() {
         tracing::warn!("Checking guild {}", guild_id);
-        data.guild_msg_cache_ordered
-            .lock()
-            .unwrap()
-            .get_mut(guild_id);
-        if let Some(guild_cache) = data
-            .guild_msg_cache_ordered
-            .lock()
-            .unwrap()
-            .get_mut(guild_id)
-        {
+        data.guild_msg_cache_ordered.lock().await.get_mut(guild_id);
+        if let Some(guild_cache) = data.guild_msg_cache_ordered.lock().await.get_mut(guild_id) {
             let now = DateTime::<Utc>::from(SystemTime::now());
             for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
                 let delta = now.signed_duration_since(*creat_time);

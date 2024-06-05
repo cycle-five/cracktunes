@@ -24,7 +24,7 @@ pub async fn deafen(
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), true).await?;
     // Handle error, send error message
     let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
-    ctx.data().add_msg_to_cache(guild_id, sent_msg);
+    ctx.data().add_msg_to_cache(guild_id, sent_msg).await;
     Ok(())
 }
 
@@ -45,7 +45,7 @@ pub async fn undeafen(
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), false).await?;
     // Handle error, send error message
     let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
-    ctx.data().add_msg_to_cache(guild_id, sent_msg);
+    ctx.data().add_msg_to_cache(guild_id, sent_msg).await;
     Ok(())
 }
 

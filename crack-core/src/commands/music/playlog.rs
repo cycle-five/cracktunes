@@ -17,7 +17,7 @@ pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
     let last_played = ctx.get_last_played().await?;
 
     let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }
@@ -37,7 +37,7 @@ pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
     let last_played = ctx.get_last_played_by_user(user_id).await?;
 
     let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

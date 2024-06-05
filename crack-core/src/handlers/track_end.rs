@@ -149,7 +149,7 @@ impl EventHandler for TrackEndHandler {
                             .say((&self.cache, self.http.as_ref()), msg)
                             .await
                             .unwrap();
-                        self.data.add_msg_to_cache(self.guild_id, msg);
+                        self.data.add_msg_to_cache(self.guild_id, msg).await;
                         let query = match Spotify::search(spotify, &rec[0]).await {
                             Ok(query) => query,
                             Err(e) => {
@@ -217,7 +217,7 @@ impl EventHandler for TrackEndHandler {
         .await
         {
             Ok(message) => {
-                self.data.add_msg_to_cache(self.guild_id, message);
+                self.data.add_msg_to_cache(self.guild_id, message).await;
                 tracing::info!("Sent now playing message");
             },
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),

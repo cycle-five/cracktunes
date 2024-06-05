@@ -26,7 +26,7 @@ pub async fn pause(
 
     if send_reply.unwrap_or(true) {
         let msg = send_response_poise_text(ctx, CrackedMessage::Pause).await?;
-        ctx.data().add_msg_to_cache(guild_id, msg);
+        ctx.data().add_msg_to_cache(guild_id, msg).await;
     }
     Ok(())
 }

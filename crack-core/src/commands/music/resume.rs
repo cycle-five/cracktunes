@@ -24,6 +24,6 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     // FIXME: Do we want to do the send_reply parameter?
     let msg = send_response_poise_text(ctx, CrackedMessage::Resume).await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

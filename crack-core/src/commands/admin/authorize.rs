@@ -67,6 +67,6 @@ pub async fn authorize(
         true,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

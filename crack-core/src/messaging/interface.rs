@@ -311,7 +311,7 @@ pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedErro
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
     let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
@@ -322,7 +322,7 @@ pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), Cracked
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
     let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

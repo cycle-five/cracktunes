@@ -42,7 +42,7 @@ pub async fn volume(
         .await?
         .into_message()
         .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

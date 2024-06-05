@@ -106,7 +106,7 @@ pub async fn get_call_with_fail_msg(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>
                 .await?
                 .into_message()
                 .await?;
-            ctx.add_msg_to_cache_nonasync(guild_id, msg);
+            ctx.add_msg_to_cache(guild_id, msg).await;
             Ok(call)
         },
         Err(err) => {

@@ -163,7 +163,9 @@ async fn play_internal(
     // needed because interactions must be replied within 3s and queueing takes longer
     let mut search_msg = send_search_message(ctx).await?;
 
-    ctx.data().add_msg_to_cache(guild_id, search_msg.clone());
+    ctx.data()
+        .add_msg_to_cache(guild_id, search_msg.clone())
+        .await;
 
     tracing::debug!("search response msg: {:?}", search_msg);
 

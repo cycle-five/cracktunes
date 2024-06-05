@@ -46,7 +46,7 @@ pub async fn skip(
 
     force_skip_top_track(&handler).await?;
     let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

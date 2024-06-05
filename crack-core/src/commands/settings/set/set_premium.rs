@@ -40,7 +40,7 @@ pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(),
         .await
         .unwrap();
     let msg = send_response_poise(ctx, CrackedMessage::Premium(premium), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
