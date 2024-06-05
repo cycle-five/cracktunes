@@ -2797,11 +2797,12 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#e5f05908320b443a6eb4f6fa9fdd132567402513"
 dependencies = [
  "async-trait",
  "derivative",
  "futures-util",
+ "indexmap 2.2.6",
  "parking_lot 0.12.3",
  "poise_macros",
  "regex",
@@ -2814,7 +2815,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#6d555f3c92cf61f75e6830d738da77fb31eaaba7"
+source = "git+https://github.com/cycle-five/poise?branch=current#e5f05908320b443a6eb4f6fa9fdd132567402513"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -3953,8 +3954,8 @@ dependencies = [
 
 [[package]]
 name = "serenity"
-version = "0.12.1"
-source = "git+https://github.com/CycleFive/serenity?branch=current#b2e932cd2985bcc90242ede5b1435b4f40802cab"
+version = "0.12.2"
+source = "git+https://github.com/CycleFive/serenity?branch=current#c3e62a76a58c0666408ea3a8135ed03dc5c6e60a"
 dependencies = [
  "arrayvec",
  "async-trait",
