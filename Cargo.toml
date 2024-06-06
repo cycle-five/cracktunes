@@ -71,7 +71,7 @@ features = ["cache", "chrono"]
 [workspace.dependencies.tokio]
 version = "1.38.0"
 default-features = false
-features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
+features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
 [profile.release]
 incremental = true

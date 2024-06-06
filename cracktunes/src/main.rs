@@ -40,7 +40,6 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 fn main() -> Result<(), Error> {
     use tokio::runtime::Handle;
 
-    *HANDLE.lock().unwrap() = Some(Handle::current());
     // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();
 
@@ -50,6 +49,7 @@ fn main() -> Result<(), Error> {
         .build()
         .unwrap();
     rt.block_on(async {
+        *HANDLE.lock().unwrap() = Some(Handle::current());
         init_telemetry("").await;
         match main_async(event_log_async).await {
             Ok(_) => (),

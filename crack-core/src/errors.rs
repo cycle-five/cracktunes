@@ -21,6 +21,7 @@ use songbird::input::AudioStreamError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
 use std::process::ExitStatus;
+use tokio::time::error::Elapsed;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -310,6 +311,20 @@ impl From<url::ParseError> for CrackedError {
 impl From<RSpotifyClientError> for CrackedError {
     fn from(err: RSpotifyClientError) -> CrackedError {
         CrackedError::RSpotify(err)
+    }
+}
+
+// /// Provides an implementation to convert a [`tokio::time::error::Elapsed`] to a [`CrackedError`].
+// impl From<JoinError> for CrackedError {
+//     fn from(err: JoinError) -> Self {
+//         CrackedError::JoinChannelError(err)
+//     }
+// }
+
+/// Provides an implementation to convert a [`Elapsed`] to a [`CrackedError`].
+impl From<Elapsed> for CrackedError {
+    fn from(_err: Elapsed) -> Self {
+        CrackedError::Other("Timeout")
     }
 }
 

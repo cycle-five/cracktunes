@@ -2,6 +2,8 @@ use crate::messaging::message::CrackedMessage;
 use crate::{utils::send_response_poise_text, Context, CrackedError, Error};
 use crack_bf::BrainfuckProgram;
 use std::io::{Cursor, Read};
+use std::time::Duration;
+use tokio::time::timeout;
 
 /// Chat with cracktunes using GPT-4o
 #[poise::command(slash_command, prefix_command)]
@@ -32,7 +34,13 @@ pub async fn bf_internal(
     let user_input = Cursor::new(arr_u8);
     let mut output = Cursor::new(vec![]);
 
-    bf.run(user_input, &mut output).unwrap();
+    // let handle = HANDLE.lock().unwrap().clone().unwrap();
+    //tokio::task::block_in_place(move || handle.block_on(async { bf.run(user_input, &mut output)).await }
+
+    timeout(Duration::from_secs(30), async {
+        bf.run_async(user_input, &mut output).await
+    })
+    .await??;
 
     let string_out = cursor_to_string(output);
     send_response_poise_text(ctx, CrackedMessage::Other(string_out))
