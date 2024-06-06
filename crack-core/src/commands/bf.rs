@@ -2,8 +2,9 @@ use crate::messaging::message::CrackedMessage;
 use crate::{utils::send_response_poise_text, Context, CrackedError, Error};
 use crack_bf::BrainfuckProgram;
 use serenity::all::Message;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::time::Duration;
+// use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 use tokio::time::timeout;
 
 /// Brainfk interpreter.
@@ -32,25 +33,39 @@ pub async fn bf_internal(
     let mut bf = BrainfuckProgram::new(program);
 
     let arr_u8 = input.as_bytes();
+    //let user_input = arr_u8;
     let user_input = Cursor::new(arr_u8);
-    let mut output = Cursor::new(vec![]);
+    let mut output = Cursor::new(Vec::<u8>::with_capacity(32));
 
     // let handle = HANDLE.lock().unwrap().clone().unwrap();
     //tokio::task::block_in_place(move || handle.block_on(async { bf.run(user_input, &mut output)).await }
 
-    let _ = timeout(Duration::from_secs(30), async {
-        bf.run_async(user_input, &mut output).await
-    })
-    .await??;
+    let n = timeout(
+        Duration::from_secs(30),
+        bf.run_async(user_input, &mut output),
+    )
+    .into_inner()
+    .await?;
 
-    let string_out = cursor_to_string(output);
+    let string_out = cursor_to_string(output, n)?;
     tracing::info!("string_out: {string_out}");
     let final_out = format!("output: {string_out}");
     send_response_poise_text(ctx, CrackedMessage::Other(final_out)).await
 }
 
-fn cursor_to_string(mut cur: Cursor<Vec<u8>>) -> String {
-    let mut output = String::new();
-    let _ = cur.read_to_string(&mut output);
-    output
+// async fn cursor_to_string(mut cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {
+//     //let mut output = Vec::with_capacity(n);
+//     let output = String::new();
+//     let x = cur.into_inner().fill_buf().await?;
+//     tracing::info!("length: {}", x.len());
+//     assert_eq!(n, x.len());
+//     Ok(output)
+// }
+
+fn cursor_to_string(cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {
+    //let mut output = Vec::with_capacity(n);
+    let x = cur.into_inner();
+    tracing::info!("length: {}", x.len());
+    assert_eq!(n, x.len());
+    Ok(String::from_utf8_lossy(&x).to_string())
 }

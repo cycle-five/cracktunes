@@ -1,12 +1,6 @@
-use std::{
-    io::{BufRead, Write},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::io::{BufRead, Write};
 use tokio::io::{
-    AsyncBufRead, AsyncWrite, {AsyncReadExt, AsyncWriteExt},
+    AsyncBufRead, AsyncWrite, {AsyncBufReadExt, AsyncWriteExt},
 };
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -17,7 +11,6 @@ pub struct BrainfuckProgram {
     pub cells: [u8; 30000],
     pub ptr: usize,
     pub pc: usize,
-    pub done: Arc<AtomicBool>,
 }
 
 /// Implementation of the representation and execution of a brainfuck program.
@@ -34,7 +27,6 @@ impl BrainfuckProgram {
             cells: [0u8; 30000],
             ptr: 0,
             pc: 0,
-            done: Arc::new(AtomicBool::default()),
         }
     }
 
@@ -95,11 +87,12 @@ impl BrainfuckProgram {
     // }
 
     /// Run the brainfuck program.
-    pub async fn run_async<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<(), Error>
+    pub async fn run_async<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<usize, Error>
     where
         R: AsyncBufRead + Unpin,
         W: AsyncWrite + Unpin,
     {
+        let mut bytes_wrote = 0;
         let mut cells = self.cells;
         let code = &self.code.clone();
         let mut pc = 0;
@@ -114,33 +107,34 @@ impl BrainfuckProgram {
                 b']' => pc = Self::match_bracket_backward(&cells, ptr, code, pc),
                 b'.' => {
                     let val = cells[ptr];
-                    match writer.write_all(&[val]).await {
-                        Ok(_) => {},
+                    match writer.write(&[val]).await {
+                        Ok(_) => {
+                            bytes_wrote += 1;
+                        },
                         Err(e) => {
-                            self.done.store(true, Ordering::Relaxed);
+                            writer.flush().await?;
                             return Err(Box::new(e));
-                            // self
                         },
                     }
                 },
-                b',' => {
-                    let mut input = [0u8; 1];
-                    match reader.read_exact(&mut input).await {
-                        Ok(_) => {
-                            cells[ptr] = input[0];
-                        },
-                        Err(_) => {
+                b',' => match reader.fill_buf().await {
+                    Ok(buf) => {
+                        if buf.is_empty() {
                             cells[ptr] = 0;
-                        },
-                    }
+                        } else {
+                            cells[ptr] = buf[0];
+                            reader.consume(1);
+                        }
+                    },
+                    Err(_) => {
+                        cells[ptr] = 0;
+                    },
                 },
                 _ => {},
             }
             pc += 1;
         }
-        self.done.store(true, std::sync::atomic::Ordering::Relaxed);
-        // self
-        Ok(())
+        Ok(bytes_wrote)
     }
 
     /// Run the brainfuck program.
@@ -166,7 +160,7 @@ impl BrainfuckProgram {
                     match writer.write_all(&[val]) {
                         Ok(_) => {},
                         Err(e) => {
-                            self.done.store(true, Ordering::Relaxed);
+                            // self.done.store(true, Ordering::Relaxed);
                             return Err(Box::new(e));
                             // self
                         },
@@ -187,33 +181,16 @@ impl BrainfuckProgram {
             }
             pc += 1;
         }
-        self.done.store(true, Ordering::Relaxed);
-        // self
+
         Ok(())
     }
 }
 
-// impl Future for BrainfuckProgram {
-//     type Output = Result<(), Error>;
-
-//     fn poll(
-//         self: std::pin::Pin<&mut Self>,
-//         _cx: &mut std::task::Context<'_>,
-//     ) -> std::task::Poll<Self::Output> {
-//         if self.done.load(std::sync::atomic::Ordering::Relaxed) {
-//             Poll::Ready(Ok(()))
-//         } else {
-//             Poll::Pending
-//         }
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
-    use std::io::BufReader;
-
     use super::*;
 
+    use std::io::BufReader;
     use std::io::Cursor;
 
     #[test]
@@ -255,7 +232,13 @@ mod tests {
         let input = Cursor::new(input_data);
         let mut output = Cursor::new(vec![]);
 
-        let _ = bf.run_async(input, &mut output).await;
+        let res = bf.run_async(input, &mut output).await;
+        match res {
+            Ok(n) => println!("Wooooo! {}", n),
+            Err(_) => {
+                println!("Boooo!");
+            },
+        };
 
         let result = String::from_utf8(output.into_inner()).unwrap();
         println!("{}", result.clone());
