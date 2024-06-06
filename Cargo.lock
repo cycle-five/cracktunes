@@ -1021,6 +1021,7 @@ dependencies = [
  "async-trait",
  "colored",
  "config-file",
+ "crack-bf",
  "crack-core",
  "crack-gpt",
  "crack-osint",

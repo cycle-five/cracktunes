@@ -1,8 +1,10 @@
 use std::{
     io::{BufRead, Write},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
-
 use tokio::io::{
     AsyncBufRead, AsyncWrite, {AsyncReadExt, AsyncWriteExt},
 };
@@ -115,7 +117,7 @@ impl BrainfuckProgram {
                     match writer.write_all(&[val]).await {
                         Ok(_) => {},
                         Err(e) => {
-                            self.done.store(true, std::sync::atomic::Ordering::Relaxed);
+                            self.done.store(true, Ordering::Relaxed);
                             return Err(Box::new(e));
                             // self
                         },
@@ -164,7 +166,7 @@ impl BrainfuckProgram {
                     match writer.write_all(&[val]) {
                         Ok(_) => {},
                         Err(e) => {
-                            self.done.store(true, std::sync::atomic::Ordering::Relaxed);
+                            self.done.store(true, Ordering::Relaxed);
                             return Err(Box::new(e));
                             // self
                         },
@@ -185,7 +187,7 @@ impl BrainfuckProgram {
             }
             pc += 1;
         }
-        self.done.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.done.store(true, Ordering::Relaxed);
         // self
         Ok(())
     }

@@ -15,6 +15,7 @@ repository = "https://git.sr.ht/~cycle-five/cracktunes"
 default = ["crack-tracing", "ignore-presence-log"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
+crack-bf = ["dep:crack-bf"]
 ignore-presence-log = []
 
 crack-telemetry = ["crack-metrics"]
@@ -27,6 +28,7 @@ crack-core = { workspace = true }
 # modules, each should be optional
 crack-osint = { path = "../crack-osint/", optional = true }
 crack-gpt = { path = "../crack-gpt/", optional = true }
+crack-bf = { path = "../crack-bf/", optional = true }
 
 # Core's dependencies
 poise = { workspace = true }

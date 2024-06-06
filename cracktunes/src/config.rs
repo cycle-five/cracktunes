@@ -223,6 +223,8 @@ pub async fn poise_framework(
             commands::version(),
             commands::volume(),
             commands::music::vote(),
+            #[cfg(feature = "crack-bf")]
+            commands::bf(),
             #[cfg(feature = "crack-osint")]
             commands::osint(),
             // all playlist commands
