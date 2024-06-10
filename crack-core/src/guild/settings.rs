@@ -2,8 +2,10 @@ use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
+use crate::messaging::message::CrackedMessage;
+use crate::CrackedResult;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
+use poise::serenity_prelude::{self as serenity, prelude::RwLock, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::BTreeMap;
@@ -15,11 +17,11 @@ use std::{
     env,
     fs::{create_dir_all, OpenOptions},
 };
+use tokio::sync::futures;
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use typemap_rev::TypeMapKey;
 
-use super::permissions::{CommandChannel, GenericPermissionSettings};
-
-pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
+pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
@@ -60,7 +62,7 @@ pub fn get_log_prefix() -> String {
 //     pub id: ChannelId,
 //     pub perms: GenericPermissionSettings,
 // }
-
+use crate::guild::permissions::{CommandChannel, GenericPermissionSettings};
 /// Command channels to restrict where and who can use what commands
 #[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, sqlx::FromRow)]
 pub struct CommandChannels {
@@ -68,6 +70,18 @@ pub struct CommandChannels {
 }
 
 impl CommandChannels {
+    pub fn to_btree_map(&self) -> BTreeMap<String, Vec<(u64, GenericPermissionSettings)>> {
+        self.music_channel
+            .as_ref()
+            .map(|x| {
+                (
+                    "music".to_string(),
+                    vec![(x.channel_id.get(), x.permission_settings.clone())],
+                )
+            })
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+    }
     /// Set the music channel, mutating.
     pub fn set_music_channel(
         &mut self,
@@ -98,11 +112,6 @@ impl CommandChannels {
             permission_settings: perms,
         });
         Self { music_channel }
-    }
-
-    /// Get the music channel.
-    pub fn get_music_channel(&self) -> Option<CommandChannel> {
-        self.music_channel.clone()
     }
 
     /// Insert the command channel into the database.
@@ -362,15 +371,135 @@ impl UserPermission {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+// type ArcOption<T> = Option<Arc<T>>;
+// struct ArcOptionKey<T>(std::marker::PhantomData<T>);
+// struct ArcRwLockKey<T>(std::marker::PhantomData<T>);
+
+use std::ops::{Deref, DerefMut};
+
+// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, IntoIter)]
+// struct MyVec(Vec<(u64, GenericPermissionSettings)>);
+pub type MyVec = Vec<(u64, GenericPermissionSettings)>;
+pub type MyMap = HashMap<String, MyVec>;
+
+#[derive(Debug, Clone)]
+struct ArcRwLockMap<'de, T>
+where
+    T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
+{
+    map: Arc<RwLock<T>>,
+    phantom_data: std::marker::PhantomData<&'de ()>,
+}
+
+impl ArcRwLockMap<'_, MyMap> {
+    pub fn new() -> Self {
+        Self {
+            map: Arc::new(RwLock::new(HashMap::new())),
+            phantom_data: std::marker::PhantomData,
+        }
+    }
+
+    async fn insert(&self, key: String, value: MyVec) {
+        let mut map = self.map.write().await;
+        map.insert(key, value);
+    }
+
+    async fn get(&self, key: &str) -> Option<MyVec> {
+        let map = self.map.read().await;
+        map.get(key).cloned()
+    }
+
+    async fn remove(&self, key: &str) {
+        let mut map = self.map.write().await;
+        map.remove(key);
+    }
+
+    async fn iter(&self) -> Vec<(String, MyVec)> {
+        let map = self.map.read().await;
+        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+}
+
+impl<'de, T> ArcRwLockMap<'de, T>
+where
+    T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
+{
+    pub fn from_map(map: T) -> Self {
+        Self {
+            map: Arc::new(RwLock::new(map)),
+            phantom_data: std::marker::PhantomData,
+        }
+    }
+}
+
+impl From<MyMap> for ArcRwLockMap<'_, MyMap> {
+    fn from(map: MyMap) -> Self {
+        Self {
+            map: Arc::new(RwLock::new(map)),
+            phantom_data: std::marker::PhantomData,
+        }
+    }
+}
+
+impl FromIterator<(String, MyVec)> for ArcRwLockMap<'_, MyMap> {
+    fn from_iter<T: IntoIterator<Item = (String, MyVec)>>(iter: T) -> Self {
+        let map = iter.into_iter().collect();
+        Self {
+            map: Arc::new(RwLock::new(map)),
+            phantom_data: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Default for ArcRwLockMap<'_, MyMap> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Deref for ArcRwLockMap<'_, MyMap> {
+    type Target = Arc<RwLock<HashMap<String, MyVec>>>;
+
+    fn deref(&self) -> &<Self as Deref>::Target {
+        &self.map
+    }
+}
+
+impl DerefMut for ArcRwLockMap<'_, MyMap> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.map
+    }
+}
+
+impl PartialEq for ArcRwLockMap<'_, MyMap> {
+    fn eq(&self, other: &Self) -> bool {
+        let handle = tokio::runtime::Handle::current();
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                self.map
+                    .read()
+                    .await
+                    .clone()
+                    .eq(&other.map.read().await.clone())
+            })
+        })
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
+}
+
+//#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+// TODO
+#[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
     #[serde(default = "premium_default")]
     pub premium: bool,
-    #[serde(default = "CommandChannels::default")]
-    pub command_channels: CommandChannels,
+    pub command_channels: ArcRwLockMap<MyMap>,
     #[serde(default = "default_false")]
     pub autopause: bool,
     #[serde(default = "default_true")]
@@ -504,7 +633,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
-            command_channels: CommandChannels::default(),
+            command_channels: ArcRwLockMap::new(),
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
@@ -637,11 +766,11 @@ impl GuildSettings {
 
     /// Set the music channel, without mutating.
     pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.command_channels.set_music_channel(
-            ChannelId::new(channel_id),
-            self.guild_id,
-            Default::default(),
-        );
+        self.command_channels
+            //.as_ref()
+            .entry("music".to_string())
+            .and_modify(|x| x.push((channel_id, GenericPermissionSettings::default())))
+            .or_insert(vec![(channel_id, GenericPermissionSettings::default())]);
         self
     }
 
@@ -903,8 +1032,12 @@ impl GuildSettings {
     }
 
     /// Set the command channels, notmutating.
-    pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
-        Self {
+    pub fn with_command_channels(
+        &self,
+        command_channels: BTreeMap<String, Vec<(u64, GenericPermissionSettings)>>,
+    ) -> Self {
+        let command_channels = Arc::new(command_channels);
+        GuildSettings {
             command_channels,
             ..self.clone()
         }
@@ -1029,6 +1162,27 @@ impl GuildSettings {
             }
         }
         None
+    }
+
+    pub async fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
+        let guard: RwLockReadGuard<MyMap> = self.command_channels.read().await;
+        guard
+            .get(&String::from("music"))
+            .map(|x| x.first().map(|y| y.1.clone()))?
+    }
+
+    /// Adds a user to the denied music users list.
+    pub async fn add_denied_music_user(&mut self, user_id: UserId) -> CrackedResult<bool> {
+        let guard: RwLockWriteGuard<'_, HashMap<String, MyVec>> =
+            self.command_channels.write().await;
+        guard
+            .get_mut(&String::from("music"))
+            .map(|mut x| {
+                x.first_mut()
+                    .map(|&mut y| y.1.add_denied_user(user_id.into()))
+            })
+            .flatten()
+            .ok_or(CrackedError::Other("No music channel found"))
     }
 }
 

@@ -1,10 +1,10 @@
-use ::serenity::all::CommandInteraction;
-
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
+use crate::guild::permissions::command_check_music;
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use ::serenity::all::CommandInteraction;
 //FIXME
 use crate::utils::edit_embed_response2;
 use crate::{
@@ -103,7 +103,13 @@ pub async fn search(
 
 /// Play a song.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("p", "P"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    aliases("p", "P"),
+    check = "command_check_music"
+)]
 pub async fn play(
     ctx: Context<'_>,
     #[rest]

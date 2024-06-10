@@ -1,13 +1,21 @@
-use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
-use serenity::all::GuildId;
-use sqlx::PgPool;
-
 use crate::{
     errors::CrackedError,
+    guild::permissions::CommandChannel,
     guild::settings::{GuildSettings, WelcomeSettings},
     Error as SerenityError,
 };
+use chrono::NaiveDateTime;
+use poise::serenity_prelude as serenity;
+use serde::{Deserialize, Serialize};
+use serenity::all::GuildId;
+use sqlx::PgPool;
+use std::collections::BTreeMap;
+
+pub struct GuildPermissionPivot {
+    pub guild_id: i64,
+    pub permission_id: i64,
+    pub kind: i32,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct GuildSettingsRead {
@@ -184,6 +192,9 @@ impl GuildEntity {
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), CrackedError> {
+        use crate::guild::settings::MyMap;
+        use tokio::sync::RwLockReadGuard;
+
         let ignored_channels = settings
             .ignored_channels
             .clone()
@@ -259,15 +270,26 @@ impl GuildEntity {
                 .save(pool, guild_id)
                 .await?;
         }
-        if settings.command_channels.music_channel.is_some() {
-            settings
-                .command_channels
-                .music_channel
-                .as_ref()
-                .unwrap()
-                .save(pool)
-                .await?;
+        let guard: RwLockReadGuard<MyMap> = settings.command_channels.read().await;
+        for (cmd, val) in guard.clone() {
+            //.expect("BUG! SHOULD BE SET") {
+            for (channel_id, perms) in val {
+                let perms_borrow = if perms.id == 0 {
+                    let perms = perms.insert_permission_settings(pool).await?;
+                    perms.clone()
+                } else {
+                    perms
+                };
+                let ch = CommandChannel {
+                    command: cmd.to_string(),
+                    channel_id: serenity::ChannelId::new(channel_id),
+                    guild_id: GuildId::new(guild_id as u64),
+                    permission_settings: perms_borrow.clone(),
+                };
+                CommandChannel::save(&ch, pool).await?;
+            }
         }
+
         Ok(())
     }
 
@@ -343,10 +365,21 @@ impl GuildEntity {
         let command_channels =
             crate::guild::settings::CommandChannels::load(GuildId::new(self.id as u64), pool)
                 .await?;
+        let cmd_chan = command_channels
+            .music_channel
+            .map(|x| {
+                (
+                    String::from("music"),
+                    vec![(x.channel_id.get(), x.permission_settings)],
+                )
+            })
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
-            .with_command_channels(command_channels))
+            .with_command_channels(cmd_chan))
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
@@ -443,7 +476,7 @@ impl GuildEntity {
                 let guild_settings = GuildSettings::from(guild_settings)
                     .with_welcome_settings(welcome_settings)
                     .with_log_settings(log_settings)
-                    .with_command_channels(command_channels);
+                    .with_command_channels(command_channels.to_btree_map());
                 (guild_entity, guild_settings)
             },
         };

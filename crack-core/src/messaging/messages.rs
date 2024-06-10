@@ -9,8 +9,12 @@ pub const CHANNEL_SIZE_SET: &str = "🗑️ Channel size set!";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
 
 pub const AUTHORIZED: &str = "✅ User has been authorized.";
-pub const DEAUTHORIZED: &str = "❌ User has been deauthorized.";
 pub const BANNED: &str = "Banned";
+pub const BUG: &str = "🐞 Bug!";
+pub const BUG_END: &str = "was None!";
+pub const BUG_REPORTED: &str = "🐞 Bug Reported!";
+pub const BUG_REPORT: &str = "🐞 Bug Report";
+pub const DEAUTHORIZED: &str = "❌ User has been deauthorized.";
 pub const UNBANNED: &str = "Unbanned";
 // Use the unicode emoji for the check mark
 pub const EMOJI_HEADPHONES: &str = "🎧";
@@ -29,6 +33,7 @@ pub const DOMAIN_FORM_BANNED_PLACEHOLDER: &str =
     "Add domains separated by \';\'. If left blank, all (except for allowed) are blocked by default.";
 pub const DOMAIN_FORM_TITLE: &str = "Manage sources";
 
+pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
 pub const ERROR: &str = "Fatality! Something went wrong ☹️";
 pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
 pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
@@ -58,7 +63,6 @@ pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English 
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
 
-pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const PREMIUM_PLUG: &str = "👑 Like the bot? Support my development and keep it premium-free for everyone!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";

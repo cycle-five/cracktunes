@@ -22,6 +22,16 @@ pub async fn bf(
         .map_err(Into::into)
 }
 
+// /// Select one of several stored brainfuck programs to load and run, then
+// /// print the program source code.
+// #[poise::command(slash_command, prefix_command)]
+// pub async fn bf_select(ctx: Context<'_>) -> Result<(), Error> {
+//     let msg = send_brainfk_options(&ctx).await;
+//     // let selection =
+// }
+
+// async fn send_brainfk_options(ctx: Context<'_>) -> Result<Message, Error> {}
+
 /// Run a brainfk program. Program and input string maybe empty, no handling is done for invalid
 /// programs.
 pub async fn bf_internal(
@@ -48,8 +58,8 @@ pub async fn bf_internal(
     .await?;
 
     let string_out = cursor_to_string(output, n)?;
-    tracing::info!("string_out: {string_out}");
-    let final_out = format!("output: {string_out}");
+    tracing::info!("string_out\n{string_out}");
+    let final_out = format!("```{string_out}```");
     send_response_poise_text(ctx, CrackedMessage::Other(final_out)).await
 }
 
@@ -68,4 +78,42 @@ fn cursor_to_string(cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {
     tracing::info!("length: {}", x.len());
     assert_eq!(n, x.len());
     Ok(String::from_utf8_lossy(&x).to_string())
+}
+
+#[allow(dead_code)]
+fn ascii_art_number() -> String {
+    let program = r#"
+    >>>>+>+++>+++>>>>>+++[
+        >,+>++++[>++++<-]>[<<[-[->]]>[<]>-]<<[
+            >+>+>>+>+[<<<<]<+>>[+<]<[>]>+[[>>>]>>+[<<<<]>-]+<+>>>-[
+            <<+[>]>>+<<<+<+<--------[
+                <<-<<+[>]>+<<-<<-[
+                <<<+<-[>>]<-<-<<<-<----[
+                    <<<->>>>+<-[
+                    <<<+[>]>+<<+<-<-[
+                        <<+<-<+[>>]<+<<<<+<-[
+                        <<-[>]>>-<<<-<-<-[
+                            <<<+<-[>>]<+<<<+<+<-[
+                            <<<<+[>]<-<<-[
+                                <<+[>]>>-<<<<-<-[
+                                >>>>>+<-<<<+<-[
+                                    >>+<<-[
+                                    <<-<-[>]>+<<-<-<-[
+                                        <<+<+[>]<+<+<-[
+                                        >>-<-<-[
+                                            <<-[>]<+<++++[<-------->-]++<[
+                                            <<+[>]>>-<-<<<<-[
+                                                <<-<<->>>>-[
+                                                <<<<+[>]>+<<<<-[
+                                                    <<+<<-[>>]<+<<<<<-[
+                                                    >>>>-<<<-<-
+        ]]]]]]]]]]]]]]]]]]]]]]>[>[[[<<<<]>+>>[>>>>>]<-]<]>>>+>>>>>>>+>]<
+    ]<[-]<<<<<<<++<+++<+++[
+        [>]>>>>>>++++++++[<<++++>++++++>-]<-<<[-[<+>>.<-]]<<<<[
+            -[-[>+<-]>]>>>>>[.[>]]<<[<+>-]>>>[<<++[<+>--]>>-]
+            <<[->+<[<++>-]]<<<[<+>-]<<<<
+        ]>>+>>>--[<+>---]<.>>[[-]<<]<
+    ]
+    "#;
+    program.to_string()
 }

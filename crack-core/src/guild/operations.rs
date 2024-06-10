@@ -1,6 +1,9 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
+use tokio::sync::RwLockReadGuard;
+
+use super::settings::MyMap;
 
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
@@ -82,16 +85,12 @@ impl GuildSettingsOperations for Data {
 
     /// Get the music channel for the guild.
     async fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
-        self.guild_settings_map
-            .read()
-            .await
-            .get(&guild_id)
-            .and_then(|x| {
-                x.command_channels
-                    .music_channel
-                    .as_ref()
-                    .map(|x| x.channel_id)
-            })
+        let settings = self.guild_settings_map.read().await.get(&guild_id)?;
+        let guard: RwLockReadGuard<MyMap> = settings.command_channels.read().await;
+        guard
+            .get("music")
+            .map(|x| x.first().map(|chan_perms| ChannelId::new(chan_perms.0)))
+            .flatten()
     }
 
     /// Set the music channel for the guild.
@@ -371,15 +370,18 @@ mod test {
         guild_settings_map.insert(
             guild_id,
             crate::GuildSettings {
-                command_channels: CommandChannels {
-                    music_channel: Some(CommandChannel {
-                        command: "".to_string(),
-                        guild_id,
-                        channel_id,
-                        permission_settings: Default::default(),
-                    }),
-                    ..Default::default()
-                },
+                command_channels: Arc::new(
+                    CommandChannels {
+                        music_channel: Some(CommandChannel {
+                            command: "".to_string(),
+                            guild_id,
+                            channel_id,
+                            permission_settings: Default::default(),
+                        }),
+                        ..Default::default()
+                    }
+                    .to_btree_map(),
+                ),
                 ..Default::default()
             },
         );
@@ -399,15 +401,18 @@ mod test {
         guild_settings_map.insert(
             guild_id,
             crate::GuildSettings {
-                command_channels: CommandChannels {
-                    music_channel: Some(CommandChannel {
-                        command: "".to_string(),
-                        guild_id,
-                        channel_id,
-                        permission_settings: Default::default(),
-                    }),
-                    ..Default::default()
-                },
+                command_channels: Arc::new(tokio::sync::RwLock::new(
+                    CommandChannels {
+                        music_channel: Some(CommandChannel {
+                            command: "".to_string(),
+                            guild_id,
+                            channel_id,
+                            permission_settings: Default::default(),
+                        }),
+                        ..Default::default()
+                    }
+                    .to_btree_map(),
+                )),
                 ..Default::default()
             },
         );

@@ -38,6 +38,8 @@ pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
+#[macro_use]
+pub mod macros;
 pub mod messaging;
 pub mod metrics;
 pub mod sources;
@@ -134,6 +136,7 @@ pub struct BotConfig {
     pub sys_log_channel_id: Option<u64>,
     pub self_deafen: Option<bool>,
     pub volume: Option<f32>,
+    #[serde(skip)]
     pub guild_settings_map: Option<Vec<guild::settings::GuildSettings>>,
     pub prefix: Option<String>,
     pub credentials: Option<BotCredentials>,
@@ -706,11 +709,40 @@ impl Data {
         Self(Arc::new(self.0.with_guild_settings_map(guild_settings)))
     }
 
+    /// Get the database pool for the postgresql database.
     pub fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
         self.database_pool
             .as_ref()
             .ok_or(CrackedError::NoDatabasePool)
             .cloned()
+    }
+
+    /// Deny a user permission to use the music commands.
+    pub async fn add_denied_music_user(
+        &self,
+        guild_id: GuildId,
+        user: UserId,
+    ) -> CrackedResult<bool> {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .or_insert_with(|| GuildSettings::default())
+            .add_denied_music_user(user)
+            .await
+    }
+
+    /// Check if a user is allowed to use the music commands.
+    pub async fn check_music_permissions(&self, guild_id: GuildId, user: UserId) -> bool {
+        if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
+            settings
+                .get_music_permissions()
+                .await
+                .map(|x| x.is_user_allowed(user.get()))
+                .unwrap_or_default()
+        } else {
+            false
+        }
     }
 }
 

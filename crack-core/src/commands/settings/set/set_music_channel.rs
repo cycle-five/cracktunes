@@ -43,3 +43,32 @@ pub async fn music_channel(
 
     Ok(())
 }
+
+use poise::serenity_prelude as serenity;
+
+#[poise::command(prefix_command, required_permissions = "ADMINISTRATOR")]
+pub async fn music_denied_user(
+    ctx: Context<'_>,
+    #[description = "User to deny music commands to."] user: serenity::UserId,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+
+    let data = ctx.data();
+    let _ = data.add_denied_music_user(guild_id, user).await;
+
+    let opt_settings = data.guild_settings_map.read().await.clone();
+    let settings = opt_settings.get(&guild_id);
+
+    let pg_pool = ctx.data().database_pool.clone().unwrap();
+    settings.map(|s| s.save(&pg_pool)).unwrap().await?;
+
+    let msg = send_response_poise(
+        ctx,
+        CrackedMessage::Other(format!("Denied user set to {}", user)),
+        true,
+    )
+    .await?;
+    data.add_msg_to_cache(guild_id, msg).await;
+
+    Ok(())
+}

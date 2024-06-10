@@ -3,7 +3,7 @@ use serenity::all::{ChannelId, GuildId};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
-use crate::{errors::CrackedError, Error};
+use crate::{errors::CrackedError, Context, Error};
 
 /// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;
@@ -75,7 +75,7 @@ pub struct GenericPermissionSettings {
 }
 
 /// Struct for reading generic permission settings from a pg table.
-#[derive(Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct GenericPermissionSettingsRead {
     pub id: i64,
     #[serde(default = "default_true")]
@@ -193,47 +193,47 @@ impl GenericPermissionSettings {
     // }
 
     /// Add a role to the allowed roles.
-    pub fn add_allowed_role(&mut self, role: u64) {
-        self.allowed_roles.insert(role);
+    pub fn add_allowed_role(&mut self, role: u64) -> bool {
+        self.allowed_roles.insert(role)
     }
 
     /// Remove a role from the allowed roles.
-    pub fn remove_allowed_role(&mut self, role: u64) {
-        self.allowed_roles.remove(&role);
+    pub fn remove_allowed_role(&mut self, role: u64) -> bool {
+        self.allowed_roles.remove(&role)
     }
 
     /// Add a role to the denied roles.
-    pub fn add_denied_role(&mut self, role: u64) {
-        self.denied_roles.insert(role);
+    pub fn add_denied_role(&mut self, role: u64) -> bool {
+        self.denied_roles.insert(role)
     }
 
     /// Remove a role from the denied roles.
-    pub fn remove_denied_role(&mut self, role: u64) {
-        self.denied_roles.remove(&role);
+    pub fn remove_denied_role(&mut self, role: u64) -> bool {
+        self.denied_roles.remove(&role)
     }
 
     /// Add a user to the allowed users.
-    pub fn add_allowed_user(&mut self, user: u64) {
-        self.allowed_users.insert(user);
+    pub fn add_allowed_user(&mut self, user: u64) -> bool {
+        self.allowed_users.insert(user)
     }
 
     /// Remove a user from the allowed users.
-    pub fn remove_allowed_user(&mut self, user: u64) {
-        self.allowed_users.remove(&user);
+    pub fn remove_allowed_user(&mut self, user: u64) -> bool {
+        self.allowed_users.remove(&user)
     }
 
     /// Add a user to the denied users.
-    pub fn add_denied_user(&mut self, user: u64) {
-        self.denied_users.insert(user);
+    pub fn add_denied_user(&mut self, user: u64) -> bool {
+        self.denied_users.insert(user)
     }
 
     /// Remove a user from the denied users.
-    pub fn remove_denied_user(&mut self, user: u64) {
-        self.denied_users.remove(&user);
+    pub fn remove_denied_user(&mut self, user: u64) -> bool {
+        self.denied_users.remove(&user)
     }
 
     /// Clear all allowed and denied commands, roles, and users.
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self) -> () {
         // self.allowed_commands.clear();
         // self.denied_commands.clear();
         self.allowed_roles.clear();
@@ -244,8 +244,8 @@ impl GenericPermissionSettings {
 
     /// Write to a pg table.
     pub async fn insert_permission_settings(
+        &self,
         pool: &PgPool,
-        settings: &GenericPermissionSettings,
     ) -> Result<GenericPermissionSettings, CrackedError> {
         sqlx::query_as!(
             GenericPermissionSettingsRead,
@@ -260,27 +260,27 @@ impl GenericPermissionSettings {
             VALUES
                 ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *",
-            settings.default_allow_all_commands,
-            settings.default_allow_all_users,
-            settings.default_allow_all_roles,
+            self.default_allow_all_commands,
+            self.default_allow_all_users,
+            self.default_allow_all_roles,
             // json!(settings.allowed_commands) as serde_json::Value, // Convert to JSON
             // json!(settings.denied_commands) as serde_json::Value,
-            &settings
+            &self
                 .allowed_roles
                 .iter()
                 .map(|&x| x as i64)
                 .collect::<Vec<i64>>(), // Convert to Vec<i64>
-            &settings
+            &self
                 .denied_roles
                 .iter()
                 .map(|&x| x as i64)
                 .collect::<Vec<i64>>(),
-            &settings
+            &self
                 .allowed_users
                 .iter()
                 .map(|&x| x as i64)
                 .collect::<Vec<i64>>(),
-            &settings
+            &self
                 .denied_users
                 .iter()
                 .map(|&x| x as i64)
@@ -327,6 +327,17 @@ pub struct CommandChannelRead {
     pub permission_settings_id: i64,
 }
 
+impl Default for CommandChannel {
+    fn default() -> Self {
+        Self {
+            command: "".to_string(),
+            channel_id: ChannelId::new(0),
+            guild_id: GuildId::new(0),
+            permission_settings: GenericPermissionSettings::default(),
+        }
+    }
+}
+
 impl CommandChannel {
     /// Convert a CommandChannelRead to a CommandChannel.
     pub async fn from_command_channel_read(
@@ -348,11 +359,13 @@ impl CommandChannel {
 
     /// Insert a CommandChannel into a pg table.
     pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
-        let mut settings = self.permission_settings.clone();
-        if settings.id == 0 {
-            settings =
-                GenericPermissionSettings::insert_permission_settings(pool, &settings).await?;
-        }
+        let settings = if self.permission_settings.id == 0 {
+            self.permission_settings
+                .insert_permission_settings(pool)
+                .await?
+        } else {
+            self.permission_settings.clone()
+        };
         let command_channel = sqlx::query_as!(
             CommandChannelRead,
             r#"INSERT INTO command_channel
@@ -371,10 +384,9 @@ impl CommandChannel {
         )
         .fetch_one(pool)
         .await?;
-        let command_channel = CommandChannel::from_command_channel_read(pool, command_channel)
+        CommandChannel::from_command_channel_read(pool, command_channel)
             .await
-            .unwrap();
-        Ok(command_channel)
+            .map_err(Into::into)
     }
 
     pub async fn save(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
@@ -410,6 +422,28 @@ impl CommandChannel {
     }
 }
 
+pub async fn command_check_music(ctx: Context<'_>) -> Result<bool, Error> {
+    if ctx.author().bot {
+        return Ok(false);
+    };
+
+    // let data: &Data = ctx.data();
+    // let user_row = data.userinfo_db.get(ctx.author().id.into()).await?;
+    // if user_row.bot_banned() {
+    //     notify_banned(ctx).await?;
+    //     return Ok(false);
+    // }
+
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(true);
+    };
+
+    Ok(ctx
+        .data()
+        .check_music_permissions(guild_id, ctx.author().id)
+        .await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,7 +456,8 @@ mod tests {
     fn set_env() {
         use std::env;
         if env::var("DATABASE_URL").is_err() {
-            env::set_var("DATABASE_URL", "postgresql://localhost:5432/postgres");
+            // env::set_var("DATABASE_URL", "postgresql://localhost:5432/postgres");
+            println!("WARNING: DATABASE_URL not set for tests");
         }
     }
 
@@ -582,9 +617,7 @@ mod tests {
         // settings.add_denied_command("test2".to_string());
         settings.add_allowed_role(1);
         settings.add_allowed_user(1);
-        GenericPermissionSettings::insert_permission_settings(&pool, &settings)
-            .await
-            .unwrap();
+        settings.insert_permission_settings(&pool).await.unwrap();
 
         let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
             .await

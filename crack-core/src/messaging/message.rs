@@ -17,6 +17,7 @@ pub enum CrackedMessage {
     AutopauseOn,
     AutoplayOff,
     AutoplayOn,
+    BugNone(String),
     CategoryCreated {
         channel_id: serenity::ChannelId,
         channel_name: String,
@@ -183,6 +184,7 @@ impl Display for CrackedMessage {
         match self {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
+            Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
@@ -353,5 +355,23 @@ impl From<CrackedMessage> for String {
 impl From<CrackedMessage> for CreateEmbed {
     fn from(message: CrackedMessage) -> Self {
         CreateEmbed::default().description(message.to_string())
+    }
+}
+
+impl From<CrackedError> for CrackedMessage {
+    fn from(error: CrackedError) -> Self {
+        Self::CrackedError(error)
+    }
+}
+
+impl From<CrackedMessage> for Result<CrackedMessage, CrackedError> {
+    fn from(message: CrackedMessage) -> Self {
+        Ok(message)
+    }
+}
+
+impl From<serenity::http::HttpError> for CrackedMessage {
+    fn from(error: serenity::http::HttpError) -> Self {
+        Self::ErrorHttp(error)
     }
 }
