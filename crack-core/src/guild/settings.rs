@@ -82,6 +82,19 @@ impl CommandChannels {
             .into_iter()
             .collect::<BTreeMap<_, _>>()
     }
+
+    pub fn to_hash_map(&self) -> HashMap<String, Vec<(u64, GenericPermissionSettings)>> {
+        self.music_channel
+            .as_ref()
+            .map(|x| {
+                (
+                    "music".to_string(),
+                    vec![(x.channel_id.get(), x.permission_settings.clone())],
+                )
+            })
+            .into_iter()
+            .collect::<HashMap<_, _>>()
+    }
     /// Set the music channel, mutating.
     pub fn set_music_channel(
         &mut self,
@@ -383,21 +396,39 @@ pub type MyVec = Vec<(u64, GenericPermissionSettings)>;
 pub type MyMap = HashMap<String, MyVec>;
 
 #[derive(Debug, Clone)]
-struct ArcRwLockMap<'de, T>
+// struct ArcRwLockMap<'de, T>
+// where
+//     T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
+// {
+//     map: Arc<RwLock<T>>,
+//     phantom_data: std::marker::PhantomData<&'de ()>,
+// }
+pub struct ArcRwLockMap<T>
 where
-    T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
+    T: Serialize + Default + Clone + Send + Sync + PartialEq + 'static,
 {
-    map: Arc<RwLock<T>>,
-    phantom_data: std::marker::PhantomData<&'de ()>,
+    pub map: Arc<RwLock<T>>,
 }
 
-impl ArcRwLockMap<'_, MyMap> {
+impl From<MyMap> for ArcRwLockMap<MyMap> {
+    fn from(map: MyMap) -> Self {
+        Self {
+            map: Arc::new(RwLock::new(map)),
+        }
+    }
+}
+
+impl ArcRwLockMap<MyMap> {
     pub fn new() -> Self {
         Self {
             map: Arc::new(RwLock::new(HashMap::new())),
-            phantom_data: std::marker::PhantomData,
+            // phantom_data: std::marker::PhantomData,
         }
     }
+
+    // pub fn get_map(mut &self) -> &mut Arc<RwLock<MyMap>> {
+    //     self.map
+    // }
 
     async fn insert(&self, key: String, value: MyVec) {
         let mut map = self.map.write().await;
@@ -418,46 +449,52 @@ impl ArcRwLockMap<'_, MyMap> {
         let map = self.map.read().await;
         map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
+
+    // async fn entry(&self, key: String) -> Option<MyVec> {
+    //     let mut map = self.map.write().await;
+    //     map.entry(key)
+    // }
 }
 
-impl<'de, T> ArcRwLockMap<'de, T>
-where
-    T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
-{
-    pub fn from_map(map: T) -> Self {
-        Self {
-            map: Arc::new(RwLock::new(map)),
-            phantom_data: std::marker::PhantomData,
-        }
-    }
-}
+// impl<'de, T> ArcRwLockMap<'de, T>
+// where
+//     T: Serialize + Deserialize<'de> + Default + Clone + Send + Sync + PartialEq + 'static,
+// {
+//     pub fn from_map(map: T) -> Self {
+//         Self {
+//             map: Arc::new(RwLock::new(map)),
+//             phantom_data: std::marker::PhantomData,
+//         }
+//     }
+// }
+// impl<T> ArcRwLockMap<T>
+// where
+//     T: Default + Clone + Send + Sync + PartialEq + 'static,
+// {
+//     pub fn from_map(map: T) -> Self {
+//         Self {
+//             map: Arc::new(RwLock::new(map)),
+//             // phantom_data: std::marker::PhantomData,
+//         }
+//     }
+// }
 
-impl From<MyMap> for ArcRwLockMap<'_, MyMap> {
-    fn from(map: MyMap) -> Self {
-        Self {
-            map: Arc::new(RwLock::new(map)),
-            phantom_data: std::marker::PhantomData,
-        }
-    }
-}
-
-impl FromIterator<(String, MyVec)> for ArcRwLockMap<'_, MyMap> {
+impl FromIterator<(String, MyVec)> for ArcRwLockMap<MyMap> {
     fn from_iter<T: IntoIterator<Item = (String, MyVec)>>(iter: T) -> Self {
         let map = iter.into_iter().collect();
         Self {
             map: Arc::new(RwLock::new(map)),
-            phantom_data: std::marker::PhantomData,
         }
     }
 }
 
-impl Default for ArcRwLockMap<'_, MyMap> {
+impl Default for ArcRwLockMap<MyMap> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Deref for ArcRwLockMap<'_, MyMap> {
+impl Deref for ArcRwLockMap<MyMap> {
     type Target = Arc<RwLock<HashMap<String, MyVec>>>;
 
     fn deref(&self) -> &<Self as Deref>::Target {
@@ -465,13 +502,13 @@ impl Deref for ArcRwLockMap<'_, MyMap> {
     }
 }
 
-impl DerefMut for ArcRwLockMap<'_, MyMap> {
+impl DerefMut for ArcRwLockMap<MyMap> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.map
     }
 }
 
-impl PartialEq for ArcRwLockMap<'_, MyMap> {
+impl PartialEq for ArcRwLockMap<MyMap> {
     fn eq(&self, other: &Self) -> bool {
         let handle = tokio::runtime::Handle::current();
         tokio::task::block_in_place(|| {
@@ -492,38 +529,38 @@ impl PartialEq for ArcRwLockMap<'_, MyMap> {
 
 //#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 // TODO
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
-    #[serde(default = "premium_default")]
+    // #[serde(default = "premium_default")]
     pub premium: bool,
     pub command_channels: ArcRwLockMap<MyMap>,
-    #[serde(default = "default_false")]
+    // #[serde(default = "default_false")]
     pub autopause: bool,
-    #[serde(default = "default_true")]
+    // #[serde(default = "default_true")]
     pub autoplay: bool,
-    #[serde(default = "default_true")]
+    // #[serde(default = "default_true")]
     pub reply_with_embed: bool,
-    #[serde(default = "allow_all_domains_default")]
+    // #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    #[serde(default = "authorized_users_default")]
+    // #[serde(default = "authorized_users_default")]
     pub authorized_users: BTreeMap<u64, u64>,
-    #[serde(default = "authorized_users_default")]
+    // #[serde(default = "authorized_users_default")]
     pub authorized_groups: BTreeMap<u64, u64>,
     pub ignored_channels: HashSet<u64>,
-    #[serde(default = "volume_default")]
+    // #[serde(default = "volume_default")]
     pub old_volume: f32,
-    #[serde(default = "volume_default")]
+    // #[serde(default = "volume_default")]
     pub volume: f32,
     pub self_deafen: bool,
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
     pub log_settings: Option<LogSettings>,
-    #[serde(default = "additional_prefixes_default")]
+    // #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
 }
 
@@ -570,11 +607,12 @@ impl Default for GuildSettings {
 
 impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let res = match serde_json::to_string_pretty(self) {
-            Ok(s) => s,
-            Err(e) => format!("Error: {}", e),
-        };
-        write!(f, "{}", res)
+        // let res = match serde_json::to_string_pretty(self) {
+        //     Ok(s) => s,
+        //     Err(e) => format!("Error: {}", e),
+        // };
+        // write!(f, "{}", res)
+        write!(f, "{:?}", self.guild_name)
     }
 }
 
@@ -699,31 +737,31 @@ impl GuildSettings {
         Ok(())
     }
 
-    /// Save the guild settings to a JSON file. Unused?
-    pub fn save_json(&self) -> Result<(), CrackedError> {
-        tracing::warn!("Saving guild settings: {:?}", self);
-        create_dir_all(SETTINGS_PATH.as_str())?;
-        let path = format!(
-            "{}/{}-{}.json",
-            SETTINGS_PATH.as_str(),
-            self.get_guild_name(),
-            self.guild_id
-        );
-        tracing::warn!("path: {:?}", path);
+    // /// Save the guild settings to a JSON file. Unused?
+    // pub fn save_json(&self) -> Result<(), CrackedError> {
+    //     tracing::warn!("Saving guild settings: {:?}", self);
+    //     create_dir_all(SETTINGS_PATH.as_str())?;
+    //     let path = format!(
+    //         "{}/{}-{}.json",
+    //         SETTINGS_PATH.as_str(),
+    //         self.get_guild_name(),
+    //         self.guild_id
+    //     );
+    //     tracing::warn!("path: {:?}", path);
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(path)?;
-        tracing::warn!("file: {:?}", file);
+    //     let mut file = OpenOptions::new()
+    //         .write(true)
+    //         .truncate(true)
+    //         .create(true)
+    //         .open(path)?;
+    //     tracing::warn!("file: {:?}", file);
 
-        // let mut writer = &BufWriter::new(file);
-        let pretty_data = serde_json::to_string_pretty(self)?;
-        file.write_all(pretty_data.as_bytes())?;
-        file.flush()?;
-        Ok(())
-    }
+    //     // let mut writer = &BufWriter::new(file);
+    //     let pretty_data = serde_json::to_string_pretty(self)?;
+    //     file.write_all(pretty_data.as_bytes())?;
+    //     file.flush()?;
+    //     Ok(())
+    // }
 
     /// Set the premium status, mutating.
     pub fn with_premium(self, premium: bool) -> Self {
@@ -764,14 +802,13 @@ impl GuildSettings {
         self.banned_domains = banned;
     }
 
-    /// Set the music channel, without mutating.
-    pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.command_channels
-            //.as_ref()
+    /// Set the music channel, mutating.
+    pub async fn set_music_channel(&mut self, channel_id: u64) {
+        let mut guard: RwLockWriteGuard<MyMap> = self.command_channels.map.write().await;
+        guard
             .entry("music".to_string())
             .and_modify(|x| x.push((channel_id, GenericPermissionSettings::default())))
             .or_insert(vec![(channel_id, GenericPermissionSettings::default())]);
-        self
     }
 
     /// Update the allowed domains.
@@ -1034,9 +1071,11 @@ impl GuildSettings {
     /// Set the command channels, notmutating.
     pub fn with_command_channels(
         &self,
-        command_channels: BTreeMap<String, Vec<(u64, GenericPermissionSettings)>>,
+        command_channels: MyMap, //BTreeMap<String, Vec<(u64, GenericPermissionSettings)>>,
     ) -> Self {
-        let command_channels = Arc::new(command_channels);
+        let command_channels = ArcRwLockMap {
+            map: Arc::new(RwLock::new(command_channels)),
+        };
         GuildSettings {
             command_channels,
             ..self.clone()
@@ -1164,6 +1203,13 @@ impl GuildSettings {
         None
     }
 
+    pub async fn get_music_channel(&self) -> Option<ChannelId> {
+        let guard: RwLockReadGuard<MyMap> = self.command_channels.read().await;
+        guard
+            .get(&String::from("music"))
+            .map(|x| x.first().map(|y| ChannelId::new(y.0)))?
+    }
+
     pub async fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
         let guard: RwLockReadGuard<MyMap> = self.command_channels.read().await;
         guard
@@ -1173,14 +1219,11 @@ impl GuildSettings {
 
     /// Adds a user to the denied music users list.
     pub async fn add_denied_music_user(&mut self, user_id: UserId) -> CrackedResult<bool> {
-        let guard: RwLockWriteGuard<'_, HashMap<String, MyVec>> =
-            self.command_channels.write().await;
+        let mut guard: RwLockWriteGuard<'_, HashMap<String, MyVec>> =
+            self.command_channels.map.write().await;
         guard
             .get_mut(&String::from("music"))
-            .map(|mut x| {
-                x.first_mut()
-                    .map(|&mut y| y.1.add_denied_user(user_id.into()))
-            })
+            .map(|x| x.first_mut().map(|y| y.1.add_denied_user(user_id.into())))
             .flatten()
             .ok_or(CrackedError::Other("No music channel found"))
     }

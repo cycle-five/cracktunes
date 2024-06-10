@@ -365,16 +365,16 @@ impl GuildEntity {
         let command_channels =
             crate::guild::settings::CommandChannels::load(GuildId::new(self.id as u64), pool)
                 .await?;
-        let cmd_chan = command_channels
-            .music_channel
-            .map(|x| {
-                (
-                    String::from("music"),
-                    vec![(x.channel_id.get(), x.permission_settings)],
-                )
-            })
-            .into_iter()
-            .collect::<BTreeMap<_, _>>();
+        let cmd_chan = command_channels.to_hash_map();
+        // .music_channel
+        // .map(|x| {
+        //     (
+        //         String::from("music"),
+        //         vec![(x.channel_id.get(), x.permission_settings)],
+        //     )
+        // })
+        // .into_iter()
+        // .collect::<HashMap<_, _>>();
 
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
@@ -476,7 +476,7 @@ impl GuildEntity {
                 let guild_settings = GuildSettings::from(guild_settings)
                     .with_welcome_settings(welcome_settings)
                     .with_log_settings(log_settings)
-                    .with_command_channels(command_channels.to_btree_map());
+                    .with_command_channels(command_channels.to_hash_map());
                 (guild_entity, guild_settings)
             },
         };

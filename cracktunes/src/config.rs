@@ -382,21 +382,20 @@ pub async fn poise_framework(
                         },
                     };
 
-                    match ctx.data().get_guild_settings(guild_id).await {
+                    let guild_settings = match ctx.data().get_guild_settings(guild_id).await {
                         Some(guild_settings) => {
-                            let command_channel = guild_settings.command_channels.music_channel;
-                            let opt_allowed_channel = command_channel.map(|x| x.channel_id);
-                            match opt_allowed_channel {
-                                Some(allowed_channel) => {
-                                    if channel_id == allowed_channel {
-                                        return Ok(is_authorized_music(member.clone(), None));
-                                    }
-                                    return Err(
-                                        CrackedError::NotInMusicChannel(allowed_channel).into()
-                                    );
-                                },
-                                None => return Ok(is_authorized_music(member, None)),
+                            //let command_channel = guild_settings.command_channels.music_channel;
+                            guild_settings
+                        },
+                        None => return Ok(is_authorized_music(member, None)),
+                    };
+                    let opt_allowed_channel = guild_settings.get_music_channel().await;
+                    match opt_allowed_channel {
+                        Some(allowed_channel) => {
+                            if channel_id == allowed_channel {
+                                return Ok(is_authorized_music(member.clone(), None));
                             }
+                            return Err(CrackedError::NotInMusicChannel(allowed_channel).into());
                         },
                         None => return Ok(is_authorized_music(member, None)),
                     }
