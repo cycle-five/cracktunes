@@ -11,6 +11,7 @@ use crate::{errors::CrackedError, messaging::messages::*};
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
 
+#[repr(u8)]
 #[derive(Debug)]
 pub enum CrackedMessage {
     AutopauseOff,
@@ -177,6 +178,18 @@ pub enum CrackedMessage {
     WaybackSnapshot {
         url: String,
     },
+}
+
+impl CrackedMessage {
+    fn discriminant(&self) -> u8 {
+        unsafe { *(self as *const Self as *const u8) }
+    }
+}
+
+impl PartialEq for CrackedMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.discriminant() == other.discriminant()
+    }
 }
 
 impl Display for CrackedMessage {
@@ -373,5 +386,160 @@ impl From<CrackedMessage> for Result<CrackedMessage, CrackedError> {
 impl From<serenity::http::HttpError> for CrackedMessage {
     fn from(error: serenity::http::HttpError) -> Self {
         Self::ErrorHttp(error)
+    }
+}
+
+impl Default for CrackedMessage {
+    fn default() -> Self {
+        Self::Other("(default)".to_string())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::CrackedMessage;
+    use poise::serenity_prelude as serenity;
+
+    #[test]
+    fn test_discriminant() {
+        let message = CrackedMessage::AutopauseOff;
+        assert_eq!(message.discriminant(), 0);
+
+        let message = CrackedMessage::AutopauseOn;
+        assert_eq!(message.discriminant(), 1);
+
+        let message = CrackedMessage::AutoplayOff;
+        assert_eq!(message.discriminant(), 2);
+
+        let message = CrackedMessage::AutoplayOn;
+        assert_eq!(message.discriminant(), 3);
+
+        let message = CrackedMessage::Clear;
+        assert_eq!(message.discriminant(), 9);
+    }
+
+    #[test]
+    fn test_eq() {
+        let message = CrackedMessage::AutopauseOff;
+        assert_eq!(message, CrackedMessage::AutopauseOff);
+
+        let message = CrackedMessage::AutopauseOn;
+        assert_eq!(message, CrackedMessage::AutopauseOn);
+
+        let message = CrackedMessage::BugNone("test".to_string());
+        assert_eq!(message, CrackedMessage::BugNone("test".to_string()));
+
+        let message = CrackedMessage::InvalidIP("test".to_string());
+        assert_eq!(message, CrackedMessage::InvalidIP("test".to_string()));
+
+        let message = CrackedMessage::IPDetails("test".to_string());
+        assert_eq!(message, CrackedMessage::IPDetails("test".to_string()));
+
+        let message = CrackedMessage::IPVersion("test".to_string());
+        assert_eq!(message, CrackedMessage::IPVersion("test".to_string()));
+
+        let message = CrackedMessage::AutopauseOff;
+        assert_eq!(message, CrackedMessage::AutopauseOff);
+
+        let message = CrackedMessage::AutopauseOn;
+        assert_eq!(message, CrackedMessage::AutopauseOn);
+
+        let message = CrackedMessage::CountryName("test".to_string());
+        assert_eq!(message, CrackedMessage::CountryName("test".to_string()));
+
+        let message = CrackedMessage::Clear;
+        assert_eq!(message, CrackedMessage::Clear);
+
+        let message = CrackedMessage::Clean(1);
+        assert_eq!(message, CrackedMessage::Clean(1));
+
+        let message = CrackedMessage::ChannelSizeSet {
+            id: serenity::ChannelId::default(),
+            name: "test".to_string(),
+            size: 1,
+        };
+        assert_eq!(
+            message,
+            CrackedMessage::ChannelSizeSet {
+                id: serenity::ChannelId::default(),
+                name: "test".to_string(),
+                size: 1
+            }
+        );
+
+        let message = CrackedMessage::ChannelDeleted {
+            channel_id: serenity::ChannelId::default(),
+            channel_name: "test".to_string(),
+        };
+        assert_eq!(
+            message,
+            CrackedMessage::ChannelDeleted {
+                channel_id: serenity::ChannelId::default(),
+                channel_name: "test".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_ne() {
+        let message = CrackedMessage::AutopauseOff;
+        assert_ne!(message, CrackedMessage::AutopauseOn);
+
+        let message = CrackedMessage::AutopauseOn;
+        assert_ne!(message, CrackedMessage::AutopauseOff);
+
+        let message = CrackedMessage::BugNone("test".to_string());
+        assert_ne!(message, CrackedMessage::InvalidIP("test".to_string()));
+
+        let message = CrackedMessage::InvalidIP("test".to_string());
+        assert_ne!(message, CrackedMessage::BugNone("test".to_string()));
+
+        let message = CrackedMessage::IPDetails("test".to_string());
+        assert_ne!(message, CrackedMessage::IPVersion("test".to_string()));
+
+        let message = CrackedMessage::IPVersion("test".to_string());
+        assert_ne!(message, CrackedMessage::IPDetails("test".to_string()));
+
+        let message = CrackedMessage::AutopauseOff;
+        assert_ne!(message, CrackedMessage::AutopauseOn);
+
+        let message = CrackedMessage::AutopauseOn;
+        assert_ne!(message, CrackedMessage::AutopauseOff);
+
+        let message = CrackedMessage::CountryName("test".to_string());
+        assert_ne!(message, CrackedMessage::Clear);
+
+        let message = CrackedMessage::Clear;
+        assert_ne!(message, CrackedMessage::CountryName("test".to_string()));
+
+        let message = CrackedMessage::Clean(1);
+        assert_ne!(
+            message,
+            CrackedMessage::ChannelSizeSet {
+                id: serenity::ChannelId::default(),
+                name: "test".to_string(),
+                size: 1,
+            }
+        );
+
+        let message = CrackedMessage::ChannelSizeSet {
+            id: serenity::ChannelId::default(),
+            name: "test".to_string(),
+            size: 1,
+        };
+        assert_ne!(message, CrackedMessage::Clean(1));
+
+        let message = CrackedMessage::ChannelDeleted {
+            channel_id: serenity::ChannelId::default(),
+            channel_name: "test".to_string(),
+        };
+        assert_ne!(
+            message,
+            CrackedMessage::ChannelSizeSet {
+                id: serenity::ChannelId::default(),
+                name: "test".to_string(),
+                size: 1,
+            }
+        );
     }
 }

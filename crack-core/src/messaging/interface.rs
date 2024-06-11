@@ -6,6 +6,7 @@ use crate::messaging::messages::{
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
+use crate::CrackedResult;
 use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
@@ -18,6 +19,7 @@ use crate::{
 /// to communicate with the user.
 use lyric_finder::LyricResult;
 use poise::CreateReply;
+use serenity::all::Color;
 use serenity::{
     all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
     all::{CacheHttp, ChannelId, Mentionable, UserId},
@@ -327,6 +329,18 @@ pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), Cracked
     Ok(())
 }
 
+/// Sends the searching message after a play command is sent.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_search_message(ctx: CrackContext<'_>) -> CrackedResult<Message> {
+    let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
+    let msg = send_embed_response_poise(ctx, embed).await?;
+    ctx.data()
+        .add_msg_to_cache(ctx.guild_id().unwrap(), msg.clone())
+        .await;
+    Ok(msg)
+}
+
+/// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel(
     ctx: CrackContext<'_>,
     channel_id: ChannelId,
@@ -339,12 +353,14 @@ pub async fn send_joining_channel(
         as_embed: true,
         ephemeral: false,
         reply: true,
+        color: Color::BLUE,
         msg,
     };
 
     send_message(ctx, params).await
 }
 
+use colored::Colorize;
 pub async fn send_message(
     ctx: CrackContext<'_>,
     send_params: SendMessageParams,
@@ -359,10 +375,17 @@ pub async fn send_message(
     // .to_string();
     let text = send_params.msg.to_string();
     let reply = if as_embed {
-        let embed = CreateEmbed::default().description(text);
+        let embed = CreateEmbed::default()
+            .description(text)
+            .color(send_params.color);
         CreateReply::default().embed(embed)
     } else {
-        CreateReply::default().content(text)
+        let c = colored::Color::TrueColor {
+            r: send_params.color.r(),
+            g: send_params.color.r(),
+            b: send_params.color.r(),
+        };
+        CreateReply::default().content(text.color(c).to_string())
     };
     let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
     let msg = ctx.send(reply).await?.into_message().await?;

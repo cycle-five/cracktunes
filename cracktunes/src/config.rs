@@ -5,7 +5,7 @@ use crate::{
     // get_playlist_commands, get_settings_commands,
 };
 use colored::Colorize;
-use crack_core::commands::check_music_internal;
+use crack_core::commands::cmd_check_music_internal;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
@@ -353,7 +353,7 @@ pub async fn poise_framework(
                 }
 
                 if music_command || playlist_command {
-                    return check_music_internal(member, channel_id, ctx).await;
+                    return cmd_check_music_internal(member, channel_id, ctx).await;
                 }
 
                 // Default case true

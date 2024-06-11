@@ -3,14 +3,19 @@ use poise::serenity_prelude as serenity;
 use serenity::all::{ChannelId, Member, Permissions, RoleId};
 use std::borrow::Cow;
 
-pub async fn check_music(ctx: Context<'_>) -> Result<bool, Error> {
+/// Public function to check if the user is authorized to use the music commands.
+pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
+    if ctx.author().bot {
+        return Ok(false);
+    };
+
     let channel_id: ChannelId = ctx.channel_id();
     let member = ctx.author_member().await;
 
-    check_music_internal(member, channel_id, ctx).await
+    cmd_check_music_internal(member, channel_id, ctx).await
 }
 
-pub async fn check_music_internal(
+pub async fn cmd_check_music_internal(
     member: Option<Cow<'_, Member>>,
     channel_id: ChannelId,
     ctx: Context<'_>,

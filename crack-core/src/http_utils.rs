@@ -4,17 +4,21 @@ use std::future::Future;
 
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
+use crate::serenity::Color;
 use serenity::all::{
     CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
 };
 
 /// Parameter structure for functions that send messages to a channel.
+#[derive(Debug, Default, PartialEq)]
 pub struct SendMessageParams {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
+    // #[default = Color::BLUE]
     pub msg: CrackedMessage,
+    pub color: Color,
 }
 
 /// Extension trait for CacheHttp to add some utility functions.

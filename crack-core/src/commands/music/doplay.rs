@@ -1,7 +1,7 @@
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
-use crate::commands::get_call_with_fail_msg;
 use crate::commands::play_utils::query::query_type_from_url;
+use crate::commands::{cmd_check_music, get_call_with_fail_msg};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use ::serenity::all::CommandInteraction;
 //FIXME
@@ -10,7 +10,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
-    messaging::interface::create_now_playing_embed,
+    messaging::interface::{create_now_playing_embed, send_message},
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -19,7 +19,7 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
-    utils::{get_human_readable_timestamp, get_track_metadata, send_embed_response_poise},
+    utils::{get_human_readable_timestamp, get_track_metadata},
     Context, Error,
 };
 use ::serenity::{
@@ -51,24 +51,23 @@ pub enum Mode {
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_only,
+    check = "cmd_check_music",
+    category = "music"
+)]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
-    let _id = ctx.serenity_context().shard_id;
+    let shard_id = ctx.serenity_context().shard_id;
     ctx.say(format!(
-        "The name of this guild is: {}",
-        ctx.partial_guild().await.unwrap().name
+        "The name of this guild is: {}, shard_id: {}",
+        ctx.partial_guild().await.unwrap().name,
+        shard_id
     ))
     .await?;
 
     Ok(())
-}
-
-/// Sends the searching message after a play command is sent.
-/// Also defers the interaction so we won't timeout.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_search_message(ctx: Context<'_>) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    send_embed_response_poise(ctx, embed).await
 }
 
 /// Play a song next
@@ -77,7 +76,9 @@ pub async fn send_search_message(ctx: Context<'_>) -> Result<Message, CrackedErr
     slash_command,
     prefix_command,
     guild_only,
-    aliases("next", "pn", "Pn", "insert", "ins", "push")
+    aliases("next", "pn", "Pn", "insert", "ins", "push"),
+    check = "cmd_check_music",
+    category = "music"
 )]
 pub async fn playnext(
     ctx: Context<'_>,
@@ -90,7 +91,14 @@ pub async fn playnext(
 
 /// Search interactively for a song
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("s", "S"))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    aliases("s", "S"),
+    check = "cmd_check_music",
+    category = "music"
+)]
 pub async fn search(
     ctx: Context<'_>,
     #[rest]
@@ -100,8 +108,6 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
-use crate::commands::check_music;
-
 /// Play a song.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -109,15 +115,16 @@ use crate::commands::check_music;
     prefix_command,
     guild_only,
     aliases("p", "P"),
-    check = "check_music"
+    check = "cmd_check_music",
+    category = "music"
 )]
 pub async fn play(
     ctx: Context<'_>,
     #[rest]
     #[description = "song link or search query."]
-    query: Option<String>,
+    query: String,
 ) -> Result<(), Error> {
-    play_internal(ctx, None, None, query).await
+    play_internal(ctx, None, None, Some(query)).await
 }
 
 /// Play a song with more options
@@ -134,6 +141,8 @@ pub async fn optplay(
     play_internal(ctx, mode, file, query_or_url).await
 }
 
+use crate::messaging::interface as msg_int;
+
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
 async fn play_internal(
@@ -142,16 +151,26 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    use crate::http_utils::SendMessageParams;
+
+    //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     let is_prefix = ctx.prefix() != "/";
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 
     if msg.is_none() && file.is_none() {
-        let embed = CreateEmbed::default()
-            .description(format!("{}", CrackedError::Other("No query provided!")));
-        send_embed_response_poise(ctx, embed).await?;
+        // let embed = CreateEmbed::default().description(CrackedError::NoQuery.to_string());
+        // send_embed_response_poise(ctx, embed).await?;
+        let msg_params = SendMessageParams {
+            channel: ctx.channel_id(),
+            as_embed: true,
+            reply: true,
+            ephemeral: false,
+            msg: CrackedMessage::CrackedError(CrackedError::NoQuery),
+            color: crate::serenity::Color::RED,
+        };
+        send_message(ctx, msg_params).await?;
         return Ok(());
     }
 
@@ -168,11 +187,11 @@ async fn play_internal(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let mut search_msg = send_search_message(ctx).await?;
+    let mut search_msg = msg_int::send_search_message(ctx).await?;
 
-    ctx.data()
-        .add_msg_to_cache(guild_id, search_msg.clone())
-        .await;
+    // ctx.data()
+    //     .add_msg_to_cache(guild_id, search_msg.clone())
+    //     .await;
 
     tracing::debug!("search response msg: {:?}", search_msg);
 
@@ -199,27 +218,10 @@ async fn play_internal(
         return Ok(());
     }
 
-    // FIXME: What was the point of this again?
-    // let _volume = {
-    //     let mut settings = ctx.data().guild_settings_map.write().await; // .clone();
-    //     let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-    //         GuildSettings::new(
-    //             guild_id,
-    //             Some(prefix),
-    //             get_guild_name(ctx.serenity_context(), guild_id),
-    //         )
-    //     });
-    //     guild_settings.volume
-    // };
-
-    // let queue = call.lock().await.queue().current_queue().clone();
-    // tracing::warn!("guild_settings: {:?}", guild_settings);
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
-    // queue.first().map(|t| t.set_volume(volume).unwrap());
-    // queue.iter().for_each(|t| t.set_volume(volume).unwrap());
     drop(handler);
 
     // This makes sense, we're getting the final response to the user based on whether

@@ -85,6 +85,7 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
         ephemeral: false,
         reply: true,
         msg: message,
+        ..Default::default()
     };
 
     let _msg = ctx.send_channel_message(params).await?;
@@ -119,6 +120,7 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
         ephemeral: false,
         reply: true,
         msg: message,
+        ..Default::default()
     };
 
     let _msg = ctx.send_channel_message(params).await?;

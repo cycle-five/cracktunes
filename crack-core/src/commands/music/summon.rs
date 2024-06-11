@@ -1,3 +1,4 @@
+use crate::commands::cmd_check_music;
 use crate::handlers::voice::register_voice_handlers;
 use crate::handlers::IdleHandler;
 use crate::messaging::interface::send_joining_channel;
@@ -18,7 +19,9 @@ use tokio::sync::Mutex;
     slash_command,
     prefix_command,
     aliases("join", "come here", "comehere", "come", "here"),
-    guild_only
+    guild_only,
+    category = "music",
+    check = "cmd_check_music"
 )]
 pub async fn summon(ctx: Context<'_>) -> Result<(), Error> {
     summon_internal(ctx, None, None).await
@@ -68,13 +71,10 @@ pub async fn summon_internal(
         }),
     }?;
 
-    // // join the channel
-    // let result = manager.join(guild.id, channel_id).await?;
     let buffer = {
         // // Open the data lock in write mode, so keys can be inserted to it.
         // let mut data = ctx.data().write().await;
 
-        // // So, we have to insert the same type to it.
         // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
         let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
         data.clone()

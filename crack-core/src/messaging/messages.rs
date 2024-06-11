@@ -53,6 +53,7 @@ pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
 pub const FAIL_NO_VIRUSTOTAL_API_KEY: &str =
     "⚠️ The VIRUS_TOTAL_API_KEY environment variable is not set!";
 pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
+pub const FAIL_NO_QUERY_PROVIDED: &str = "⚠️ No query provided!";
 pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
 pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
