@@ -337,7 +337,7 @@ pub async fn send_embed_response_poise(
 ) -> Result<Message, CrackedError> {
     let is_prefix = crate::is_prefix(ctx);
     let is_ephemeral = !is_prefix;
-    let is_reply = is_prefix;
+    let is_reply = true;
     ctx.send(
         CreateReply::default()
             .embed(embed)
@@ -366,13 +366,6 @@ pub async fn send_nonembed_response_poise(
     .into_message()
     .await
     .map_err(Into::into)
-}
-
-pub async fn send_embed_response_prefix(
-    ctx: CrackContext<'_>,
-    embed: CreateEmbed,
-) -> Result<Message, CrackedError> {
-    send_embed_response_poise(ctx, embed).await
 }
 
 // pub async fn send_embed_response(

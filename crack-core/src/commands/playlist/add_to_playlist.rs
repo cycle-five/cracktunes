@@ -38,7 +38,6 @@ pub async fn add_to_playlist(
         Some(track) => track,
         None => metadata.title.clone().ok_or(CrackedError::NoTrackName)?,
     };
-    //.unwrap_or(metadata.title.clone().ok_or(CrackedError::NoTrackName)?)
     let user_id = ctx.author().id.get() as i64;
     // Database pool to execute queries
     let db_pool: PgPool = ctx.get_db_pool()?;
