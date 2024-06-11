@@ -261,6 +261,8 @@ pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
     lyric_res: LyricResult,
 ) -> Result<(), CrackedError> {
+    use super::messages::UNKNOWN;
+
     let (track, artists, lyric) = match lyric_res {
         LyricResult::Some {
             track,
@@ -268,8 +270,8 @@ pub async fn create_lyrics_embed(
             lyric,
         } => (track, artists, lyric),
         LyricResult::None => (
-            "Unknown".to_string(),
-            "Unknown".to_string(),
+            UNKNOWN.to_string(),
+            UNKNOWN.to_string(),
             "No lyrics found!".to_string(),
         ),
     };

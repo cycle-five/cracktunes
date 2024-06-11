@@ -1,5 +1,9 @@
 use crate::guild::operations::GuildSettingsOperations;
-use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
+use crate::{
+    messaging::{message::CrackedMessage, messages::UNKNOWN},
+    utils::send_response_poise,
+    Context, Error,
+};
 
 /// Get the current version of the bot.
 #[cfg(not(tarpaulin_include))]
@@ -7,8 +11,8 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let reply_with_embed = ctx.data().get_reply_with_embed(guild_id).await;
-    let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| "Unknown");
-    let hash = option_env!("GIT_HASH").unwrap_or_else(|| "Unknown");
+    let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| UNKNOWN);
+    let hash = option_env!("GIT_HASH").unwrap_or_else(|| UNKNOWN);
     let msg = send_response_poise(
         ctx,
         CrackedMessage::Version {

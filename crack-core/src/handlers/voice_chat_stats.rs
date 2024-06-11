@@ -1,6 +1,7 @@
 use crate::{
     commands::{deafen_internal, mute_internal},
     errors::CrackedError,
+    messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,
 };
 use poise::serenity_prelude as serenity;
@@ -204,14 +205,14 @@ async fn check_camera_status(
                 Ok(user) => user.name,
                 Err(err) => {
                     tracing::error!("Error getting user: {err}");
-                    "Unknown".to_string()
+                    UNKNOWN.to_string()
                 },
             };
             let channel_name = match chan_id.to_channel(&ctx).await {
                 Ok(chan) => match chan {
                     Channel::Guild(chan) => chan.name,
                     Channel::Private(chan) => chan.name(),
-                    _ => String::from("Unknown"),
+                    _ => String::from(UNKNOWN),
                 },
                 Err(err) => {
                     tracing::error!(

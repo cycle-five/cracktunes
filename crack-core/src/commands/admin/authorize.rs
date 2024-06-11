@@ -23,6 +23,8 @@ pub async fn authorize(
     #[description = "The user to add to authorized list"] user: User,
 ) -> Result<(), Error> {
     // let id = user_id.parse::<u64>().expect("Failed to parse user id");
+
+    use crate::messaging::messages::UNKNOWN;
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -55,7 +57,7 @@ pub async fn authorize(
         .to_partial_guild(ctx.http())
         .await
         .map(|g| g.name)
-        .unwrap_or_else(|_| "Unknown".to_string());
+        .unwrap_or_else(|_| UNKNOWN.to_string());
     let msg = send_response_poise(
         ctx,
         CrackedMessage::UserAuthorized {

@@ -73,8 +73,8 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 //         Ok(lyric_finder::LyricResult::None) => {
 //             tracing::error!("lyric not found! query: {}", query);
 //             (
-//                 "Unknown".to_string(),
-//                 "Unknown".to_string(),
+//                 UNKNOWN.to_string(),
+//                 UNKNOWN.to_string(),
 //                 "Lyric not found!".to_string(),
 //             )
 //         },

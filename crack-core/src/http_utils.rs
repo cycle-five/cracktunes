@@ -3,7 +3,7 @@ use reqwest::Client;
 use std::future::Future;
 
 use crate::errors::CrackedError;
-use crate::messaging::message::CrackedMessage;
+use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::serenity::Color;
 use serenity::all::{
     CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
@@ -128,17 +128,18 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 #[cfg(not(tarpaulin_include))]
 pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
     // let asdf = cache.cache()?.user(user_id);
+
     match cache_http.cache() {
         Some(cache) => match cache.user(user_id) {
             Some(x) => x.name.clone(),
             None => {
                 tracing::warn!("cache.user returned None");
-                "Unknown".to_string()
+                UNKNOWN.to_string()
             },
         },
         None => {
             tracing::warn!("cache_http.cache() returned None");
-            "Unknown".to_string()
+            UNKNOWN.to_string()
         },
     }
 }
