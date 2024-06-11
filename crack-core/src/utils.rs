@@ -8,8 +8,9 @@ use crate::{
         interface::{create_nav_btns, create_now_playing_embed, requesting_user_to_string},
         message::CrackedMessage,
         messages::{
-            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
-            QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
+            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY,
+            PROGRESS, QUEUE_PAGE, QUEUE_PAGE_OF, REQ_BY, VOTE_TOPGG_LINK_TEXT_SHORT,
+            VOTE_TOPGG_URL,
         },
     },
     Context as CrackContext, CrackedError, Data, Error,
@@ -641,17 +642,17 @@ pub fn create_now_playing_embed_metadata(
     let position = get_human_readable_timestamp(cur_position);
     let duration = get_human_readable_timestamp(metadata.duration);
 
-    let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
+    let progress_field = (PROGRESS, format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
         Some(user_id) => (
-            "Requested By",
+            REQ_BY,
             format!(">>> {}", requesting_user_to_string(user_id)),
             true,
         ),
         None => {
             tracing::warn!("No user id");
-            ("Requested By", ">>> N/A".to_string(), true)
+            (REQ_BY, ">>> N/A".to_string(), true)
         },
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
@@ -757,9 +758,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
         PLAYLIST_LIST_EMPTY.to_string()
     };
 
-    CreateEmbed::default()
-        .title("Playlists")
-        .description(content)
+    CreateEmbed::default().title(PLAYLISTS).description(content)
     //     .footer(CreateEmbedFooter::new(format!(
     //         "{} {} {} {}",
     //         QUEUE_PAGE,
