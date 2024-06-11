@@ -9,7 +9,6 @@ use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::GuildId;
 use sqlx::PgPool;
-use std::collections::BTreeMap;
 
 pub struct GuildPermissionPivot {
     pub guild_id: i64,

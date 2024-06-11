@@ -66,12 +66,14 @@ pub struct GenericPermissionSettings {
     pub default_allow_all_users: bool,
     #[serde(default = "default_true")]
     pub default_allow_all_roles: bool,
-    // pub allowed_commands: HashSet<String>,
-    // pub denied_commands: HashSet<String>,
     pub allowed_roles: HashSet<u64>,
     pub denied_roles: HashSet<u64>,
     pub allowed_users: HashSet<u64>,
     pub denied_users: HashSet<u64>,
+    // pub allowed_channels: HashSet<u64>,
+    // pub denied_channels: HashSet<u64>,
+    // pub allowed_commands: HashSet<String>,
+    // pub denied_commands: HashSet<String>,
 }
 
 /// Struct for reading generic permission settings from a pg table.

@@ -2,7 +2,6 @@ use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
-use crate::messaging::message::CrackedMessage;
 use crate::CrackedResult;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, prelude::RwLock, ChannelId, FullEvent};
@@ -10,12 +9,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-use std::io::Write;
 use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
     env,
-    fs::{create_dir_all, OpenOptions},
+    //fs::{create_dir_all, OpenOptions},
 };
 use tokio::sync::futures;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -449,11 +447,6 @@ impl ArcRwLockMap<MyMap> {
         let map = self.map.read().await;
         map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
-
-    // async fn entry(&self, key: String) -> Option<MyVec> {
-    //     let mut map = self.map.write().await;
-    //     map.entry(key)
-    // }
 }
 
 // impl<'de, T> ArcRwLockMap<'de, T>
@@ -536,6 +529,8 @@ pub struct GuildSettings {
     pub prefix: String,
     // #[serde(default = "premium_default")]
     pub premium: bool,
+    // Settings for different categories of commands.
+    pub command_settings: BTreeMap<String, MyVec>,
     pub command_channels: ArcRwLockMap<MyMap>,
     // #[serde(default = "default_false")]
     pub autopause: bool,
@@ -671,6 +666,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
+            command_settings: BTreeMap::new(),
             command_channels: ArcRwLockMap::new(),
             autopause: false,
             autoplay: true,

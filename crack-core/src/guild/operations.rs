@@ -1,9 +1,6 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
-use tokio::sync::RwLockReadGuard;
-
-use super::settings::MyMap;
 
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
@@ -92,13 +89,12 @@ impl GuildSettingsOperations for Data {
 
     /// Set the music channel for the guild.
     async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
-        self.guild_settings_map
-            .write()
-            .await
-            .entry(guild_id)
-            .and_modify(|e| {
-                e.set_music_channel(channel_id.get());
-            });
+        let mut guard = self.guild_settings_map.write().await;
+        let _ = guard
+            .get_mut(&guild_id)
+            .unwrap()
+            .set_music_channel(channel_id.get())
+            .await;
     }
 
     /// Save the guild settings to the database.
