@@ -1,9 +1,9 @@
-use crate::{guild::operations::GuildSettingsOperations, Context};
+use crate::{guild::operations::GuildSettingsOperations, Context, CrackedError, Error};
 use poise::serenity_prelude as serenity;
 use serenity::all::{ChannelId, Member, Permissions, RoleId};
 use std::borrow::Cow;
 
-pub async fn check_music(ctx: &Context<'_>) -> bool {
+pub async fn check_music(ctx: Context<'_>) -> Result<bool, Error> {
     let channel_id: ChannelId = ctx.channel_id();
     let member = ctx.author_member().await;
 
@@ -13,13 +13,13 @@ pub async fn check_music(ctx: &Context<'_>) -> bool {
 pub async fn check_music_internal(
     member: Option<Cow<'_, Member>>,
     channel_id: ChannelId,
-    ctx: &Context<'_>,
-) -> bool {
+    ctx: Context<'_>,
+) -> Result<bool, Error> {
     let guild_id = match ctx.guild_id() {
         Some(id) => id,
         None => {
             tracing::warn!("No guild id found");
-            return false;
+            return Ok(false);
         },
     };
 
@@ -34,21 +34,26 @@ pub async fn check_music_internal(
     match opt_allowed_channel {
         Some(allowed_channel) => {
             if channel_id == allowed_channel {
-                return is_authorized_music(member.clone(), None);
+                is_authorized_music(member.clone(), None)
+            } else {
+                // Ok(false)
+                Err(CrackedError::NotInMusicChannel(channel_id).into())
             }
-            return false; //Err(CrackedError::NotInMusicChannel(allowed_channel).into());
         },
-        None => return is_authorized_music(member, None),
+        None => is_authorized_music(member, None),
     }
 }
 
 /// Check if the user is authorized to use the music commands.
-pub fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>) -> bool {
+pub fn is_authorized_music(
+    member: Option<Cow<'_, Member>>,
+    role: Option<RoleId>,
+) -> Result<bool, Error> {
     let member = match member {
         Some(m) => m,
         None => {
             tracing::warn!("No member found");
-            return true;
+            return Ok(true);
         },
     };
     // implementation of the is_authorized_music function
@@ -59,6 +64,6 @@ pub fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>
         .unwrap_or(true);
     let is_admin = perms.contains(Permissions::ADMINISTRATOR);
 
-    is_admin || has_role
+    Ok(is_admin || has_role)
     // true // placeholder return value
 }

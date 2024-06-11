@@ -4,7 +4,6 @@ use crack_bf::BrainfuckProgram;
 use serenity::all::Message;
 use std::io::Cursor;
 use std::time::Duration;
-// use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 use tokio::time::timeout;
 
 /// Brainfk interpreter.

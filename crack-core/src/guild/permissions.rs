@@ -70,7 +70,9 @@ pub struct GenericPermissionSettings {
     pub denied_roles: HashSet<u64>,
     pub allowed_users: HashSet<u64>,
     pub denied_users: HashSet<u64>,
+    #[serde(default)]
     pub allowed_channels: HashSet<u64>,
+    #[serde(default)]
     pub denied_channels: HashSet<u64>,
     // pub allowed_commands: HashSet<String>,
     // pub denied_commands: HashSet<String>,
@@ -305,13 +307,15 @@ impl GenericPermissionSettings {
     }
 
     /// Clear all allowed and denied commands, roles, and users.
-    pub fn clear(&mut self) -> () {
+    pub fn clear(&mut self) {
         // self.allowed_commands.clear();
         // self.denied_commands.clear();
         self.allowed_roles.clear();
         self.denied_roles.clear();
         self.allowed_users.clear();
         self.denied_users.clear();
+        self.allowed_channels.clear();
+        self.denied_channels.clear();
     }
 
     /// Write to a pg table.

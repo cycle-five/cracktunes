@@ -728,7 +728,7 @@ impl Data {
             .write()
             .await
             .entry(guild_id)
-            .or_insert_with(|| GuildSettings::default())
+            .or_insert_with(GuildSettings::default)
             .add_denied_music_user(user)
             .await
     }

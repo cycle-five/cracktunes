@@ -86,8 +86,7 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .map(|x| x.get_music_channel())
-            .flatten()
+            .and_then(|x| x.get_music_channel())
     }
 
     /// Set the music channel for the guild.

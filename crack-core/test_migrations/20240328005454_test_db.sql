@@ -31,7 +31,9 @@ CREATE TABLE permission_settings (
     allowed_roles BIGINT[] NOT NULL,
     denied_roles BIGINT[] NOT NULL,
     allowed_users BIGINT[] NOT NULL,
-    denied_users BIGINT[] NOT NULL
+    denied_users BIGINT[] NOT NULL,
+    allowed_channels BIGINT[] NOT NULL DEFAULT array[]::BIGINT[],
+    denied_channels BIGINT[] NOT NULL DEFAULT array[]::BIGINT[]
 );
     -- allowed_commands JSONB NOT NULL,
     -- denied_commands JSONB NOT NULL,

@@ -353,7 +353,7 @@ pub async fn poise_framework(
                 }
 
                 if music_command || playlist_command {
-                    return Ok(check_music_internal(member, channel_id, &ctx).await);
+                    return check_music_internal(member, channel_id, ctx).await;
                 }
 
                 // Default case true
@@ -720,7 +720,7 @@ mod test {
         // Just check the default return values of the authorization functions.
         let empty_set = HashSet::new();
         assert_eq!(is_authorized_osint(None, None), true);
-        assert_eq!(is_authorized_music(None, None), true);
+        assert_eq!(is_authorized_music(None, None).unwrap(), true);
         assert_eq!(is_authorized_mod(None, empty_set.clone()), false);
         assert_eq!(is_authorized_admin(None, empty_set), false);
     }
