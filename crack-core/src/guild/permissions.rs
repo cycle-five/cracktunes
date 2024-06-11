@@ -70,10 +70,47 @@ pub struct GenericPermissionSettings {
     pub denied_roles: HashSet<u64>,
     pub allowed_users: HashSet<u64>,
     pub denied_users: HashSet<u64>,
-    // pub allowed_channels: HashSet<u64>,
-    // pub denied_channels: HashSet<u64>,
+    pub allowed_channels: HashSet<u64>,
+    pub denied_channels: HashSet<u64>,
     // pub allowed_commands: HashSet<String>,
     // pub denied_commands: HashSet<String>,
+}
+
+impl From<GenericPermissionSettingsReadWCommand> for GenericPermissionSettings {
+    fn from(read: GenericPermissionSettingsReadWCommand) -> Self {
+        Self {
+            id: read.id,
+            default_allow_all_commands: read.default_allow_all_commands,
+            default_allow_all_users: read.default_allow_all_users,
+            default_allow_all_roles: read.default_allow_all_roles,
+            allowed_roles: read.allowed_roles.convert(),
+            denied_roles: read.denied_roles.convert(),
+            allowed_users: read.allowed_users.convert(),
+            denied_users: read.denied_users.convert(),
+            allowed_channels: read.allowed_channels.convert(),
+            denied_channels: read.denied_channels.convert(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GenericPermissionSettingsReadWCommand {
+    pub command: String,
+    pub id: i64,
+    #[serde(default = "default_true")]
+    pub default_allow_all_commands: bool,
+    #[serde(default = "default_true")]
+    pub default_allow_all_users: bool,
+    #[serde(default = "default_true")]
+    pub default_allow_all_roles: bool,
+    // pub allowed_commands: serde_json::Value,
+    // pub denied_commands: serde_json::Value,
+    pub allowed_roles: Vec<i64>,
+    pub denied_roles: Vec<i64>,
+    pub allowed_users: Vec<i64>,
+    pub denied_users: Vec<i64>,
+    pub allowed_channels: Vec<i64>,
+    pub denied_channels: Vec<i64>,
 }
 
 /// Struct for reading generic permission settings from a pg table.
@@ -92,6 +129,8 @@ pub struct GenericPermissionSettingsRead {
     pub denied_roles: Vec<i64>,
     pub allowed_users: Vec<i64>,
     pub denied_users: Vec<i64>,
+    pub allowed_channels: Vec<i64>,
+    pub denied_channels: Vec<i64>,
 }
 
 /// Implementation of GenericPermissionSettingsRead.
@@ -108,6 +147,8 @@ impl GenericPermissionSettingsRead {
             denied_roles: self.denied_roles.convert(),
             allowed_users: self.allowed_users.convert(),
             denied_users: self.denied_users.convert(),
+            allowed_channels: self.allowed_channels.convert(),
+            denied_channels: self.denied_channels.convert(),
         }
     }
 }
@@ -131,6 +172,8 @@ impl Default for GenericPermissionSettings {
             denied_roles: HashSet::new(),
             allowed_users: HashSet::new(),
             denied_users: HashSet::new(),
+            allowed_channels: HashSet::new(),
+            denied_channels: HashSet::new(),
         }
     }
 }
@@ -172,6 +215,13 @@ impl GenericPermissionSettings {
                 && self.allowed_users.is_empty()
                 && !self.denied_users.contains(&user)
             || self.allowed_users.contains(&user) && !self.denied_users.contains(&user)
+    }
+
+    pub fn is_channel_allowed(&self, channel: u64) -> bool {
+        (self.allowed_channels.is_empty() && self.denied_channels.is_empty())
+            || (self.allowed_channels.is_empty() && !self.denied_channels.contains(&channel))
+            || (self.allowed_channels.contains(&channel)
+                && !self.denied_channels.contains(&channel))
     }
 
     // /// Add a command to the allowed commands.
@@ -234,6 +284,26 @@ impl GenericPermissionSettings {
         self.denied_users.remove(&user)
     }
 
+    /// Add a channel to the allowed channels.
+    pub fn add_allowed_channel(&mut self, channel: u64) -> bool {
+        self.allowed_channels.insert(channel)
+    }
+
+    /// Remove a channel from the allowed channels.
+    pub fn remove_allowed_channel(&mut self, channel: u64) -> bool {
+        self.allowed_channels.remove(&channel)
+    }
+
+    /// Add a channel to the denied channels.
+    pub fn add_denied_channel(&mut self, channel: u64) -> bool {
+        self.denied_channels.insert(channel)
+    }
+
+    /// Remove a channel from the denied channels.
+    pub fn remove_denied_channel(&mut self, channel: u64) -> bool {
+        self.denied_channels.remove(&channel)
+    }
+
     /// Clear all allowed and denied commands, roles, and users.
     pub fn clear(&mut self) -> () {
         // self.allowed_commands.clear();
@@ -258,9 +328,11 @@ impl GenericPermissionSettings {
                     allowed_roles,
                     denied_roles,
                     allowed_users,
-                    denied_users)
+                    denied_users,
+                    allowed_channels,
+                    denied_channels)
             VALUES
-                ($1, $2, $3, $4, $5, $6, $7)
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *",
             self.default_allow_all_commands,
             self.default_allow_all_users,
@@ -284,6 +356,16 @@ impl GenericPermissionSettings {
                 .collect::<Vec<i64>>(),
             &self
                 .denied_users
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(),
+            &self
+                .allowed_channels
+                .iter()
+                .map(|&x| x as i64)
+                .collect::<Vec<i64>>(),
+            &self
+                .denied_channels
                 .iter()
                 .map(|&x| x as i64)
                 .collect::<Vec<i64>>(),
@@ -582,13 +664,17 @@ mod tests {
             denied_roles: vec![1],
             allowed_users: vec![1, 2],
             denied_users: vec![1],
+            allowed_channels: vec![1, 2],
+            denied_channels: vec![1],
         };
         let settings = settings_read.convert();
         // assert!(settings.is_command_allowed("test"));
         assert!(!settings.is_role_allowed(1));
         assert!(!settings.is_user_allowed(1));
+        assert!(!settings.is_channel_allowed(1));
         assert!(settings.is_role_allowed(2));
         assert!(settings.is_user_allowed(2));
+        assert!(settings.is_channel_allowed(2));
     }
 
     #[test]

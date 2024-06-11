@@ -1,14 +1,15 @@
 use crate::{
     errors::CrackedError,
-    guild::permissions::CommandChannel,
-    guild::settings::{GuildSettings, WelcomeSettings},
-    Error as SerenityError,
+    guild::{
+        permissions::{GenericPermissionSettings, GenericPermissionSettingsReadWCommand},
+        settings::{GuildSettings, WelcomeSettings},
+    },
+    CrackedResult, Error as SerenityError,
 };
 use chrono::NaiveDateTime;
-use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
-use serenity::all::GuildId;
 use sqlx::PgPool;
+use std::collections::HashMap;
 
 pub struct GuildPermissionPivot {
     pub guild_id: i64,
@@ -191,9 +192,6 @@ impl GuildEntity {
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,
     ) -> Result<(), CrackedError> {
-        use crate::guild::settings::MyMap;
-        use tokio::sync::RwLockReadGuard;
-
         let ignored_channels = settings
             .ignored_channels
             .clone()
@@ -269,25 +267,25 @@ impl GuildEntity {
                 .save(pool, guild_id)
                 .await?;
         }
-        let guard: RwLockReadGuard<MyMap> = settings.command_channels.read().await;
-        for (cmd, val) in guard.clone() {
-            //.expect("BUG! SHOULD BE SET") {
-            for (channel_id, perms) in val {
-                let perms_borrow = if perms.id == 0 {
-                    let perms = perms.insert_permission_settings(pool).await?;
-                    perms.clone()
-                } else {
-                    perms
-                };
-                let ch = CommandChannel {
-                    command: cmd.to_string(),
-                    channel_id: serenity::ChannelId::new(channel_id),
-                    guild_id: GuildId::new(guild_id as u64),
-                    permission_settings: perms_borrow.clone(),
-                };
-                CommandChannel::save(&ch, pool).await?;
-            }
-        }
+        // let guard: RwLockReadGuard<MyMap> = settings.command_channels.read().await;
+        // for (cmd, val) in guard.clone() {
+        //     //.expect("BUG! SHOULD BE SET") {
+        //     for (channel_id, perms) in val {
+        //         let perms_borrow = if perms.id == 0 {
+        //             let perms = perms.insert_permission_settings(pool).await?;
+        //             perms.clone()
+        //         } else {
+        //             perms
+        //         };
+        //         let ch = CommandChannel {
+        //             command: cmd.to_string(),
+        //             channel_id: serenity::ChannelId::new(channel_id),
+        //             guild_id: GuildId::new(guild_id as u64),
+        //             permission_settings: perms_borrow.clone(),
+        //         };
+        //         CommandChannel::save(&ch, pool).await?;
+        //     }
+        // }
 
         Ok(())
     }
@@ -361,24 +359,12 @@ impl GuildEntity {
         }?;
         let welcome_settings = GuildEntity::get_welcome_settings(pool, self.id).await?;
         let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
-        let command_channels =
-            crate::guild::settings::CommandChannels::load(GuildId::new(self.id as u64), pool)
-                .await?;
-        let cmd_chan = command_channels.to_hash_map();
-        // .music_channel
-        // .map(|x| {
-        //     (
-        //         String::from("music"),
-        //         vec![(x.channel_id.get(), x.permission_settings)],
-        //     )
-        // })
-        // .into_iter()
-        // .collect::<HashMap<_, _>>();
+        let cmd_settings = GuildEntity::load_command_settings(self.id, pool).await?;
 
         Ok(GuildSettings::from(settings)
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
-            .with_command_channels(cmd_chan))
+            .with_command_settings(cmd_settings))
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
@@ -467,15 +453,13 @@ impl GuildEntity {
                 .fetch_one(pool)
                 .await?;
 
-                let guild_id_2 = GuildId::new(guild_id as u64);
                 let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
                 let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
-                let command_channels =
-                    crate::guild::settings::CommandChannels::load(guild_id_2, pool).await?;
+                let command_settings = GuildEntity::load_command_settings(guild_id, pool).await?;
                 let guild_settings = GuildSettings::from(guild_settings)
                     .with_welcome_settings(welcome_settings)
                     .with_log_settings(log_settings)
-                    .with_command_channels(command_channels.to_hash_map());
+                    .with_command_settings(command_settings);
                 (guild_entity, guild_settings)
             },
         };
@@ -516,137 +500,27 @@ impl GuildEntity {
         .map(|_| ())
         .map_err(|e| e.into())
     }
+
+    pub async fn load_command_settings(
+        guild_id: i64,
+        pool: &PgPool,
+    ) -> CrackedResult<HashMap<String, GenericPermissionSettings>> {
+        sqlx::query_as!(
+            GenericPermissionSettingsReadWCommand,
+            r#"
+            SELECT A.command, permission_settings.* FROM
+            (SELECT * FROM command_channel WHERE guild_id = $1) as A
+            JOIN permission_settings ON A.permission_settings_id = permission_settings.id
+            "#,
+            guild_id,
+        )
+        .fetch_all(pool)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| (row.command.clone(), GenericPermissionSettings::from(row)))
+                .collect()
+        })
+        .map_err(|e| e.into())
+    }
 }
-
-// #[async_trait]
-// pub trait ConnectionPool: Sync + Send {
-//     async fn connect(&self, url: &str) -> Result<PgPool, Error>;
-//     fn to_pg_pool(&self) -> PgPool;
-// }
-
-// #[async_trait]
-// impl ConnectionPool for PgPool {
-//     async fn connect(&self, url: &str) -> Result<PgPool, Error> {
-//         let pool = PgPool::connect(url).await?;
-//         Ok(pool)
-//     }
-
-//     fn to_pg_pool(&self) -> PgPool {
-//         self.clone()
-//     }
-// }
-
-// #[async_trait]
-// // #[cfg_attr(test, automock)]
-// pub trait GuildRepository {
-//     fn new_guild(id: i64, name: String) -> Guild;
-//     async fn get(&self, pool: &dyn ConnectionPool, guild_id: i64) -> Result<Option<Guild>, Error>;
-//     async fn get_or_create(
-//         &self,
-//         pool: &dyn ConnectionPool,
-//         guild_id: i64,
-//         name: String,
-//     ) -> Result<Guild, Error>;
-// }
-
-// #[async_trait]
-// impl GuildRepository for Guild {
-//     fn new_guild(id: i64, name: String) -> Guild {
-//         Guild {
-//             id,
-//             name,
-//             created_at: chrono::Utc::now().naive_utc(),
-//             updated_at: chrono::Utc::now().naive_utc(),
-//         }
-//     }
-
-//     async fn get(&self, pool: &impl ConnectionPool, guild_id: i64) -> Result<Option<Guild>, Error> {
-//         let pool = pool.to_pg_pool();
-//         let guild = sqlx::query_as!(
-//             Guild,
-//             r#"
-//             SELECT * FROM guild
-//             WHERE id = $1
-//             "#,
-//             guild_id
-//         )
-//         .fetch_optional(&pool)
-//         .await?;
-
-//         Ok(guild)
-//     }
-
-//     async fn get_or_create(
-//         &self,
-//         pool: &impl ConnectionPool,
-//         guild_id: i64,
-//         name: String,
-//     ) -> Result<Guild, Error> {
-//         let pool = pool.to_pg_pool();
-//         let guild = sqlx::query_as!(
-//             Guild,
-//             r#"
-//             INSERT INTO guild (id, name)
-//             VALUES ($1, $2)
-//             ON CONFLICT (id)
-//             DO UPDATE SET name = $2, updated_at = now()
-//             RETURNING *
-//             "#,
-//             guild_id,
-//             name
-//         )
-//         .fetch_one(&pool)
-//         .await?;
-
-//         Ok(guild)
-//     }
-// }
-// #[cfg(test)]
-// mod test {
-//     // Mock the GuildRepository trait
-//     use super::*;
-//     use mockall::predicate::*;
-//     use mockall::*;
-
-//     mock! {
-//         ConnectionPool{}
-
-//         #[async_trait]
-//         impl ConnectionPool for ConnectionPool {
-//             async fn connect(&self, url: &str) -> Result<PgPool, Error>;
-//             fn to_pg_pool(&self) -> PgPool;
-//         }
-//     }
-//     mock! {
-//         Guild{}
-
-//         #[async_trait]
-//         impl GuildRepository for Guild {
-//             fn new_guild(id: i64, name: String) -> Guild;
-//             async fn get(&self, pool: &dyn ConnectionPool, guild_id: i64) -> Result<Option<Guild>, Error>;
-//             async fn get_or_create(&self, pool: &dyn ConnectionPool, guild_id: i64, name: String) -> Result<Guild, Error>;
-//         }
-//     }
-
-//     #[tokio::test]
-//     async fn test_get_or_create() {
-//         // let mock = MockGuild::new(1, "asdf".to_string());
-//         let mock_guild = MockGuild::new();
-//         // let pool = mock(PgPool::connect("postgres://localhost").await.unwrap());
-//         let pool = MockConnectionPool::new();
-//         let pool = pool.connect("postgres://localhost").await.unwrap();
-//         mock_guild
-//             .expect_get_or_create()
-//             .with(&pool, eq(1), eq("test2".to_string()))
-//             .returning(|_, _, _| Ok(Guild::new_guild(1, "test2".to_string())));
-
-//         let guild = mock_guild
-//             .get_or_create(&pool, 1, "test2".to_string())
-//             .await
-//             .unwrap();
-//         assert_eq!(guild.name, "test2");
-
-//         let guild = mock_guild.get(&pool, 1).await.unwrap();
-//         assert!(guild.is_some());
-//     }
-// }

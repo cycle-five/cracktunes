@@ -7,6 +7,7 @@ pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
+pub mod permissions;
 pub mod ping;
 pub mod playlist;
 pub mod settings;
@@ -21,6 +22,7 @@ pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
+pub use permissions::*;
 pub use ping::*;
 pub use playlist::playlist;
 pub use settings::*;

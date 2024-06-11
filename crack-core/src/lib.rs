@@ -738,11 +738,10 @@ impl Data {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
                 .get_music_permissions()
-                .await
                 .map(|x| x.is_user_allowed(user.get()))
-                .unwrap_or_default()
+                .unwrap_or(true)
         } else {
-            false
+            true
         }
     }
 }

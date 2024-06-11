@@ -5,7 +5,7 @@ use crate::{
     // get_playlist_commands, get_settings_commands,
 };
 use colored::Colorize;
-use crack_core::guild::operations::GuildSettingsOperations;
+use crack_core::commands::check_music_internal;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
@@ -112,27 +112,6 @@ fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<Role
     let is_admin = perms.contains(Permissions::ADMINISTRATOR);
 
     is_admin || has_role
-}
-
-/// Check if the user is authorized to use the music commands.
-fn is_authorized_music(member: Option<Cow<'_, Member>>, role: Option<RoleId>) -> bool {
-    let member = match member {
-        Some(m) => m,
-        None => {
-            tracing::warn!("No member found");
-            return true;
-        },
-    };
-    // implementation of the is_authorized_music function
-    // ...
-    let perms = member.permissions.unwrap_or_default();
-    let has_role = role
-        .map(|x| member.roles.contains(x.as_ref()))
-        .unwrap_or(true);
-    let is_admin = perms.contains(Permissions::ADMINISTRATOR);
-
-    is_admin || has_role
-    // true // placeholder return value
 }
 
 /// Check if the user is authorized to use mod commands.
@@ -374,31 +353,7 @@ pub async fn poise_framework(
                 }
 
                 if music_command || playlist_command {
-                    let guild_id = match ctx.guild_id() {
-                        Some(id) => id,
-                        None => {
-                            tracing::warn!("No guild id found");
-                            return Ok(false);
-                        },
-                    };
-
-                    let guild_settings = match ctx.data().get_guild_settings(guild_id).await {
-                        Some(guild_settings) => {
-                            //let command_channel = guild_settings.command_channels.music_channel;
-                            guild_settings
-                        },
-                        None => return Ok(is_authorized_music(member, None)),
-                    };
-                    let opt_allowed_channel = guild_settings.get_music_channel().await;
-                    match opt_allowed_channel {
-                        Some(allowed_channel) => {
-                            if channel_id == allowed_channel {
-                                return Ok(is_authorized_music(member.clone(), None));
-                            }
-                            return Err(CrackedError::NotInMusicChannel(allowed_channel).into());
-                        },
-                        None => return Ok(is_authorized_music(member, None)),
-                    }
+                    return Ok(check_music_internal(member, channel_id, &ctx).await);
                 }
 
                 // Default case true
@@ -643,12 +598,11 @@ fn check_command_categories(user_cmd: String) -> CommandCategories {
 
 #[cfg(test)]
 mod test {
-    use crack_core::{BotConfig, EventLogAsync};
+    use crack_core::{commands::permissions::is_authorized_music, BotConfig, EventLogAsync};
     use std::collections::HashSet;
 
     use crate::config::{
-        is_authorized_admin, is_authorized_mod, is_authorized_music, is_authorized_osint,
-        CommandCategories,
+        is_authorized_admin, is_authorized_mod, is_authorized_osint, CommandCategories,
     };
 
     #[test]

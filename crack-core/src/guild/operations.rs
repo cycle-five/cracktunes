@@ -82,9 +82,12 @@ impl GuildSettingsOperations for Data {
 
     /// Get the music channel for the guild.
     async fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
-        let guard0 = self.guild_settings_map.read().await;
-        let settings = guard0.get(&guild_id)?;
-        settings.get_music_channel().await
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|x| x.get_music_channel())
+            .flatten()
     }
 
     /// Set the music channel for the guild.
@@ -92,9 +95,7 @@ impl GuildSettingsOperations for Data {
         let mut guard = self.guild_settings_map.write().await;
         let _ = guard
             .get_mut(&guild_id)
-            .unwrap()
-            .set_music_channel(channel_id.get())
-            .await;
+            .map(|x| x.set_music_channel(channel_id.get()));
     }
 
     /// Save the guild settings to the database.
@@ -274,13 +275,7 @@ pub async fn get_guilds(ctx: Arc<SerenityContext>) -> Vec<GuildId> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        guild::{
-            permissions::CommandChannel,
-            settings::{ArcRwLockMap, CommandChannels},
-        },
-        Data, DataInner,
-    };
+    use crate::{Data, DataInner};
     use serenity::model::id::ChannelId;
     use std::collections::HashMap;
     use tokio::sync::RwLock;
@@ -363,26 +358,9 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);
-        guild_settings_map.insert(
-            guild_id,
-            crate::GuildSettings {
-                command_channels: ArcRwLockMap {
-                    map: Arc::new(tokio::sync::RwLock::new(
-                        CommandChannels {
-                            music_channel: Some(CommandChannel {
-                                command: "".to_string(),
-                                guild_id,
-                                channel_id,
-                                permission_settings: Default::default(),
-                            }),
-                            ..Default::default()
-                        }
-                        .to_hash_map(),
-                    )),
-                },
-                ..Default::default()
-            },
-        );
+        let mut settings = crate::GuildSettings::default();
+        settings.set_music_channel(channel_id.get());
+        guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
@@ -396,26 +374,9 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);
-        guild_settings_map.insert(
-            guild_id,
-            crate::GuildSettings {
-                command_channels: ArcRwLockMap {
-                    map: Arc::new(tokio::sync::RwLock::new(
-                        CommandChannels {
-                            music_channel: Some(CommandChannel {
-                                command: "".to_string(),
-                                guild_id,
-                                channel_id,
-                                permission_settings: Default::default(),
-                            }),
-                            ..Default::default()
-                        }
-                        .to_hash_map(),
-                    )),
-                },
-                ..Default::default()
-            },
-        );
+        let mut settings = crate::GuildSettings::default();
+        settings.set_music_channel(channel_id.get());
+        guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
