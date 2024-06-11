@@ -6,6 +6,7 @@ use crate::{errors::CrackedError, Error};
 use poise::serenity_prelude as serenity;
 
 /// Enum for types of voice connection relationships.
+#[derive(Debug, PartialEq)]
 pub enum Connection {
     User(ChannelId),
     Bot(ChannelId),
@@ -59,5 +60,25 @@ pub fn get_voice_channel_for_user_summon(
             );
             Err(CrackedError::WrongVoiceChannel.into())
         },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{check_voice_connections, Connection};
+    use poise::serenity_prelude as serenity;
+    use serenity::Guild;
+    use serenity::UserId;
+
+    #[test]
+    fn test_check_voice_connections() {
+        let guild = Guild::default();
+        let user_id = UserId::new(1);
+        let bot_id = UserId::new(2);
+
+        assert_eq!(
+            check_voice_connections(&guild, &user_id, &bot_id),
+            Connection::Neither
+        );
     }
 }
