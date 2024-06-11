@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
     QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
@@ -323,6 +324,51 @@ pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), Cracked
         .footer(CreateEmbedFooter::new("No query provided!"));
     let msg = send_embed_response_poise(ctx, embed).await?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;
+    Ok(())
+}
+
+pub async fn send_joining_channel(
+    ctx: CrackContext<'_>,
+    channel_id: ChannelId,
+) -> Result<(), Error> {
+    let msg = CrackedMessage::Summon {
+        mention: channel_id.mention(),
+    };
+    let params = SendMessageParams {
+        channel: channel_id,
+        as_embed: true,
+        ephemeral: false,
+        reply: true,
+        msg,
+    };
+
+    send_message(ctx, params).await
+}
+
+pub async fn send_message(
+    ctx: CrackContext<'_>,
+    send_params: SendMessageParams,
+) -> Result<(), Error> {
+    //let channel_id = send_params.channel;
+    let as_embed = send_params.as_embed;
+    let as_reply = send_params.reply;
+    let as_ephemeral = send_params.ephemeral;
+    // let text = CrackedMessage::Summon {
+    //     mention: channel_id.mention(),
+    // }
+    // .to_string();
+    let text = send_params.msg.to_string();
+    let reply = if as_embed {
+        let embed = CreateEmbed::default().description(text);
+        CreateReply::default().embed(embed)
+    } else {
+        CreateReply::default().content(text)
+    };
+    let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
+    let msg = ctx.send(reply).await?.into_message().await?;
+    ctx.data()
+        .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
+        .await;
     Ok(())
 }
 

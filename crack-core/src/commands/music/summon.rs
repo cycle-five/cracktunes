@@ -1,37 +1,48 @@
+use crate::handlers::voice::register_voice_handlers;
 use crate::handlers::IdleHandler;
+use crate::messaging::interface::send_joining_channel;
 use crate::{
-    connection::get_voice_channel_for_user, errors::CrackedError, handlers::TrackEndHandler,
-    messaging::message::CrackedMessage, Context, ContextExt, Error,
+    connection::get_voice_channel_for_user_summon, errors::CrackedError, handlers::TrackEndHandler,
+    Context, ContextExt, Error,
 };
 use ::serenity::all::{Channel, ChannelId, Guild, Mentionable, UserId};
-use poise::CreateReply;
 use songbird::Call;
 use songbird::{Event, TrackEvent};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
 /// Summon the bot to a voice channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
     aliases("join", "come here", "comehere", "come", "here"),
     guild_only
 )]
-pub async fn summon(
+pub async fn summon(ctx: Context<'_>) -> Result<(), Error> {
+    summon_internal(ctx, None, None).await
+}
+
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn summon_channel(
     ctx: Context<'_>,
-    #[description = "Channel to join"] channel: Option<Channel>,
-    #[description = "Channel id to join"] channel_id_str: Option<String>,
+    #[description = "Channel to summon the bot to"] channel: Option<Channel>,
+    #[description = "Channel Id of the channel to summon the bot to"] channel_id_str: Option<
+        String,
+    >,
+) -> Result<(), Error> {
+    summon_internal(ctx, channel, channel_id_str).await
+}
+
+pub async fn summon_internal(
+    ctx: Context<'_>,
+    channel: Option<Channel>,
+    channel_id_str: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let guild = ctx
-        .serenity_context()
-        .cache
-        .guild(guild_id)
-        .unwrap()
-        .clone();
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
 
     let user_id = ctx.get_user_id();
 
@@ -69,78 +80,44 @@ pub async fn summon(
         data.clone()
     };
 
-    use std::sync::atomic::AtomicBool;
+    call.lock().await.remove_all_global_events();
+    register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await?;
+    let mut handler = call.lock().await;
+    let guild_settings_map = ctx.data().guild_settings_map.read().await.clone();
+    let guild_settings = guild_settings_map
+        .get(&guild_id)
+        .expect("Guild settings not found?!?");
 
-    use crate::handlers::voice::register_voice_handlers;
-
-    // FIXME
-    // use crate::handlers::voice::register_voice_handlers;
-
-    {
-        let mut handler = call.lock().await;
-        // unregister existing events and register idle notifier
-        handler.remove_all_global_events();
-    }
-    {
-        let _ = register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await;
-        let mut handler = call.lock().await;
-        {
-            let guild_settings_map = ctx.data().guild_settings_map.write().await;
-
-            // guild_settings_map
-            //     .entry(guild_id)
-            //     .and_modify(|guild_settings| {
-            //         // // guild_settings.channel_id = Some(channel_id);
-            //         // if guild_settings.volume <= 0.1 {
-            //         //     guild_settings.volume = 0.7;
-            //         //     guild_settings.old_volume = 0.7;
-            //         // }
-            //     });
-            let _ = guild_settings_map.get(&guild_id).map(|guild_settings| {
-                let timeout = guild_settings.timeout;
-                if timeout > 0 {
-                    let premium = guild_settings.premium;
-
-                    handler.add_global_event(
-                        Event::Periodic(Duration::from_secs(5), None),
-                        IdleHandler {
-                            http: ctx.serenity_context().http.clone(),
-                            manager: manager.clone(),
-                            channel_id,
-                            guild_id: Some(guild_id),
-                            limit: timeout as usize,
-                            count: Default::default(),
-                            no_timeout: Arc::new(AtomicBool::new(premium)),
-                        },
-                    );
-                }
-            });
-        }
+    let timeout = guild_settings.timeout;
+    if timeout > 0 {
+        let premium = guild_settings.premium;
 
         handler.add_global_event(
-            Event::Track(TrackEvent::End),
-            TrackEndHandler {
-                guild_id: guild.id,
+            Event::Periodic(Duration::from_secs(5), None),
+            IdleHandler {
                 http: ctx.serenity_context().http.clone(),
-                cache: ctx.serenity_context().cache.clone(),
-                call: call.clone(),
-                data: ctx.data().clone(),
+                manager: manager.clone(),
+                channel_id,
+                guild_id: Some(guild_id),
+                limit: timeout as usize,
+                count: Default::default(),
+                no_timeout: Arc::new(AtomicBool::new(premium)),
             },
         );
-
-        let text = CrackedMessage::Summon {
-            mention: channel_id.mention(),
-        }
-        .to_string();
-        let msg = ctx
-            .send(CreateReply::default().content(text).ephemeral(true))
-            .await?
-            .into_message()
-            .await?;
-        ctx.data().add_msg_to_cache(guild_id, msg).await;
     }
 
-    Ok(())
+    handler.add_global_event(
+        Event::Track(TrackEvent::End),
+        TrackEndHandler {
+            guild_id,
+            http: ctx.serenity_context().http.clone(),
+            cache: ctx.serenity_context().cache.clone(),
+            call: call.clone(),
+            data: ctx.data().clone(),
+        },
+    );
+
+    send_joining_channel(ctx, channel_id).await
 }
 
 async fn get_channel_id_for_summon(
@@ -158,30 +135,9 @@ async fn get_channel_id_for_summon(
             tracing::warn!("channel_id_str: {:?}", id);
             match id.parse::<u64>() {
                 Ok(id) => Ok(ChannelId::new(id)),
-                Err(_) => match get_voice_channel_for_user(&guild, &user_id) {
-                    Ok(channel_id) => Ok(channel_id),
-                    Err(_) => get_voice_channel_for_user_with_error(&guild, &user_id),
-                },
+                Err(_) => get_voice_channel_for_user_summon(&guild, &user_id),
             }
         },
-        None => get_voice_channel_for_user_with_error(&guild, &user_id),
-    }
-}
-
-fn get_voice_channel_for_user_with_error(
-    guild: &Guild,
-    user_id: &UserId,
-) -> Result<ChannelId, Error> {
-    match get_voice_channel_for_user(guild, user_id) {
-        Ok(channel_id) => Ok(channel_id),
-        Err(_) => {
-            // ctx.say("You are not in a voice channel!").await?;
-            tracing::warn!(
-                "User {} is not in a voice channel in guild {}",
-                user_id,
-                guild.id
-            );
-            Err(CrackedError::WrongVoiceChannel.into())
-        },
+        None => get_voice_channel_for_user_summon(&guild, &user_id),
     }
 }
