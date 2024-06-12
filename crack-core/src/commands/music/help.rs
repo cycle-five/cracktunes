@@ -39,13 +39,15 @@ use crate::{Context, Error};
 pub async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]
-    // #[autocomplete = "poise::builtins::autocomplete_command"]
+    #[autocomplete = "poise::builtins::autocomplete_command"]
     #[rest]
     mut command: Option<String>,
 ) -> Result<(), Error> {
     // This makes it possible to just make `help` a subcommand of any command
     // `/fruit help` turns into `/help fruit`
     // `/fruit help apple` turns into `/help fruit apple`
+    tracing::info!("Invoked command: {}", ctx.invoked_command_name());
+    tracing::info!("Command: {:?}", command);
     if ctx.invoked_command_name() != "help" {
         command = match command {
             Some(c) => Some(format!("{} {}", ctx.invoked_command_name(), c)),
@@ -68,7 +70,7 @@ pub async fn help(
 
 /// Get information about the servers this bot is in.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, owners_only)]
+#[poise::command(slash_command, prefix_command, owners_only, category = "Utility")]
 pub async fn servers(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::servers(ctx).await?;
     Ok(())
