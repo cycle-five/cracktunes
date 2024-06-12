@@ -10,15 +10,27 @@ use serenity::all::{
 };
 
 /// Parameter structure for functions that send messages to a channel.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct SendMessageParams {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
-    // #[default = Color::BLUE]
-    pub msg: CrackedMessage,
     pub color: Color,
+    pub msg: CrackedMessage,
+}
+
+impl Default for SendMessageParams {
+    fn default() -> Self {
+        SendMessageParams {
+            channel: ChannelId::new(1),
+            as_embed: true,
+            ephemeral: false,
+            reply: true,
+            color: Color::BLUE,
+            msg: CrackedMessage::Other(String::new()),
+        }
+    }
 }
 
 /// Extension trait for CacheHttp to add some utility functions.

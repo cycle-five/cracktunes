@@ -40,6 +40,7 @@ pub trait GuildSettingsOperations {
     ) -> impl Future<Output = ()>;
     fn get_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool) -> impl Future<Output = ()>;
+    fn toggle_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
@@ -218,6 +219,19 @@ impl GuildSettingsOperations for Data {
             .and_modify(|e| {
                 e.autopause = autopause;
             });
+    }
+
+    /// Toggle the autopause setting.
+    async fn toggle_autopause(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.autopause = !e.autopause;
+            })
+            .or_insert_with(Default::default)
+            .autopause
     }
 
     /// Get the current autoplay settings.
