@@ -187,7 +187,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
 
     poise::builtins::help(
         ctx,
-        command.as_deref(),
+        command,
         poise::builtins::HelpConfiguration {
             show_context_menu_commands: true,
             show_subcommands: false,
