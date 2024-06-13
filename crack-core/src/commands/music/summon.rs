@@ -20,7 +20,7 @@ use tokio::sync::Mutex;
     prefix_command,
     aliases("join", "come here", "comehere", "come", "here"),
     guild_only,
-    category = "music",
+    category = "Music",
     check = "cmd_check_music"
 )]
 pub async fn summon(ctx: Context<'_>) -> Result<(), Error> {

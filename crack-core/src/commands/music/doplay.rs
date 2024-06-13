@@ -56,7 +56,7 @@ pub enum Mode {
     slash_command,
     guild_only,
     check = "cmd_check_music",
-    category = "music"
+    category = "Music"
 )]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let shard_id = ctx.serenity_context().shard_id;
@@ -78,7 +78,7 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     guild_only,
     aliases("next", "pn", "Pn", "insert", "ins", "push"),
     check = "cmd_check_music",
-    category = "music"
+    category = "Music"
 )]
 pub async fn playnext(
     ctx: Context<'_>,
@@ -97,7 +97,7 @@ pub async fn playnext(
     guild_only,
     aliases("s", "S"),
     check = "cmd_check_music",
-    category = "music"
+    category = "Music"
 )]
 pub async fn search(
     ctx: Context<'_>,
@@ -116,7 +116,7 @@ pub async fn search(
     guild_only,
     aliases("p", "P"),
     check = "cmd_check_music",
-    category = "music"
+    category = "Music"
 )]
 pub async fn play(
     ctx: Context<'_>,

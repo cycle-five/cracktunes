@@ -808,6 +808,7 @@ dependencies = [
  "serenity-voice-model",
  "songbird",
  "sqlx",
+ "strsim",
  "symphonia",
  "sys-info",
  "tokio",

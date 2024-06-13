@@ -58,6 +58,7 @@ reqwest = { version = "0.12.4", default-features = false, features = [
     "rustls-tls",
     "cookies",
 ] }
+strsim = "0.11.1"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }

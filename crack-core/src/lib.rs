@@ -49,13 +49,22 @@ pub mod test;
 pub mod utils;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
-pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
 pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
+
+pub type Command = poise::Command<Data, CommandError>;
+pub type Context<'a> = poise::Context<'a, Data, CommandError>;
+pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, CommandError>;
+pub type PartialContext<'a> = poise::PartialContext<'a, Data, CommandError>;
+pub type ApplicationContext<'a> = poise::ApplicationContext<'a, Data, CommandError>;
+
+pub type CommandError = Error;
+pub type CommandResult<E = Error> = Result<(), E>;
+pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {

@@ -176,7 +176,6 @@ pub async fn poise_framework(
             commands::clear(),
             commands::clean(),
             commands::grab(),
-            commands::help(),
             commands::invite(),
             commands::leave(),
             commands::lyrics(),
@@ -193,7 +192,7 @@ pub async fn poise_framework(
             commands::resume(),
             commands::repeat(),
             commands::search(),
-            commands::servers(),
+            //commands::servers(),
             commands::seek(),
             commands::skip(),
             commands::stop(),
@@ -218,7 +217,10 @@ pub async fn poise_framework(
             commands::settings(),
             // all admin commands
             commands::admin(),
-        ],
+        ]
+        .into_iter()
+        .chain(commands::help::commands())
+        .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),

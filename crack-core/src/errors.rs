@@ -35,6 +35,7 @@ pub enum CrackedError {
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
     CommandFailed(String, ExitStatus, String),
+    CommandNotFound(String),
     DurationParseError(String, String),
     EmptySearchResult,
     EmptyVector(&'static str),
@@ -122,6 +123,9 @@ impl Display for CrackedError {
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
                 "Command `{program}` failed with status `{status}` and output `{output}`"
             )),
+            Self::CommandNotFound(command) => {
+                f.write_fmt(format_args!("Command does not exist: {}", command))
+            },
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },

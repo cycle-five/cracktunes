@@ -47,6 +47,7 @@ pub enum CrackedMessage {
     LoopEnable,
     NowPlaying,
     Other(String),
+    OwnersOnly,
     PaginationComplete,
     Pause,
     PasswordPwned,
@@ -95,6 +96,10 @@ pub enum CrackedMessage {
         url: String,
     },
     Stop,
+    SubcommandNotFound {
+        group: String,
+        subcommand: String,
+    },
     SocialMediaResponse {
         response: String,
     },
@@ -225,6 +230,7 @@ impl Display for CrackedMessage {
             Self::LoopEnable => f.write_str(LOOP_ENABLED),
             Self::NowPlaying => f.write_str(QUEUE_NOW_PLAYING),
             Self::Other(message) => f.write_str(message),
+            Self::OwnersOnly => f.write_str(OWNERS_ONLY),
             Self::PaginationComplete => f.write_str(PAGINATION_COMPLETE),
             Self::PasswordPwned => f.write_str(PASSWORD_PWNED),
             Self::PasswordSafe => f.write_str(PASSWORD_SAFE),
@@ -264,6 +270,12 @@ impl Display for CrackedMessage {
             Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
+            Self::SubcommandNotFound { group, subcommand } => f.write_str(&format!(
+                "{}",
+                SUBCOMMAND_NOT_FOUND
+                    .replace("{group}", group)
+                    .replace("{subcommand}", subcommand)
+            )),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
                 "{}{} {} {} {}",
                 SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
