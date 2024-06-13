@@ -15,10 +15,11 @@ use crate::{
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
+use crate::{http_utils::SendMessageParams, messaging::interface::send_message};
 use ::serenity::{
     all::{
-        CacheHttp, ChannelId, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
-        CreateSelectMenuOption, EmbedField, GuildId, Interaction, UserId,
+        CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
+        CreateSelectMenuKind, CreateSelectMenuOption, EmbedField, GuildId, Interaction, UserId,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -81,20 +82,15 @@ pub async fn send_response_poise(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<Message, CrackedError> {
-    use ::serenity::all::Colour;
-
     let color = match message {
         CrackedMessage::CrackedError(_) => Colour::RED,
         _ => Colour::BLUE,
     };
-    if as_embed {
-        let embed = CreateEmbed::default()
-            .color(color)
-            .description(format!("{message}"));
-        send_embed_response_poise(ctx, embed).await
-    } else {
-        send_nonembed_response_poise(ctx, format!("{message}")).await
-    }
+    let params = SendMessageParams::new(message)
+        .with_as_embed(as_embed)
+        .with_color(color);
+    let handle = send_message(ctx, params).await?;
+    Ok(handle.into_message().await?)
 }
 
 #[cfg(not(tarpaulin_include))]

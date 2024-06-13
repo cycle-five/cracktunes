@@ -1,7 +1,6 @@
 use crate::utils::send_now_playing;
 use crate::{errors::CrackedError, Context, Error};
 
-/// interface::create_now_playing_embed,
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -22,7 +21,7 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         .create_dm_channel(&ctx.serenity_context().http)
         .await?;
 
-    let msg = send_now_playing(
+    let _ = send_now_playing(
         channel.id,
         ctx.serenity_context().http.clone(),
         call.clone(),
@@ -30,8 +29,6 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
         None,
     )
     .await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     let reply_handle = ctx.say("Sent you a DM with the current track").await?;
 

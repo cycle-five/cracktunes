@@ -21,7 +21,7 @@ pub async fn create(
     #[description = "Optional initial colour"] colour: Option<u32>,
     #[description = "Optional emoji"] unicode_emoji: Option<String>,
     #[description = "Optional reason for the audit_log"] audit_log_reason: Option<String>,
-    #[description = "Optional initial perms"] icon: Option<Attachment>,
+    #[description = "Optional icon"] icon: Option<Attachment>,
 ) -> EmptyResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let icon = match icon {

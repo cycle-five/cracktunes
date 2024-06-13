@@ -4,7 +4,7 @@ use crate::{Context, Error};
 
 /// Ping the bot
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(category = "Utility", slash_command, prefix_command)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     ping_internal(ctx).await
 }

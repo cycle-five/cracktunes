@@ -163,14 +163,11 @@ async fn play_internal(
     if msg.is_none() && file.is_none() {
         // let embed = CreateEmbed::default().description(CrackedError::NoQuery.to_string());
         // send_embed_response_poise(ctx, embed).await?;
-        let msg_params = SendMessageParams {
-            channel: ctx.channel_id(),
-            as_embed: true,
-            reply: true,
-            ephemeral: false,
-            msg: CrackedMessage::CrackedError(CrackedError::NoQuery),
-            color: crate::serenity::Color::RED,
-        };
+        let msg_params = SendMessageParams::default()
+            .with_channel(ctx.channel_id())
+            .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))
+            .with_color(crate::serenity::Color::RED);
+
         send_message(ctx, msg_params).await?;
         return Ok(());
     }

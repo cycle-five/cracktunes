@@ -17,6 +17,7 @@ pub struct SendMessageParams {
     pub ephemeral: bool,
     pub reply: bool,
     pub color: Color,
+    pub cache_msg: bool,
     pub msg: CrackedMessage,
 }
 
@@ -28,8 +29,46 @@ impl Default for SendMessageParams {
             ephemeral: false,
             reply: true,
             color: Color::BLUE,
+            cache_msg: true,
             msg: CrackedMessage::Other(String::new()),
         }
+    }
+}
+
+impl SendMessageParams {
+    pub fn new(msg: CrackedMessage) -> Self {
+        Self {
+            msg,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_as_embed(self, as_embed: bool) -> Self {
+        Self { as_embed, ..self }
+    }
+
+    pub fn with_ephemeral(self, ephemeral: bool) -> Self {
+        Self { ephemeral, ..self }
+    }
+
+    pub fn with_reply(self, reply: bool) -> Self {
+        Self { reply, ..self }
+    }
+
+    pub fn with_color(self, color: Color) -> Self {
+        Self { color, ..self }
+    }
+
+    pub fn with_msg(self, msg: CrackedMessage) -> Self {
+        Self { msg, ..self }
+    }
+
+    pub fn with_channel(self, channel: ChannelId) -> Self {
+        Self { channel, ..self }
+    }
+
+    pub fn with_cache_msg(self, cache_msg: bool) -> Self {
+        Self { cache_msg, ..self }
     }
 }
 

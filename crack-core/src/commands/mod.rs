@@ -9,10 +9,9 @@ pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
 pub mod permissions;
-pub mod ping;
 pub mod playlist;
 pub mod settings;
-pub mod version;
+pub mod utility;
 
 pub use admin::*;
 #[cfg(feature = "crack-bf")]
@@ -25,10 +24,9 @@ pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use permissions::*;
-pub use ping::*;
 pub use playlist::playlist;
 pub use settings::*;
-pub use version::*;
+pub use utility::*;
 
 pub use crate::errors::CrackedError;
 use serenity::all::Message;
@@ -48,5 +46,8 @@ impl ConvertToEmptyResult for MessageResult {
 
 /// Return all the commands that are available in the bot.
 pub fn all_commands() -> Vec<crate::Command> {
-    music_commands().into_iter().collect()
+    music_commands()
+        .into_iter()
+        .chain(utility_commands())
+        .collect()
 }

@@ -18,8 +18,7 @@ use crate::{
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
-use poise::CreateReply;
-use serenity::all::Color;
+use poise::{CreateReply, ReplyHandle};
 use serenity::{
     all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
     all::{CacheHttp, ChannelId, Mentionable, UserId},
@@ -342,31 +341,24 @@ pub async fn send_search_message(ctx: CrackContext<'_>) -> CrackedResult<Message
     Ok(msg)
 }
 
+use colored::Colorize;
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel(
     ctx: CrackContext<'_>,
     channel_id: ChannelId,
-) -> Result<(), Error> {
+) -> Result<ReplyHandle, Error> {
     let msg = CrackedMessage::Summon {
         mention: channel_id.mention(),
     };
-    let params = SendMessageParams {
-        channel: channel_id,
-        as_embed: true,
-        ephemeral: false,
-        reply: true,
-        color: Color::BLUE,
-        msg,
-    };
+    let params = SendMessageParams::new(msg).with_channel(channel_id);
 
     send_message(ctx, params).await
 }
 
-use colored::Colorize;
 pub async fn send_message(
     ctx: CrackContext<'_>,
     send_params: SendMessageParams,
-) -> Result<(), Error> {
+) -> Result<ReplyHandle, Error> {
     //let channel_id = send_params.channel;
     let as_embed = send_params.as_embed;
     let as_reply = send_params.reply;
@@ -390,11 +382,14 @@ pub async fn send_message(
         CreateReply::default().content(text.color(c).to_string())
     };
     let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
-    let msg = ctx.send(reply).await?.into_message().await?;
-    ctx.data()
-        .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
-        .await;
-    Ok(())
+    let handle = ctx.send(reply).await?;
+    if send_params.cache_msg {
+        let msg = handle.clone().into_message().await?;
+        ctx.data()
+            .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
+            .await;
+    }
+    Ok(handle)
 }
 
 #[cfg(test)]

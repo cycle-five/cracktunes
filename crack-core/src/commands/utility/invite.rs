@@ -4,9 +4,9 @@ use crate::{
 };
 use poise::serenity_prelude::GuildId;
 
-/// Vote link for cracktunes on top.gg
+/// Invite link for the bot
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(category = "Utility", slash_command, prefix_command)]
 pub async fn invite(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: Option<GuildId> = ctx.guild_id();
 
