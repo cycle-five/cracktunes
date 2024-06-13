@@ -1,13 +1,23 @@
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
-    Error,
+    commands::{cmd_check_music, sub_help as help},
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    utils::send_response_poise,
+    Context, Error,
 };
 
 const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
 
 /// Clean up old messages from the bot.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    prefix_command,
+    slash_command,
+    guild_only,
+    check = "cmd_check_music",
+    subcommands("help")
+)]
 pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let time_ordered_messages = {

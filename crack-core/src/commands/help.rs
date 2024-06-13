@@ -1,40 +1,10 @@
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
+use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use crate::utils::send_response_poise;
 use crate::{require, Context, Data, Error};
+use itertools::Itertools;
 
-// /// Show help message
-// #[poise::command(prefix_command, track_edits, category = "Utility")]
-// async fn help(
-//     ctx: Context<'_>,
-//     #[description = "Command to get help for"]
-//     #[rest]
-//     mut command: Option<String>,
-// ) -> Result<(), Error> {
-//     // This makes it possible to just make `help` a subcommand of any command
-//     // `/fruit help` turns into `/help fruit`
-//     // `/fruit help apple` turns into `/help fruit apple`
-//     if ctx.invoked_command_name() != "help" {
-//         command = match command {
-//             Some(c) => Some(format!("{} {}", ctx.invoked_command_name(), c)),
-//             None => Some(ctx.invoked_command_name().to_string()),
-//         };
-//     }
-//     let extra_text_at_bottom = "\
-// Type `?help command` for more info on a command.
-// You can edit your `?help` message to the bot and the bot will edit its response.";
-
-//     let config = HelpConfiguration {
-//         show_subcommands: true,
-//         show_context_menu_commands: true,
-//         ephemeral: true,
-//         extra_text_at_bottom,
-
-//         ..Default::default()
-//     };
-//     poise::builtins::help(ctx, command.as_deref(), config).await?;
-//     Ok(())
-// }
 #[allow(clippy::unused_async)]
 pub async fn autocomplete(
     ctx: poise::ApplicationContext<'_, Data, Error>,
@@ -54,7 +24,6 @@ pub async fn autocomplete(
                 if command.qualified_name.starts_with(searching) {
                     result.push(command.qualified_name.clone());
                 }
-            // else if command.subcommands == vec!["help"] {
             } else {
                 flatten_commands(result, &command.subcommands, searching);
             }
@@ -70,42 +39,28 @@ pub async fn autocomplete(
     result
 }
 
-// /// Show the help menu.
-// #[cfg(not(tarpaulin_include))]
-// #[poise::command(category = "Utility", slash_command, prefix_command, track_edits)]
-// pub async fn help(
-//     ctx: Context<'_>,
-//     #[description = "Specific command to show help about"]
-//     #[autocomplete = "autocomplete"]
-//     #[rest]
-//     mut command: Option<String>,
-// ) -> Result<(), Error> {
-//     // This makes it possible to just make `help` a subcommand of any command
-//     // `/fruit help` turns into `/help fruit`
-//     // `/fruit help apple` turns into `/help fruit apple`
-//     tracing::info!("Invoked command: {}", ctx.invoked_command_name());
-//     tracing::info!("Command: {:?}", command);
-//     if ctx.invoked_command_name() != "help" {
-//         command = match command {
-//             Some(c) => Some(format!("{} {}", ctx.invoked_command_name(), c)),
-//             None => Some(ctx.invoked_command_name().to_string()),
-//         };
-//     }
-//     poise::builtins::help(
-//         ctx,
-//         command.as_deref(),
-//         poise::builtins::HelpConfiguration {
-//             show_context_menu_commands: true,
-//             show_subcommands: false,
-//             extra_text_at_bottom: "This is a friendly crack smoking parrot that plays music.",
-//             ..Default::default()
-//         },
-//     )
-//     .await?;
-//     Ok(())
-// }
-use crate::Command;
+/// Show the help menu.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    category = "Utility",
+    rename = "help",
+    slash_command,
+    prefix_command,
+    hide_in_help
+)]
+pub async fn sub_help(ctx: Context<'_>) -> Result<(), Error> {
+    // This makes it possible to just make `help` a subcommand of any command
+    // `/fruit help` turns into `/help fruit`
+    // `/fruit help apple` turns into `/help fruit apple`
+    let parent = ctx
+        .parent_commands()
+        .iter()
+        .map(|&x| x.name.clone())
+        .join(" ");
+    command_func(ctx, Some(&parent)).await
+}
 
+use crate::Command;
 #[allow(dead_code)]
 enum HelpCommandMode<'a> {
     Root,
@@ -189,9 +144,9 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         ctx,
         command,
         poise::builtins::HelpConfiguration {
-            show_context_menu_commands: true,
+            show_context_menu_commands: false,
             show_subcommands: false,
-            extra_text_at_bottom: "This is a friendly crack smoking parrot that plays music.",
+            extra_text_at_bottom: EXTRA_TEXT_AT_BOTTOM,
             ..Default::default()
         },
     )

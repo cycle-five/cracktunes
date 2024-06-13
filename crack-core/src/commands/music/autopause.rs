@@ -1,6 +1,10 @@
 use crate::{
-    commands::cmd_check_music, errors::CrackedError, guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams, messaging::message::CrackedMessage, Context, Error,
+    commands::{cmd_check_music, sub_help as help},
+    errors::CrackedError,
+    guild::operations::GuildSettingsOperations,
+    http_utils::SendMessageParams,
+    messaging::message::CrackedMessage,
+    Context, Error,
 };
 
 /// Toggle autopause.
@@ -9,7 +13,7 @@ use crate::{
     category = "Music",
     slash_command,
     prefix_command,
-    //subcommands("help"),
+    subcommands("help"),
     guild_only,
     check = "cmd_check_music"
 )]

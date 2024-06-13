@@ -1,5 +1,4 @@
 #![feature(linked_list_cursors)]
-#![feature(async_closure)]
 use crate::handlers::event_log::LogEntry;
 use chrono::{DateTime, Utc};
 use commands::play_utils::TrackReadyData;

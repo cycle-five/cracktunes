@@ -47,11 +47,15 @@ pub use timeout::*;
 pub use unban::*;
 pub use unmute::*;
 
+use crate::commands::sub_help as help;
+use crate::messaging::message::CrackedMessage;
+use crate::utils::send_response_poise;
 /// Admin commands.
 #[poise::command(
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
     subcommands(
         "audit_logs",
         "authorize",
@@ -76,6 +80,7 @@ pub use unmute::*;
         "set_vc_size",
         "role",
         "timeout",
+        "help"
     ),
     ephemeral,
     // owners_only
@@ -84,7 +89,13 @@ pub use unmute::*;
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
-    ctx.say("You found the admin command").await?;
+    let msg = CrackedMessage::Other("Admin command called".to_string());
+    send_response_poise(ctx, msg, true).await?;
 
     Ok(())
+}
+
+/// List of all the admin commands.
+pub fn admin_commands() -> Vec<crate::Command> {
+    role::role_commands().into_iter().collect()
 }

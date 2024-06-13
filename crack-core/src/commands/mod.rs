@@ -3,6 +3,7 @@ pub mod admin;
 pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
+pub mod help;
 pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
@@ -18,6 +19,7 @@ pub use admin::*;
 pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
+pub use help::*;
 pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
@@ -42,4 +44,9 @@ impl ConvertToEmptyResult for MessageResult {
     fn convert(self) -> EmptyResult {
         self.map(|_| ()).map_err(|e| e.into())
     }
+}
+
+/// Return all the commands that are available in the bot.
+pub fn all_commands() -> Vec<crate::Command> {
+    music_commands().into_iter().collect()
 }

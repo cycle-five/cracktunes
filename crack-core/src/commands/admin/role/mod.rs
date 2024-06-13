@@ -29,3 +29,7 @@ pub async fn role(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
+
+pub fn role_commands() -> [crate::Command; 5] {
+    [assign(), assign_ids(), create(), delete(), delete_by_id()]
+}

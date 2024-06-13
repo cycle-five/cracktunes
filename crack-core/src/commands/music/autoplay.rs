@@ -1,22 +1,17 @@
-use crate::commands::cmd_check_music;
+use crate::commands::{cmd_check_music, sub_help as help};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
-
-fn autoplay_help() -> String {
-    "Toggle music autoplay".to_string()
-}
 
 /// Toggle music autoplay.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
     slash_command,
     prefix_command,
     guild_only,
     aliases("ap"),
-    category = "Music",
-    check = "cmd_check_music",
-//    help = "Toggle music autoplay"
-    help_text_fn = "autoplay_help",
+    subcommands("help")
 )]
 pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();

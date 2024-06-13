@@ -1,4 +1,5 @@
 use crate::{
+    commands::{cmd_check_music, sub_help as help},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
@@ -8,8 +9,20 @@ use crate::{
 
 /// Clear the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    prefix_command,
+    slash_command,
+    guild_only,
+    check = "cmd_check_music",
+    subcommands("help")
+)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
+    clear_internal(ctx).await
+}
+
+/// Clear the queue, internal.
+pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = songbird::get(ctx.serenity_context())
         .await

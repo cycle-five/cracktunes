@@ -35,6 +35,7 @@ pub const DOMAIN_FORM_TITLE: &str = "Manage sources";
 
 pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
 pub const ERROR: &str = "Fatality! Something went wrong ☹️";
+pub const EXTRA_TEXT_AT_BOTTOM: &str = "This is a friendly crack smoking parrot that plays music.";
 pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
 pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
 pub const FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA: &str =

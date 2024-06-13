@@ -7,7 +7,6 @@ pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
 pub mod grab;
-pub mod help;
 pub mod invite;
 pub mod leave;
 pub mod lyrics;
@@ -37,7 +36,6 @@ pub use collector::*;
 pub use doplay::*;
 pub use gambling::*;
 pub use grab::*;
-pub use help::*;
 pub use invite::*;
 pub use leave::*;
 pub use lyrics::*;
@@ -57,3 +55,28 @@ pub use summon::*;
 pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
+
+pub fn music_commands() -> [crate::Command; 20] {
+    [
+        autopause(),
+        autoplay(),
+        clean(),
+        clear(),
+        nowplaying(),
+        pause(),
+        play(),
+        playlog(),
+        queue(),
+        remove(),
+        repeat(),
+        resume(),
+        seek(),
+        shuffle(),
+        skip(),
+        stop(),
+        summon(),
+        volume(),
+        vote(),
+        voteskip(),
+    ]
+}
