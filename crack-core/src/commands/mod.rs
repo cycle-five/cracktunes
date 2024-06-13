@@ -24,7 +24,7 @@ pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use permissions::*;
-pub use playlist::playlist;
+pub use playlist::playlist_commands;
 pub use settings::*;
 pub use utility::*;
 
@@ -49,5 +49,6 @@ pub fn all_commands() -> Vec<crate::Command> {
     music_commands()
         .into_iter()
         .chain(utility_commands())
+        .chain(playlist_commands())
         .collect()
 }

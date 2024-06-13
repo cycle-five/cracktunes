@@ -1,6 +1,8 @@
 use crate::commands::{cmd_check_music, sub_help as help};
 use crate::guild::operations::GuildSettingsOperations;
-use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
+use crate::{
+    messaging::message::CrackedMessage, utils::send_response_poise, Context, CrackedError, Error,
+};
 
 /// Toggle music autoplay.
 #[cfg(not(tarpaulin_include))]
@@ -14,17 +16,24 @@ use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Cont
     subcommands("help")
 )]
 pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    toggle_autoplay(ctx).await
+}
+
+/// Toggle music autoplay.
+pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
+    fn autoplay_msg(autoplay: bool) -> CrackedMessage {
+        if autoplay {
+            CrackedMessage::AutoplayOff
+        } else {
+            CrackedMessage::AutoplayOn
+        }
+    }
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let autoplay = ctx.data().get_autoplay(guild_id).await;
     ctx.data().set_autoplay(guild_id, !autoplay).await;
 
-    let msg = if autoplay {
-        send_response_poise(ctx, CrackedMessage::AutoplayOff, true)
-    } else {
-        send_response_poise(ctx, CrackedMessage::AutoplayOn, true)
-    }
-    .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    send_response_poise(ctx, autoplay_msg(autoplay), true).await?;
     Ok(())
 }

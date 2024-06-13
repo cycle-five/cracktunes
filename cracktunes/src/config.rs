@@ -186,7 +186,6 @@ pub async fn poise_framework(
             commands::play(),
             commands::playnext(),
             commands::playlog(),
-            commands::playlist(),
             commands::queue(),
             commands::remove(),
             commands::resume(),
@@ -220,6 +219,7 @@ pub async fn poise_framework(
         ]
         .into_iter()
         .chain(commands::help::commands())
+        .chain(commands::playlist_commands())
         .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),

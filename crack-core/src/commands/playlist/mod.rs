@@ -14,20 +14,51 @@ pub use list_playlists::list_playlists as list;
 pub use loadspotify::loadspotify;
 pub use play_playlist::play_playlist as play;
 
-use crate::{Context, Error};
+use crate::{
+    commands::{cmd_check_music, sub_help as help},
+    messaging::message::CrackedMessage,
+    utils::send_response_poise,
+    Context, Error,
+};
 
 /// Playlist commands.
 #[poise::command(
+    category = "Music",
     prefix_command,
     slash_command,
-    subcommands("addto", "create", "delete", "get", "list", "play", "loadspotify"),
-    aliases("pl")
+    subcommands(
+        "addto",
+        "create",
+        "delete",
+        "get",
+        "list",
+        "play",
+        "loadspotify",
+        "help"
+    ),
+    aliases("pl"),
+    check = "cmd_check_music"
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
-    tracing::warn!("Playlist command called");
-
-    ctx.say("You found the playlist command").await?;
+    send_response_poise(
+        ctx,
+        CrackedMessage::Other("You found the playlist command".to_string()),
+        true,
+    )
+    .await?;
 
     Ok(())
+}
+
+pub fn playlist_commands() -> [crate::Command; 7] {
+    [
+        addto(),
+        create(),
+        delete(),
+        get(),
+        list(),
+        play(),
+        loadspotify(),
+    ]
 }
