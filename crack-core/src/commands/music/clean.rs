@@ -19,6 +19,11 @@ const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
     subcommands("help")
 )]
 pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
+    clean_internal(ctx).await
+}
+
+/// Clean up old messages from the bot, internal fucntion.
+pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let time_ordered_messages = {
         let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await;

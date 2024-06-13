@@ -1,7 +1,7 @@
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
-use crate::commands::{cmd_check_music, get_call_with_fail_msg};
+use crate::commands::{cmd_check_music, get_call_with_fail_msg, sub_help as help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use ::serenity::all::CommandInteraction;
 //FIXME
@@ -52,11 +52,12 @@ pub enum Mode {
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Music",
     prefix_command,
     slash_command,
     guild_only,
     check = "cmd_check_music",
-    category = "Music"
+    subcommands("help")
 )]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let shard_id = ctx.serenity_context().shard_id;

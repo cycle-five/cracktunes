@@ -17,6 +17,7 @@ use serenity::all::User;
 //    of command and thus the context.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
@@ -27,7 +28,7 @@ pub async fn ban(
     #[description = "User to ban."] user: User,
     #[description = "Number of day to delete messages of the user."] dmd: Option<u8>,
     #[rest]
-    #[description = "Reason to the ban."]
+    #[description = "Reason for the ban."]
     reason: Option<String>,
 ) -> Result<(), Error> {
     let mention = user.mention();

@@ -1,18 +1,23 @@
-use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
 use serenity::all::{GuildId, Member, Role, RoleId, UserId};
 
 /// Assign role.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    slash_command,
+    hide_in_help = true,
+    ephemeral
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn assign(
     ctx: Context<'_>,
     #[description = "Role to assign"] role: Role,
     #[description = "Member to assign the role to"] member: Member,
 ) -> Result<(), Error> {
-    let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-
     member
         .add_role(&ctx, role)
         .await
@@ -21,7 +26,15 @@ pub async fn assign(
 }
 
 /// Assign role.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    slash_command,
+    hide_in_help = true,
+    ephemeral
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn assign_ids(
     ctx: Context<'_>,
@@ -29,8 +42,6 @@ pub async fn assign_ids(
     #[description = "RoleId to assign"] role_id: RoleId,
     #[description = "UserId to assign role to"] user_id: UserId,
 ) -> Result<(), Error> {
-    // let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-
     let member = guild_id.member(&ctx, user_id).await?;
     member
         .add_role(&ctx, role_id)
