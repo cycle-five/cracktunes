@@ -124,7 +124,6 @@ pub const REQUESTED_BY: &str = "Requested by";
 pub const ROLE_CREATED: &str = "📝 Created role!";
 pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
 pub const ROLE_NOT_FOUND: &str = "⚠️ Role not found!";
-pub const REQ_BY: &str = "Requested by";
 pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
 pub const SEEKED: &str = "⏩ Seeked current track to";

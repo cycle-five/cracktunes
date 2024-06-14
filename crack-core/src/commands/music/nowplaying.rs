@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only, aliases("np"))]
 pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
-    let (guild_id, _manager, call) = get_guild_id_and_songbird_call(ctx).await?;
+    let (_guild_id, _manager, call) = get_guild_id_and_songbird_call(ctx).await?;
 
     let handler = call.lock().await;
     let track = handler
@@ -20,8 +20,7 @@ pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
 

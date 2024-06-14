@@ -5,12 +5,11 @@ use crate::{
     commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
     db::Playlist,
     messaging::{
-        interface::{create_nav_btns, create_now_playing_embed, requesting_user_to_string},
+        interface::{create_nav_btns, create_now_playing_embed},
         message::CrackedMessage,
         messages::{
             INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY,
-            PROGRESS, QUEUE_PAGE, QUEUE_PAGE_OF, REQ_BY, VOTE_TOPGG_LINK_TEXT_SHORT,
-            VOTE_TOPGG_URL,
+            QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
     Context as CrackContext, CrackedError, Data, Error,
@@ -19,7 +18,7 @@ use crate::{http_utils::SendMessageParams, messaging::interface::send_message};
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
-        CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction, UserId,
+        CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -53,6 +52,8 @@ use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 
+/// FIXME: This really should just be used as the method on the struct.
+/// Leaving this out of convenience, eventually it should be removed.
 pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<String> {
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
@@ -126,6 +127,8 @@ pub async fn send_now_playing(
     cur_position: Option<Duration>,
     metadata: Option<AuxMetadata>,
 ) -> Result<Message, Error> {
+    use crate::messaging::interface::create_now_playing_embed_metadata;
+
     tracing::warn!("locking mutex");
     let mutex_guard = call.lock().await;
     tracing::warn!("mutex locked");
@@ -489,59 +492,6 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
         }
     };
     metadata
-}
-
-/// Creates an embed from a CrackedMessage and sends it as an embed.
-pub fn create_now_playing_embed_metadata(
-    requesting_user: Option<UserId>,
-    cur_position: Option<Duration>,
-    metadata: MyAuxMetadata,
-) -> CreateEmbed {
-    let MyAuxMetadata::Data(metadata) = metadata;
-    tracing::warn!("metadata: {:?}", metadata);
-
-    let title = metadata.title.clone().unwrap_or_default();
-
-    let source_url = metadata.source_url.clone().unwrap_or_default();
-
-    let position = get_human_readable_timestamp(cur_position);
-    let duration = get_human_readable_timestamp(metadata.duration);
-
-    let progress_field = (PROGRESS, format!(">>> {} / {}", position, duration), true);
-
-    let channel_field: (&'static str, String, bool) = match requesting_user {
-        Some(user_id) => (
-            REQ_BY,
-            format!(">>> {}", requesting_user_to_string(user_id)),
-            true,
-        ),
-        None => {
-            tracing::warn!("No user id");
-            (REQ_BY, ">>> N/A".to_string(), true)
-        },
-    };
-    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
-
-    let (footer_text, footer_icon_url, vanity) = build_footer_info(&source_url);
-
-    CreateEmbed::new()
-        .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
-        .title(title.clone())
-        .url(source_url)
-        .field(progress_field.0, progress_field.1, progress_field.2)
-        .field(channel_field.0, channel_field.1, channel_field.2)
-        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
-        .thumbnail(
-            url::Url::parse(&thumbnail)
-                .map(|x| x.to_string())
-                .map_err(|e| {
-                    tracing::error!("error parsing url: {:?}", e);
-                    "".to_string()
-                })
-                .unwrap_or_default(),
-        )
-        .description(vanity)
-        .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
 /// Creates an embed for the first N metadata in the queue.

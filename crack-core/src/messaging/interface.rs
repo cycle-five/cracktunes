@@ -1,8 +1,9 @@
+use crate::commands::MyAuxMetadata;
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::{
-    QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
-    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
+    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
+    QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
@@ -29,6 +30,7 @@ use serenity::{
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
+use std::time::Duration;
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
@@ -191,39 +193,46 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
         )))
 }
 
-/// Creates a now playing embed for the given track.
-pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
-    let metadata = get_track_metadata(track).await;
-    let title = metadata.title.clone().unwrap_or_default();
-    let source_url = metadata.source_url.clone().unwrap_or_default();
-    let requesting_user = get_requesting_user(track).await;
+/// Creates an embed from a CrackedMessage and sends it as an embed.
+pub fn create_now_playing_embed_metadata(
+    requesting_user: Option<UserId>,
+    cur_position: Option<Duration>,
+    metadata: MyAuxMetadata,
+) -> CreateEmbed {
+    let MyAuxMetadata::Data(metadata) = metadata;
+    tracing::warn!("metadata: {:?}", metadata);
 
-    let position = get_human_readable_timestamp(Some(track.get_info().await.unwrap().position));
+    let title = metadata.title.clone().unwrap_or_default();
+
+    let source_url = metadata.source_url.clone().unwrap_or_default();
+
+    let position = get_human_readable_timestamp(cur_position);
     let duration = get_human_readable_timestamp(metadata.duration);
 
-    let progress_field = ("Progress", format!(">>> {} / {}", position, duration), true);
+    let progress_field = (PROGRESS, format!(">>> {} / {}", position, duration), true);
 
     let channel_field: (&'static str, String, bool) = match requesting_user {
-        Ok(user_id) => (
+        Some(user_id) => (
             REQUESTED_BY,
             format!(">>> {}", requesting_user_to_string(user_id)),
             true,
         ),
-        Err(error) => {
-            tracing::error!("error getting requesting user: {:?}", error);
+        None => {
+            tracing::warn!("No user id");
             (REQUESTED_BY, ">>> N/A".to_string(), true)
         },
     };
-
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
     let (footer_text, footer_icon_url, vanity) = build_footer_info(&source_url);
+
     CreateEmbed::new()
         .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
         .title(title.clone())
         .url(source_url)
         .field(progress_field.0, progress_field.1, progress_field.2)
         .field(channel_field.0, channel_field.1, channel_field.2)
+        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
         .thumbnail(
             url::Url::parse(&thumbnail)
                 .map(|x| x.to_string())
@@ -235,6 +244,21 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
         )
         .description(vanity)
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
+}
+
+pub async fn track_handle_to_metadata(
+    track: &TrackHandle,
+) -> Result<(Option<UserId>, Option<Duration>, MyAuxMetadata), CrackedError> {
+    let metadata = get_track_metadata(track).await;
+    let requesting_user = get_requesting_user(track).await.ok();
+    let duration = Some(track.get_info().await.unwrap().position);
+    Ok((requesting_user, duration, MyAuxMetadata::Data(metadata)))
+}
+
+/// Creates a now playing embed for the given track.
+pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
+    let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
+    create_now_playing_embed_metadata(requesting_user, duration, metadata)
 }
 
 /// Creates a lyrics embed for the given track.

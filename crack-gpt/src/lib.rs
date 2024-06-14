@@ -35,7 +35,7 @@ const HELP_STR: &str = r#"
         /invite       Vote link for cracktunes on top.gg
         /leave        Leave  a voice channel.
         /lyrics       Search for song lyrics.
-        /grab         interface::create_now_playing_embed, Send the current tack to your DMs.
+        /grab         Send the current tack to your DMs.
         /nowplaying   Get the currently playing track.
         /pause        Pause the current track.
         /play         Play a song.
