@@ -37,8 +37,7 @@ pub async fn volume(
                 tracing::error!("Can't get manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg).await;
+                let _ = send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             },
         };
@@ -48,8 +47,7 @@ pub async fn volume(
                 tracing::error!("Can't get call from manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg).await;
+                let _ = send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             },
         };
@@ -88,8 +86,7 @@ pub async fn volume(
                     guild_settings.volume * 100.0,
                     volume_track * 100.0
                 ));
-                let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg).await;
+                let _ = send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             },
         };
@@ -126,8 +123,7 @@ pub async fn volume(
         let track_handle: TrackHandle = match track_handle {
             Some(handle) => handle,
             None => {
-                let msg = send_embed_response_poise(ctx, embed).await?;
-                ctx.data().add_msg_to_cache(guild_id, msg).await;
+                let _ = send_embed_response_poise(ctx, embed).await?;
                 return Ok(());
             },
         };
@@ -135,9 +131,7 @@ pub async fn volume(
         track_handle.set_volume(new_vol).unwrap();
         embed
     };
-    let msg = send_embed_response_poise(ctx, embed).await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
 

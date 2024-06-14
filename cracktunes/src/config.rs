@@ -5,7 +5,6 @@ use crate::{
     // get_playlist_commands, get_settings_commands,
 };
 use colored::Colorize;
-use crack_core::commands::cmd_check_music_internal;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
@@ -14,16 +13,16 @@ use crack_core::{
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::{handle_event, SerenityHandler},
     is_prefix,
-    utils::{
-        check_interaction, check_reply, count_command, create_response_text, get_interaction_new,
-    },
+    utils::{check_reply, count_command},
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
-use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
-use poise::{
-    serenity_prelude::{FullEvent, GatewayIntents, GuildId},
-    CreateReply,
+use crack_core::{
+    commands::cmd_check_music_internal,
+    http_utils::SendMessageParams,
+    messaging::{interface::send_message, message::CrackedMessage},
 };
+use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
+use poise::serenity_prelude::{FullEvent, GatewayIntents, GuildId};
 use songbird::serenity::SerenityInit;
 use std::{
     borrow::Cow,
@@ -65,27 +64,27 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             },
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
+            let myerr = CrackedError::Poise(error);
+            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+            check_reply(send_message(ctx, params).await.map_err(Into::into));
             #[cfg(feature = "crack-metrics")]
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
-            match get_interaction_new(ctx) {
-                Some(interaction) => {
-                    check_interaction(
-                        create_response_text(ctx, &interaction, &format!("{error}"))
-                            .await
-                            .map(|_| ())
-                            .map_err(Into::into),
-                    );
-                },
-                None => {
-                    check_reply(
-                        ctx.send(CreateReply::default().content(&format!("{error}")))
-                            .await,
-                    );
-                },
-            }
-            tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
+            // match get_interaction_new(ctx) {
+            //     Some(_) => {
+            //         check_interaction(
+
+            //         );
+            //     },
+            //     None => {
+            //         check_reply(
+            //             ctx.send(CreateReply::default().content(&format!("{error}")))
+            //                 .await,
+            //         );
+            //     },
+            // }
+            // tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {

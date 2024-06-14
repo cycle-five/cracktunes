@@ -1,6 +1,6 @@
 use crate::{
     errors::CrackedError, messaging::message::CrackedMessage, messaging::messages::FAIL_LOOP,
-    utils::send_response_poise, Context, Error,
+    utils::send_reply, Context, Error,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
@@ -26,8 +26,8 @@ pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let msg = match toggler(&track) {
-        Ok(_) if was_looping => send_response_poise(ctx, CrackedMessage::LoopDisable, true).await,
-        Ok(_) if !was_looping => send_response_poise(ctx, CrackedMessage::LoopEnable, true).await,
+        Ok(_) if was_looping => send_reply(ctx, CrackedMessage::LoopDisable, true).await,
+        Ok(_) if !was_looping => send_reply(ctx, CrackedMessage::LoopEnable, true).await,
         _ => Err(CrackedError::Other(FAIL_LOOP)),
     }?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;

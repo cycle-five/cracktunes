@@ -60,7 +60,7 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 #[cfg(not(tarpaulin_include))]
-pub async fn send_response_poise(
+pub async fn send_reply(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
     as_embed: bool,
@@ -70,32 +70,48 @@ pub async fn send_response_poise(
         _ => Colour::BLUE,
     };
     let params = SendMessageParams::new(message)
-        .with_as_embed(as_embed)
-        .with_color(color);
+        .with_color(color)
+        .with_as_embed(as_embed);
     let handle = send_message(ctx, params).await?;
     Ok(handle.into_message().await?)
 }
 
+/// Sends a regular reply response.
 #[cfg(not(tarpaulin_include))]
-/// Sends a reply response as text
-pub async fn send_response_poise_text(
+pub async fn send_nonembed_reply(
     ctx: CrackContext<'_>,
-    message: CrackedMessage,
+    msg: CrackedMessage,
 ) -> Result<Message, CrackedError> {
-    send_response_poise(ctx, message, false).await
+    let color = match msg {
+        CrackedMessage::CrackedError(_) => Colour::RED,
+        _ => Colour::BLUE,
+    };
+
+    let params = SendMessageParams::default()
+        .with_color(color)
+        .with_msg(msg)
+        .with_as_embed(false);
+
+    let handle = send_message(ctx, params).await?;
+    Ok(handle.into_message().await?)
+    // send_message(ctx, params)
+    //     .await?
+    //     .into_message()
+    //     .await
+    //     .map_err(Into::into)
 }
 
-/// Create an embed to send as a response.
-#[cfg(not(tarpaulin_include))]
-pub async fn create_response_text(
-    ctx: CrackContext<'_>,
-    _interaction: &CommandOrMessageInteraction,
-    content: &str,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(content);
-    //send_embed_response(ctx, interaction, embed).await
-    send_embed_response_poise(ctx, embed).await
-}
+// /// Create an embed to send as a response.
+// #[cfg(not(tarpaulin_include))]
+// pub async fn create_response_text(
+//     ctx: CrackContext<'_>,
+//     _interaction: &CommandOrMessageInteraction,
+//     content: &str,
+// ) -> Result<Message, CrackedError> {
+//     let embed = CreateEmbed::default().description(content);
+//     //send_embed_response(ctx, interaction, embed).await
+//     send_embed_response_poise(ctx, embed).await
+// }
 
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
@@ -253,8 +269,7 @@ pub async fn send_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
-    let is_prefix = crate::is_prefix(ctx);
-    let is_ephemeral = !is_prefix;
+    let is_ephemeral = false;
     let is_reply = true;
     let params = SendMessageParams::default()
         .with_ephemeral(is_ephemeral)
@@ -267,46 +282,6 @@ pub async fn send_embed_response_poise(
         .await
         .map_err(Into::into)
 }
-
-/// Sends a regular reply response.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_nonembed_response_poise(
-    ctx: CrackContext<'_>,
-    text: String,
-) -> Result<Message, CrackedError> {
-    ctx.send(
-        CreateReply::default()
-            .content(text)
-            .ephemeral(false)
-            .reply(true),
-    )
-    .await?
-    .into_message()
-    .await
-    .map_err(Into::into)
-}
-
-// pub async fn send_embed_response(
-//     ctx: CrackContext<'_>,
-//     interaction: &CommandOrMessageInteraction,
-//     embed: CreateEmbed,
-// ) -> Result<Message, CrackedError> {
-//     match interaction {
-//         CommandOrMessageInteraction::Command(int) => {
-//             tracing::warn!("CommandOrMessageInteraction::Command");
-//             create_response_interaction(&ctx, &Interaction::Command(int.clone()), embed, false)
-//                 .await
-//         },
-//         // Under what circusmtances does this get called?
-//         CommandOrMessageInteraction::Message(_interaction) => {
-//             tracing::warn!("CommandOrMessageInteraction::Message");
-//             ctx.channel_id()
-//                 .send_message(ctx.http(), CreateMessage::new().embed(embed))
-//                 .await
-//                 .map_err(Into::into)
-//         },
-//     }
-// }
 
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
@@ -333,46 +308,6 @@ pub async fn edit_reponse_interaction(
             .map_err(Into::into),
         Interaction::Ping(_int) => Ok(Message::default()),
         _ => todo!(),
-    }
-}
-
-/// Create (and send) a response to an interaction.
-#[cfg(not(tarpaulin_include))]
-pub async fn create_response_interaction(
-    cache_http: &impl CacheHttp,
-    interaction: &Interaction,
-    embed: CreateEmbed,
-    _defer: bool,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        Interaction::Command(int) => {
-            let out_res = CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().embed(embed.clone()),
-            );
-            int.create_response(cache_http, out_res).await?;
-            let msg = int.get_response(cache_http.http()).await?;
-            Ok(msg)
-            // let message = int.get_response(cache_http.http()).await;
-            // match message {
-            //     Ok(message) => {
-            //         message
-            //             .clone()
-            //             .edit(cache_http, EditMessage::default().embed(embed.clone()))
-            //             .await?;
-            //         Ok(message)
-            //     },
-            //     Err(_) => {
-            //         int.create_response(cache_http, res).await?;
-            //         let message = int.get_response(cache_http.http()).await?;
-            //         Ok(message)
-            //     },
-            // }
-        },
-        Interaction::Ping(..)
-        | Interaction::Component(..)
-        | Interaction::Modal(..)
-        | Interaction::Autocomplete(..) => Err(CrackedError::Other("not implemented")),
-        _ => unimplemented!(),
     }
 }
 
@@ -842,15 +777,15 @@ pub fn get_interaction_new(ctx: CrackContext<'_>) -> Option<CommandOrMessageInte
     }
 }
 
-pub async fn handle_error(
-    ctx: CrackContext<'_>,
-    interaction: &CommandOrMessageInteraction,
-    err: CrackedError,
-) {
-    create_response_text(ctx, interaction, &format!("{err}"))
-        .await
-        .expect("failed to create response");
-}
+// pub async fn handle_error(
+//     ctx: CrackContext<'_>,
+//     interaction: &CommandOrMessageInteraction,
+//     err: CrackedError,
+// ) {
+//     create_response_text(ctx, interaction, &format!("{err}"))
+//         .await
+//         .expect("failed to create response");
+// }
 
 #[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {

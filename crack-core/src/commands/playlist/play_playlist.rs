@@ -1,7 +1,7 @@
 use super::get_playlist::get_playlist_;
 use crate::commands::queue_aux_metadata;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Queue a playlist on the bot.
@@ -16,12 +16,11 @@ pub async fn play_playlist(
     // Check for playlist Id
     let (aux_metadata, playlist_name) = get_playlist_(ctx, playlist).await?;
 
-    let msg =
-        send_response_poise(ctx, CrackedMessage::PlaylistQueuing(playlist_name), true).await?;
+    let msg = send_reply(ctx, CrackedMessage::PlaylistQueuing(playlist_name), true).await?;
 
     queue_aux_metadata(ctx, aux_metadata.as_slice(), msg).await?;
 
-    send_response_poise(ctx, CrackedMessage::PlaylistQueued, true).await?;
+    send_reply(ctx, CrackedMessage::PlaylistQueued, true).await?;
 
     Ok(())
 }

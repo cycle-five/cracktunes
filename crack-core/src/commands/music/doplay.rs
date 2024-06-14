@@ -346,7 +346,7 @@ pub fn check_banned_domains(
             //     domain: "youtube.com".to_string(),
             // };
 
-            // send_response_poise_text(ctx, message).await?;
+            // send_reply(ctx, message).await?;
             // Ok(None)
             Err(CrackedError::Other("youtube.com is banned"))
         } else {

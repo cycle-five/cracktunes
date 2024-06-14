@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -39,7 +39,7 @@ pub async fn ban(
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.ban_with_reason(&ctx, user.id, dmd, reason).await {
         // Handle error, send error message
-        send_response_poise(
+        send_reply(
             ctx,
             CrackedMessage::Other(format!("Failed to ban user: {}", e)),
             true,
@@ -47,7 +47,7 @@ pub async fn ban(
         .await?;
     } else {
         // Send success message
-        send_response_poise(ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
+        send_reply(ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
     }
     Ok(())
 }

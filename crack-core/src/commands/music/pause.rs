@@ -1,17 +1,14 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::send_response_poise_text,
+    utils::send_reply,
     {Context, Error},
 };
 
 /// Pause the current track.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn pause(
-    ctx: Context<'_>,
-    #[description = "Pause the current track"] send_reply: Option<bool>,
-) -> Result<(), Error> {
+pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
@@ -24,9 +21,6 @@ pub async fn pause(
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
-    if send_reply.unwrap_or(true) {
-        let msg = send_response_poise_text(ctx, CrackedMessage::Pause).await?;
-        ctx.data().add_msg_to_cache(guild_id, msg).await;
-    }
+    send_reply(ctx, CrackedMessage::Pause, true).await?;
     Ok(())
 }

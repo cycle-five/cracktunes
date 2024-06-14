@@ -1,7 +1,7 @@
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use serenity::all::Channel;
@@ -55,7 +55,7 @@ pub async fn join_leave_log_channel(
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
         true,

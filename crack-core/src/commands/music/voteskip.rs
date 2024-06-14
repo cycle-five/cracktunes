@@ -4,7 +4,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
-    utils::send_response_poise_text,
+    utils::send_reply,
     Context, ContextExt, Data, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -54,7 +54,7 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
     let skip_threshold = channel_guild_users.count() / 2;
 
-    let msg = if cache.current_skip_votes.len() >= skip_threshold {
+    let _ = if cache.current_skip_votes.len() >= skip_threshold {
         // // Write the skip votes to the db
         // TrackReaction::insert(
         //     &ctx.data().database_pool,
@@ -68,16 +68,16 @@ pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
         force_skip_top_track(&handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
-        send_response_poise_text(
+        send_reply(
             ctx,
             CrackedMessage::VoteSkip {
                 mention: ctx.get_user_id().mention(),
                 missing: skip_threshold - cache.current_skip_votes.len(),
             },
+            true,
         )
         .await
     }?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

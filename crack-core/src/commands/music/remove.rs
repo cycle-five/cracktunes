@@ -4,7 +4,7 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
-    utils::send_response_poise_text,
+    utils::send_reply,
     utils::{get_track_metadata, send_embed_response_poise},
     Context, Error,
 };
@@ -68,7 +68,7 @@ pub async fn remove(
         //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
         send_embed_response_poise(ctx, embed).await?;
     } else {
-        send_response_poise_text(ctx, CrackedMessage::RemoveMultiple).await?;
+        send_reply(ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;

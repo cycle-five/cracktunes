@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -41,7 +41,7 @@ pub async fn unmute_impl(
         .await
     {
         // Handle error, send error message
-        send_response_poise(
+        send_reply(
             ctx,
             CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
             true,
@@ -49,7 +49,7 @@ pub async fn unmute_impl(
         .await
     } else {
         // Send success message
-        send_response_poise(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
+        send_reply(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
     }
     .map_err(Into::into)
 }

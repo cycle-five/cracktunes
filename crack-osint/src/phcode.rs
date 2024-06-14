@@ -1,6 +1,6 @@
 use crack_core::Error;
 use crack_core::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context,
     PhoneCodeData,
 };
 
@@ -25,7 +25,7 @@ pub async fn phcode(ctx: Context<'_>, calling_code: String) -> Result<(), Error>
     let phone_data = ctx.data().phone_data.clone();
     let country_name = fetch_country_by_calling_code(&phone_data, &calling_code)?;
 
-    send_response_poise(ctx, CrackedMessage::CountryName(country_name)).await?;
+    send_reply(ctx, CrackedMessage::CountryName(country_name)).await?;
 
     Ok(())
 }

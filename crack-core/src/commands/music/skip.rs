@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{get_track_metadata, send_response_poise_text},
+    utils::{get_track_metadata, send_reply},
     Context, Error,
 };
 use serenity::all::Message;
@@ -61,20 +61,21 @@ pub async fn create_skip_response(
     match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
-            send_response_poise_text(
+            send_reply(
                 ctx,
                 CrackedMessage::SkipTo {
                     title: metadata.title.as_ref().unwrap().to_owned(),
                     url: metadata.source_url.as_ref().unwrap().to_owned(),
                 },
+                true,
             )
             .await
         },
         None => {
             if tracks_to_skip > 1 {
-                send_response_poise_text(ctx, CrackedMessage::SkipAll).await
+                send_reply(ctx, CrackedMessage::SkipAll, true).await
             } else {
-                send_response_poise_text(ctx, CrackedMessage::Skip).await
+                send_reply(ctx, CrackedMessage::Skip, true).await
             }
         },
     }

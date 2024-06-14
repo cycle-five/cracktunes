@@ -1,7 +1,7 @@
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -58,7 +58,7 @@ pub async fn authorize(
         .await
         .map(|g| g.name)
         .unwrap_or_else(|_| UNKNOWN.to_string());
-    let msg = send_response_poise(
+    let msg = send_reply(
         ctx,
         CrackedMessage::UserAuthorized {
             id,

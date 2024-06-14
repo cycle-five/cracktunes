@@ -3,7 +3,7 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    utils::send_response_poise_text,
+    utils::send_reply,
     Context, Error,
 };
 
@@ -28,7 +28,6 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     drop(handler);
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
-    let msg = send_response_poise_text(ctx, CrackedMessage::Stop).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    send_reply(ctx, CrackedMessage::Stop, true).await?;
     Ok(())
 }

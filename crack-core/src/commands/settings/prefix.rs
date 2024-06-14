@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
 use crate::http_utils::CacheHttpExt;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 
@@ -35,7 +35,7 @@ pub async fn add_prefix(
             ));
         new_settings.additional_prefixes.clone()
     };
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
@@ -72,7 +72,7 @@ pub async fn clear_prefixes(
             ));
         new_settings.additional_prefixes.clone()
     };
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
@@ -96,7 +96,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
             .map(|e| e.additional_prefixes.clone())
             .unwrap_or_default()
     };
-    let msg = send_response_poise(
+    let msg = send_reply(
         ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",

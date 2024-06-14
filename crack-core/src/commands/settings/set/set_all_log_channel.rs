@@ -1,6 +1,6 @@
 use crate::guild::settings::{GuildSettings, DEFAULT_PREFIX};
 use crate::Data;
-use crate::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
+use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use serenity::all::{Channel, GuildId};
 use serenity::model::id::ChannelId;
 
@@ -15,7 +15,7 @@ pub async fn log_channel_for_guild(
     // set_all_log_channel_old_data(ctx.serenity_context().data.clone(), guild_id, channel_id).await?;
     set_all_log_channel_data(ctx.data(), guild_id, channel_id).await?;
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
         true,
@@ -44,7 +44,7 @@ pub async fn all_log_channel(
     // set_all_log_channel_old_data(ctx.serenity_context().data.clone(), guild_id, channel_id).await?;
     set_all_log_channel_data(ctx.data(), guild_id, channel_id).await?;
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
         true,

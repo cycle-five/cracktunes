@@ -65,6 +65,15 @@ pub type CommandError = Error;
 pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
+use crate::serenity::prelude::SerenityError;
+
+impl From<CrackedError> for SerenityError {
+    fn from(_e: CrackedError) -> Self {
+        //let bs = Box::new(e.to_string());
+        SerenityError::Other("CrackedError")
+    }
+}
+
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
     matches!(ctx, Context::Prefix(_))
@@ -638,6 +647,43 @@ impl std::ops::Deref for Data {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+pub enum MessageOrReplyHandle<'a> {
+    Message(Message),
+    ReplyHandle(poise::ReplyHandle<'a>),
+}
+
+impl MessageOrReplyHandle<'_> {
+    pub async fn into_message(self) -> Option<Message> {
+        match self {
+            MessageOrReplyHandle::Message(msg) => Some(msg),
+            MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
+        }
+    }
+
+    pub async fn delete(self, ctx: Context<'_>) {
+        match self {
+            MessageOrReplyHandle::Message(msg) => {
+                let _ = msg.delete(&ctx).await;
+            },
+            MessageOrReplyHandle::ReplyHandle(handle) => {
+                let _ = handle.delete(ctx).await;
+            },
+        }
+    }
+}
+
+impl From<Message> for MessageOrReplyHandle<'_> {
+    fn from(msg: Message) -> Self {
+        MessageOrReplyHandle::Message(msg)
+    }
+}
+
+impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
+    fn from(handle: poise::ReplyHandle<'a>) -> Self {
+        MessageOrReplyHandle::ReplyHandle(handle)
     }
 }
 

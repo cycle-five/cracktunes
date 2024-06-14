@@ -1,6 +1,6 @@
 use crate::{
     handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    utils::send_response_poise, Context, Error,
+    utils::send_reply, Context, Error,
 };
 use rand::Rng;
 
@@ -25,7 +25,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    send_response_poise(ctx, CrackedMessage::Shuffle, true).await?;
+    send_reply(ctx, CrackedMessage::Shuffle, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

@@ -49,7 +49,7 @@ pub use unmute::*;
 
 use crate::commands::sub_help as help;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 /// Admin commands.
 #[poise::command(
     slash_command,
@@ -90,7 +90,7 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
     let msg = CrackedMessage::Other("Admin command called".to_string());
-    send_response_poise(ctx, msg, true).await?;
+    send_reply(ctx, msg, true).await?;
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, Error};
 
 #[cfg(not(tarpaulin_include))]
@@ -26,7 +26,7 @@ pub async fn idle_timeout(ctx: Context<'_>) -> Result<(), Error> {
         settings.timeout
     };
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("Idle timeout: {:?}s", idle_timeout)),
         true,

@@ -24,7 +24,7 @@ pub use virustotal::*;
 // pub use whois::*;
 
 // pub use crack_core::{
-//     messaging::message::CrackedMessage, utils::send_response_poise, Context, Error, Result,
+//     messaging::message::CrackedMessage, utils::send_reply, Context, Error, Result,
 // };
 
 // /// Osint Commands

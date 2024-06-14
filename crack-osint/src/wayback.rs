@@ -1,4 +1,4 @@
-use crack_core::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
+use crack_core::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use reqwest::Url;
 
 pub async fn fetch_wayback_snapshot(url: &str) -> Result<String, Error> {
@@ -34,7 +34,7 @@ pub async fn wayback(
     match fetch_wayback_snapshot(&url).await {
         Ok(snapshot_url) => {
             // Send the snapshot URL as the command's response
-            send_response_poise(ctx, CrackedMessage::WaybackSnapshot { url: snapshot_url }).await?;
+            send_reply(ctx, CrackedMessage::WaybackSnapshot { url: snapshot_url }).await?;
             Ok(())
         },
         Err(e) => Err(e),

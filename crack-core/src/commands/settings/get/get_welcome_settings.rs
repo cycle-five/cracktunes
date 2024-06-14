@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, Error};
 
 #[cfg(not(tarpaulin_include))]
@@ -25,7 +25,7 @@ pub async fn welcome_settings(ctx: Context<'_>) -> Result<(), Error> {
         settings.welcome_settings.clone()
     };
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!(
             "Welcome settings: {:?}",

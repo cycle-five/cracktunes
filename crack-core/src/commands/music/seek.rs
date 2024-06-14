@@ -2,7 +2,7 @@ use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    utils::send_response_poise,
+    utils::send_reply,
     Context, Error,
 };
 use std::time::Duration;
@@ -39,7 +39,7 @@ pub async fn seek(
 
     let _callback = track.seek(Duration::from_secs(timestamp));
 
-    let msg = send_response_poise(
+    let msg = send_reply(
         ctx,
         CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),

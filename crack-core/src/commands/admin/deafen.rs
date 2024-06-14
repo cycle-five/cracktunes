@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use serenity::all::GuildId;
@@ -23,7 +23,7 @@ pub async fn deafen(
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), true).await?;
     // Handle error, send error message
-    let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
+    let sent_msg = send_reply(ctx, crack_msg, true).await?;
     ctx.data().add_msg_to_cache(guild_id, sent_msg).await;
     Ok(())
 }
@@ -44,7 +44,7 @@ pub async fn undeafen(
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), false).await?;
     // Handle error, send error message
-    let sent_msg = send_response_poise(ctx, crack_msg, true).await?;
+    let sent_msg = send_reply(ctx, crack_msg, true).await?;
     ctx.data().add_msg_to_cache(guild_id, sent_msg).await;
     Ok(())
 }

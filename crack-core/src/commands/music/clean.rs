@@ -2,7 +2,7 @@ use crate::{
     commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,
     messaging::message::CrackedMessage,
-    utils::send_response_poise,
+    utils::send_reply,
     Context, Error,
 };
 
@@ -63,6 +63,6 @@ pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     status_msg.delete(&ctx.serenity_context()).await?;
-    send_response_poise(ctx, CrackedMessage::Clean(deleted), true).await?;
+    send_reply(ctx, CrackedMessage::Clean(deleted), true).await?;
     Ok(())
 }

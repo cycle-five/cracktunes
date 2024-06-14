@@ -3,7 +3,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    utils::send_response_poise,
+    utils::send_reply,
     Context, Error,
 };
 
@@ -42,7 +42,7 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    send_response_poise(ctx, CrackedMessage::Clear, true).await?;
+    send_reply(ctx, CrackedMessage::Clear, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

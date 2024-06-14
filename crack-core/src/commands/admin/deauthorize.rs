@@ -1,6 +1,6 @@
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::UNKNOWN;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -51,7 +51,7 @@ pub async fn deauthorize(
     tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     let mention = user.mention();
-    let msg = send_response_poise(
+    let msg = send_reply(
         ctx,
         CrackedMessage::UserDeauthorized {
             id,

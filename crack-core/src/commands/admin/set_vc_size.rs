@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::UNKNOWN_LIT;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use serenity::all::Channel;
@@ -27,7 +27,7 @@ pub async fn set_vc_size(
         .id()
         .edit(&ctx, EditChannel::new().user_limit(size))
         .await?;
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("Channel size sent to {size}")),
         true,

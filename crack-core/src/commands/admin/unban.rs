@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -43,7 +43,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
     let mention = user.mention();
     if let Err(e) = guild.unban(&ctx, user.id).await {
         // Handle error, send error message
-        send_response_poise(
+        send_reply(
             ctx,
             CrackedMessage::Other(format!("Failed to unban user: {}", e)),
             true,
@@ -53,7 +53,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
         .map(|_| ())
     } else {
         // Send success message
-        send_response_poise(ctx, CrackedMessage::UserUnbanned { id, mention }, true)
+        send_reply(ctx, CrackedMessage::UserUnbanned { id, mention }, true)
             .await
             .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
             .map(|_| ())

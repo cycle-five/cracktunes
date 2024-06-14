@@ -30,7 +30,7 @@ pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> 
         CrackedMessage::PasswordSafe
     };
 
-    send_response_poise(ctx, message).await?;
+    send_reply(ctx, message).await?;
 
     Ok(())
 }

@@ -5,7 +5,7 @@ use serenity::builder::EditRole;
 use crate::commands::{ConvertToEmptyResult, EmptyResult};
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 
 /// Create role.
@@ -47,7 +47,7 @@ pub async fn create(
     )
     .await?;
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::RoleCreated {
             role_name: role.name.clone(),

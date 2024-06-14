@@ -1,7 +1,7 @@
 use serenity::all::GuildId;
 use serenity::model::id::RoleId;
 
-use crate::{messaging::message::CrackedMessage, utils::send_response_poise};
+use crate::{messaging::message::CrackedMessage, utils::send_reply};
 use crate::{Context, Data, Error};
 
 /// Get the auto role for the server.
@@ -20,14 +20,14 @@ pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .map_or_else(
             || {
-                send_response_poise(
+                send_reply(
                     ctx,
                     CrackedMessage::Other("No auto role set for this server.".to_string()),
                     true,
                 )
             },
             |role_id| {
-                send_response_poise(
+                send_reply(
                     ctx,
                     CrackedMessage::Other(format!("Auto role: <@&{}>", role_id)),
                     true,

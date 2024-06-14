@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Get the current bot settings for this guild.
@@ -32,7 +32,7 @@ pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
         settings.clone()
     };
 
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
         true,

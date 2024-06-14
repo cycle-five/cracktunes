@@ -1,5 +1,5 @@
 use crate::messaging::message::CrackedMessage;
-use crate::{utils::send_response_poise_text, Context, CrackedError, Error};
+use crate::{utils::send_reply, Context, CrackedError, Error};
 use crack_bf::BrainfuckProgram;
 use serenity::all::Message;
 use std::io::Cursor;
@@ -31,8 +31,8 @@ pub async fn bf(
 
 // async fn send_brainfk_options(ctx: Context<'_>) -> Result<Message, Error> {}
 
-/// Run a brainfk program. Program and input string maybe empty, no handling is done for invalid
-/// programs.
+/// Run a brainfk program. Program and input string maybe empty,
+/// no handling is done for invalid programs.
 pub async fn bf_internal(
     ctx: Context<'_>,
     program: String,
@@ -59,7 +59,7 @@ pub async fn bf_internal(
     let string_out = cursor_to_string(output, n)?;
     tracing::info!("string_out\n{string_out}");
     let final_out = format!("```{string_out}```");
-    send_response_poise_text(ctx, CrackedMessage::Other(final_out)).await
+    send_reply(ctx, CrackedMessage::Other(final_out), false).await
 }
 
 // async fn cursor_to_string(mut cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {

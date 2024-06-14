@@ -1,5 +1,5 @@
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, ContextExt, Error};
 
 /// Get recently played tracks form the guild.
@@ -16,7 +16,7 @@ pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
 
     let last_played = ctx.get_last_played().await?;
 
-    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
+    let msg = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
@@ -36,7 +36,7 @@ pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
 
     let last_played = ctx.get_last_played_by_user(user_id).await?;
 
-    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
+    let msg = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())

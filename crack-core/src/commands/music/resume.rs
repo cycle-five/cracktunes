@@ -1,7 +1,7 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::send_response_poise_text,
+    utils::send_reply,
     {Context, Error},
 };
 
@@ -21,9 +21,7 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    // FIXME: Do we want to do the send_reply parameter?
-    let msg = send_response_poise_text(ctx, CrackedMessage::Resume).await?;
+    send_reply(ctx, CrackedMessage::Resume, false).await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

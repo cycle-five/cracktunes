@@ -17,7 +17,7 @@ pub use play_playlist::play_playlist as play;
 use crate::{
     commands::{cmd_check_music, sub_help as help},
     messaging::message::CrackedMessage,
-    utils::send_response_poise,
+    utils::send_reply,
     Context, Error,
 };
 
@@ -41,7 +41,7 @@ use crate::{
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::Other("You found the playlist command! Try /playlist help.".to_string()),
         true,

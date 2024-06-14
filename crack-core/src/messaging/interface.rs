@@ -348,12 +348,10 @@ pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedErro
 
 /// Sends a message to the user indicating that no query was provided.
 pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
-    let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    send_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
 
@@ -362,9 +360,6 @@ pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), Cracked
 pub async fn send_search_message(ctx: CrackContext<'_>) -> CrackedResult<Message> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data()
-        .add_msg_to_cache(ctx.guild_id().unwrap(), msg.clone())
-        .await;
     Ok(msg)
 }
 
@@ -379,13 +374,13 @@ pub async fn send_joining_channel(
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 
-    send_message(ctx, params).await
+    send_message(ctx, params).await.map_err(Into::into)
 }
 
 pub async fn send_message(
     ctx: CrackContext<'_>,
     send_params: SendMessageParams,
-) -> Result<ReplyHandle, Error> {
+) -> Result<ReplyHandle, CrackedError> {
     //let channel_id = send_params.channel;
     let as_embed = send_params.as_embed;
     let as_reply = send_params.reply;

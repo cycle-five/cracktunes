@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crack_core::{messaging::message::CrackedMessage, utils::send_response_poise, Context, Error};
+use crack_core::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -55,7 +55,7 @@ pub async fn socialmedia(
     match fetch_social_media_info(&email).await {
         Ok(response) => {
             // Send the response as the command's response
-            send_response_poise(
+            send_reply(
                 ctx,
                 CrackedMessage::SocialMediaResponse {
                     response: format!("{:?}", response),

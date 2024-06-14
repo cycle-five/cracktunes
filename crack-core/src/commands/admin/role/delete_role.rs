@@ -1,7 +1,7 @@
 use serenity::all::{Message, Role, RoleId};
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context,
     Error,
 };
 
@@ -43,7 +43,7 @@ pub async fn delete_role_by_id_helper(
         .ok_or(CrackedError::RoleNotFound(role_id))?;
     role.1.delete(&ctx).await?;
     // Send success message
-    send_response_poise(
+    send_reply(
         ctx,
         CrackedMessage::RoleDeleted {
             role_name: role.1.name.clone(),

@@ -2,7 +2,7 @@ use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Get the all log channel.
@@ -30,7 +30,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
             settings.get_all_log_channel()
         };
 
-        send_response_poise(
+        send_reply(
             ctx,
             CrackedMessage::Other(format!(
                 "All Log Channel: {:?}",
@@ -66,7 +66,7 @@ pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
             settings.get_all_log_channel()
         };
 
-        send_response_poise(
+        send_reply(
             ctx,
             CrackedMessage::Other(format!(
                 "Join/Leave Log Channel: {:?}",
