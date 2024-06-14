@@ -4,7 +4,6 @@ use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
-use serenity::all::Message;
 use serenity::builder::EditMember;
 
 /// Unmute a user.
@@ -27,10 +26,7 @@ pub async fn unmute(
 /// Unmute a user
 /// impl for other internal use.
 #[cfg(not(tarpaulin_include))]
-pub async fn unmute_impl(
-    ctx: Context<'_>,
-    user: serenity::model::user::User,
-) -> Result<Message, Error> {
+pub async fn unmute_impl(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     let id = user.id;
     let mention = user.mention();
     let guild_id = ctx
@@ -50,6 +46,6 @@ pub async fn unmute_impl(
     } else {
         // Send success message
         send_reply(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
-    }
-    .map_err(Into::into)
+    }?;
+    Ok(())
 }

@@ -42,6 +42,7 @@ pub mod http_utils;
 pub mod macros;
 pub mod messaging;
 pub mod metrics;
+pub mod poise_ext;
 pub mod sources;
 #[cfg(test)]
 pub mod test;

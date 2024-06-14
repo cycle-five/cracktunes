@@ -52,10 +52,49 @@ use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 
+use anyhow::Result;
+
+#[cold]
+fn create_err(line: u32, file: &str) -> anyhow::Error {
+    anyhow::anyhow!("Unexpected None value on line {line} in {file}",)
+}
+
+pub trait OptionTryUnwrap<T> {
+    fn try_unwrap(self) -> Result<T>;
+}
+
+impl<T> OptionTryUnwrap<T> for Option<T> {
+    #[track_caller]
+    fn try_unwrap(self) -> Result<T> {
+        match self {
+            Some(v) => Ok(v),
+            None => Err({
+                let location = std::panic::Location::caller();
+                create_err(location.line(), location.file())
+            }),
+        }
+    }
+}
+
 /// FIXME: This really should just be used as the method on the struct.
 /// Leaving this out of convenience, eventually it should be removed.
 pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<String> {
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
+}
+
+pub async fn send_reply_embed<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
+    message: CrackedMessage,
+) -> Result<ReplyHandle<'ctx>, Error> {
+    let color = match message {
+        CrackedMessage::CrackedError(_) => Colour::RED,
+        _ => Colour::BLUE,
+    };
+    let params = SendMessageParams::new(message)
+        .with_color(color)
+        .with_as_embed(true);
+    let handle = send_message(*ctx, params).await?;
+    Ok(handle)
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
@@ -64,7 +103,7 @@ pub async fn send_reply(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
     as_embed: bool,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle, CrackedError> {
     let color = match message {
         CrackedMessage::CrackedError(_) => Colour::RED,
         _ => Colour::BLUE,
@@ -73,7 +112,8 @@ pub async fn send_reply(
         .with_color(color)
         .with_as_embed(as_embed);
     let handle = send_message(ctx, params).await?;
-    Ok(handle.into_message().await?)
+    //Ok(handle.into_message().await?)
+    Ok(handle)
 }
 
 /// Sends a regular reply response.

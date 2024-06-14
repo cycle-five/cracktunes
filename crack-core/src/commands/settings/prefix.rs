@@ -96,7 +96,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
             .map(|e| e.additional_prefixes.clone())
             .unwrap_or_default()
     };
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
@@ -105,6 +105,5 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
         true,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

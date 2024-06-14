@@ -1,7 +1,7 @@
 use crate::messaging::message::CrackedMessage;
 use crate::{utils::send_reply, Context, CrackedError, Error};
 use crack_bf::BrainfuckProgram;
-use serenity::all::Message;
+use poise::ReplyHandle;
 use std::io::Cursor;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -37,7 +37,7 @@ pub async fn bf_internal(
     ctx: Context<'_>,
     program: String,
     input: String,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle, CrackedError> {
     tracing::info!("program: {program}, input: {input}");
     let mut bf = BrainfuckProgram::new(program);
 

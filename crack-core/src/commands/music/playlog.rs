@@ -12,12 +12,11 @@ pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
 /// Get recently played tracks for the guild.
 #[cfg(not(tarpaulin_include))]
 pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let last_played = ctx.get_last_played().await?;
 
-    let msg = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
 
     Ok(())
 }
@@ -29,15 +28,15 @@ pub async fn myplaylog(ctx: Context<'_>) -> Result<(), Error> {
     myplaylog_(ctx).await
 }
 
+// use crate::commands::CrackedError;
 #[cfg(not(tarpaulin_include))]
 pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let user_id = ctx.author().id;
 
     let last_played = ctx.get_last_played_by_user(user_id).await?;
 
-    let msg = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_reply(ctx, CrackedMessage::PlayLog(last_played), true).await?;
 
     Ok(())
 }

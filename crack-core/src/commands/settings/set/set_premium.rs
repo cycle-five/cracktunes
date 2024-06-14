@@ -39,8 +39,7 @@ pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(),
     GuildEntity::update_premium(&pool, guild_id.get() as i64, premium)
         .await
         .unwrap();
-    let msg = send_reply(ctx, CrackedMessage::Premium(premium), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_reply(ctx, CrackedMessage::Premium(premium), true).await?;
     Ok(())
 }
 

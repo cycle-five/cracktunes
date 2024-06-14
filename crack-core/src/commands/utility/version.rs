@@ -18,7 +18,7 @@ pub async fn version_internal(ctx: Context<'_>) -> Result<(), Error> {
     let reply_with_embed = ctx.data().get_reply_with_embed(guild_id).await;
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| UNKNOWN);
     let hash = option_env!("GIT_HASH").unwrap_or_else(|| UNKNOWN);
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::Version {
             current: current.to_owned(),
@@ -27,6 +27,5 @@ pub async fn version_internal(ctx: Context<'_>) -> Result<(), Error> {
         reply_with_embed,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

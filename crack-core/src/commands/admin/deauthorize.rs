@@ -51,7 +51,7 @@ pub async fn deauthorize(
     tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     let mention = user.mention();
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::UserDeauthorized {
             id,
@@ -62,8 +62,6 @@ pub async fn deauthorize(
         true,
     )
     .await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

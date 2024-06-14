@@ -69,13 +69,24 @@ pub async fn create_skip_response(
                 },
                 true,
             )
+            .await?
+            .into_message()
             .await
+            .map_err(|e| e.into())
         },
         None => {
             if tracks_to_skip > 1 {
-                send_reply(ctx, CrackedMessage::SkipAll, true).await
+                send_reply(ctx, CrackedMessage::SkipAll, true)
+                    .await?
+                    .into_message()
+                    .await
+                    .map_err(|e| e.into())
             } else {
-                send_reply(ctx, CrackedMessage::Skip, true).await
+                send_reply(ctx, CrackedMessage::Skip, true)
+                    .await?
+                    .into_message()
+                    .await
+                    .map_err(|e| e.into())
             }
         },
     }

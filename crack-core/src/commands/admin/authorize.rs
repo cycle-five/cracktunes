@@ -58,7 +58,7 @@ pub async fn authorize(
         .await
         .map(|g| g.name)
         .unwrap_or_else(|_| UNKNOWN.to_string());
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::UserAuthorized {
             id,
@@ -69,6 +69,5 @@ pub async fn authorize(
         true,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }

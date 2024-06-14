@@ -1,8 +1,8 @@
-use serenity::all::{Message, Role, RoleId};
+use poise::ReplyHandle;
+use serenity::all::{Role, RoleId};
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context,
-    Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
 };
 
 /// Delete role.
@@ -32,7 +32,7 @@ pub async fn delete_by_id(
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,
     role_id: u64,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'_>, CrackedError> {
     let role_id = RoleId::new(role_id);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut role = guild_id

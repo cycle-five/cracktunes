@@ -1,7 +1,6 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context,
-    Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
 };
 use serenity::all::Channel;
 
@@ -33,13 +32,12 @@ pub async fn music_channel(
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::Other(format!("Music channel set to {}", channel_id)),
         true,
     )
     .await?;
-    data.add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }
@@ -62,13 +60,12 @@ pub async fn music_denied_user(
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
-    let msg = send_reply(
+    let _ = send_reply(
         ctx,
         CrackedMessage::Other(format!("Denied user set to {}", user)),
         true,
     )
     .await?;
-    data.add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

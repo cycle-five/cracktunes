@@ -63,6 +63,7 @@ pub enum CrackedMessage {
     PlaylistQueued,
     PlaylistQueuing(String),
     PlayLog(Vec<String>),
+    Pong,
     Premium(bool),
     PremiumPlug,
     RemoveMultiple,
@@ -249,6 +250,7 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
             },
             Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
+            Self::Pong => f.write_str("Pong"),
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]

@@ -36,7 +36,6 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
     };
 
-    let msg = send_reply(ctx, crack_msg, true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = send_reply(ctx, crack_msg, true).await?;
     Ok(())
 }

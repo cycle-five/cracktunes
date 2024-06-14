@@ -1,5 +1,7 @@
 use poise::CreateReply;
 
+use crate::messaging::message::CrackedMessage;
+use crate::utils::send_reply_embed;
 use crate::{Context, Error};
 
 /// Ping the bot
@@ -13,7 +15,7 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 pub async fn ping_internal(ctx: Context<'_>) -> Result<(), Error> {
     let start = std::time::Instant::now();
-    let msg = ctx.say("Pong!").await?;
+    let msg = send_reply_embed(&ctx, CrackedMessage::Pong).await?;
     let end = std::time::Instant::now();
     let _ = msg
         .edit(

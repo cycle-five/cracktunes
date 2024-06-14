@@ -49,13 +49,11 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
             true,
         )
         .await
-        .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
         .map(|_| ())
     } else {
         // Send success message
         send_reply(ctx, CrackedMessage::UserUnbanned { id, mention }, true)
             .await
-            .map(|m| ctx.data().add_msg_to_cache(guild_id, m))
             .map(|_| ())
     }
     .map_err(Into::into)

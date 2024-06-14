@@ -2,7 +2,7 @@ use poise::serenity_prelude::{Colour, Permissions};
 use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
 
-use crate::commands::{ConvertToEmptyResult, EmptyResult};
+use crate::commands::EmptyResult;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
@@ -56,7 +56,8 @@ pub async fn create(
         true,
     )
     .await
-    .convert()
+    .map(|_| ())
+    .map_err(Into::into)
 }
 
 /// Internal create role function.
