@@ -20,6 +20,7 @@ pub async fn password_verify(
 ) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_name = get_guild_name(ctx, guild_id).await;
     let welcome_settings = WelcomeSettings {
         channel_id: Some(channel.id().get()),
         message: Some(message.clone()),
@@ -29,7 +30,7 @@ pub async fn password_verify(
     let msg = set_welcome_settings(
         ctx.data().clone(),
         guild_id,
-        get_guild_name(ctx.serenity_context(), guild_id),
+        guild_name,
         prefix.to_string(),
         welcome_settings,
     )
@@ -50,6 +51,7 @@ pub async fn welcome_settings(
 ) -> Result<(), Error> {
     let prefix = ctx.data().bot_settings.get_prefix();
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_name = get_guild_name(ctx, guild_id).await;
     let welcome_settings = WelcomeSettings {
         channel_id: Some(channel.id().get()),
         message: Some(message.clone()),
@@ -59,7 +61,7 @@ pub async fn welcome_settings(
     let msg = set_welcome_settings(
         ctx.data().clone(),
         guild_id,
-        get_guild_name(ctx.serenity_context(), guild_id),
+        guild_name,
         prefix.to_string(),
         welcome_settings,
     )

@@ -1,9 +1,9 @@
+use crate::http_utils::CacheHttpExt;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
     commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
     db::Playlist,
-    guild::settings::DEFAULT_PREMIUM,
     messaging::{
         interface::{create_nav_btns, create_now_playing_embed, requesting_user_to_string},
         message::CrackedMessage,
@@ -19,7 +19,7 @@ use crate::{http_utils::SendMessageParams, messaging::interface::send_message};
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
-        CreateSelectMenuKind, CreateSelectMenuOption, EmbedField, GuildId, Interaction, UserId,
+        CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction, UserId,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -37,6 +37,7 @@ use poise::{
 };
 #[allow(deprecated)]
 use serenity::MessageInteraction;
+use songbird::Call;
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
@@ -50,29 +51,10 @@ use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use url::Url;
 
-use songbird::Call;
-
 pub const EMBED_PAGE_SIZE: usize = 6;
 
-pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
-    match interaction {
-        Interaction::Command(int) => int.guild_id,
-        Interaction::Component(int) => int.guild_id,
-        Interaction::Modal(int) => int.guild_id,
-        Interaction::Autocomplete(int) => int.guild_id,
-        Interaction::Ping(_) => None,
-        _ => None,
-    }
-}
-
-/// Convert a duration to a string.
-pub fn duration_to_string(duration: Duration) -> String {
-    let mut secs = duration.as_secs();
-    let hours = secs / 3600;
-    secs %= 3600;
-    let minutes = secs / 60;
-    secs %= 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<String> {
+    cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
@@ -104,17 +86,6 @@ pub async fn send_response_poise_text(
 
 /// Create an embed to send as a response.
 #[cfg(not(tarpaulin_include))]
-pub async fn create_response(
-    ctx: CrackContext<'_>,
-    _interaction: &CommandOrMessageInteraction,
-    message: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
-    send_embed_response_poise(ctx, embed).await
-}
-
-/// Create an embed to send as a response.
-#[cfg(not(tarpaulin_include))]
 pub async fn create_response_text(
     ctx: CrackContext<'_>,
     _interaction: &CommandOrMessageInteraction,
@@ -135,15 +106,6 @@ pub async fn edit_response_poise(
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
         None => send_embed_response_poise(ctx, embed).await,
     }
-}
-
-pub async fn edit_response(
-    http: &impl CacheHttp,
-    interaction: &CommandOrMessageInteraction,
-    message: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
-    edit_embed_response(http, interaction, embed).await
 }
 
 pub async fn edit_response_text(
@@ -194,20 +156,6 @@ pub async fn send_now_playing(
         .send_message(Arc::clone(&http), msg)
         .await
         .map_err(|e| e.into())
-}
-
-async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
-    tracing::warn!("num elems: {:?}", elems.len());
-    let mut fields = vec![];
-    // let tmp = "".to_string();
-    for elem in elems.into_iter() {
-        let title = elem.title.unwrap_or_default();
-        let link = elem.source_url.unwrap_or_default();
-        let duration = elem.duration.unwrap_or_default();
-        let elem = format!("({}) - {}", link, duration_to_string(duration));
-        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
-    }
-    fields
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -296,36 +244,6 @@ pub async fn yt_search_select(
     res
 }
 
-/// Send the search results to the user.
-pub async fn send_search_response(
-    ctx: CrackContext<'_>,
-    guild_id: GuildId,
-    user_id: UserId,
-    query: String,
-    res: Vec<AuxMetadata>,
-) -> Result<Message, CrackedError> {
-    use poise::serenity_prelude::Mentionable;
-    let author = ctx.author_member().await.unwrap();
-    let name = if DEFAULT_PREMIUM {
-        author.mention().to_string()
-    } else {
-        author.display_name().to_string()
-    };
-
-    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let fields = build_embed_fields(res).await;
-    let author = CreateEmbedAuthor::new(name);
-    let title = format!("Search results for: {}", query);
-    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
-    let embed = CreateEmbed::new()
-        .author(author)
-        .title(title)
-        .footer(footer)
-        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
-
-    send_embed_response_poise(ctx, embed).await
-}
-
 /// Sends a reply response with an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise(
@@ -335,16 +253,16 @@ pub async fn send_embed_response_poise(
     let is_prefix = crate::is_prefix(ctx);
     let is_ephemeral = !is_prefix;
     let is_reply = true;
-    ctx.send(
-        CreateReply::default()
-            .embed(embed)
-            .ephemeral(is_ephemeral)
-            .reply(is_reply),
-    )
-    .await?
-    .into_message()
-    .await
-    .map_err(Into::into)
+    let params = SendMessageParams::default()
+        .with_ephemeral(is_ephemeral)
+        .with_embed(embed)
+        .with_reply(is_reply);
+
+    send_message(ctx, params)
+        .await?
+        .into_message()
+        .await
+        .map_err(Into::into)
 }
 
 /// Sends a regular reply response.
@@ -454,55 +372,6 @@ pub async fn create_response_interaction(
         _ => unimplemented!(),
     }
 }
-
-// /// Defers a response to an interaction.
-// /// TODO: use a macro to reduce code here?
-// pub async fn defer_response_interaction(
-//     http: impl CacheHttp,
-//     interaction: &Interaction,
-//     embed: CreateEmbed,
-// ) -> Result<(), CrackedError> {
-//     match interaction {
-//         Interaction::Command(int) => int
-//             .create_response(
-//                 http,
-//                 CreateInteractionResponse::Message(
-//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
-//                 ),
-//             )
-//             .await
-//             .map_err(Into::into),
-//         Interaction::Component(int) => int
-//             .create_response(
-//                 http,
-//                 CreateInteractionResponse::Message(
-//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
-//                 ),
-//             )
-//             .await
-//             .map_err(Into::into),
-//         Interaction::Modal(int) => int
-//             .create_response(
-//                 http,
-//                 CreateInteractionResponse::Message(
-//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
-//                 ),
-//             )
-//             .await
-//             .map_err(Into::into),
-//         Interaction::Autocomplete(int) => int
-//             .create_response(
-//                 http,
-//                 CreateInteractionResponse::Message(
-//                     CreateInteractionResponseMessage::new().embed(embed.clone()),
-//                 ),
-//             )
-//             .await
-//             .map_err(Into::into),
-//         Interaction::Ping(_int) => Ok(()),
-//         _ => todo!(),
-//     }
-// }
 
 /// Edit the embed response of the given message.
 #[cfg(not(tarpaulin_include))]
@@ -1056,9 +925,25 @@ pub fn count_command(command: &str, is_prefix: bool) {
     );
 }
 
-pub fn get_guild_name(ctx: &SerenityContext, guild_id: serenity::GuildId) -> Option<String> {
-    let guild = ctx.cache.guild(guild_id)?;
-    Some(guild.name.clone())
+pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
+    match interaction {
+        Interaction::Command(int) => int.guild_id,
+        Interaction::Component(int) => int.guild_id,
+        Interaction::Modal(int) => int.guild_id,
+        Interaction::Autocomplete(int) => int.guild_id,
+        Interaction::Ping(_) => None,
+        _ => None,
+    }
+}
+
+/// Convert a duration to a string.
+pub fn duration_to_string(duration: Duration) -> String {
+    let mut secs = duration.as_secs();
+    let hours = secs / 3600;
+    secs %= 3600;
+    let minutes = secs / 60;
+    secs %= 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ pub struct SendMessageParams {
     pub color: Color,
     pub cache_msg: bool,
     pub msg: CrackedMessage,
+    pub embed: Option<CreateEmbed>,
 }
 
 impl Default for SendMessageParams {
@@ -31,6 +32,7 @@ impl Default for SendMessageParams {
             color: Color::BLUE,
             cache_msg: true,
             msg: CrackedMessage::Other(String::new()),
+            embed: None,
         }
     }
 }
@@ -70,6 +72,13 @@ impl SendMessageParams {
     pub fn with_cache_msg(self, cache_msg: bool) -> Self {
         Self { cache_msg, ..self }
     }
+
+    pub fn with_embed(self, embed: CreateEmbed) -> Self {
+        Self {
+            embed: Some(embed),
+            ..self
+        }
+    }
 }
 
 /// Extension trait for CacheHttp to add some utility functions.
@@ -86,6 +95,10 @@ pub trait CacheHttpExt {
         &self,
         params: SendMessageParams,
     ) -> impl Future<Output = Result<serenity::model::channel::Message, CrackedError>> + Send;
+    fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
 }
 
 /// Implement the CacheHttpExt trait for any type that implements CacheHttp.
@@ -129,12 +142,15 @@ impl<T: CacheHttp> CacheHttpExt for T {
         };
         channel.send_message(self, msg).await.map_err(Into::into)
     }
+
+    async fn guild_name_from_guild_id(&self, guild_id: GuildId) -> Result<String, CrackedError> {
+        guild_name_from_guild_id(self, guild_id).await
+    }
 }
 
 /// This is a hack to get around the fact that we can't use async in statics. Is it?
 static CLIENT: Lazy<Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
-    tracing::info!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()

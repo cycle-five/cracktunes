@@ -4,7 +4,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_response_poise;
 use crate::{Context, Error};
 
-/// Get a playlist
+/// Queue a playlist on the bot.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, rename = "play")]
 pub async fn play_playlist(

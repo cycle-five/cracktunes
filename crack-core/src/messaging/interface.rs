@@ -19,11 +19,14 @@ use crate::{
 /// to communicate with the user.
 use lyric_finder::LyricResult;
 use poise::{CreateReply, ReplyHandle};
+use serenity::all::EmbedField;
+use serenity::all::GuildId;
 use serenity::{
     all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
     all::{CacheHttp, ChannelId, Mentionable, UserId},
     builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
 };
+use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::fmt::Write;
 
@@ -369,9 +372,11 @@ pub async fn send_message(
     // .to_string();
     let text = send_params.msg.to_string();
     let reply = if as_embed {
-        let embed = CreateEmbed::default()
-            .description(text)
-            .color(send_params.color);
+        let embed = send_params.embed.unwrap_or(
+            CreateEmbed::default()
+                .description(text)
+                .color(send_params.color),
+        );
         CreateReply::default().embed(embed)
     } else {
         let c = colored::Color::TrueColor {
@@ -392,6 +397,48 @@ pub async fn send_message(
     Ok(handle)
 }
 
+use crate::utils::duration_to_string;
+async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
+    tracing::warn!("num elems: {:?}", elems.len());
+    let mut fields = vec![];
+    // let tmp = "".to_string();
+    for elem in elems.into_iter() {
+        let title = elem.title.unwrap_or_default();
+        let link = elem.source_url.unwrap_or_default();
+        let duration = elem.duration.unwrap_or_default();
+        let elem = format!("({}) - {}", link, duration_to_string(duration));
+        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
+    }
+    fields
+}
+
+/// Send the search results to the user.
+pub async fn create_search_response(
+    ctx: CrackContext<'_>,
+    guild_id: GuildId,
+    user_id: UserId,
+    query: String,
+    res: Vec<AuxMetadata>,
+) -> Result<Message, CrackedError> {
+    let author = ctx
+        .author_member()
+        .await
+        .ok_or(CrackedError::AuthorNotFound)?;
+    let name = author.mention().to_string();
+
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let fields = build_embed_fields(res).await;
+    let author = CreateEmbedAuthor::new(name);
+    let title = format!("Search results for: {}", query);
+    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let embed = CreateEmbed::new()
+        .author(author)
+        .title(title)
+        .footer(footer)
+        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
+
+    send_embed_response_poise(ctx, embed).await
+}
 #[cfg(test)]
 mod test {
     #[test]

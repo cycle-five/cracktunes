@@ -51,19 +51,13 @@ typemap_rev = "0.3.0"
 either = "1.12.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 once_cell = "1.19.0"
-reqwest = { version = "0.12.4", default-features = false, features = [
-    "blocking",
-    "json",
-    "multipart",
-    "rustls-tls",
-    "cookies",
-] }
 strsim = "0.11.1"
 itertools = "0.13.0"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
+reqwest = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }
@@ -94,13 +88,4 @@ ctor = "0.2.8"
 mockall = "0.12.1"
 tungstenite = "0.23.0"
 async-tungstenite = "0.26.0"
-sqlx = { version = "0.7.4", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "macros",
-    "postgres",
-    "chrono",
-    "time",
-    "migrate",
-    "json",
-] }
+sqlx = { workspace = true }

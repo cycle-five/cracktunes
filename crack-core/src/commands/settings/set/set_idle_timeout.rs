@@ -21,6 +21,7 @@ pub async fn idle_timeout(
     let data = ctx.data();
 
     let timeout = timeout * 60;
+    let name = get_guild_name(ctx.serenity_context(), guild_id).await;
 
     let _res = data
         .guild_settings_map
@@ -29,13 +30,9 @@ pub async fn idle_timeout(
         .entry(guild_id)
         .and_modify(|e| e.timeout = timeout)
         .or_insert_with(|| {
-            GuildSettings::new(
-                guild_id,
-                Some(&ctx.data().bot_settings.get_prefix()),
-                get_guild_name(ctx.serenity_context(), guild_id),
-            )
-            .with_timeout(timeout)
-            .clone()
+            GuildSettings::new(guild_id, Some(&ctx.data().bot_settings.get_prefix()), name)
+                .with_timeout(timeout)
+                .clone()
         })
         .welcome_settings
         .clone();

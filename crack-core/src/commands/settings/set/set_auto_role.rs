@@ -9,6 +9,7 @@ pub async fn auto_role(
     #[description = "The role to assign to new users"] auto_role_id_str: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let name = get_guild_name(ctx.serenity_context(), guild_id).await;
     let auto_role_id = match auto_role_id_str.parse::<u64>() {
         Ok(x) => x,
         Err(e) => {
@@ -27,12 +28,8 @@ pub async fn auto_role(
             e.set_auto_role(Some(auto_role_id));
         })
         .or_insert_with(|| {
-            GuildSettings::new(
-                guild_id,
-                Some(&ctx.data().bot_settings.get_prefix()),
-                get_guild_name(ctx.serenity_context(), guild_id),
-            )
-            .with_auto_role(Some(auto_role_id))
+            GuildSettings::new(guild_id, Some(&ctx.data().bot_settings.get_prefix()), name)
+                .with_auto_role(Some(auto_role_id))
         })
         .welcome_settings
         .clone();

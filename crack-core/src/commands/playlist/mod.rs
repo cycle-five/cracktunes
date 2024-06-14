@@ -43,7 +43,7 @@ use crate::{
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     send_response_poise(
         ctx,
-        CrackedMessage::Other("You found the playlist command".to_string()),
+        CrackedMessage::Other("You found the playlist command! Try /playlist help.".to_string()),
         true,
     )
     .await?;
@@ -51,14 +51,15 @@ pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn playlist_commands() -> [crate::Command; 7] {
-    [
-        addto(),
-        create(),
-        delete(),
-        get(),
-        list(),
-        play(),
-        loadspotify(),
-    ]
+pub fn playlist_commands() -> [crate::Command; 1] {
+    [playlist()]
+    // [
+    //     addto(),
+    //     create(),
+    //     delete(),
+    //     get(),
+    //     list(),
+    //     play(),
+    //     loadspotify(),
+    // ]
 }

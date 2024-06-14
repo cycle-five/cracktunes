@@ -25,7 +25,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
                 .or_insert(GuildSettings::new(
                     guild_id,
                     Some(ctx.prefix()),
-                    get_guild_name(ctx.serenity_context(), guild_id),
+                    get_guild_name(ctx.serenity_context(), guild_id).await,
                 ));
             settings.get_all_log_channel()
         };
@@ -56,16 +56,13 @@ pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or(crate::errors::CrackedError::NoGuildId)?;
+    let name = get_guild_name(ctx.serenity_context(), guild_id).await;
     {
         let join_leave_log_channel = {
             let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
             let settings = guild_settings_map
                 .entry(guild_id)
-                .or_insert(GuildSettings::new(
-                    guild_id,
-                    Some(ctx.prefix()),
-                    get_guild_name(ctx.serenity_context(), guild_id),
-                ));
+                .or_insert(GuildSettings::new(guild_id, Some(ctx.prefix()), name));
             settings.get_all_log_channel()
         };
 

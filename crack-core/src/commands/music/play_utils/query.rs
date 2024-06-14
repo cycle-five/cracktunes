@@ -1,6 +1,7 @@
 use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
+use crate::messaging::interface::create_search_response;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -18,7 +19,7 @@ use crate::{
             video_info_to_source_and_metadata,
         },
     },
-    utils::{edit_response_poise, send_search_response, yt_search_select},
+    utils::{edit_response_poise, yt_search_select},
     Context, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
@@ -393,7 +394,7 @@ impl QueryType {
                     .search(None)
                     .await?;
                 let user_id = ctx.author().id;
-                send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
+                create_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {

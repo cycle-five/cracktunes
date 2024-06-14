@@ -66,7 +66,7 @@ pub async fn volume(
                     None => 0.1,
                 };
                 let prefix = Some(&prefix).map(|s| s.as_str());
-                let name = get_guild_name(ctx.serenity_context(), guild_id);
+                let name = get_guild_name(ctx.serenity_context(), guild_id).await;
                 ctx.data()
                     .get_or_create_guild_settings(guild_id, name, prefix)
                     .await;
@@ -94,6 +94,7 @@ pub async fn volume(
             },
         };
 
+        let name = get_guild_name(ctx.serenity_context(), guild_id).await;
         let new_vol = (to_set.unwrap() as f32) / 100.0;
         let old_vol = {
             let mut guild_settings_guard = ctx.data().guild_settings_map.write().await;
@@ -103,13 +104,9 @@ pub async fn volume(
                     guild_settings.set_volume(new_vol);
                 })
                 .or_insert_with(|| {
-                    let guild_settings = GuildSettings::new(
-                        guild_id,
-                        Some(&prefix),
-                        get_guild_name(ctx.serenity_context(), guild_id),
-                    )
-                    .set_volume(new_vol)
-                    .clone();
+                    let guild_settings = GuildSettings::new(guild_id, Some(&prefix), name)
+                        .set_volume(new_vol)
+                        .clone();
 
                     tracing::warn!(
                         "guild_settings: {:?}",

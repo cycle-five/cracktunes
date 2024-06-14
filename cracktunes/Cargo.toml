@@ -56,12 +56,4 @@ prometheus = { version = "0.13.3", features = ["process"], optional = true }
 # This is needed for the tests to run in the IDE
 
 [dev-dependencies]
-sqlx = { version = "0.7.4", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "macros",
-    "postgres",
-    "chrono",
-    "migrate",
-    "json",
-] }
+sqlx = { workspace = true }

@@ -161,6 +161,58 @@ pub async fn poise_framework(
     // FIXME: Is this the proper way to allocate this memory?
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
+    let commands = vec![
+        commands::autopause(),
+        commands::autoplay(),
+        commands::clear(),
+        commands::clean(),
+        commands::grab(),
+        commands::invite(),
+        commands::leave(),
+        commands::lyrics(),
+        commands::nowplaying(),
+        commands::optplay(),
+        commands::pause(),
+        commands::ping(),
+        commands::play(),
+        commands::playnext(),
+        commands::playlog(),
+        commands::queue(),
+        commands::remove(),
+        commands::resume(),
+        commands::repeat(),
+        commands::search(),
+        //commands::servers(),
+        commands::seek(),
+        commands::skip(),
+        commands::stop(),
+        commands::shuffle(),
+        commands::summon(),
+        commands::version(),
+        commands::volume(),
+        commands::music::vote(),
+        #[cfg(feature = "crack-bf")]
+        commands::bf(),
+        #[cfg(feature = "crack-osint")]
+        commands::osint(),
+        // all playlist commands
+        // all gambling commands
+        // commands::coinflip(),
+        // commands::rolldice(),
+        // commands::boop(),
+        // all ai commands
+        #[cfg(feature = "crack-gpt")]
+        commands::chat(),
+        // all settings commands
+        commands::settings(),
+        // all admin commands
+        commands::admin(),
+    ]
+    .into_iter()
+    .chain(commands::help::commands())
+    .chain(commands::playlist_commands())
+    .collect::<Vec<_>>();
+
     let options = poise::FrameworkOptions::<_, Error> {
         // #[cfg(feature = "set_owners_from_config")]
         // owners: config
@@ -170,57 +222,7 @@ pub async fn poise_framework(
         //     .iter()
         //     .map(|id| UserId::new(*id))
         //     .collect(),
-        commands: vec![
-            commands::autopause(),
-            commands::autoplay(),
-            commands::clear(),
-            commands::clean(),
-            commands::grab(),
-            commands::invite(),
-            commands::leave(),
-            commands::lyrics(),
-            commands::nowplaying(),
-            commands::optplay(),
-            commands::pause(),
-            commands::ping(),
-            commands::play(),
-            commands::playnext(),
-            commands::playlog(),
-            commands::queue(),
-            commands::remove(),
-            commands::resume(),
-            commands::repeat(),
-            commands::search(),
-            //commands::servers(),
-            commands::seek(),
-            commands::skip(),
-            commands::stop(),
-            commands::shuffle(),
-            commands::summon(),
-            commands::version(),
-            commands::volume(),
-            commands::music::vote(),
-            #[cfg(feature = "crack-bf")]
-            commands::bf(),
-            #[cfg(feature = "crack-osint")]
-            commands::osint(),
-            // all playlist commands
-            // all gambling commands
-            // commands::coinflip(),
-            // commands::rolldice(),
-            // commands::boop(),
-            // all ai commands
-            #[cfg(feature = "crack-gpt")]
-            commands::chat(),
-            // all settings commands
-            commands::settings(),
-            // all admin commands
-            commands::admin(),
-        ]
-        .into_iter()
-        .chain(commands::help::commands())
-        .chain(commands::playlist_commands())
-        .collect(),
+        commands,
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),

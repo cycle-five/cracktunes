@@ -21,7 +21,7 @@ pub async fn idle_timeout(ctx: Context<'_>) -> Result<(), Error> {
             .or_insert(GuildSettings::new(
                 guild_id,
                 Some(ctx.prefix()),
-                get_guild_name(ctx.serenity_context(), guild_id),
+                get_guild_name(ctx.serenity_context(), guild_id).await,
             ));
         settings.timeout
     };
