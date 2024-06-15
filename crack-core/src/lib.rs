@@ -2,7 +2,7 @@
 use crate::handlers::event_log::LogEntry;
 use chrono::{DateTime, Utc};
 use commands::play_utils::TrackReadyData;
-use commands::MyAuxMetadata;
+use commands::{CrackedMessage, MyAuxMetadata};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use db::worker_pool::MetadataMsg;
@@ -15,7 +15,7 @@ use guild::settings::{
     DEFAULT_DB_URL, DEFAULT_LOG_PREFIX, DEFAULT_PREFIX, DEFAULT_VIDEO_STATUS_POLL_INTERVAL,
     DEFAULT_VOLUME_LEVEL,
 };
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, ReplyHandle};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, Message, UserId};
 use songbird::Call;
@@ -422,24 +422,6 @@ impl DataInner {
     }
 }
 
-// /// General log for events that the bot reveices from Discord.
-// #[derive(Clone, Debug)]
-// pub struct EventLog(pub Arc<SyncMutex<File>>);
-
-// impl std::ops::Deref for EventLog {
-//     type Target = Arc<SyncMutex<File>>;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl std::ops::DerefMut for EventLog {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.0
-//     }
-// }
-
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
 pub struct EventLogAsync(pub ArcTMutex<File>);
@@ -475,24 +457,6 @@ impl Default for EventLogAsync {
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))
     }
 }
-
-// impl Default for EventLog {
-//     fn default() -> Self {
-//         let log_path = format!("{}/events.log", get_log_prefix());
-//         let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
-//         let log_file = match File::create(log_path) {
-//             Ok(f) => f,
-//             Err(e) => {
-//                 eprintln!("Error creating log file: {}", e);
-//                 // FIXME: Maybe use io::null()?
-//                 // I went down this path with sink and it was a mistake.
-//                 File::create("/dev/null")
-//                     .expect("Should be able to have a file object to write too.")
-//             },
-//         };
-//         Self(Arc::new(Mutex::new(log_file)))
-//     }
-// }
 
 impl EventLogAsync {
     /// Create a new EventLog, calls default
@@ -549,59 +513,6 @@ impl EventLogAsync {
             .map_err(|e| CrackedError::IO(e).into())
     }
 }
-
-// /// impl of EventLog
-// impl EventLog {
-//     /// Create a new EventLog, calls default
-//     pub fn new() -> Self {
-//         Self::default()
-//     }
-
-//     /// Write an object to the log file without a note.
-//     pub fn write_log_obj<T: serde::Serialize>(&self, name: &str, obj: &T) -> Result<(), Error> {
-//         self.write_log_obj_note(name, None, obj)
-//     }
-
-//     /// Write an object to the log file with a note.
-//     pub fn write_log_obj_note<T: serde::Serialize>(
-//         &self,
-//         name: &str,
-//         notes: Option<&str>,
-//         obj: &T,
-//     ) -> Result<(), Error> {
-//         let entry = LogEntry {
-//             name: name.to_string(),
-//             notes: notes.unwrap_or("").to_string(),
-//             event: obj,
-//         };
-//         let mut buf = serde_json::to_vec(&entry).unwrap();
-//         let _ = buf.write(&[b'\n']);
-//         let buf: &[u8] = buf.as_slice();
-//         self.lock()
-//             .unwrap()
-//             .write_all(buf)
-//             .map_err(|e| CrackedError::IO(e).into())
-//     }
-
-//     /// Write an object to the log file.
-//     pub fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
-//         let mut buf = serde_json::to_vec(obj).unwrap();
-//         let _ = buf.write(&[b'\n']);
-//         let buf: &[u8] = buf.as_slice();
-//         self.lock()
-//             .unwrap()
-//             .write_all(buf)
-//             .map_err(|e| CrackedError::IO(e).into())
-//     }
-
-//     /// Write a buffer to the log file.
-//     pub fn write(self, buf: &[u8]) -> Result<(), Error> {
-//         self.lock()
-//             .unwrap()
-//             .write_all(buf)
-//             .map_err(|e| CrackedError::IO(e).into())
-//     }
-// }
 
 impl Default for DataInner {
     fn default() -> Self {
@@ -829,6 +740,12 @@ pub trait ContextExt {
     ) -> impl Future<Output = Option<Message>>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
     fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+
+    // ----- Send message utility functions ------ //
+    fn send_found_command(
+        &self,
+        command: String,
+    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -927,6 +844,13 @@ impl ContextExt for Context<'_> {
         let serenity_channel_id = ChannelId::new(channel_id.0.into());
 
         Some(serenity_channel_id)
+    }
+
+    // ----- Send message utility functions ------ //
+
+    /// Sends a message notifying the use they found a command.
+    async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
     }
 }
 

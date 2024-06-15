@@ -7,7 +7,14 @@ use crate::{
 
 /// Delete role.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    hide_in_help = true,
+    ephemeral
+)]
 pub async fn delete(
     ctx: Context<'_>,
     #[description = "Role to delete."] mut role: Role,
@@ -17,7 +24,14 @@ pub async fn delete(
 
 /// Delete role by id
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    hide_in_help = true,
+    ephemeral
+)]
 pub async fn delete_by_id(
     ctx: Context<'_>,
     #[description = "RoleId to delete."] role_id: RoleId,

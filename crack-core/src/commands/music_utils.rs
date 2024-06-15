@@ -3,7 +3,6 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply_embed;
-use crate::ContextExt as _;
 use crate::CrackedError;
 use crate::{Context, Error};
 use poise::serenity_prelude::Mentionable;
@@ -73,7 +72,6 @@ pub async fn set_global_handlers(
             guild_id,
             cache: ctx.serenity_context().cache.clone(),
             http: ctx.serenity_context().http.clone(),
-            // cache_http: Arc::new(ctx.serenity_context()),
             call: call.clone(),
             data: ctx.data().clone(),
         },

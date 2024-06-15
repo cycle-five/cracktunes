@@ -191,11 +191,11 @@ impl VoiceEventHandler for Receiver {
 /// These are kept per guild.
 pub async fn register_voice_handlers(
     buffer: Arc<RwLock<Vec<u8>>>,
-    handler_lock: Arc<tokio::sync::Mutex<Call>>,
+    call: Arc<tokio::sync::Mutex<Call>>,
     ctx: SerenityContext,
 ) -> Result<(), CrackedError> {
     // NOTE: this skips listening for the actual connection result.
-    let mut handler = handler_lock.lock().await;
+    let mut handler = call.lock().await;
 
     // allocating memory, need to drop this when y???
     handler.add_global_event(

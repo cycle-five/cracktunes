@@ -1,5 +1,5 @@
-use crate::Context;
-use crate::Error;
+use crate::commands::sub_help as help;
+use crate::{Context, Error};
 use serenity::all::{GuildId, Member, Role, RoleId, UserId};
 
 /// Assign role.
@@ -9,6 +9,7 @@ use serenity::all::{GuildId, Member, Role, RoleId, UserId};
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
+    subcommands("help"),
     hide_in_help = true,
     ephemeral
 )]
@@ -32,6 +33,7 @@ pub async fn assign(
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
+    subcommands("help"),
     hide_in_help = true,
     ephemeral
 )]
