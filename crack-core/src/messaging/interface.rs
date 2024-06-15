@@ -32,6 +32,14 @@ use songbird::tracks::TrackHandle;
 use std::fmt::Write;
 use std::time::Duration;
 
+//###########################################################################//
+// Methods to create embeds for specific messages from services or common
+// commands.
+//###########################################################################//
+//
+
+// ------ Logging output ------ //
+
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
 pub async fn build_log_embed(
@@ -103,6 +111,8 @@ pub async fn send_log_embed(
         .await
         .map_err(Into::into)
 }
+
+// ------ Queue Display / Interaction ------ //
 
 /// Converts a user id to a string, with special handling for autoplay.
 pub fn requesting_user_to_string(user_id: UserId) -> String {
@@ -193,6 +203,10 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
         )))
 }
 
+// ------ NOW PLAYING ------ //
+// This is probably the message that the use sees //
+// the most from the bot.                         //
+
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 pub fn create_now_playing_embed_metadata(
     requesting_user: Option<UserId>,
@@ -261,6 +275,8 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     create_now_playing_embed_metadata(requesting_user, duration, metadata)
 }
 
+// ---------------------- Lyricsd ---------------------------- //
+
 /// Creates a lyrics embed for the given track.
 pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
     CreateEmbed::default()
@@ -268,19 +284,6 @@ pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: Stri
         .title(track)
         .description(lyric)
 }
-
-/// Creates a search results reply.
-pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateReply {
-    let mut reply = CreateReply::default()
-        .reply(true)
-        .content("Search results:");
-    for result in results {
-        reply.embeds.push(result);
-    }
-
-    reply.clone()
-}
-
 /// Creates a paging embed for the lyrics of a song.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
@@ -312,6 +315,8 @@ pub async fn create_lyrics_embed(
     .await
 }
 
+// ---------------------- Navigation Buttons ---------------------------- //
+
 /// Builds a single navigation button for the queue.
 pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
     CreateButton::new(label.to_string().to_ascii_lowercase())
@@ -332,6 +337,19 @@ pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
+// -------- Search Results -------- //
+
+/// Creates a search results reply.
+pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateReply {
+    let mut reply = CreateReply::default()
+        .reply(true)
+        .content("Search results:");
+    for result in results {
+        reply.embeds.push(result);
+    }
+
+    reply.clone()
+}
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().unwrap();
@@ -363,6 +381,36 @@ pub async fn send_search_message(ctx: CrackContext<'_>) -> CrackedResult<Message
     Ok(msg)
 }
 
+/// Send the search results to the user.
+pub async fn create_search_response(
+    ctx: CrackContext<'_>,
+    guild_id: GuildId,
+    user_id: UserId,
+    query: String,
+    res: Vec<AuxMetadata>,
+) -> Result<Message, CrackedError> {
+    let author = ctx
+        .author_member()
+        .await
+        .ok_or(CrackedError::AuthorNotFound)?;
+    let name = author.mention().to_string();
+
+    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let fields = build_embed_fields(res).await;
+    let author = CreateEmbedAuthor::new(name);
+    let title = format!("Search results for: {}", query);
+    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let embed = CreateEmbed::new()
+        .author(author)
+        .title(title)
+        .footer(footer)
+        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
+
+    send_embed_response_poise(ctx, embed).await
+}
+
+// ---------------------- Joining Channel ---------------------------- //
+
 use colored::Colorize;
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel(
@@ -376,6 +424,8 @@ pub async fn send_joining_channel(
 
     send_message(ctx, params).await.map_err(Into::into)
 }
+
+// ---------------------- Most Generic Message Function ---------------//
 
 pub async fn send_message(
     ctx: CrackContext<'_>,
@@ -416,8 +466,8 @@ pub async fn send_message(
     Ok(handle)
 }
 
-use crate::utils::duration_to_string;
 async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
+    use crate::utils::duration_to_string;
     tracing::warn!("num elems: {:?}", elems.len());
     let mut fields = vec![];
     // let tmp = "".to_string();
@@ -431,33 +481,6 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
     fields
 }
 
-/// Send the search results to the user.
-pub async fn create_search_response(
-    ctx: CrackContext<'_>,
-    guild_id: GuildId,
-    user_id: UserId,
-    query: String,
-    res: Vec<AuxMetadata>,
-) -> Result<Message, CrackedError> {
-    let author = ctx
-        .author_member()
-        .await
-        .ok_or(CrackedError::AuthorNotFound)?;
-    let name = author.mention().to_string();
-
-    let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let fields = build_embed_fields(res).await;
-    let author = CreateEmbedAuthor::new(name);
-    let title = format!("Search results for: {}", query);
-    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
-    let embed = CreateEmbed::new()
-        .author(author)
-        .title(title)
-        .footer(footer)
-        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
-
-    send_embed_response_poise(ctx, embed).await
-}
 #[cfg(test)]
 mod test {
     #[test]

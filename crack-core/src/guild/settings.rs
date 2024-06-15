@@ -53,95 +53,6 @@ pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
 }
 
-/// Settings for a command channel.
-// #[derive(Deserialize, Serialize, Debug, Clone, Default)]
-// pub struct CommandChannelSettings {
-//     pub id: ChannelId,
-//     pub perms: GenericPermissionSettings,
-// }
-// use crate::guild::permissions::{CommandChannel, GenericPermissionSettings};
-// /// Command channels to restrict where and who can use what commands
-// #[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, sqlx::FromRow)]
-// pub struct CommandChannels {
-//     pub music_channel: Option<CommandChannel>,
-// }
-
-// impl CommandChannels {
-//     pub fn to_btree_map(&self) -> BTreeMap<String, Vec<(u64, GenericPermissionSettings)>> {
-//         self.music_channel
-//             .as_ref()
-//             .map(|x| {
-//                 (
-//                     "music".to_string(),
-//                     vec![(x.channel_id.get(), x.permission_settings.clone())],
-//                 )
-//             })
-//             .into_iter()
-//             .collect::<BTreeMap<_, _>>()
-//     }
-
-//     pub fn to_hash_map(&self) -> HashMap<String, Vec<(u64, GenericPermissionSettings)>> {
-//         self.music_channel
-//             .as_ref()
-//             .map(|x| {
-//                 (
-//                     "music".to_string(),
-//                     vec![(x.channel_id.get(), x.permission_settings.clone())],
-//                 )
-//             })
-//             .into_iter()
-//             .collect::<HashMap<_, _>>()
-//     }
-//     /// Set the music channel, mutating.
-//     pub fn set_music_channel(
-//         &mut self,
-//         channel_id: ChannelId,
-//         guild_id: GuildId,
-//         perms: GenericPermissionSettings,
-//     ) -> &mut Self {
-//         self.music_channel = Some(CommandChannel {
-//             command: "music".to_string(),
-//             channel_id,
-//             guild_id,
-//             permission_settings: perms,
-//         });
-//         self
-//     }
-
-//     /// Set the music channel, returning a new CommandChannels.
-//     pub fn with_music_channel(
-//         self,
-//         channel_id: ChannelId,
-//         guild_id: GuildId,
-//         perms: GenericPermissionSettings,
-//     ) -> Self {
-//         let music_channel = Some(CommandChannel {
-//             command: "music".to_string(),
-//             channel_id,
-//             guild_id,
-//             permission_settings: perms,
-//         });
-//         Self { music_channel }
-//     }
-
-//     /// Insert the command channel into the database.
-//     pub async fn save(&self, pool: &PgPool) -> Option<CommandChannel> {
-//         match self.music_channel {
-//             Some(ref c) => c.insert_command_channel(pool).await.ok(),
-//             None => None,
-//         }
-//     }
-
-//     pub async fn load(guild_id: GuildId, pool: &PgPool) -> Result<Self, CrackedError> {
-//         let music_channels =
-//             CommandChannel::get_command_channels(pool, "music".to_string(), guild_id).await;
-
-//         let music_channel = music_channels.first().cloned();
-
-//         Ok(Self { music_channel })
-//     }
-// }
-
 #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
@@ -732,7 +643,7 @@ impl GuildSettings {
     /// Set the volume level without mutating.
     pub fn with_volume(self, volume: f32) -> Self {
         Self {
-            old_volume: self.volume,
+            old_volume: volume,
             volume,
             ..self
         }
@@ -740,7 +651,7 @@ impl GuildSettings {
 
     /// Set the volume level with mutating.
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
-        self.old_volume = self.volume;
+        self.old_volume = volume;
         self.volume = volume;
         self
     }
@@ -970,12 +881,13 @@ impl GuildSettings {
             FullEvent::PresenceUpdate { .. } => {
                 None
                 //.or(log_settings.get_all_log_channel()),
-            }
-            | FullEvent::GuildMemberAddition { .. }
-            | FullEvent::GuildMemberRemoval { .. } => {
-                log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
-            }
-            | FullEvent::GuildBanRemoval { .. }
+            },
+            FullEvent::GuildMemberAddition { .. } | FullEvent::GuildMemberRemoval { .. } => {
+                log_settings
+                    .get_join_leave_log_channel()
+                    .or(log_settings.get_all_log_channel())
+            },
+            FullEvent::GuildBanRemoval { .. }
             | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildScheduledEventCreate { .. }
             | FullEvent::GuildScheduledEventUpdate { .. }
@@ -992,7 +904,6 @@ impl GuildSettings {
             | FullEvent::GuildRoleCreate { .. }
             | FullEvent::GuildRoleDelete { .. }
             | FullEvent::GuildRoleUpdate { .. }
-            //| FullEvent::GuildUnavailable { .. }
             | FullEvent::GuildUpdate { .. } => log_settings
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
@@ -1035,7 +946,6 @@ impl GuildSettings {
             | FullEvent::ThreadMembersUpdate { .. }
             | FullEvent::ThreadUpdate { .. }
             | FullEvent::TypingStart { .. }
-            // | FullEvent::Unknown { .. }
             | FullEvent::UserUpdate { .. }
             | FullEvent::VoiceServerUpdate { .. }
             | FullEvent::VoiceStateUpdate { .. } => {
@@ -1044,7 +954,9 @@ impl GuildSettings {
                 //     format!("Event: {:?}", event).as_str().to_string().white()
                 // );
                 log_settings.get_all_log_channel()
-            }
+            },
+            //| FullEvent::GuildUnavailable { .. }
+            // | FullEvent::Unknown { .. }
             _ => {
                 tracing::warn!("Event Not Implemented: {:?}", event);
                 None
