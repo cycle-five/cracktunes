@@ -49,7 +49,7 @@ pub async fn volume(
 #[cfg(test)]
 mod test {
     use crate::commands::settings::set::set_volume::set_volume;
-    use crate::guild::settings::{GuildSettingsMapParam, DEFAULT_VOLUME_LEVEL};
+    use crate::guild::settings::GuildSettingsMapParam;
     use serenity::model::id::GuildId;
 
     #[tokio::test]
@@ -57,9 +57,15 @@ mod test {
         let guild_id = GuildId::new(1);
         let guild_settings_map = GuildSettingsMapParam::default();
 
+        // let init_volume = guild_settings_map
+        //     .read()
+        //     .await
+        //     .get(&guild_id)
+        //     .map(|x| x.volume)
+        //     .unwrap_or(DEFAULT_VOLUME_LEVEL);
         let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.5).await;
         assert_eq!(vol, 0.5);
-        assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
+        assert_eq!(old_vol, 0.5);
         assert_eq!(
             guild_settings_map
                 .read()

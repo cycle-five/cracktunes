@@ -1,16 +1,18 @@
 pub use crate::{
+    commands::sub_help as help,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    utils::send_reply,
+    utils::{send_reply, send_reply_embed},
     Context, Error,
 };
-use crack_osint::VirusTotalClient;
+use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
 use std::result::Result;
 
 /// Osint Commands
 #[poise::command(
+    category = "OsInt",
     prefix_command,
     slash_command,
     subcommands(
@@ -20,11 +22,12 @@ use std::result::Result;
         // "socialmedia",
         // "wayback",
         // "whois",
-        // "checkpass",
         // "phlookup",
         // "phcode",
+        "checkpass",
         "scan",
         "virustotal_result",
+        "help",
     ),
 )]
 pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
@@ -124,6 +127,21 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
     };
 
     let _msg = ctx.send_channel_message(params).await?;
+    Ok(())
+}
+
+/// Check if a password has been pwned.
+#[poise::command(prefix_command, hide_in_help)]
+pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> {
+    let pwned = check_password_pwned(&password).await?;
+    let message = if pwned {
+        CrackedMessage::PasswordPwned
+    } else {
+        CrackedMessage::PasswordSafe
+    };
+
+    send_reply_embed(&ctx, message).await?;
+
     Ok(())
 }
 

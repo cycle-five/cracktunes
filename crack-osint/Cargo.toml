@@ -22,12 +22,12 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 
 [features]
-default = []
+default = ["checkpass", "virustotal", "scan"]
 checkpass = []
-phone = []
-social = []
-wayback = []
-whois = []
 virustotal = []
 scan = []
-ip = []
+#phone = []
+#social = []
+#wayback = []
+#whois = []
+#ip = []

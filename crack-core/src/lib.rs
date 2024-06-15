@@ -2,7 +2,7 @@
 use crate::handlers::event_log::LogEntry;
 use chrono::{DateTime, Utc};
 use commands::play_utils::TrackReadyData;
-use commands::{CrackedMessage, MyAuxMetadata};
+use commands::MyAuxMetadata;
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use db::worker_pool::MetadataMsg;
@@ -66,6 +66,7 @@ pub type CommandError = Error;
 pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
+use crate::messaging::message::CrackedMessage;
 use crate::serenity::prelude::SerenityError;
 
 impl From<CrackedError> for SerenityError {
@@ -111,13 +112,13 @@ impl Default for CamKickConfig {
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
-        result.push_str(&format!("timeout: {:?}\n", self.timeout));
-        result.push_str(&format!("guild_id: {:?}\n", self.guild_id));
-        result.push_str(&format!("chan_id: {:?}\n", self.chan_id));
-        result.push_str(&format!("dc_msg: {:?}\n", self.dc_msg));
+        result.push_str(&format!("timeout:       {:?}\n", self.timeout));
+        result.push_str(&format!("guild_id:      {:?}\n", self.guild_id));
+        result.push_str(&format!("chan_id:       {:?}\n", self.chan_id));
+        result.push_str(&format!("dc_msg:        {:?}\n", self.dc_msg));
         result.push_str(&format!("msg_on_deafen: {}\n", self.msg_on_deafen));
-        result.push_str(&format!("msg_on_mute: {}\n", self.msg_on_mute));
-        result.push_str(&format!("msg_on_dc: {}\n", self.msg_on_dc));
+        result.push_str(&format!("msg_on_mute:   {}\n", self.msg_on_mute));
+        result.push_str(&format!("msg_on_dc:     {}\n", self.msg_on_dc));
 
         write!(f, "{}", result)
     }
@@ -332,17 +333,13 @@ pub struct DataInner {
     pub database_pool: Option<sqlx::PgPool>,
     #[serde(skip)]
     pub http_client: reqwest::Client,
-    // // Synchronous settings and caches. These are going away.
-    // pub guild_settings_map_non_async:
-    //     Arc<SyncRwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    #[serde(skip)]
-    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-
     // Async access fields, will switch entirely to these
     #[serde(skip)]
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
+    #[serde(skip)]
+    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     #[serde(skip)]
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
@@ -886,7 +883,14 @@ mod lib_test {
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();
-        let want = "timeout: 0\nguild_id: 0\nchan_id: 0\ndc_msg: \"You have been violated for being cammed down for too long.\"\nmsg_on_deafen: false\nmsg_on_mute: false\nmsg_on_dc: false\n";
+        let want = r#"timeout:       0
+guild_id:      0
+chan_id:       0
+dc_msg:        "You have been violated for being cammed down for too long."
+msg_on_deafen: false
+msg_on_mute:   false
+msg_on_dc:     false
+"#;
         assert_eq!(cam_kick.to_string(), want);
     }
 

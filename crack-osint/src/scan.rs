@@ -1,8 +1,9 @@
-use crate::virustotal::{VirusTotalApiResponse, VirusTotalClient};
+use crate::{
+    virustotal::{VirusTotalApiResponse, VirusTotalClient},
+    Error,
+};
 use ipinfo::{IpError, IpErrorKind};
 use reqwest::Url;
-
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 const _VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
 

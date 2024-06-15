@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crack_osint::check_password_pwned;
+    use crate::check_password_pwned;
 
     #[tokio::test]
     async fn test_check_password_pwned() {
