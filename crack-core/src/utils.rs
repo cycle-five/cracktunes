@@ -87,7 +87,7 @@ pub async fn send_reply_embed<'ctx>(
     message: CrackedMessage,
 ) -> Result<ReplyHandle<'ctx>, Error> {
     let color = match message {
-        CrackedMessage::CrackedError(_) => Colour::RED,
+        CrackedMessage::CrackedRed(_) | CrackedMessage::CrackedError(_) => Colour::RED,
         _ => Colour::BLUE,
     };
     let params = SendMessageParams::new(message)
@@ -104,10 +104,7 @@ pub async fn send_reply(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle, CrackedError> {
-    let color = match message {
-        CrackedMessage::CrackedError(_) => Colour::RED,
-        _ => Colour::BLUE,
-    };
+    let color = Colour::from(&message);
     let params = SendMessageParams::new(message)
         .with_color(color)
         .with_as_embed(as_embed);
@@ -122,10 +119,7 @@ pub async fn send_nonembed_reply(
     ctx: CrackContext<'_>,
     msg: CrackedMessage,
 ) -> Result<Message, CrackedError> {
-    let color = match msg {
-        CrackedMessage::CrackedError(_) => Colour::RED,
-        _ => Colour::BLUE,
-    };
+    let color = Colour::from(&msg);
 
     let params = SendMessageParams::default()
         .with_color(color)
@@ -134,24 +128,7 @@ pub async fn send_nonembed_reply(
 
     let handle = send_message(ctx, params).await?;
     Ok(handle.into_message().await?)
-    // send_message(ctx, params)
-    //     .await?
-    //     .into_message()
-    //     .await
-    //     .map_err(Into::into)
 }
-
-// /// Create an embed to send as a response.
-// #[cfg(not(tarpaulin_include))]
-// pub async fn create_response_text(
-//     ctx: CrackContext<'_>,
-//     _interaction: &CommandOrMessageInteraction,
-//     content: &str,
-// ) -> Result<Message, CrackedError> {
-//     let embed = CreateEmbed::default().description(content);
-//     //send_embed_response(ctx, interaction, embed).await
-//     send_embed_response_poise(ctx, embed).await
-// }
 
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
