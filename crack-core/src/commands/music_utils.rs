@@ -118,7 +118,7 @@ pub async fn do_join(
         // If we successfully joined the channel, set the global handlers.
         // TODO: This should probably be a separate function.
         Ok(call) => {
-            let _text = set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
+            set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
             let msg = CrackedMessage::Summon {
                 mention: channel_id.mention(),
             };
