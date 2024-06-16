@@ -93,7 +93,7 @@ pub async fn send_reply_embed<'ctx>(
     let params = SendMessageParams::new(message)
         .with_color(color)
         .with_as_embed(true);
-    let handle = send_message(&ctx, params).await?;
+    let handle = send_message(ctx, params).await?;
     Ok(handle)
 }
 
@@ -126,7 +126,7 @@ pub async fn send_nonembed_reply(
         .with_msg(msg)
         .with_as_embed(false);
 
-    let handle = send_message(&ctx, params).await?;
+    let handle = send_message(ctx, params).await?;
     Ok(handle.into_message().await?)
 }
 
@@ -138,7 +138,7 @@ pub async fn edit_response_poise(
 
     match get_interaction_new(ctx) {
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
-        None => send_embed_response_poise(&ctx, embed).await,
+        None => send_embed_response_poise(ctx, embed).await,
     }
 }
 
@@ -293,7 +293,7 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(embed)
         .with_reply(is_reply);
 
-    send_message(&ctx, params)
+    send_message(ctx, params)
         .await?
         .into_message()
         .await
@@ -783,9 +783,7 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 }
 
 #[allow(deprecated)]
-pub fn get_interaction_new<'ctx>(
-    ctx: &'ctx CrackContext<'_>,
-) -> Option<CommandOrMessageInteraction> {
+pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
             app_ctx.interaction.clone(),

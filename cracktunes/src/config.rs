@@ -367,7 +367,7 @@ pub async fn poise_framework(
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
         event_handler: |ctx, event, framework, data_global| {
-            Box::pin(async move { handle_event(&ctx, event, framework, data_global).await })
+            Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
         ..Default::default()
     };

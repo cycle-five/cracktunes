@@ -359,7 +359,7 @@ pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(),
             CrackedError::Other("Something went wrong while parsing your query!")
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
-    let msg = send_embed_response_poise(&ctx, embed).await?;
+    let msg = send_embed_response_poise(ctx, embed).await?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
@@ -369,7 +369,7 @@ pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
-    send_embed_response_poise(&ctx, embed).await?;
+    send_embed_response_poise(ctx, embed).await?;
     Ok(())
 }
 
@@ -377,7 +377,7 @@ pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result
 #[cfg(not(tarpaulin_include))]
 pub async fn send_search_message<'ctx>(ctx: &'ctx CrackContext<'_>) -> CrackedResult<Message> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    let msg = send_embed_response_poise(&ctx, embed).await?;
+    let msg = send_embed_response_poise(ctx, embed).await?;
     Ok(msg)
 }
 
@@ -406,7 +406,7 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(&ctx, embed).await
+    send_embed_response_poise(ctx, embed).await
 }
 
 // ---------------------- Joining Channel ---------------------------- //
@@ -422,7 +422,7 @@ pub async fn send_joining_channel<'ctx>(
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 
-    send_message(&ctx, params).await.map_err(Into::into)
+    send_message(ctx, params).await.map_err(Into::into)
 }
 
 // ---------------------- Most Generic Message Function ---------------//
