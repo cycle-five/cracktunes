@@ -10,7 +10,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
-    messaging::interface::{create_now_playing_embed, send_message},
+    messaging::interface::create_now_playing_embed,
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -143,6 +143,7 @@ pub async fn optplay(
 }
 
 use crate::messaging::interface as msg_int;
+use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
@@ -168,7 +169,7 @@ async fn play_internal(
             .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))
             .with_color(crate::serenity::Color::RED);
 
-        send_message(&ctx, msg_params).await?;
+        ctx.send_message(msg_params).await?;
         return Ok(());
     }
 

@@ -411,7 +411,7 @@ pub async fn create_search_response<'ctx>(
 
 // ---------------------- Joining Channel ---------------------------- //
 
-use colored::Colorize;
+use crate::poise_ext::PoiseContextExt;
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel<'ctx>(
     ctx: &'ctx CrackContext<'_>,
@@ -422,49 +422,10 @@ pub async fn send_joining_channel<'ctx>(
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 
-    send_message(ctx, params).await.map_err(Into::into)
+    ctx.send_message(params).await.map_err(Into::into)
 }
 
 // ---------------------- Most Generic Message Function ---------------//
-
-pub async fn send_message<'a>(
-    ctx: &CrackContext<'a>,
-    send_params: SendMessageParams<'_>,
-) -> Result<ReplyHandle<'a>, CrackedError> {
-    //let channel_id = send_params.channel;
-    let as_embed = send_params.as_embed;
-    let as_reply = send_params.reply;
-    let as_ephemeral = send_params.ephemeral;
-    // let text = CrackedMessage::Summon {
-    //     mention: channel_id.mention(),
-    // }
-    // .to_string();
-    let text = send_params.msg.to_string();
-    let reply = if as_embed {
-        let embed = send_params.embed.unwrap_or(
-            CreateEmbed::default()
-                .description(text)
-                .color(send_params.color),
-        );
-        CreateReply::default().embed(embed)
-    } else {
-        let c = colored::Color::TrueColor {
-            r: send_params.color.r(),
-            g: send_params.color.r(),
-            b: send_params.color.r(),
-        };
-        CreateReply::default().content(text.color(c).to_string())
-    };
-    let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
-    let handle = ctx.send(reply).await?;
-    if send_params.cache_msg {
-        let msg = handle.clone().into_message().await?;
-        ctx.data()
-            .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
-            .await;
-    }
-    Ok(handle)
-}
 
 async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
     use crate::utils::duration_to_string;

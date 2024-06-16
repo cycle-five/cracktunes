@@ -42,7 +42,7 @@ pub async fn set_vc_size_internal(
     ctx: Arc<SerenityContext>,
     channel: Channel,
     size: u32,
-) -> Result<CrackedMessage<'static>, CrackedError> {
+) -> Result<CrackedMessage, CrackedError> {
     let id = channel.id();
     let name = id
         .name(&ctx)

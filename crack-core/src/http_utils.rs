@@ -11,18 +11,18 @@ use serenity::all::{
 
 /// Parameter structure for functions that send messages to a channel.
 #[derive(Debug, PartialEq)]
-pub struct SendMessageParams<'a> {
+pub struct SendMessageParams {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
     pub color: Color,
     pub cache_msg: bool,
-    pub msg: CrackedMessage<'a>,
+    pub msg: CrackedMessage,
     pub embed: Option<CreateEmbed>,
 }
 
-impl Default for SendMessageParams<'_> {
+impl Default for SendMessageParams {
     fn default() -> Self {
         SendMessageParams {
             channel: ChannelId::new(1),
@@ -37,8 +37,8 @@ impl Default for SendMessageParams<'_> {
     }
 }
 
-impl<'a> SendMessageParams<'a> {
-    pub fn new(msg: CrackedMessage<'a>) -> Self {
+impl SendMessageParams {
+    pub fn new(msg: CrackedMessage) -> Self {
         Self {
             msg,
             ..Default::default()
@@ -61,7 +61,7 @@ impl<'a> SendMessageParams<'a> {
         Self { color, ..self }
     }
 
-    pub fn with_msg(self, msg: CrackedMessage<'a>) -> Self {
+    pub fn with_msg(self, msg: CrackedMessage) -> Self {
         Self { msg, ..self }
     }
 
@@ -130,7 +130,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
     #[cfg(not(tarpaulin_include))]
     async fn send_channel_message(
         &self,
-        params: SendMessageParams<'_>,
+        params: SendMessageParams,
     ) -> Result<Message, CrackedError> {
         let channel = params.channel;
         let content = format!("{}", params.msg);

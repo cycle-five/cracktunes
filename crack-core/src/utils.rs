@@ -1,4 +1,5 @@
 use crate::http_utils::CacheHttpExt;
+use crate::http_utils::SendMessageParams;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
@@ -14,7 +15,6 @@ use crate::{
     },
     Context as CrackContext, CrackedError, Data, Error,
 };
-use crate::{http_utils::SendMessageParams, messaging::interface::send_message};
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
@@ -82,9 +82,10 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
+use crate::poise_ext::PoiseContextExt;
 pub async fn send_reply_embed<'ctx>(
-    ctx: &CrackContext<'ctx>,
-    message: CrackedMessage<'_>,
+    ctx: &'ctx CrackContext<'_>,
+    message: CrackedMessage,
 ) -> Result<ReplyHandle<'ctx>, Error> {
     let color = match message {
         CrackedMessage::CrackedRed(_) | CrackedMessage::CrackedError(_) => Colour::RED,
@@ -93,7 +94,7 @@ pub async fn send_reply_embed<'ctx>(
     let params = SendMessageParams::new(message)
         .with_color(color)
         .with_as_embed(true);
-    let handle = send_message(ctx, params).await?;
+    let handle: ReplyHandle<'ctx> = ctx.send_message(params).await?;
     Ok(handle)
 }
 
@@ -101,14 +102,14 @@ pub async fn send_reply_embed<'ctx>(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
     ctx: &CrackContext<'ctx>,
-    message: CrackedMessage<'_>,
+    message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let color = Colour::from(&message);
     let params = SendMessageParams::new(message)
         .with_color(color)
         .with_as_embed(as_embed);
-    let handle = send_message(ctx, params).await?;
+    let handle = ctx.send_message(params).await?;
     //Ok(handle.into_message().await?)
     Ok(handle)
 }
@@ -117,7 +118,7 @@ pub async fn send_reply<'ctx>(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_nonembed_reply(
     ctx: &CrackContext<'_>,
-    msg: CrackedMessage<'_>,
+    msg: CrackedMessage,
 ) -> Result<Message, CrackedError> {
     let color = Colour::from(&msg);
 
@@ -126,13 +127,13 @@ pub async fn send_nonembed_reply(
         .with_msg(msg)
         .with_as_embed(false);
 
-    let handle = send_message(ctx, params).await?;
+    let handle = ctx.send_message(params).await?;
     Ok(handle.into_message().await?)
 }
 
 pub async fn edit_response_poise(
     ctx: &CrackContext<'_>,
-    message: CrackedMessage<'_>,
+    message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
@@ -293,7 +294,7 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(embed)
         .with_reply(is_reply);
 
-    send_message(ctx, params)
+    ctx.send_message(params)
         .await?
         .into_message()
         .await

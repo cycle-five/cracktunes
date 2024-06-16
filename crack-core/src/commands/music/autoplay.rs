@@ -19,7 +19,7 @@ pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Toggle music autoplay.
 pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
-    fn autoplay_msg(autoplay: bool) -> CrackedMessage<'static> {
+    fn autoplay_msg(autoplay: bool) -> CrackedMessage {
         if autoplay {
             CrackedMessage::AutoplayOff
         } else {

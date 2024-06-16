@@ -13,7 +13,7 @@ const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
 
 #[repr(u8)]
 #[derive(Debug)]
-pub enum CrackedMessage<'msg> {
+pub enum CrackedMessage {
     AutopauseOff,
     AutopauseOn,
     AutoplayOff,
@@ -76,7 +76,7 @@ pub enum CrackedMessage<'msg> {
     },
     RoleDeleted {
         role_id: serenity::RoleId,
-        role_name: Cow<'msg, String>,
+        role_name: Cow<'static, String>,
     },
     RoleNotFound,
     #[cfg(feature = "crack-osint")]
@@ -188,19 +188,19 @@ pub enum CrackedMessage<'msg> {
     },
 }
 
-impl CrackedMessage<'_> {
+impl CrackedMessage {
     fn discriminant(&self) -> u8 {
         unsafe { *(self as *const Self as *const u8) }
     }
 }
 
-impl PartialEq for CrackedMessage<'_> {
+impl PartialEq for CrackedMessage {
     fn eq(&self, other: &Self) -> bool {
         self.discriminant() == other.discriminant()
     }
 }
 
-impl Display for CrackedMessage<'_> {
+impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
@@ -376,19 +376,19 @@ impl Display for CrackedMessage<'_> {
     }
 }
 
-impl From<CrackedMessage<'_>> for String {
+impl From<CrackedMessage> for String {
     fn from(message: CrackedMessage) -> Self {
         message.to_string()
     }
 }
 
-impl From<CrackedMessage<'_>> for CreateEmbed {
+impl From<CrackedMessage> for CreateEmbed {
     fn from(message: CrackedMessage) -> Self {
         CreateEmbed::default().description(message.to_string())
     }
 }
 
-impl From<CrackedError> for CrackedMessage<'_> {
+impl From<CrackedError> for CrackedMessage {
     fn from(error: CrackedError) -> Self {
         Self::CrackedError(error)
     }
@@ -400,21 +400,34 @@ impl From<CrackedError> for CrackedMessage<'_> {
 //     }
 // }
 
-impl From<serenity::http::HttpError> for CrackedMessage<'_> {
+impl From<serenity::http::HttpError> for CrackedMessage {
     fn from(error: serenity::http::HttpError) -> Self {
         Self::ErrorHttp(error)
     }
 }
 
-impl Default for CrackedMessage<'_> {
+impl Default for CrackedMessage {
     fn default() -> Self {
         Self::Other("(default)".to_string())
     }
 }
 
 use colored::Color;
-impl From<CrackedMessage<'_>> for Color {
-    fn from(message: CrackedMessage<'_>) -> Color {
+impl From<CrackedMessage> for Color {
+    fn from(message: CrackedMessage) -> Color {
+        match message {
+            CrackedMessage::Error => Color::Red,
+            CrackedMessage::ErrorHttp(_) => Color::Red,
+            CrackedMessage::CrackedError(_) => Color::Red,
+            CrackedMessage::CrackedRed(_) => Color::Red,
+            CrackedMessage::Other(_) => Color::Yellow,
+            _ => Color::Blue,
+        }
+    }
+}
+
+impl From<&CrackedMessage> for Color {
+    fn from(message: &CrackedMessage) -> Color {
         match message {
             CrackedMessage::Error => Color::Red,
             CrackedMessage::ErrorHttp(_) => Color::Red,
@@ -427,7 +440,20 @@ impl From<CrackedMessage<'_>> for Color {
 }
 
 use serenity::Colour;
-impl From<&CrackedMessage<'_>> for Colour {
+impl From<CrackedMessage> for Colour {
+    fn from(message: CrackedMessage) -> Colour {
+        match message {
+            CrackedMessage::Error => Colour::RED,
+            CrackedMessage::ErrorHttp(_) => Colour::RED,
+            CrackedMessage::CrackedError(_) => Colour::RED,
+            CrackedMessage::CrackedRed(_) => Colour::RED,
+            CrackedMessage::Other(_) => Colour::GOLD,
+            _ => Colour::BLUE,
+        }
+    }
+}
+
+impl From<&CrackedMessage> for Colour {
     fn from(message: &CrackedMessage) -> Colour {
         match message {
             CrackedMessage::Error => Colour::RED,

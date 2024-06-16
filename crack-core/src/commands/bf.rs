@@ -37,7 +37,7 @@ pub async fn bf_internal(
     ctx: Context<'_>,
     program: String,
     input: String,
-) -> Result<ReplyHandle, CrackedError> {
+) -> Result<ReplyHandle<'_>, CrackedError> {
     tracing::info!("program: {program}, input: {input}");
     let mut bf = BrainfuckProgram::new(program);
 

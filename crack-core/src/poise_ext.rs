@@ -1,6 +1,6 @@
-// use std::{borrow::Cow, future::Future, sync::Arc};
-
-// use poise::serenity_prelude as serenity;
+use poise::serenity_prelude as serenity;
+//use std::{borrow::Cow};
+use std::{future::Future, sync::Arc};
 
 // use crate::{
 //     //constants,
@@ -12,6 +12,9 @@
 //     Context,
 // };
 // use anyhow::Result as CrackedResult; //structs::{Context, JoinVCToken, Result, TTSMode},
+use crate::{commands::CrackedError, http_utils::SendMessageParams};
+use colored::Colorize;
+use poise::{CreateReply, ReplyHandle};
 
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
@@ -26,14 +29,57 @@ pub trait PoiseContextExt<'ctx> {
     // // async fn neutral_colour(&self) -> u32;
     fn author_vc(&self) -> Option<serenity::ChannelId>;
     // async fn author_permissions(&self) -> CrackedResult<serenity::Permissions>;
+    fn send_message(
+        &self,
+        params: SendMessageParams,
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
 }
 
 impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
+    /// Get the VC that
     fn author_vc(&self) -> Option<serenity::ChannelId> {
         require_guild!(self, None)
             .voice_states
             .get(&self.author().id)
             .and_then(|vc| vc.channel_id)
+    }
+
+    /// Base, very generic send message function.
+    async fn send_message(
+        &self,
+        params: SendMessageParams,
+    ) -> Result<ReplyHandle<'ctx>, CrackedError> {
+        //let channel_id = send_params.channel;
+        let as_embed = params.as_embed;
+        let as_reply = params.reply;
+        let as_ephemeral = params.ephemeral;
+        // let text = CrackedMessage::Summon {
+        //     mention: channel_id.mention(),
+        // }
+        // .to_string();
+        let text = params.msg.to_string();
+        let reply = if as_embed {
+            let embed = params
+                .embed
+                .unwrap_or(CreateEmbed::default().description(text).color(params.color));
+            CreateReply::default().embed(embed)
+        } else {
+            let c = colored::Color::TrueColor {
+                r: params.color.r(),
+                g: params.color.r(),
+                b: params.color.r(),
+            };
+            CreateReply::default().content(text.color(c).to_string())
+        };
+        let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
+        let handle = self.send(reply).await?;
+        if params.cache_msg {
+            let msg = handle.clone().into_message().await?;
+            self.data()
+                .add_msg_to_cache(self.guild_id().unwrap(), msg)
+                .await;
+        }
+        Ok(handle)
     }
 }
 
@@ -154,10 +200,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 //         }
 //     }
 // }
-use poise::serenity_prelude as serenity;
-use std::{future::Future, sync::Arc};
-
 use crate::Data;
+use ::serenity::all::CreateEmbed;
 
 pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
 impl JoinVCToken {

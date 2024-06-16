@@ -17,9 +17,8 @@ use crack_core::{
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use crack_core::{
-    commands::cmd_check_music_internal,
-    http_utils::SendMessageParams,
-    messaging::{interface::send_message, message::CrackedMessage},
+    commands::cmd_check_music_internal, http_utils::SendMessageParams,
+    messaging::message::CrackedMessage,
 };
 use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
 use poise::serenity_prelude::{FullEvent, GatewayIntents, GuildId};
@@ -32,6 +31,8 @@ use std::{
     time::Duration,
 };
 use tokio::sync::RwLock;
+
+use crack_core::poise_ext::PoiseContextExt;
 
 #[derive(Debug, Clone)]
 pub struct CommandCategories {
@@ -66,7 +67,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Command { error, ctx, .. } => {
             let myerr = CrackedError::Poise(error);
             let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
-            check_reply(send_message(&ctx, params).await.map_err(Into::into));
+            check_reply(ctx.send_message(params).await.map_err(Into::into));
             #[cfg(feature = "crack-metrics")]
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])

@@ -51,19 +51,17 @@ pub async fn delete_role_by_id_helper(
     let role_id = RoleId::new(role_id);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut role = guild_id
-        .roles(&ctx)
+        .roles(&ctx.clone())
         .await?
         .into_iter()
         .find(|r| r.0 == role_id)
         .ok_or(CrackedError::RoleNotFound(role_id))?;
-    role.1.delete(&ctx).await?;
+    role.1.delete(&ctx.clone()).await?;
     // Send success message
+    let role_name: Cow<'_, String> = Cow::Owned(role.1.name.to_string());
     send_reply(
-        &ctx.clone(),
-        CrackedMessage::RoleDeleted {
-            role_name: Cow::Owned(role.1.name.to_string()),
-            role_id,
-        },
+        &ctx,
+        CrackedMessage::RoleDeleted { role_id, role_name },
         true,
     )
     .await

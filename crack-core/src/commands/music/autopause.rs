@@ -4,6 +4,7 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
+    poise_ext::PoiseContextExt,
     Context, Error,
 };
 
@@ -24,8 +25,6 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
 /// Toggle autopause internal.
 #[cfg(not(tarpaulin_include))]
 pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::messaging::interface::send_message;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let autopause = ctx.data().toggle_autopause(guild_id).await;
@@ -37,7 +36,7 @@ pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
         ..Default::default()
     };
-    send_message(&ctx, params).await?;
+    ctx.send_message(params).await?;
 
     Ok(())
 }
