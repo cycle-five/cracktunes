@@ -34,7 +34,7 @@ pub async fn move_users_to(
         let mut member = ctx.http().get_member(guild_id, *user_id).await?;
 
         let _ = member
-            .edit(ctx, EditMember::new().voice_channel(guild_chan_to.id))
+            .edit(&ctx, EditMember::new().voice_channel(guild_chan_to.id))
             .await;
     }
 

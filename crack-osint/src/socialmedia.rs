@@ -56,7 +56,7 @@ pub async fn socialmedia(
         Ok(response) => {
             // Send the response as the command's response
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::SocialMediaResponse {
                     response: format!("{:?}", response),
                 },

@@ -36,6 +36,6 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
     };
 
-    let _ = send_reply(ctx, crack_msg, true).await?;
+    let _ = send_reply(&ctx, crack_msg, true).await?;
     Ok(())
 }

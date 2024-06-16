@@ -32,7 +32,7 @@ pub async fn create_voice_channel(
     {
         // Handle error, send error message
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to create channel: {}", e)),
             true,
         )
@@ -40,7 +40,7 @@ pub async fn create_voice_channel(
     } else {
         // Send success message
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::VoiceChannelCreated {
                 channel_name: channel_name.clone(),
             },

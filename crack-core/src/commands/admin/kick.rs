@@ -28,14 +28,14 @@ pub async fn kick(
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.kick(&ctx, id).await {
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
             as_embed,
         )
         .await?;
     } else {
         // Send success message
-        send_reply(ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
+        send_reply(&ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
     }
     Ok(())
 }
@@ -97,7 +97,7 @@ pub async fn rename_all(
         }
         let r = rand::random::<usize>() % names.len();
         let random_name = names.remove(r).clone();
-        let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
+        let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(&ctx, guild_id).await {
             // if cur_nick.contains("&amp;") {
             //     random_name = cur_nick.replace("&amp;", "&");
             // }
@@ -163,13 +163,13 @@ pub async fn rename_all(
 //     if let Err(e) = guild.kick(&ctx, user_id).await {
 //         // Handle error, send error message
 //         send_reply(
-//             ctx,
+//             &ctx,
 //             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
 //         )
 //         .await?;
 //     } else {
 //         // Send success message
-//         send_reply(ctx, CrackedMessage::UserKicked { user_id }).await?;
+//         send_reply(&ctx, CrackedMessage::UserKicked { user_id }).await?;
 //     }
 //     Ok(())
 // }

@@ -37,7 +37,7 @@ pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
         ..Default::default()
     };
-    send_message(ctx, params).await?;
+    send_message(&ctx, params).await?;
 
     Ok(())
 }

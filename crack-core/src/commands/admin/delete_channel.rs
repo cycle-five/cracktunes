@@ -29,7 +29,7 @@ pub async fn delete_channel(
                 if let Err(e) = guild_chan.delete(&ctx).await {
                     // Handle error, send error message
                     send_reply(
-                        ctx,
+                        &ctx,
                         CrackedMessage::Other(format!("Failed to delete channel: {}", e)),
                         true,
                     )
@@ -37,7 +37,7 @@ pub async fn delete_channel(
                 } else {
                     // Send success message
                     send_reply(
-                        ctx,
+                        &ctx,
                         CrackedMessage::ChannelDeleted {
                             channel_id,
                             channel_name: channel_name.clone(),
@@ -48,7 +48,7 @@ pub async fn delete_channel(
                 }
             } else {
                 send_reply(
-                    ctx,
+                    &ctx,
                     CrackedMessage::Other("Channel not found.".to_string()),
                     true,
                 )

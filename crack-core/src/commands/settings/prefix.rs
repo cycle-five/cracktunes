@@ -36,7 +36,7 @@ pub async fn add_prefix(
         new_settings.additional_prefixes.clone()
     };
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
@@ -73,7 +73,7 @@ pub async fn clear_prefixes(
         new_settings.additional_prefixes.clone()
     };
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
@@ -97,7 +97,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
             .unwrap_or_default()
     };
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")

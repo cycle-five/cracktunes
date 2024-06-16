@@ -14,7 +14,7 @@ pub async fn ip(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     if ip_address.parse::<IpAddr>().is_err() {
         // The IP address is not valid
         // Send an error message
-        send_error_response(ctx, &ip_address).await?;
+        send_error_response(&ctx, &ip_address).await?;
         return Ok(());
     }
 
@@ -23,7 +23,7 @@ pub async fn ip(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     let ip_details = fetch_ip_info(&ip_address).await?;
 
     // Send a response with the IP information
-    send_ip_details_response(ctx, &ip_details).await?;
+    send_ip_details_response(&ctx, &ip_details).await?;
 
     Ok(())
 }
@@ -36,13 +36,13 @@ async fn fetch_ip_info(ip_address: &str) -> Result<IpDetails, Error> {
 }
 
 // async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
-//     send_reply(ctx, CrackedMessage::InvalidIP(ip_address.to_string()), true).await?;
+//     send_reply(&ctx, CrackedMessage::InvalidIP(ip_address.to_string()), true).await?;
 //     Ok(())
 // }
 
 // async fn send_ip_details_response(ctx: Context<'_>, ip_details: &IpDetails) -> Result<(), Error> {
 //     send_reply(
-//         ctx,
+//         &ctx,
 //         CrackedMessage::IPDetails(format!("IP Details: {:?}", ip_details)),
 //         true,
 //     )
@@ -62,12 +62,12 @@ async fn fetch_ip_info(ip_address: &str) -> Result<IpDetails, Error> {
 // pub async fn ip(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
 //     // Validate the IP address
 //     if !is_valid_ip(&ip_address) {
-//         send_reply(ctx, CrackedMessage::InvalidIP).await?;
+//         send_reply(&ctx, CrackedMessage::InvalidIP).await?;
 //         return Ok(());
 //     }
 
 //     let ip_info = fetch_ip_info(&ip_address).await;
-//     send_reply(ctx, CrackedMessage::IPInformation(ip_info)).await?;
+//     send_reply(&ctx, CrackedMessage::IPInformation(ip_info)).await?;
 
 //     Ok(())
 // }

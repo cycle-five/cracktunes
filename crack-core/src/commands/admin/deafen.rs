@@ -23,7 +23,7 @@ pub async fn deafen(
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), true).await?;
     // Handle error, send error message
-    let _ = send_reply(ctx, crack_msg, true).await?;
+    let _ = send_reply(&ctx, crack_msg, true).await?;
     Ok(())
 }
 
@@ -43,7 +43,7 @@ pub async fn undeafen(
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let crack_msg = deafen_internal(&ctx, guild_id, user.clone(), false).await?;
     // Handle error, send error message
-    let _ = send_reply(ctx, crack_msg, true).await?;
+    let _ = send_reply(&ctx, crack_msg, true).await?;
     Ok(())
 }
 

@@ -42,7 +42,7 @@ use crate::{
 #[cfg(not(tarpaulin_include))]
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other("You found the playlist command! Try /playlist help.".to_string()),
         true,
     )

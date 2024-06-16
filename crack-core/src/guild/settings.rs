@@ -301,6 +301,7 @@ pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
+    // A vc token per guild.
     #[serde(default = "premium_default")]
     pub premium: bool,
     // Settings for different categories of commands.

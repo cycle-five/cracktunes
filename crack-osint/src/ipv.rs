@@ -14,21 +14,21 @@ pub async fn ipv(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     match ip_address.parse::<IpAddr>() {
         Ok(ip_addr) => match ip_addr {
             IpAddr::V4(_) => {
-                send_ip_version_response(ctx, &ip_address, "IPv4").await?;
-            }
+                send_ip_version_response(&ctx, &ip_address, "IPv4").await?;
+            },
             IpAddr::V6(_) => {
-                send_ip_version_response(ctx, &ip_address, "IPv6").await?;
-            }
+                send_ip_version_response(&ctx, &ip_address, "IPv6").await?;
+            },
         },
         Err(_) => {
-            send_error_response(ctx, &ip_address).await?;
-        }
+            send_error_response(&ctx, &ip_address).await?;
+        },
     }
     Ok(())
 }
 
 async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
-    send_reply(ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
+    send_reply(&ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
     Ok(())
 }
 
@@ -38,7 +38,7 @@ async fn send_ip_version_response(
     version: &str,
 ) -> Result<(), Error> {
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::IPVersion(format!("The IP address {} is {}", ip_address, version)),
     )
     .await?;

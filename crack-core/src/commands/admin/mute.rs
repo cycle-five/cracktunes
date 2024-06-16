@@ -19,7 +19,7 @@ pub async fn mute(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let crack_msg = mute_internal(&ctx, user, guild_id, true).await?;
-    send_reply(ctx, crack_msg, true)
+    send_reply(&ctx, crack_msg, true)
         .await
         .map(|_| ())
         .map_err(Into::into)

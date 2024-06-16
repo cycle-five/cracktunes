@@ -55,7 +55,7 @@ pub async fn timeout(
         // Handle error, send error message
         tracing::error!("Failed to timeout user: {}", e);
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to timeout user: {}", e)),
             true,
         )
@@ -68,7 +68,7 @@ pub async fn timeout(
             timeout_until: timeout_until.clone(),
         };
         tracing::info!("User timed out: {}", msg);
-        send_reply(ctx, msg, true).await?;
+        send_reply(&ctx, msg, true).await?;
     }
     Ok(())
 }

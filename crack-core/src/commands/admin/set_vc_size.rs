@@ -28,7 +28,7 @@ pub async fn set_vc_size(
         .edit(&ctx, EditChannel::new().user_limit(size))
         .await?;
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("Channel size sent to {size}")),
         true,
     )
@@ -42,7 +42,7 @@ pub async fn set_vc_size_internal(
     ctx: Arc<SerenityContext>,
     channel: Channel,
     size: u32,
-) -> Result<CrackedMessage, CrackedError> {
+) -> Result<CrackedMessage<'static>, CrackedError> {
     let id = channel.id();
     let name = id
         .name(&ctx)

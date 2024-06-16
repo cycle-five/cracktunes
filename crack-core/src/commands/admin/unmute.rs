@@ -33,19 +33,19 @@ pub async fn unmute_impl(ctx: Context<'_>, user: serenity::model::user::User) ->
         .guild_id()
         .ok_or(CrackedError::Other("Guild ID not found"))?;
     if let Err(e) = guild_id
-        .edit_member(ctx, user.clone().id, EditMember::new().mute(false))
+        .edit_member(&ctx, user.clone().id, EditMember::new().mute(false))
         .await
     {
         // Handle error, send error message
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
             true,
         )
         .await
     } else {
         // Send success message
-        send_reply(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
+        send_reply(&ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
     }?;
     Ok(())
 }

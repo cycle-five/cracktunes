@@ -13,28 +13,29 @@
 // };
 // use anyhow::Result as CrackedResult; //structs::{Context, JoinVCToken, Result, TTSMode},
 
-// pub trait PoiseContextExt<'ctx> {
-//     async fn send_error(
-//         &'ctx self,
-//         error_message: impl Into<Cow<'ctx, str>>,
-//     ) -> CrackedResult<Option<poise::ReplyHandle<'ctx>>>;
-//     async fn send_ephemeral(
-//         &'ctx self,
-//         message: impl Into<Cow<'ctx, str>>,
-//     ) -> CrackedResult<poise::ReplyHandle<'ctx>>;
+pub trait PoiseContextExt<'ctx> {
+    // async fn send_error(
+    //     &'ctx self,
+    //     error_message: impl Into<Cow<'ctx, str>>,
+    // ) -> CrackedResult<Option<poise::ReplyHandle<'ctx>>>;
+    // async fn send_ephemeral(
+    //     &'ctx self,
+    //     message: impl Into<Cow<'ctx, str>>,
+    // ) -> CrackedResult<poise::ReplyHandle<'ctx>>;
 
-//     // async fn neutral_colour(&self) -> u32;
-//     fn author_vc(&self) -> Option<serenity::ChannelId>;
-//     async fn author_permissions(&self) -> CrackedResult<serenity::Permissions>;
-// }
+    // // async fn neutral_colour(&self) -> u32;
+    fn author_vc(&self) -> Option<serenity::ChannelId>;
+    // async fn author_permissions(&self) -> CrackedResult<serenity::Permissions>;
+}
 
-// impl<'ctx> PoiseContextExt<'ctx> for Context<'ctx> {
-//     fn author_vc(&self) -> Option<serenity::ChannelId> {
-//         require_guild!(self, None)
-//             .voice_states
-//             .get(&self.author().id)
-//             .and_then(|vc| vc.channel_id)
-//     }
+impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
+    fn author_vc(&self) -> Option<serenity::ChannelId> {
+        require_guild!(self, None)
+            .voice_states
+            .get(&self.author().id)
+            .and_then(|vc| vc.channel_id)
+    }
+}
 
 //     // async fn neutral_colour(&self) -> u32 {
 //     //     if let Some(guild_id) = self.guild_id() {
@@ -153,30 +154,47 @@
 //         }
 //     }
 // }
+use poise::serenity_prelude as serenity;
+use std::{future::Future, sync::Arc};
 
-// // pub trait SongbirdManagerExt {
-// //     async fn join_vc(
-// //         &self,
-//         guild_id: JoinVCToken,
-//         channel_id: serenity::ChannelId,
-//     ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError>;
-// }
+use crate::Data;
 
-// impl SongbirdManagerExt for songbird::Songbird {
-//     async fn join_vc(
-//         &self,
-//         JoinVCToken(guild_id, lock): JoinVCToken,
-//         channel_id: serenity::ChannelId,
-//     ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError> {
-//         let _guard = lock.lock().await;
-//         match self.join(guild_id, channel_id).await {
-//             Ok(call) => Ok(call),
-//             Err(err) => {
-//                 // On error, the Call is left in a semi-connected state.
-//                 // We need to correct this by removing the call from the manager.
-//                 drop(self.leave(guild_id).await);
-//                 Err(err)
-//             },
-//         }
-//     }
-// }
+pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
+impl JoinVCToken {
+    pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
+        let lock = data
+            .join_vc_tokens
+            .entry(guild_id)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone();
+
+        Self(guild_id, lock)
+    }
+}
+
+pub trait SongbirdManagerExt {
+    fn join_vc(
+        &self,
+        guild_id: JoinVCToken,
+        channel_id: serenity::ChannelId,
+    ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError>>;
+}
+
+impl SongbirdManagerExt for songbird::Songbird {
+    async fn join_vc(
+        &self,
+        JoinVCToken(guild_id, lock): JoinVCToken,
+        channel_id: serenity::ChannelId,
+    ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError> {
+        let _guard = lock.lock().await;
+        match self.join(guild_id, channel_id).await {
+            Ok(call) => Ok(call),
+            Err(err) => {
+                // On error, the Call is left in a semi-connected state.
+                // We need to correct this by removing the call from the manager.
+                drop(self.leave(guild_id).await);
+                Err(err)
+            },
+        }
+    }
+}

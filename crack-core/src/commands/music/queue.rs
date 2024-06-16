@@ -38,7 +38,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction_new(ctx) {
+    let mut message = match get_interaction_new(&ctx) {
         Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
             interaction
                 .create_response(

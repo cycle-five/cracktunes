@@ -59,7 +59,7 @@ pub async fn authorize(
         .map(|g| g.name)
         .unwrap_or_else(|_| UNKNOWN.to_string());
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::UserAuthorized {
             id,
             mention,

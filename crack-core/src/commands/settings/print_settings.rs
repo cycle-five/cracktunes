@@ -1,6 +1,6 @@
 use crate::{
-    guild::settings::GuildSettingsMap, messaging::message::CrackedMessage,
-    utils::send_reply, Context, Error,
+    guild::settings::GuildSettingsMap, messaging::message::CrackedMessage, utils::send_reply,
+    Context, Error,
 };
 use serenity::{
     all::{Channel, Message, User},
@@ -13,7 +13,7 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
 
     for (guild_id, settings) in guild_settings_map.iter() {
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
             true,
         )
@@ -24,7 +24,7 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
 
     for (guild_id, settings) in guild_settings_map.get::<GuildSettingsMap>().unwrap().iter() {
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
             true,
         )

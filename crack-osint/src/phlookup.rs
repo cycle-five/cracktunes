@@ -52,7 +52,7 @@ pub async fn phlookup(ctx: Context<'_>, number: String, country: String) -> Resu
         CrackedMessage::PhoneNumberInfoError
     };
 
-    send_reply(ctx, message).await?;
+    send_reply(&ctx, message).await?;
 
     Ok(())
 }

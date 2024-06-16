@@ -21,7 +21,7 @@ pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
 
     tracing::warn!("message_cache: {}", cache_str);
 
-    send_reply(ctx, CrackedMessage::Other(cache_str), false).await?;
+    send_reply(&ctx, CrackedMessage::Other(cache_str), false).await?;
 
     Ok(())
 }

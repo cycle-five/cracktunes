@@ -66,9 +66,9 @@ pub async fn remove(
     if remove_until == remove_index {
         let embed = create_remove_enqueued_embed(track).await;
         //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
-        send_embed_response_poise(ctx, embed).await?;
+        send_embed_response_poise(&ctx, embed).await?;
     } else {
-        send_reply(ctx, CrackedMessage::RemoveMultiple, true).await?;
+        send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;

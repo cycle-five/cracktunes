@@ -9,7 +9,7 @@ use serenity::all::User;
 /// Ban a user from the server.
 // There really doesn't seem to be a good way to restructure commands like this
 // in a way that allows for unit testing.
-// 1) Almost every call relies on the ctx, cache, or http, and these are basically
+// 1) Almost every call relies on the &ctx, cache, or http, and these are basically
 //   impossible to mock.
 // 2) Even trying to segragate the logic in the reponse creation pieces is difficult
 //    due to the fact that we're using poise to do prefix and slash commands at the
@@ -40,14 +40,14 @@ pub async fn ban(
     if let Err(e) = guild.ban_with_reason(&ctx, user.id, dmd, reason).await {
         // Handle error, send error message
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to ban user: {}", e)),
             true,
         )
         .await?;
     } else {
         // Send success message
-        send_reply(ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
+        send_reply(&ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
     }
     Ok(())
 }

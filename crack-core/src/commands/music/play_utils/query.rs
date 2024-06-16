@@ -298,7 +298,7 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => {
                 self.mode_search_keywords(ctx, call, query.clone()).await
             },
-            _ => send_search_failed(ctx).await.map(|_| Vec::new()),
+            _ => send_search_failed(&ctx).await.map(|_| Vec::new()),
         }
     }
 
@@ -320,7 +320,7 @@ impl QueryType {
         )
         .await?;
         queue_track_back(ctx, &call, &qt).await
-        // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await
+        // update_queue_messages(ctx, ctx.data(), &queue, guild_id).await
     }
 
     pub async fn mode_next(
@@ -394,7 +394,7 @@ impl QueryType {
                     .search(None)
                     .await?;
                 let user_id = ctx.author().id;
-                create_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
+                create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
@@ -442,7 +442,7 @@ impl QueryType {
                 // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
                 Ok(true)
             },
-            QueryType::None => send_no_query_provided(ctx).await.map(|_| false),
+            QueryType::None => send_no_query_provided(&ctx).await.map(|_| false),
         }
     }
 
@@ -478,7 +478,7 @@ impl QueryType {
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(&ctx, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }

@@ -143,6 +143,6 @@ pub async fn summon_internal(
     //     },
     // );
 
-    send_joining_channel(ctx, channel_id).await?;
+    send_joining_channel(&ctx, channel_id).await?;
     Ok(())
 }

@@ -128,7 +128,7 @@ pub async fn do_join(
         Err(err) => {
             // FIXME: Do something smarter here also.
             //let embed = CreateEmbed::default().description(format!("{}", err));
-            //send_embed_response_poise(ctx, embed).await?;
+            //send_embed_response_poise(&ctx, embed).await?;
             let str = err.to_string().clone();
             let my_err = CrackedError::JoinChannelError(err);
             let message = CrackedMessage::CrackedRed(str.clone());

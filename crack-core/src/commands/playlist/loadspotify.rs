@@ -103,7 +103,7 @@ pub async fn loadspotify(
     let len = metadata_vec.len();
 
     // Send the embed
-    send_reply(ctx, CrackedMessage::PlaylistCreated(name, len), false).await?;
+    send_reply(&ctx, CrackedMessage::PlaylistCreated(name, len), false).await?;
 
     Ok(())
 }

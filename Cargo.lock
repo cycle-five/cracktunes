@@ -787,6 +787,7 @@ dependencies = [
  "crack-gpt",
  "crack-osint",
  "ctor",
+ "dashmap",
  "either",
  "ffprobe",
  "itertools 0.13.0",

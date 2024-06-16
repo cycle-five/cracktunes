@@ -26,7 +26,7 @@ pub async fn welcome_settings(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!(
             "Welcome settings: {:?}",
             welcome_settings.unwrap_or_default()

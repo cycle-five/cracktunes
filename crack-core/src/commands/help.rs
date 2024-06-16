@@ -98,7 +98,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
                 poise::find_command(commands, top_level_command, true, &mut Vec::new()),
                 {
                     let msg = CrackedError::CommandNotFound(top_level_command.to_string());
-                    let _ = send_reply(ctx, msg.into(), true).await?;
+                    let _ = send_reply(&ctx, msg.into(), true).await?;
                     Ok(())
                 }
             );
@@ -120,7 +120,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
                             subcommand: subcommand_name,
                         };
 
-                        let _ = send_reply(ctx, msg, true).await?;
+                        let _ = send_reply(&ctx, msg, true).await?;
                         Ok(())
                     }
                 );
@@ -128,7 +128,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
 
             if command_obj.owners_only && !framework_options.owners.contains(&ctx.author().id) {
                 let msg = CrackedMessage::OwnersOnly;
-                let _ = send_reply(ctx, msg, true).await?;
+                let _ = send_reply(&ctx, msg, true).await?;
                 return Ok(());
             }
 

@@ -31,7 +31,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
         };
 
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!(
                 "All Log Channel: {:?}",
                 all_log_channel.unwrap_or_default()
@@ -67,7 +67,7 @@ pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
         };
 
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!(
                 "Join/Leave Log Channel: {:?}",
                 join_leave_log_channel.unwrap_or_default()

@@ -19,7 +19,7 @@ pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Toggle music autoplay.
 pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
-    fn autoplay_msg(autoplay: bool) -> CrackedMessage {
+    fn autoplay_msg(autoplay: bool) -> CrackedMessage<'static> {
         if autoplay {
             CrackedMessage::AutoplayOff
         } else {
@@ -32,6 +32,6 @@ pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
     let autoplay = ctx.data().get_autoplay(guild_id).await;
     ctx.data().set_autoplay(guild_id, !autoplay).await;
 
-    send_reply(ctx, autoplay_msg(autoplay), true).await?;
+    send_reply(&ctx, autoplay_msg(autoplay), true).await?;
     Ok(())
 }

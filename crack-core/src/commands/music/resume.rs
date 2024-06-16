@@ -21,7 +21,7 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    send_reply(ctx, CrackedMessage::Resume, false).await?;
+    send_reply(&ctx, CrackedMessage::Resume, false).await?;
 
     Ok(())
 }

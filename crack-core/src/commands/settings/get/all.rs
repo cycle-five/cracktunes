@@ -33,7 +33,7 @@ pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("Settings: {:?}", settings_ro)),
         true,
     )

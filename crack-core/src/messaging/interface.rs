@@ -351,7 +351,7 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
     reply.clone()
 }
 /// Sends a message to the user indicating that the search failed.
-pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().unwrap();
     let embed = CreateEmbed::default()
         .description(format!(
@@ -359,31 +359,31 @@ pub async fn send_search_failed(ctx: CrackContext<'_>) -> Result<(), CrackedErro
             CrackedError::Other("Something went wrong while parsing your query!")
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
-    let msg = send_embed_response_poise(ctx, embed).await?;
+    let msg = send_embed_response_poise(&ctx, embed).await?;
     ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
 /// Sends a message to the user indicating that no query was provided.
-pub async fn send_no_query_provided(ctx: CrackContext<'_>) -> Result<(), CrackedError> {
+pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(&ctx, embed).await?;
     Ok(())
 }
 
 /// Sends the searching message after a play command is sent.
 #[cfg(not(tarpaulin_include))]
-pub async fn send_search_message(ctx: CrackContext<'_>) -> CrackedResult<Message> {
+pub async fn send_search_message<'ctx>(ctx: &'ctx CrackContext<'_>) -> CrackedResult<Message> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    let msg = send_embed_response_poise(ctx, embed).await?;
+    let msg = send_embed_response_poise(&ctx, embed).await?;
     Ok(msg)
 }
 
 /// Send the search results to the user.
-pub async fn create_search_response(
-    ctx: CrackContext<'_>,
+pub async fn create_search_response<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
     guild_id: GuildId,
     user_id: UserId,
     query: String,
@@ -406,31 +406,31 @@ pub async fn create_search_response(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(&ctx, embed).await
 }
 
 // ---------------------- Joining Channel ---------------------------- //
 
 use colored::Colorize;
 /// Sends a message to the user indicating that the search failed.
-pub async fn send_joining_channel(
-    ctx: CrackContext<'_>,
+pub async fn send_joining_channel<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
     channel_id: ChannelId,
-) -> Result<ReplyHandle, Error> {
+) -> Result<ReplyHandle<'ctx>, Error> {
     let msg = CrackedMessage::Summon {
         mention: channel_id.mention(),
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 
-    send_message(ctx, params).await.map_err(Into::into)
+    send_message(&ctx, params).await.map_err(Into::into)
 }
 
 // ---------------------- Most Generic Message Function ---------------//
 
-pub async fn send_message(
-    ctx: CrackContext<'_>,
-    send_params: SendMessageParams,
-) -> Result<ReplyHandle, CrackedError> {
+pub async fn send_message<'a>(
+    ctx: &CrackContext<'a>,
+    send_params: SendMessageParams<'_>,
+) -> Result<ReplyHandle<'a>, CrackedError> {
     //let channel_id = send_params.channel;
     let as_embed = send_params.as_embed;
     let as_reply = send_params.reply;

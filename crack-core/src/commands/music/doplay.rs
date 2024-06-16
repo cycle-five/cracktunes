@@ -162,13 +162,13 @@ async fn play_internal(
 
     if msg.is_none() && file.is_none() {
         // let embed = CreateEmbed::default().description(CrackedError::NoQuery.to_string());
-        // send_embed_response_poise(ctx, embed).await?;
+        // send_embed_response_poise(&ctx, embed).await?;
         let msg_params = SendMessageParams::default()
             .with_channel(ctx.channel_id())
             .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))
             .with_color(crate::serenity::Color::RED);
 
-        send_message(ctx, msg_params).await?;
+        send_message(&ctx, msg_params).await?;
         return Ok(());
     }
 
@@ -185,7 +185,7 @@ async fn play_internal(
 
     // reply with a temporary message while we fetch the source
     // needed because interactions must be replied within 3s and queueing takes longer
-    let mut search_msg = msg_int::send_search_message(ctx).await?;
+    let mut search_msg = msg_int::send_search_message(&ctx).await?;
 
     // ctx.data()
     //     .add_msg_to_cache(guild_id, search_msg.clone())
@@ -254,7 +254,7 @@ async fn play_internal(
                         y
                     );
                     CreateEmbed::default()
-                        .description(format!("{}", CrackedMessage::PlaylistQueued))
+                        .description(format!("{:?}", CrackedMessage::PlaylistQueued))
                 },
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
@@ -346,7 +346,7 @@ pub fn check_banned_domains(
             //     domain: "youtube.com".to_string(),
             // };
 
-            // send_reply(ctx, message).await?;
+            // send_reply(&ctx, message).await?;
             // Ok(None)
             Err(CrackedError::Other("youtube.com is banned"))
         } else {
@@ -556,7 +556,7 @@ pub async fn queue_aux_metadata(
             let search_query = build_query_aux_metadata(metadata.metadata());
             let _ = msg
                 .edit(
-                    ctx,
+                    &ctx,
                     EditMessage::default().content(format!("Queuing... {}", search_query)),
                 )
                 .await;

@@ -28,7 +28,7 @@ pub async fn list_playlists(ctx: Context<'_>) -> Result<(), Error> {
     let embed = build_playlist_list_embed(&playlists, 0).await;
 
     // Send the embed
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(&ctx, embed).await?;
 
     Ok(())
 }

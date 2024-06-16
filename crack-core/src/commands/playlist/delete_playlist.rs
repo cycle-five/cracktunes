@@ -1,6 +1,5 @@
 use crate::{
-    db::playlist::Playlist, messaging::message::CrackedMessage, utils::send_reply,
-    Context, Error,
+    db::playlist::Playlist, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
 };
 
 /// Deletes a playlist
@@ -14,7 +13,7 @@ pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i32) -> Result<(), E
     Playlist::delete_playlist_by_id(pool, playlist_id, user_id).await?;
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!(
             "Successfully deleted playlist with ID: {}",
             playlist_id

@@ -52,7 +52,7 @@ pub async fn deauthorize(
 
     let mention = user.mention();
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::UserDeauthorized {
             id,
             mention,

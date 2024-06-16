@@ -123,7 +123,7 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 //     //     let query = Some("Some query".to_string());
 
 //     //     // Perform the test
-//     //     let result = query_or_title(ctx, query).await;
+//     //     let result = query_or_title(&ctx, query).await;
 
 //     //     // Assert the outcome
 //     //     assert_eq!(result.unwrap(), "Some query");
@@ -136,7 +136,7 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
 //     //     let ctx = poise::ApplicationContext::
 
 //     //     // Perform the test
-//     //     let result = query_or_title(ctx, None).await;
+//     //     let result = query_or_title(&ctx, None).await;
 
 //     //     // Assert that an error is returned because there's no current track
 //     //     assert!(result.is_err());

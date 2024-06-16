@@ -21,6 +21,6 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
 
-    send_reply(ctx, CrackedMessage::Pause, true).await?;
+    send_reply(&ctx, CrackedMessage::Pause, true).await?;
     Ok(())
 }

@@ -90,7 +90,7 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
     let msg = CrackedMessage::Other("Admin command called".to_string());
-    send_reply(ctx, msg, true).await?;
+    send_reply(&ctx, msg, true).await?;
 
     Ok(())
 }

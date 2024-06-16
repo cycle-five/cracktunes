@@ -19,7 +19,7 @@ pub async fn version_internal(ctx: Context<'_>) -> Result<(), Error> {
     let current = option_env!("CARGO_PKG_VERSION").unwrap_or_else(|| UNKNOWN);
     let hash = option_env!("GIT_HASH").unwrap_or_else(|| UNKNOWN);
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Version {
             current: current.to_owned(),
             hash: hash.to_owned(),

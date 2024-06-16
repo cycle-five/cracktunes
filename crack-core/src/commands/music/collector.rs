@@ -37,13 +37,13 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 
         let mut msg = mci.message.clone();
         msg.edit(
-            ctx,
+            &ctx,
             EditMessage::default().content(format!("Boop count: {}", boop_count)),
         )
         .await?;
 
         mci.create_response(
-            ctx,
+            &ctx,
             CreateInteractionResponse::UpdateMessage(CreateInteractionResponseMessage::default()),
         )
         .await?;

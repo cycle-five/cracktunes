@@ -33,7 +33,7 @@ pub async fn create_text_channel(
         Err(e) => {
             // Handle error, send error message
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::Other(format!("Failed to create channel: {}", e)),
                 true,
             )
@@ -42,7 +42,7 @@ pub async fn create_text_channel(
         Ok(channel) => {
             // Send success message
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::TextChannelCreated {
                     channel_name: channel.name.clone(),
                     channel_id: channel.id,
@@ -81,7 +81,7 @@ pub async fn create_category(
         Err(e) => {
             // Handle error, send error message
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::Other(format!("Failed to create channel: {}", e)),
                 true,
             )
@@ -90,7 +90,7 @@ pub async fn create_category(
         Ok(channel) => {
             // Send success message
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::TextChannelCreated {
                     channel_name: channel.name.clone(),
                     channel_id: channel.id,

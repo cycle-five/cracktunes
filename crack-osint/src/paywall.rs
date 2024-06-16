@@ -6,7 +6,7 @@ use crack_core::{messaging::message::CrackedMessage, utils::send_reply, Context,
 pub async fn paywall(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let message = CrackedMessage::Paywall(url);
 
-    send_reply(ctx, message).await?;
+    send_reply(&ctx, message).await?;
 
     Ok(())
 }

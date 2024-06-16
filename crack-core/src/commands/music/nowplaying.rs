@@ -20,7 +20,7 @@ pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    let _ = send_embed_response_poise(ctx, embed).await?;
+    let _ = send_embed_response_poise(&ctx, embed).await?;
     Ok(())
 }
 

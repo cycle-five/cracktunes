@@ -158,7 +158,7 @@ pub async fn queue_keyword_list_back<'a>(
             .collect::<Vec<String>>()
             .join("\n");
         msg.edit(
-            ctx,
+            &ctx,
             EditMessage::new().embed(CreateEmbed::default().description(format!(
                 "Queuing {} songs... \n{}",
                 chunk.len(),

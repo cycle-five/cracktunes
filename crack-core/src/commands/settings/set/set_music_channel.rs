@@ -33,7 +33,7 @@ pub async fn music_channel(
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("Music channel set to {}", channel_id)),
         true,
     )
@@ -61,7 +61,7 @@ pub async fn music_denied_user(
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("Denied user set to {}", user)),
         true,
     )

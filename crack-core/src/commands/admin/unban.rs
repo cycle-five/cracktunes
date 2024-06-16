@@ -44,7 +44,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
     if let Err(e) = guild.unban(&ctx, user.id).await {
         // Handle error, send error message
         send_reply(
-            ctx,
+            &ctx,
             CrackedMessage::Other(format!("Failed to unban user: {}", e)),
             true,
         )
@@ -52,7 +52,7 @@ pub async fn unban_helper(ctx: Context<'_>, guild_id: GuildId, user: User) -> Re
         .map(|_| ())
     } else {
         // Send success message
-        send_reply(ctx, CrackedMessage::UserUnbanned { id, mention }, true)
+        send_reply(&ctx, CrackedMessage::UserUnbanned { id, mention }, true)
             .await
             .map(|_| ())
     }

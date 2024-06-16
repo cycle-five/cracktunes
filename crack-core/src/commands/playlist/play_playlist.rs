@@ -16,12 +16,12 @@ pub async fn play_playlist(
     // Check for playlist Id
     let (aux_metadata, playlist_name) = get_playlist_(ctx, playlist).await?;
 
-    let handle = send_reply(ctx, CrackedMessage::PlaylistQueuing(playlist_name), true).await?;
+    let handle = send_reply(&ctx, CrackedMessage::PlaylistQueuing(playlist_name), true).await?;
     let msg = handle.into_message().await?;
 
     queue_aux_metadata(ctx, aux_metadata.as_slice(), msg).await?;
 
-    send_reply(ctx, CrackedMessage::PlaylistQueued, true).await?;
+    send_reply(&ctx, CrackedMessage::PlaylistQueued, true).await?;
 
     Ok(())
 }

@@ -66,7 +66,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Command { error, ctx, .. } => {
             let myerr = CrackedError::Poise(error);
             let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
-            check_reply(send_message(ctx, params).await.map_err(Into::into));
+            check_reply(send_message(&ctx, params).await.map_err(Into::into));
             #[cfg(feature = "crack-metrics")]
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
@@ -367,7 +367,7 @@ pub async fn poise_framework(
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
         event_handler: |ctx, event, framework, data_global| {
-            Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
+            Box::pin(async move { handle_event(&ctx, event, framework, data_global).await })
         },
         ..Default::default()
     };
@@ -443,7 +443,7 @@ pub async fn poise_framework(
     let framework = poise::Framework::new(options, |ctx, ready, framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
-            poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+            poise::builtins::register_globally(&ctx, &framework.options().commands).await?;
             ctx.data
                 .write()
                 .await

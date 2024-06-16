@@ -78,7 +78,7 @@ impl From<CrackedError> for SerenityError {
 
 /// Checks if we're in a prefix context or not.
 pub fn is_prefix(ctx: Context) -> bool {
-    matches!(ctx, Context::Prefix(_))
+    matches!(&ctx, Context::Prefix(_))
 }
 
 /// Struct for the cammed down kicking configuration.
@@ -317,6 +317,8 @@ pub struct DataInner {
     // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
+    #[serde(skip)]
+    pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     //
     // Non-serializable below here. What did I even decide to make this Serializable for?
     // I doubt it's doing anything, most fields aren't.
@@ -513,31 +515,21 @@ impl EventLogAsync {
 
 impl Default for DataInner {
     fn default() -> Self {
-        // let topgg_token = std::env::var("TOPGG_TOKEN").unwrap_or_default();
-        // let runtime = tokio::runtime::Builder::new_multi_thread()
-        //     .worker_threads(4)
-        //     .enable_all()
-        //     .build()
-        //     .unwrap();
-        // let rt_handle = Arc::new(RwLock::new(Some(runtime.handle().clone())));
         Self {
-            // rt_handle,
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
             bot_settings: Default::default(),
+            join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
-            //guild_settings_map_non_async: Arc::new(SyncRwLock::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
-            // event_log: EventLog::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             db_channel: None,
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
-            // topgg_client: topgg::Client::new(topgg_token),
         }
     }
 }

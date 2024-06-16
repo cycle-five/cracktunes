@@ -16,7 +16,7 @@ pub async fn log_channel_for_guild(
     set_all_log_channel_data(ctx.data(), guild_id, channel_id).await?;
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
         true,
     )
@@ -45,7 +45,7 @@ pub async fn all_log_channel(
     set_all_log_channel_data(ctx.data(), guild_id, channel_id).await?;
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Other(format!("all log channel set to {}", channel_id)),
         true,
     )

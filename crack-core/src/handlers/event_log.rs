@@ -151,7 +151,7 @@ pub async fn handle_event(
                 event_in,
                 log_data,
                 &guild_id,
-                ctx,
+                &ctx,
                 event_log,
                 event_name
             )

@@ -40,7 +40,7 @@ pub async fn seek(
     let _callback = track.seek(Duration::from_secs(timestamp));
 
     let _ = send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::Seek {
             timestamp: timestamp_str.to_owned(),
         },

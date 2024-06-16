@@ -28,6 +28,6 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     drop(handler);
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
-    send_reply(ctx, CrackedMessage::Stop, true).await?;
+    send_reply(&ctx, CrackedMessage::Stop, true).await?;
     Ok(())
 }

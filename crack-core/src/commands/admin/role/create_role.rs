@@ -36,7 +36,7 @@ pub async fn create(
     let icon = match icon {
         Some(attachment) => {
             let url = attachment.url.clone();
-            Some(CreateAttachment::url(ctx, &url).await?)
+            Some(CreateAttachment::url(&ctx, &url).await?)
         },
         None => None,
     };
@@ -57,7 +57,7 @@ pub async fn create(
     .await?;
 
     send_reply(
-        ctx,
+        &ctx,
         CrackedMessage::RoleCreated {
             role_name: role.name.clone(),
             role_id: role.id,

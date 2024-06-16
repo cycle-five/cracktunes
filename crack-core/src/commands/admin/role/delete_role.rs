@@ -42,6 +42,7 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
+use std::borrow::Cow;
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,
@@ -58,9 +59,9 @@ pub async fn delete_role_by_id_helper(
     role.1.delete(&ctx).await?;
     // Send success message
     send_reply(
-        ctx,
+        &ctx.clone(),
         CrackedMessage::RoleDeleted {
-            role_name: role.1.name.clone(),
+            role_name: Cow::Owned(role.1.name.to_string()),
             role_id,
         },
         true,

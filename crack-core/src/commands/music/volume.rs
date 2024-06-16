@@ -14,6 +14,12 @@ pub async fn volume(
     ctx: Context<'_>,
     #[description = "Set the volume of the bot"] level: Option<u32>,
 ) -> Result<(), Error> {
+    volume_internal(&ctx, level).await
+}
+pub async fn volume_internal<'ctx>(
+    ctx: &'ctx Context<'_>,
+    level: Option<u32>,
+) -> Result<(), Error> {
     use crate::guild::operations::GuildSettingsOperations;
 
     tracing::error!("volume");
@@ -37,7 +43,7 @@ pub async fn volume(
                 tracing::error!("Can't get manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let _ = send_embed_response_poise(ctx, embed).await?;
+                let _ = send_embed_response_poise(&ctx, embed).await?;
                 return Ok(());
             },
         };
@@ -47,7 +53,7 @@ pub async fn volume(
                 tracing::error!("Can't get call from manager.");
                 let embed =
                     CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let _ = send_embed_response_poise(ctx, embed).await?;
+                let _ = send_embed_response_poise(&ctx, embed).await?;
                 return Ok(());
             },
         };

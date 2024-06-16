@@ -62,7 +62,7 @@ pub async fn create_skip_response(
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
             send_reply(
-                ctx,
+                &ctx,
                 CrackedMessage::SkipTo {
                     title: metadata.title.as_ref().unwrap().to_owned(),
                     url: metadata.source_url.as_ref().unwrap().to_owned(),
@@ -76,13 +76,13 @@ pub async fn create_skip_response(
         },
         None => {
             if tracks_to_skip > 1 {
-                send_reply(ctx, CrackedMessage::SkipAll, true)
+                send_reply(&ctx, CrackedMessage::SkipAll, true)
                     .await?
                     .into_message()
                     .await
                     .map_err(|e| e.into())
             } else {
-                send_reply(ctx, CrackedMessage::Skip, true)
+                send_reply(&ctx, CrackedMessage::Skip, true)
                     .await?
                     .into_message()
                     .await
