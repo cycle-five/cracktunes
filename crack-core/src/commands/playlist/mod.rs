@@ -51,7 +51,7 @@ pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn playlist_commands() -> [crate::Command; 1] {
+pub fn commands() -> [crate::Command; 1] {
     [playlist()]
     // [
     //     addto(),

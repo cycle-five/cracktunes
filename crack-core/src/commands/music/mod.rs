@@ -54,16 +54,19 @@ pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
 
-pub fn music_commands() -> [crate::Command; 20] {
+pub fn music_commands() -> [crate::Command; 23] {
     [
         autopause(),
         autoplay(),
         clean(),
         clear(),
+        grab(),
+        lyrics(),
         nowplaying(),
         pause(),
         play(),
         playlog(),
+        playnext(),
         queue(),
         remove(),
         repeat(),

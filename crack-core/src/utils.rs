@@ -3,7 +3,7 @@ use crate::http_utils::SendMessageParams;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::{
-    commands::{music::doplay::RequestingUser, play_utils::QueryType, MyAuxMetadata},
+    commands::{music::doplay::RequestingUser, music::play_utils::QueryType, music::MyAuxMetadata},
     db::Playlist,
     messaging::{
         interface::{create_nav_btns, create_now_playing_embed},
@@ -175,7 +175,7 @@ pub async fn send_now_playing(
                 create_now_playing_embed_metadata(
                     requesting_user.ok(),
                     cur_position,
-                    crate::commands::MyAuxMetadata::Data(metadata2),
+                    MyAuxMetadata::Data(metadata2),
                 )
             } else {
                 create_now_playing_embed(&track_handle).await
@@ -432,7 +432,7 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
     let metadata = {
         let map = track.typemap().read().await;
-        let my_metadata = match map.get::<crate::commands::MyAuxMetadata>() {
+        let my_metadata = match map.get::<MyAuxMetadata>() {
             Some(my_metadata) => my_metadata,
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
@@ -441,7 +441,7 @@ pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
         };
 
         match my_metadata {
-            crate::commands::MyAuxMetadata::Data(metadata) => metadata.clone(),
+            MyAuxMetadata::Data(metadata) => metadata.clone(),
         }
     };
     metadata

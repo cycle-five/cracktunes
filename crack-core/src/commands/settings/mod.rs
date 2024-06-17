@@ -35,3 +35,7 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
+
+pub fn settings_commands() -> [crate::Command; 1] {
+    [settings()]
+}

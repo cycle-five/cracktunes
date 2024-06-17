@@ -151,6 +151,7 @@ impl Default for BotCredentials {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotConfig {
     pub video_status_poll_interval: Option<u64>,
+    // TODO: Get rid of this, it's redundent with the owners in the serenity library.
     pub owners: Option<Vec<u64>>,
     // Cammed down kicking config
     pub cam_kick: Option<Vec<CamKickConfig>>,

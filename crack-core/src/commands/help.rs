@@ -226,14 +226,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
 
 // /set calls /help set
 pub use command_func as command;
-pub fn commands() -> [Command; 1] {
+pub fn help_commands() -> [Command; 1] {
     [help()]
 }
-
-// /// Get information about the servers this bot is in.
-// #[cfg(not(tarpaulin_include))]
-// #[poise::command(slash_command, prefix_command, owners_only, category = "Utility")]
-// pub async fn servers(ctx: Context<'_>) -> Result<(), Error> {
-//     poise::builtins::servers(ctx).await?;
-//     Ok(())
-// }

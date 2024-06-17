@@ -18,13 +18,12 @@ pub use admin::*;
 pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
-pub use help::*;
+pub use help::sub_help;
 pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use permissions::*;
-pub use playlist::playlist_commands;
 pub use settings::*;
 pub use utility::*;
 
@@ -46,9 +45,24 @@ impl ConvertToEmptyResult for MessageResult {
 
 /// Return all the commands that are available in the bot.
 pub fn all_commands() -> Vec<crate::Command> {
-    music_commands()
-        .into_iter()
-        .chain(utility_commands())
-        .chain(playlist_commands())
-        .collect()
+    vec![
+        #[cfg(feature = "crack-bf")]
+        bf(),
+        #[cfg(feature = "crack-osint")]
+        osint(),
+        #[cfg(feature = "crack-gpt")]
+        chat(),
+    ]
+    .into_iter()
+    .chain(music::music_commands())
+    .chain(playlist::commands())
+    .chain(utility::utility_commands())
+    .chain(help::help_commands())
+    .chain(admin::admin_commands())
+    .chain(settings::settings_commands())
+    .collect()
+}
+
+pub fn all_command_names() -> Vec<String> {
+    all_commands().into_iter().map(|c| c.name).collect()
 }

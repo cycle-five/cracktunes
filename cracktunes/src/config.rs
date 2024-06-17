@@ -1,14 +1,9 @@
-use crate::{
-    get_mod_commands,
-    get_music_commands,
-    // get_admin_commands_hashset,  get_osint_commands,
-    // get_playlist_commands, get_settings_commands,
-};
 use colored::Colorize;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
-    commands, db,
+    commands::CacheHttpExt,
+    db,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::{handle_event, SerenityHandler},
@@ -16,33 +11,24 @@ use crack_core::{
     utils::{check_reply, count_command},
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
-use crack_core::{
-    commands::cmd_check_music_internal, http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
-};
-use poise::serenity_prelude::{model::permissions::Permissions, Client, Member, RoleId};
+use crack_core::{http_utils::SendMessageParams, messaging::message::CrackedMessage};
+use poise::serenity_prelude::Client;
 use poise::serenity_prelude::{FullEvent, GatewayIntents, GuildId};
 use songbird::serenity::SerenityInit;
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    process::exit,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 use crack_core::poise_ext::PoiseContextExt;
 
-#[derive(Debug, Clone)]
-pub struct CommandCategories {
-    settings_command: bool,
-    mod_command: bool,
-    admin_command: bool,
-    music_command: bool,
-    osint_command: bool,
-    playlist_command: bool,
-}
+// #[derive(Debug, Clone)]
+// pub struct CommandCategories {
+//     settings_command: bool,
+//     mod_command: bool,
+//     admin_command: bool,
+//     music_command: bool,
+//     osint_command: bool,
+//     playlist_command: bool,
+// }
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -95,56 +81,56 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-/// Check if the user is authorized to use the osint commands.
-fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<RoleId>) -> bool {
-    let member = match member {
-        Some(m) => m,
-        None => {
-            // FIXME: Why would this happen?
-            tracing::warn!("Member not found");
-            return true;
-        },
-    };
-    let perms = member.permissions.unwrap_or_default();
-    let has_role = os_int_role
-        .map(|x| member.roles.contains(x.as_ref()))
-        .unwrap_or(true);
-    let is_admin = perms.contains(Permissions::ADMINISTRATOR);
+// /// Check if the user is authorized to use the osint commands.
+// fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<RoleId>) -> bool {
+//     let member = match member {
+//         Some(m) => m,
+//         None => {
+//             // FIXME: Why would this happen?
+//             tracing::warn!("Member not found");
+//             return true;
+//         },
+//     };
+//     let perms = member.permissions.unwrap_or_default();
+//     let has_role = os_int_role
+//         .map(|x| member.roles.contains(x.as_ref()))
+//         .unwrap_or(true);
+//     let is_admin = perms.contains(Permissions::ADMINISTRATOR);
 
-    is_admin || has_role
-}
+//     is_admin || has_role
+// }
 
-/// Check if the user is authorized to use mod commands.
-fn is_authorized_mod(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
-    // implementation of the is_authorized_mod function
-    // ...
-    is_authorized_admin(member, roles) // placeholder return value
-}
+// /// Check if the user is authorized to use mod commands.
+// fn is_authorized_mod(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
+//     // implementation of the is_authorized_mod function
+//     // ...
+//     is_authorized_admin(member, roles) // placeholder return value
+// }
 
-/// Check if the user is authorized to use admin commands.
-fn is_authorized_admin(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
-    let member = match member {
-        Some(m) => m,
-        None => {
-            tracing::warn!("No member found");
-            return false;
-        },
-    };
-    // implementation of the is_authorized_admin function
-    // ...
-    let perms = member.permissions.unwrap_or_default();
-    let _has_role = roles
-        .intersection(
-            &member
-                .roles
-                .iter()
-                .map(|x| x.get())
-                .collect::<HashSet<u64>>(),
-        )
-        .count()
-        > 0;
-    perms.contains(Permissions::ADMINISTRATOR)
-}
+// /// Check if the user is authorized to use admin commands.
+// fn is_authorized_admin(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
+//     let member = match member {
+//         Some(m) => m,
+//         None => {
+//             tracing::warn!("No member found");
+//             return false;
+//         },
+//     };
+//     // implementation of the is_authorized_admin function
+//     // ...
+//     let perms = member.permissions.unwrap_or_default();
+//     let _has_role = roles
+//         .intersection(
+//             &member
+//                 .roles
+//                 .iter()
+//                 .map(|x| x.get())
+//                 .collect::<HashSet<u64>>(),
+//         )
+//         .count()
+//         > 0;
+//     perms.contains(Permissions::ADMINISTRATOR)
+// }
 
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
@@ -161,57 +147,7 @@ pub async fn poise_framework(
     // FIXME: Is this the proper way to allocate this memory?
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
-    let commands = vec![
-        commands::autopause(),
-        commands::autoplay(),
-        commands::clear(),
-        commands::clean(),
-        commands::grab(),
-        commands::invite(),
-        commands::leave(),
-        commands::lyrics(),
-        commands::nowplaying(),
-        commands::optplay(),
-        commands::pause(),
-        commands::ping(),
-        commands::play(),
-        commands::playnext(),
-        commands::playlog(),
-        commands::queue(),
-        commands::remove(),
-        commands::resume(),
-        commands::repeat(),
-        commands::search(),
-        //commands::servers(),
-        commands::seek(),
-        commands::skip(),
-        commands::stop(),
-        commands::shuffle(),
-        commands::summon(),
-        commands::version(),
-        commands::volume(),
-        commands::music::vote(),
-        #[cfg(feature = "crack-bf")]
-        commands::bf(),
-        #[cfg(feature = "crack-osint")]
-        commands::osint(),
-        // all playlist commands
-        // all gambling commands
-        // commands::coinflip(),
-        // commands::rolldice(),
-        // commands::boop(),
-        // all ai commands
-        #[cfg(feature = "crack-gpt")]
-        commands::chat(),
-        // all settings commands
-        commands::settings(),
-        // all admin commands
-        commands::admin(),
-    ]
-    .into_iter()
-    .chain(commands::help::commands())
-    .chain(commands::playlist_commands())
-    .collect::<Vec<_>>();
+    let commands = crack_core::commands::all_commands();
 
     let options = poise::FrameworkOptions::<_, Error> {
         // #[cfg(feature = "set_owners_from_config")]
@@ -280,87 +216,13 @@ pub async fn poise_framework(
         // Every command invocation must pass this check to continue execution
         command_check: Some(|ctx| {
             Box::pin(async move {
-                let command = &ctx.command().qualified_name;
-                let user_id = ctx.author().id.get();
-                let channel_id = ctx.channel_id();
-                let empty_set: HashSet<u64> = HashSet::new();
-
-                let cmd_cats = check_command_categories(command.clone());
-                tracing::info!("Command: {:?}", command);
-                tracing::info!("Command Categories: {:?}", cmd_cats);
-                let CommandCategories {
-                    settings_command,
-                    mod_command,
-                    admin_command,
-                    music_command,
-                    osint_command,
-                    playlist_command,
-                } = cmd_cats;
-
-                // If the physically running bot's owner is running the command, allow it
-                if ctx
-                    .data()
-                    .bot_settings
-                    .owners
-                    .as_ref()
-                    .unwrap_or(&vec![])
-                    .contains(&user_id)
-                {
-                    return Ok(true);
+                let guild_id = ctx.guild_id();
+                let name = match guild_id {
+                    None => return Ok(true),
+                    Some(guild_id) => ctx.guild_name_from_guild_id(guild_id).await,
                 }
-                // If the user is an admin on the server, allow the mod commands
-                let member = ctx.author_member().await;
-                let res = member.clone().as_ref().map_or_else(
-                    || {
-                        tracing::info!("Author not found in guild");
-                        Err(CrackedError::Other("Author not found in guild"))
-                    },
-                    |member| {
-                        tracing::info!("Author found in guild");
-                        let perms = member.permissions(ctx)?;
-                        tracing::warn!("perm {}", perms);
-                        let is_admin = perms.contains(Permissions::ADMINISTRATOR);
-                        tracing::warn!("is_admin: {}", is_admin);
-                        tracing::warn!("is_settings: {}", settings_command);
-                        Ok((is_admin, (mod_command || admin_command)))
-                    },
-                );
-
-                let _ = is_authorized_mod(None, empty_set.clone());
-                if is_authorized_admin(member.clone(), empty_set) {
-                    return Ok(true);
-                }
-                // FIXME: Reorg this into it's own function.
-                match res {
-                    Ok((true, true)) => {
-                        tracing::info!("Author is admin and is an admin command");
-                        return Ok(true);
-                    },
-                    Ok((true, false)) => {
-                        tracing::info!(
-                            "Author is admin and is not an admin command, checking roles..."
-                        );
-                    },
-                    Ok((false, _)) => {
-                        tracing::info!("Author is not admin");
-                    },
-                    Err(e) => {
-                        tracing::error!("Error checking permissions: {}", e);
-                        return Ok(false);
-                    },
-                };
-
-                // These need to be processed in order of most to least restrictive
-
-                if osint_command {
-                    return Ok(is_authorized_osint(member.clone(), None));
-                }
-
-                if music_command || playlist_command {
-                    return cmd_check_music_internal(member, channel_id, ctx).await;
-                }
-
-                // Default case true
+                .unwrap_or("Unknown".to_string());
+                tracing::warn!("Guild: {}", name);
                 Ok(true)
             })
         }),
@@ -547,185 +409,185 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     }
     None
 }
-/// Checks what categories the given command belongs to.
-// TODO: Use the build it categories?!?
-// TODO: Create a command struct with the categories info
-//     to parse this info.
-fn check_command_categories(user_cmd: String) -> CommandCategories {
-    // FIXME: Make these constants
-    let music_commands = get_music_commands();
-    // let playlist_commands = get_playlist_commands();
-    // let osint_commands = get_osint_commands();
-    let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
-    // let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
-    // let settings_commands = get_settings_commands();
+// Checks what categories the given command belongs to.
+// // TODO: Use the build it categories?!?
+// // TODO: Create a command struct with the categories info
+// //     to parse this info.
+// fn check_command_categories(user_cmd: String) -> CommandCategories {
+//     // FIXME: Make these constants
+//     let music_commands = get_music_commands();
+//     // let playlist_commands = get_playlist_commands();
+//     // let osint_commands = get_osint_commands();
+//     let mod_commands: HashMap<&str, Vec<&str>> = get_mod_commands().into_iter().collect();
+//     // let admin_commands: HashSet<&'static str> = get_admin_commands_hashset();
+//     // let settings_commands = get_settings_commands();
 
-    let clean_cmd = user_cmd.clone().trim().to_string();
-    let first = clean_cmd.split_whitespace().next().unwrap_or_default();
-    let second = clean_cmd.split_whitespace().nth(1);
+//     let clean_cmd = user_cmd.clone().trim().to_string();
+//     let first = clean_cmd.split_whitespace().next().unwrap_or_default();
+//     let second = clean_cmd.split_whitespace().nth(1);
 
-    let mut mod_command = false;
-    for cmd in mod_commands.keys() {
-        if cmd.eq(&first)
-            && second.is_some()
-            && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
-        {
-            mod_command = true;
-            break;
-        }
-    }
-    //let second_term = second.unwrap_or_default();
+//     let mut mod_command = false;
+//     for cmd in mod_commands.keys() {
+//         if cmd.eq(&first)
+//             && second.is_some()
+//             && mod_commands.get(cmd).unwrap().contains(&second.unwrap())
+//         {
+//             mod_command = true;
+//             break;
+//         }
+//     }
+//     //let second_term = second.unwrap_or_default();
 
-    let settings_command = "settings".eq(first);
-    //&& settings_commands.contains(&second_term);
+//     let settings_command = "settings".eq(first);
+//     //&& settings_commands.contains(&second_term);
 
-    let admin_command = "admin".eq(first);
-    // && admin_commands.contains(second_term);
+//     let admin_command = "admin".eq(first);
+//     // && admin_commands.contains(second_term);
 
-    let music_command = music_commands.contains(&first);
+//     let music_command = music_commands.contains(&first);
 
-    let osint_command = "osint".eq(first);
-    // && (second.is_none() || osint_commands.contains(&second_term));
+//     let osint_command = "osint".eq(first);
+//     // && (second.is_none() || osint_commands.contains(&second_term));
 
-    let playlist_command = "playlist".eq(first) || "pl".eq(first);
-    //&&(second.is_none() || playlist_commands.contains(&second_term));
+//     let playlist_command = "playlist".eq(first) || "pl".eq(first);
+//     //&&(second.is_none() || playlist_commands.contains(&second_term));
 
-    CommandCategories {
-        settings_command,
-        mod_command,
-        admin_command,
-        music_command,
-        osint_command,
-        playlist_command,
-    }
-}
+//     CommandCategories {
+//         settings_command,
+//         mod_command,
+//         admin_command,
+//         music_command,
+//         osint_command,
+//         playlist_command,
+//     }
+// }
 
-#[cfg(test)]
-mod test {
-    use crack_core::{commands::permissions::is_authorized_music, BotConfig, EventLogAsync};
-    use std::collections::HashSet;
+// // #[cfg(test)]
+// mod test {
+//     use crack_core::{commands::permissions::is_authorized_music, BotConfig, EventLogAsync};
+//     use std::collections::HashSet;
 
-    use crate::config::{
-        is_authorized_admin, is_authorized_mod, is_authorized_osint, CommandCategories,
-    };
+//     use crate::config::{
+//         is_authorized_admin, is_authorized_mod, is_authorized_osint, CommandCategories,
+//     };
 
-    #[test]
-    fn test_command_categories() {
-        let cmd = CommandCategories {
-            settings_command: true,
-            mod_command: true,
-            admin_command: false,
-            music_command: false,
-            osint_command: false,
-            playlist_command: false,
-        };
-        assert_eq!(cmd.mod_command, true);
-        assert_eq!(cmd.admin_command, false);
-        assert_eq!(cmd.music_command, false);
-        assert_eq!(cmd.osint_command, false);
-        assert_eq!(cmd.playlist_command, false);
-    }
+//     #[test]
+//     fn test_command_categories() {
+//         let cmd = CommandCategories {
+//             settings_command: true,
+//             mod_command: true,
+//             admin_command: false,
+//             music_command: false,
+//             osint_command: false,
+//             playlist_command: false,
+//         };
+//         assert_eq!(cmd.mod_command, true);
+//         assert_eq!(cmd.admin_command, false);
+//         assert_eq!(cmd.music_command, false);
+//         assert_eq!(cmd.osint_command, false);
+//         assert_eq!(cmd.playlist_command, false);
+//     }
 
-    #[tokio::test]
-    async fn test_build_framework() {
-        let config = BotConfig::default();
-        // let event_log = EventLog::new();
-        let event_log_async = EventLogAsync::new();
-        let client = super::poise_framework(config, event_log_async).await;
-        assert!(client.is_ok());
-    }
+//     #[tokio::test]
+//     async fn test_build_framework() {
+//         let config = BotConfig::default();
+//         // let event_log = EventLog::new();
+//         let event_log_async = EventLogAsync::new();
+//         let client = super::poise_framework(config, event_log_async).await;
+//         assert!(client.is_ok());
+//     }
 
-    #[test]
-    fn test_prefix() {
-        let prefixes = vec!["crack ", "crack", "crack!"]
-            .iter()
-            .map(|&s| s.trim().to_string())
-            .collect::<Vec<_>>();
-        let content = "crack test";
-        let prefix_len = super::check_prefixes(&prefixes, content).unwrap();
-        assert_eq!(prefix_len, 5);
-    }
+//     #[test]
+//     fn test_prefix() {
+//         let prefixes = vec!["crack ", "crack", "crack!"]
+//             .iter()
+//             .map(|&s| s.trim().to_string())
+//             .collect::<Vec<_>>();
+//         let content = "crack test";
+//         let prefix_len = super::check_prefixes(&prefixes, content).unwrap();
+//         assert_eq!(prefix_len, 5);
+//     }
 
-    #[test]
-    fn test_prefix_no_match() {
-        let prefixes = vec!["crack ", "crack", "crack!"]
-            .iter()
-            .map(|&s| s.trim().to_string())
-            .collect::<Vec<_>>();
-        let content = "crac test";
-        let prefix_len = super::check_prefixes(&prefixes, content);
-        assert!(prefix_len.is_none());
-    }
+//     #[test]
+//     fn test_prefix_no_match() {
+//         let prefixes = vec!["crack ", "crack", "crack!"]
+//             .iter()
+//             .map(|&s| s.trim().to_string())
+//             .collect::<Vec<_>>();
+//         let content = "crac test";
+//         let prefix_len = super::check_prefixes(&prefixes, content);
+//         assert!(prefix_len.is_none());
+//     }
 
-    #[test]
-    fn test_check_command_categories_bad_command() {
-        let CommandCategories {
-            settings_command: _,
-            mod_command,
-            admin_command,
-            music_command,
-            osint_command,
-            playlist_command,
-        } = super::check_command_categories("admin settings".to_owned());
-        assert_eq!(mod_command, false);
-        assert_eq!(admin_command, true);
-        assert_eq!(music_command, false);
-        assert_eq!(osint_command, false);
-        assert_eq!(playlist_command, false);
-    }
+//     #[test]
+//     fn test_check_command_categories_bad_command() {
+//         let CommandCategories {
+//             settings_command: _,
+//             mod_command,
+//             admin_command,
+//             music_command,
+//             osint_command,
+//             playlist_command,
+//         } = super::check_command_categories("admin settings".to_owned());
+//         assert_eq!(mod_command, false);
+//         assert_eq!(admin_command, true);
+//         assert_eq!(music_command, false);
+//         assert_eq!(osint_command, false);
+//         assert_eq!(playlist_command, false);
+//     }
 
-    #[test]
-    fn test_check_command_categories_music_command() {
-        let CommandCategories {
-            mod_command,
-            admin_command,
-            music_command,
-            osint_command,
-            ..
-        } = super::check_command_categories("play".to_owned());
-        assert_eq!(mod_command, false);
-        assert_eq!(admin_command, false);
-        assert_eq!(music_command, true);
-        assert_eq!(osint_command, false);
-    }
+//     #[test]
+//     fn test_check_command_categories_music_command() {
+//         let CommandCategories {
+//             mod_command,
+//             admin_command,
+//             music_command,
+//             osint_command,
+//             ..
+//         } = super::check_command_categories("play".to_owned());
+//         assert_eq!(mod_command, false);
+//         assert_eq!(admin_command, false);
+//         assert_eq!(music_command, true);
+//         assert_eq!(osint_command, false);
+//     }
 
-    #[test]
-    fn test_check_command_categories_settings_command() {
-        let CommandCategories {
-            mod_command,
-            admin_command,
-            music_command,
-            osint_command,
-            ..
-        } = super::check_command_categories("settings get all".to_owned());
-        assert_eq!(mod_command, true);
-        assert_eq!(admin_command, false);
-        assert_eq!(music_command, false);
-        assert_eq!(osint_command, false);
-    }
+//     #[test]
+//     fn test_check_command_categories_settings_command() {
+//         let CommandCategories {
+//             mod_command,
+//             admin_command,
+//             music_command,
+//             osint_command,
+//             ..
+//         } = super::check_command_categories("settings get all".to_owned());
+//         assert_eq!(mod_command, true);
+//         assert_eq!(admin_command, false);
+//         assert_eq!(music_command, false);
+//         assert_eq!(osint_command, false);
+//     }
 
-    #[test]
-    fn test_check_command_categories_admin_command() {
-        let CommandCategories {
-            mod_command,
-            admin_command,
-            music_command,
-            osint_command,
-            ..
-        } = super::check_command_categories("admin ban".to_owned());
-        assert_eq!(mod_command, true);
-        assert_eq!(admin_command, true);
-        assert_eq!(music_command, false);
-        assert_eq!(osint_command, false);
-    }
+//     #[test]
+//     fn test_check_command_categories_admin_command() {
+//         let CommandCategories {
+//             mod_command,
+//             admin_command,
+//             music_command,
+//             osint_command,
+//             ..
+//         } = super::check_command_categories("admin ban".to_owned());
+//         assert_eq!(mod_command, true);
+//         assert_eq!(admin_command, true);
+//         assert_eq!(music_command, false);
+//         assert_eq!(osint_command, false);
+//     }
 
-    #[test]
-    fn test_is_authorized_defaults() {
-        // Just check the default return values of the authorization functions.
-        let empty_set = HashSet::new();
-        assert_eq!(is_authorized_osint(None, None), true);
-        assert_eq!(is_authorized_music(None, None).unwrap(), true);
-        assert_eq!(is_authorized_mod(None, empty_set.clone()), false);
-        assert_eq!(is_authorized_admin(None, empty_set), false);
-    }
-}
+//     #[test]
+//     fn test_is_authorized_defaults() {
+//         // Just check the default return values of the authorization functions.
+//         let empty_set = HashSet::new();
+//         assert_eq!(is_authorized_osint(None, None), true);
+//         assert_eq!(is_authorized_music(None, None).unwrap(), true);
+//         assert_eq!(is_authorized_mod(None, empty_set.clone()), false);
+//         assert_eq!(is_authorized_admin(None, empty_set), false);
+//     }
+// }

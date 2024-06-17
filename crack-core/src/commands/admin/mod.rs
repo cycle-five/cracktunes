@@ -47,7 +47,7 @@ pub use timeout::*;
 pub use unban::*;
 pub use unmute::*;
 
-use crate::commands::sub_help as help;
+use crate::commands::help::sub_help as help;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 /// Admin commands.
