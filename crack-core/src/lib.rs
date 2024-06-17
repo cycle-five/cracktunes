@@ -55,6 +55,7 @@ pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
+pub type CrackedResult2<T> = anyhow::Result<T, CrackedError>;
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;

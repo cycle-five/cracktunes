@@ -223,6 +223,13 @@ impl PartialEq for CrackedError {
     }
 }
 
+/// Provides an implementation to convert a [`anyhow::Error`] to a [`CrackedError`].
+impl From<anyhow::Error> for CrackedError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Anyhow(err)
+    }
+}
+
 /// Provides an implementation to convert a [`VideoError`] to a [`CrackedError`].
 impl From<VideoError> for CrackedError {
     fn from(err: VideoError) -> Self {

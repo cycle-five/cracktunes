@@ -13,7 +13,7 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
-    Context as CrackContext, CrackedError, Data, Error,
+    Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::{
     all::{
@@ -60,17 +60,17 @@ fn create_err(line: u32, file: &str) -> anyhow::Error {
 }
 
 pub trait OptionTryUnwrap<T> {
-    fn try_unwrap(self) -> Result<T>;
+    fn try_unwrap(self) -> CrackedResult<T>;
 }
 
 impl<T> OptionTryUnwrap<T> for Option<T> {
     #[track_caller]
-    fn try_unwrap(self) -> Result<T> {
+    fn try_unwrap(self) -> CrackedResult<T> {
         match self {
             Some(v) => Ok(v),
             None => Err({
                 let location = std::panic::Location::caller();
-                create_err(location.line(), location.file())
+                create_err(location.line(), location.file()).into()
             }),
         }
     }

@@ -1,21 +1,10 @@
-use poise::serenity_prelude as serenity;
-//use std::{borrow::Cow};
-use std::{future::Future, sync::Arc};
-
-// use crate::{
-//     //constants,
-//     //constants::{FREE_NEUTRAL_COLOUR, PREMIUM_NEUTRAL_COLOUR},
-//     //opt_ext::OptionTryUnwrap,
-//     messaging::message::CrackedMessage,
-//     require_guild,
-//     utils::{self, OptionTryUnwrap},
-//     Context,
-// };
-// use anyhow::Result as CrackedResult; //structs::{Context, JoinVCToken, Result, TTSMode},
-use crate::{commands::CrackedError, http_utils::SendMessageParams};
+use crate::{
+    commands::CrackedError, http_utils::SendMessageParams, utils::OptionTryUnwrap, CrackedResult,
+};
 use colored::Colorize;
+use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
-
+use std::{future::Future, sync::Arc};
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
     //     &'ctx self,
@@ -26,9 +15,8 @@ pub trait PoiseContextExt<'ctx> {
     //     message: impl Into<Cow<'ctx, str>>,
     // ) -> CrackedResult<poise::ReplyHandle<'ctx>>;
 
-    // // async fn neutral_colour(&self) -> u32;
     fn author_vc(&self) -> Option<serenity::ChannelId>;
-    // async fn author_permissions(&self) -> CrackedResult<serenity::Permissions>;
+    fn author_permissions(&self) -> impl Future<Output = CrackedResult<serenity::Permissions>>;
     fn send_message(
         &self,
         params: SendMessageParams,
@@ -53,10 +41,6 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let as_embed = params.as_embed;
         let as_reply = params.reply;
         let as_ephemeral = params.ephemeral;
-        // let text = CrackedMessage::Summon {
-        //     mention: channel_id.mention(),
-        // }
-        // .to_string();
         let text = params.msg.to_string();
         let reply = if as_embed {
             let embed = params
@@ -81,45 +65,45 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         }
         Ok(handle)
     }
+
+    //     // async fn neutral_colour(&self) -> u32 {
+    //     //     if let Some(guild_id) = self.guild_id() {
+    //     //         let row = self.data().guilds_db.get(guild_id.get() as i64).await;
+    //     //         if row
+    //     //             .map(|row| row.voice_mode)
+    //     //             .map_or(false, TTSMode::is_premium)
+    //     //         {
+    //     //             return PREMIUM_NEUTRAL_COLOUR;
+    //     //         }
+    //     //     }
+
+    //     //     FREE_NEUTRAL_COLOUR
+    //     // }
+
+    /// Get the permissions of the calling user in the guild.
+    async fn author_permissions(&self) -> CrackedResult<serenity::Permissions> {
+        // Handle non-guild call first, to allow try_unwrap calls to be safe.
+        if self.guild_id().is_none() {
+            return Ok(((serenity::Permissions::from_bits_truncate(
+                0b111_1100_1000_0000_0000_0111_1111_1000_0100_0000,
+            ) | serenity::Permissions::SEND_MESSAGES)
+                - serenity::Permissions::SEND_TTS_MESSAGES)
+                - serenity::Permissions::MANAGE_MESSAGES);
+        }
+
+        // Accesses guild cache and is asynchronous, must be called first.
+        let member = self.author_member().await.try_unwrap()?;
+
+        // Accesses guild cache, but the member above was cloned out, so safe.
+        let guild = self.guild().try_unwrap()?;
+
+        // Does not access cache, but relies on above guild cache reference.
+        let channel = guild.channels.get(&self.channel_id()).try_unwrap()?;
+
+        // Does not access cache.
+        Ok(guild.user_permissions_in(channel, &member))
+    }
 }
-
-//     // async fn neutral_colour(&self) -> u32 {
-//     //     if let Some(guild_id) = self.guild_id() {
-//     //         let row = self.data().guilds_db.get(guild_id.get() as i64).await;
-//     //         if row
-//     //             .map(|row| row.voice_mode)
-//     //             .map_or(false, TTSMode::is_premium)
-//     //         {
-//     //             return PREMIUM_NEUTRAL_COLOUR;
-//     //         }
-//     //     }
-
-//     //     FREE_NEUTRAL_COLOUR
-//     // }
-
-//     async fn author_permissions(&self) -> CrackedResult<serenity::Permissions> {
-//         // Handle non-guild call first, to allow try_unwrap calls to be safe.
-//         if self.guild_id().is_none() {
-//             return Ok(((serenity::Permissions::from_bits_truncate(
-//                 0b111_1100_1000_0000_0000_0111_1111_1000_0100_0000,
-//             ) | serenity::Permissions::SEND_MESSAGES)
-//                 - serenity::Permissions::SEND_TTS_MESSAGES)
-//                 - serenity::Permissions::MANAGE_MESSAGES);
-//         }
-
-//         // Accesses guild cache and is asynchronous, must be called first.
-//         let member = self.author_member().await.try_unwrap()?;
-
-//         // Accesses guild cache, but the member above was cloned out, so safe.
-//         let guild = self.guild().try_unwrap()?;
-
-//         // Does not access cache, but relies on above guild cache reference.
-//         let channel = guild.channels.get(&self.channel_id()).try_unwrap()?;
-
-//         // Does not access cache.
-//         Ok(guild.user_permissions_in(channel, &member))
-//     }
-
 //     async fn send_ephemeral(
 //         &'ctx self,
 //         message: impl Into<Cow<'ctx, str>>,
