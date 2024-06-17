@@ -20,16 +20,6 @@ use tokio::sync::RwLock;
 
 use crack_core::poise_ext::PoiseContextExt;
 
-// #[derive(Debug, Clone)]
-// pub struct CommandCategories {
-//     settings_command: bool,
-//     mod_command: bool,
-//     admin_command: bool,
-//     music_command: bool,
-//     osint_command: bool,
-//     playlist_command: bool,
-// }
-
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
