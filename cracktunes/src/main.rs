@@ -20,12 +20,11 @@ use {
     prometheus::{Encoder, TextEncoder},
     warp::Filter,
 };
-// #[cfg(feature = "crack-telemetry")]
-// use {
-//     // opentelemetry_otlp::WithExportConfig,
-//     std::sync::Arc,
-//     tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
-// };
+#[cfg(feature = "crack-telemetry")]
+use {
+    std::sync::Arc,
+    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
+};
 
 // #[cfg(feature = "crack-telemetry")]
 // const SERVICE_NAME: &str = "cracktunes";
@@ -238,16 +237,16 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
 //     Arc::new(debug_file)
 // }
 
-// #[cfg(feature = "crack-telemetry")]
-// fn get_bunyan_writer() -> Arc<std::fs::File> {
-//     let log_path = &format!("{}/bunyan.log", get_log_prefix());
-//     let debug_file = std::fs::File::create(log_path);
-//     let debug_file = match debug_file {
-//         Ok(file) => file,
-//         Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
-//     };
-//     Arc::new(debug_file)
-// }
+#[cfg(feature = "crack-telemetry")]
+fn get_bunyan_writer() -> Arc<std::fs::File> {
+    let log_path = &format!("{}/bunyan.log", get_log_prefix());
+    let debug_file = std::fs::File::create(log_path);
+    let debug_file = match debug_file {
+        Ok(file) => file,
+        Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
+    };
+    Arc::new(debug_file)
+}
 
 // fn get_current_log_layer() -> Box<dyn tracing_subscriber::Layer<Registry>> {
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
@@ -285,7 +284,8 @@ fn init_logging() {
     tracing::warn!("Hello, world!");
 }
 
-// const SERVICE_NAME: &str = "crack-tunes";
+#[cfg(feature = "crack-telemetry")]
+const SERVICE_NAME: &str = "crack-tunes";
 
 // #[tracing::instrument]
 /// Initialize logging and tracing.
@@ -317,9 +317,9 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Layer for adding our configured tracer.
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
-    // // #[cfg(feature = "crack-telemetry")]
-    // let formatting_layer =
-    //     BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    #[cfg(feature = "crack-telemetry")]
+    let formatting_layer =
+        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
     // Layer for printing to stdout.
     let stdout_formatting_layer = get_current_log_layer();
