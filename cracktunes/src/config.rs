@@ -48,20 +48,6 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             COMMAND_ERRORS
                 .with_label_values(&[&ctx.command().qualified_name])
                 .inc();
-            // match get_interaction_new(ctx) {
-            //     Some(_) => {
-            //         check_interaction(
-
-            //         );
-            //     },
-            //     None => {
-            //         check_reply(
-            //             ctx.send(CreateReply::default().content(&format!("{error}")))
-            //                 .await,
-            //         );
-            //     },
-            // }
-            // tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
