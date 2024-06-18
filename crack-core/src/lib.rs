@@ -19,6 +19,7 @@ use poise::{serenity_prelude as serenity, ReplyHandle};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId, Message, UserId};
 use songbird::Call;
+use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
@@ -48,6 +49,10 @@ pub mod sources;
 pub mod test;
 pub mod utils;
 
+// ------------------------------------------------------------------
+// Public types we use to simplify return and parameter types.
+// ------------------------------------------------------------------
+
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
 pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
@@ -75,11 +80,6 @@ impl From<CrackedError> for SerenityError {
         //let bs = Box::new(e.to_string());
         SerenityError::Other("CrackedError")
     }
-}
-
-/// Checks if we're in a prefix context or not.
-pub fn is_prefix(ctx: Context) -> bool {
-    matches!(&ctx, Context::Prefix(_))
 }
 
 /// Struct for the cammed down kicking configuration.
@@ -316,6 +316,7 @@ impl PhoneCodeData {
 pub struct DataInner {
     pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
+    pub start_time: SystemTime,
     // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
     pub authorized_users: HashSet<u64>,
@@ -521,6 +522,7 @@ impl Default for DataInner {
             phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
             up_prefix: "R",
             bot_settings: Default::default(),
+            start_time: SystemTime::now(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),

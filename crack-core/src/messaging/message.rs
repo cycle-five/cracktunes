@@ -5,8 +5,9 @@ use ::serenity::builder::CreateEmbed;
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude::{self as serenity, UserId};
+use std::time::Duration;
 
-use crate::{errors::CrackedError, messaging::messages::*};
+use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
 
 const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -116,6 +117,10 @@ pub enum CrackedMessage {
     TextChannelCreated {
         channel_id: serenity::ChannelId,
         channel_name: String,
+    },
+    Uptime {
+        mention: String,
+        timestamp: u64,
     },
     UserAuthorized {
         id: UserId,
@@ -309,6 +314,11 @@ impl Display for CrackedMessage {
             } => f.write_str(&format!(
                 "{} {} {}",
                 CATEGORY_CREATED, channel_id, channel_name
+            )),
+            Self::Uptime { mention, timestamp } => f.write_str(&format!(
+                "**{}**\n: {}",
+                mention,
+                duration_to_string(Duration::from_millis(*timestamp)),
             )),
             Self::UserAuthorized {
                 id,

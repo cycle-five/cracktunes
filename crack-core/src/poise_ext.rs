@@ -1,9 +1,11 @@
 use crate::{
     commands::CrackedError, http_utils::SendMessageParams, utils::OptionTryUnwrap, CrackedResult,
+    Data,
 };
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
+use serenity::CreateEmbed;
 use std::{future::Future, sync::Arc};
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
@@ -14,9 +16,9 @@ pub trait PoiseContextExt<'ctx> {
     //     &'ctx self,
     //     message: impl Into<Cow<'ctx, str>>,
     // ) -> CrackedResult<poise::ReplyHandle<'ctx>>;
-
     fn author_vc(&self) -> Option<serenity::ChannelId>;
     fn author_permissions(&self) -> impl Future<Output = CrackedResult<serenity::Permissions>>;
+    fn is_prefix(&self) -> bool;
     fn send_message(
         &self,
         params: SendMessageParams,
@@ -24,6 +26,11 @@ pub trait PoiseContextExt<'ctx> {
 }
 
 impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
+    /// Checks if we're in a prefix context or not.
+    fn is_prefix(&self) -> bool {
+        matches!(self, crate::Context::Prefix(_))
+    }
+
     /// Get the VC that
     fn author_vc(&self) -> Option<serenity::ChannelId> {
         require_guild!(self, None)
@@ -184,9 +191,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 //         }
 //     }
 // }
-use crate::Data;
-use ::serenity::all::CreateEmbed;
 
+///Struct to represent everything needed to join a voice call.
 pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
 impl JoinVCToken {
     pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
@@ -200,6 +206,7 @@ impl JoinVCToken {
     }
 }
 
+/// Extension trait for Songbird.
 pub trait SongbirdManagerExt {
     fn join_vc(
         &self,
@@ -208,6 +215,7 @@ pub trait SongbirdManagerExt {
     ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError>>;
 }
 
+/// Implementation of the extension trait for Songbird's manager.
 impl SongbirdManagerExt for songbird::Songbird {
     async fn join_vc(
         &self,
