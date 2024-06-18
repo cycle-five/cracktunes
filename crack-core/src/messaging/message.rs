@@ -120,7 +120,7 @@ pub enum CrackedMessage {
     },
     Uptime {
         mention: String,
-        timestamp: u64,
+        seconds: u64,
     },
     UserAuthorized {
         id: UserId,
@@ -315,10 +315,10 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 CATEGORY_CREATED, channel_id, channel_name
             )),
-            Self::Uptime { mention, timestamp } => f.write_str(&format!(
+            Self::Uptime { mention, seconds } => f.write_str(&format!(
                 "**{}**\n: {}",
                 mention,
-                duration_to_string(Duration::from_millis(*timestamp)),
+                duration_to_string(Duration::from_millis(*seconds)),
             )),
             Self::UserAuthorized {
                 id,
@@ -403,12 +403,6 @@ impl From<CrackedError> for CrackedMessage {
         Self::CrackedError(error)
     }
 }
-
-// impl From<CrackedMessage<'_>> for Result<CrackedMessage<'_>, CrackedError> {
-//     fn from(message: CrackedMessage<'_>) -> Self {
-//         Ok(message)
-//     }
-// }
 
 impl From<serenity::http::HttpError> for CrackedMessage {
     fn from(error: serenity::http::HttpError) -> Self {

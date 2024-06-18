@@ -26,7 +26,7 @@ use poise::serenity_prelude::Mentionable;
     required_bot_permissions = "SEND_MESSAGES"
 )]
 pub async fn uptime(ctx: Context<'_>) -> CommandResult {
-    let timestamp = ctx
+    let seconds = ctx
         .data()
         .start_time
         .duration_since(std::time::UNIX_EPOCH)?
@@ -36,7 +36,7 @@ pub async fn uptime(ctx: Context<'_>) -> CommandResult {
         current_user.mention().to_string()
     };
 
-    let msg = CrackedMessage::Uptime { mention, timestamp };
+    let msg = CrackedMessage::Uptime { mention, seconds };
 
     crate::utils::send_reply(&ctx, msg, true).await?;
 
