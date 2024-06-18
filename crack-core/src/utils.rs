@@ -2,6 +2,7 @@ use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
+use crate::poise_ext::PoiseContextExt;
 use crate::{
     commands::{music::doplay::RequestingUser, music::play_utils::QueryType, music::MyAuxMetadata},
     db::Playlist,
@@ -82,7 +83,6 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
-use crate::poise_ext::PoiseContextExt;
 pub async fn send_reply_embed<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     message: CrackedMessage,

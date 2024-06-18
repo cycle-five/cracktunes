@@ -2,7 +2,7 @@ use self::serenity::builder::CreateEmbed;
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::utils::{get_guild_name, send_embed_response_poise};
-use crate::{Context, ContextExt, Error};
+use crate::{Context, poise_ext::ContextExt, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;

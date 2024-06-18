@@ -3,7 +3,7 @@ use crate::{
     db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, MetadataAnd, Playlist},
     errors::CrackedError,
-    Context, ContextExt as _, Error,
+    Context, poise_ext::ContextExt as _, Error,
 };
 use sqlx::PgPool;
 

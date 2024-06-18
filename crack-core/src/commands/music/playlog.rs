@@ -1,6 +1,6 @@
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
-use crate::{Context, ContextExt, Error};
+use crate::{Context, poise_ext::ContextExt, Error};
 
 /// Get recently played tracks form the guild.
 #[cfg(not(tarpaulin_include))]

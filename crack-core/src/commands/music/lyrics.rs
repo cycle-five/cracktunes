@@ -1,6 +1,6 @@
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, http_utils,
-    messaging::interface::create_lyrics_embed, Context, ContextExt, Error,
+    messaging::interface::create_lyrics_embed, Context, poise_ext::ContextExt, Error,
 };
 
 #[cfg(not(tarpaulin_include))]

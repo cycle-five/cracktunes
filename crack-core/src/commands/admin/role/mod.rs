@@ -6,8 +6,8 @@ pub use assign_role::*;
 pub use create_role::*;
 pub use delete_role::*;
 
+pub use crate::poise_ext::ContextExt;
 pub use crate::utils;
-pub use crate::ContextExt;
 
 use crate::commands::sub_help as help;
 use crate::{Context, Error};

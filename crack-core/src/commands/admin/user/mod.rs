@@ -2,8 +2,8 @@ pub mod unban;
 
 pub use unban::*;
 
+pub use crate::poise_ext::ContextExt;
 pub use crate::utils;
-pub use crate::ContextExt;
 
 use crate::commands::sub_help as help;
 use crate::{Command, Context, Error};

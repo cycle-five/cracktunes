@@ -1,7 +1,8 @@
 use crate::commands::{cmd_check_music, do_join, set_global_handlers};
 use crate::messaging::interface::send_joining_channel;
 use crate::{
-    connection::get_voice_channel_for_user_summon, errors::CrackedError, Context, ContextExt, Error,
+    connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
+    Context, Error,
 };
 use ::serenity::all::{Channel, ChannelId, Mentionable};
 use songbird::Call;

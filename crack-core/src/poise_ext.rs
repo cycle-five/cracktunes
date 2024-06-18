@@ -1,12 +1,163 @@
+use crate::commands::play_utils::TrackReadyData;
+use crate::commands::MyAuxMetadata;
+use crate::db::{MetadataMsg, PlayLog};
+use crate::guild::operations::GuildSettingsOperations;
+use crate::guild::settings::GuildSettings;
+use crate::Error;
 use crate::{
-    commands::CrackedError, http_utils::SendMessageParams, utils::OptionTryUnwrap, CrackedResult,
-    Data,
+    commands::CrackedError, http_utils::SendMessageParams, messaging::message::CrackedMessage,
+    utils, utils::OptionTryUnwrap, CrackedResult, Data,
 };
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
-use serenity::CreateEmbed;
+use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
+use songbird::Call;
 use std::{future::Future, sync::Arc};
+use tokio::sync::Mutex;
+
+/// Trait to extend the Context struct with additional convenience functionality.
+pub trait ContextExt {
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    /// The the user id for the author of the message that created this context.
+    fn get_user_id(&self) -> serenity::UserId;
+    /// Gets the log of last played songs on the bot by a specific user
+    fn get_last_played_by_user(
+        &self,
+        user_id: UserId,
+    ) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
+
+    fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
+
+    /// Gets the log of last played songs on the bot
+    fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
+    /// Return the call that the bot is currently in, if it is in one.
+    fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Return the db pool for database operations.
+    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError>;
+    /// Add a message to the cache
+    fn add_msg_to_cache(
+        &self,
+        guild_id: GuildId,
+        msg: Message,
+    ) -> impl Future<Output = Option<Message>>;
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+
+    // ----- Send message utility functions ------ //
+    fn send_found_command(
+        &self,
+        command: String,
+    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+}
+
+/// Implement the ContextExt trait for the Context struct.
+impl ContextExt for crate::Context<'_> {
+    /// Get the user id from a context.
+    fn get_user_id(&self) -> serenity::UserId {
+        match self {
+            poise::Context::Application(ctx) => ctx.interaction.user.id,
+            poise::Context::Prefix(ctx) => ctx.msg.author.id,
+        }
+    }
+
+    /// Get the guild settings for a guild.
+    async fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+        self.data().get_guild_settings(guild_id).await
+    }
+
+    /// Get the last played songs for a user.
+    async fn get_last_played_by_user(&self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        PlayLog::get_last_played(
+            self.data().database_pool.as_ref().unwrap(),
+            Some(user_id.get() as i64),
+            Some(guild_id.get() as i64),
+        )
+        .await
+        .map_err(|e| e.into())
+    }
+
+    /// Get the last played songs for a guild.
+    async fn get_last_played(&self) -> Result<Vec<String>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        PlayLog::get_last_played(
+            self.data().database_pool.as_ref().unwrap(),
+            None,
+            Some(guild_id.get() as i64),
+        )
+        .await
+        .map_err(|e| e.into())
+    }
+
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
+        let username = ready_track.username.clone();
+        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+        match &self.data().db_channel {
+            Some(channel) => {
+                let write_data: MetadataMsg = MetadataMsg {
+                    aux_metadata,
+                    user_id,
+                    username,
+                    guild_id,
+                    channel_id,
+                };
+                if let Err(e) = channel.try_send(write_data) {
+                    tracing::error!("Error sending metadata to db_channel: {}", e);
+                }
+            },
+            None => {},
+        }
+    }
+
+    /// Return the call that the bot is currently in, if it is in one.
+    async fn get_call(&self) -> Result<Arc<Mutex<Call>>, CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(self.serenity_context())
+            .await
+            .ok_or(CrackedError::NotConnected)?;
+        manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Get the database pool
+    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
+        self.data().get_db_pool()
+    }
+
+    async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+        self.data().add_msg_to_cache(guild_id, msg).await
+    }
+
+    /// Gets the channel id that the bot is currently playing in for a given guild.
+    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
+        let serenity_context = self.serenity_context();
+        let manager = songbird::get(serenity_context)
+            .await
+            .expect("Failed to get songbird manager")
+            .clone();
+
+        let call_lock = manager.get(guild_id)?;
+        let call = call_lock.lock().await;
+
+        let channel_id = call.current_channel()?;
+        let serenity_channel_id = ChannelId::new(channel_id.0.into());
+
+        Some(serenity_channel_id)
+    }
+
+    // ----- Send message utility functions ------ //
+
+    /// Sends a message notifying the use they found a command.
+    async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
+    }
+}
+
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
     //     &'ctx self,
