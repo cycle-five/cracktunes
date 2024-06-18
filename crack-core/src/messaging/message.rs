@@ -43,6 +43,7 @@ pub enum CrackedMessage {
     Error,
     ErrorHttp(serenity::http::HttpError),
     InvalidIP(String),
+    InviteLink,
     IPDetails(String),
     IPVersion(String),
     Leaving,
@@ -212,6 +213,10 @@ impl Display for CrackedMessage {
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
             Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
+            Self::InviteLink => f.write_str(&format!(
+                "{} [{}]({})",
+                INVITE_TEXT, INVITE_LINK_TEXT, INVITE_URL
+            )),
             Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
             Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),

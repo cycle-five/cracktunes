@@ -46,10 +46,15 @@ pub trait ContextExt {
     fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
 
     // ----- Send message utility functions ------ //
+
+    /// Send a message notifying the user they found a command.
     fn send_found_command(
         &self,
         command: String,
     ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
+    /// Send a message to the user with the invite link for the bot.
+    fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -156,6 +161,10 @@ impl ContextExt for crate::Context<'_> {
     async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
         utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
     }
+
+    async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::InviteLink).await
+    }
 }
 
 pub trait PoiseContextExt<'ctx> {
@@ -170,6 +179,11 @@ pub trait PoiseContextExt<'ctx> {
     fn author_vc(&self) -> Option<serenity::ChannelId>;
     fn author_permissions(&self) -> impl Future<Output = CrackedResult<serenity::Permissions>>;
     fn is_prefix(&self) -> bool;
+    fn send_reply(
+        &self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_message(
         &self,
         params: SendMessageParams,
@@ -188,6 +202,21 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
             .voice_states
             .get(&self.author().id)
             .and_then(|vc| vc.channel_id)
+    }
+
+    /// Creates an embed from a CrackedMessage and sends it as an embed.
+    async fn send_reply(
+        &self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> Result<ReplyHandle<'ctx>, CrackedError> {
+        let color = serenity::Colour::from(&message);
+        let params = SendMessageParams::new(message)
+            .with_color(color)
+            .with_as_embed(as_embed);
+        let handle = self.send_message(params).await?;
+        //Ok(handle.into_message().await?)
+        Ok(handle)
     }
 
     /// Base, very generic send message function.

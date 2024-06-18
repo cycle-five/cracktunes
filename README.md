@@ -96,19 +96,22 @@ docker compose up -d
 
 
 # Change Log
+## TODO:
+- [ ] discordbotlist.com
+- [ ] Change `let _ = send_reply(&ctx, msg, true).await?;`
+      to `ctx.send_reply(msg, true).await?;`
 ## v0.3.8 (2024/06/??)
 - [x] Brainf**k interpreter.
 - [x] Switched all locks from blocking to non-blocking async.
-- [ ] discordbotlist.com
 ...
 ## v0.3.7 (2024/05/29)
-- [x] crackgpt 0.2.0!
-      Added back chatgpt support, which I am now self hosting for CrackTunes
-      and is backed by GPT 4o.
-- [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
-- [x] Remove the grafana dashboard.
-- [x] Switch to async logging.
-- [x] Add an async service to handle the database (accept writes on a channel,
+- crackgpt 0.2.0!
+  Added back chatgpt support, which I am now self hosting for CrackTunes
+  and is backed by GPT 4o.
+- Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
+- Remove the grafana dashboard.
+- Switch to async logging.
+- Add an async service to handle the database (accept writes on a channel,
       and write to the database in a separate thread).
       Eventually this could be a seperate service (REST / GRPC).
 ## v0.3.6 (2024/05/03)

@@ -83,35 +83,22 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
+/// Creates an embed from a CrackedMessage and sends it.
 pub async fn send_reply_embed<'ctx>(
-    ctx: &'ctx CrackContext<'_>,
+    ctx: &CrackContext<'ctx>,
     message: CrackedMessage,
 ) -> Result<ReplyHandle<'ctx>, Error> {
-    let color = match message {
-        CrackedMessage::CrackedRed(_) | CrackedMessage::CrackedError(_) => Colour::RED,
-        _ => Colour::BLUE,
-    };
-    let params = SendMessageParams::new(message)
-        .with_color(color)
-        .with_as_embed(true);
-    let handle: ReplyHandle<'ctx> = ctx.send_message(params).await?;
-    Ok(handle)
+    ctx.send_reply(message, true).await.map_err(Into::into)
 }
 
-/// Creates an embed from a CrackedMessage and sends it as an embed.
+/// Sends a reply response, possibly as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
     ctx: &CrackContext<'ctx>,
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    let color = Colour::from(&message);
-    let params = SendMessageParams::new(message)
-        .with_color(color)
-        .with_as_embed(as_embed);
-    let handle = ctx.send_message(params).await?;
-    //Ok(handle.into_message().await?)
-    Ok(handle)
+    ctx.send_reply(message, as_embed).await.map_err(Into::into)
 }
 
 /// Sends a regular reply response.
