@@ -73,7 +73,7 @@ apt install -y pkg-config
 The following command will run all tests:
 
 ```shell
-cargo +nightly test --all
+cargo +nightly test --all-features --workspace
 ```
 
 Some tests are available inside the `src/tests` folder, others are in their respective
@@ -82,7 +82,19 @@ Increasing the test coverage is also welcome. Test coverage is tracked using
 [tarpaulin]().
 
 ```shell
-cargo +nightly tarpaulin --all
+cargo +nightly tarpaulin --all-features --workspace
+```
+
+## Linting
+
+```shell
+cargo +nightly clippy --profile=release --all-features --workspace -- -D warnings -D clippy:all
+```
+
+##  Build
+
+```shell
+cargo +nightly build --profile=release --features crack-osint,crack-bf,crack-fpt --workspace --locked
 ```
 
 ### Docker Compose
@@ -103,6 +115,7 @@ docker compose up -d
 ## v0.3.8 (2024/06/??)
 - [x] Brainf**k interpreter.
 - [x] Switched all locks from blocking to non-blocking async.
+- [ ] 
 ...
 ## v0.3.7 (2024/05/29)
 - crackgpt 0.2.0!

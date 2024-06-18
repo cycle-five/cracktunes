@@ -54,7 +54,7 @@ pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
 
-pub fn music_commands() -> [crate::Command; 23] {
+pub fn music_commands() -> [crate::Command; 24] {
     [
         autopause(),
         autoplay(),
@@ -75,7 +75,8 @@ pub fn music_commands() -> [crate::Command; 23] {
         shuffle(),
         skip(),
         stop(),
-        summon(),
+        summon::summon(),
+        summon_channel(),
         volume(),
         vote(),
         voteskip(),

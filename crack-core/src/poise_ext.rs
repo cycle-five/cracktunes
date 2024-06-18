@@ -16,6 +16,20 @@ use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
+/// TODO: Separate all the messaging related functions from the other extensions and
+/// put them into this extension.
+#[allow(dead_code)]
+pub trait MessageInterfaceCtxExt {
+    /// Send a message notifying the user they found a command.
+    fn send_found_command(
+        &self,
+        command: String,
+    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
+    /// Send a message to the user with the invite link for the bot.
+    fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+}
+
 /// Trait to extend the Context struct with additional convenience functionality.
 pub trait ContextExt {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
@@ -167,6 +181,7 @@ impl ContextExt for crate::Context<'_> {
     }
 }
 
+/// Extension trait for the poise::Context.
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
     //     &'ctx self,
