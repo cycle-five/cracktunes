@@ -52,6 +52,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 /// Admin commands.
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

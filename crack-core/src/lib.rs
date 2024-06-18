@@ -790,8 +790,8 @@ impl ContextExt for Context<'_> {
         match &self.data().db_channel {
             Some(channel) => {
                 let write_data: MetadataMsg = MetadataMsg {
-                    user_id,
                     aux_metadata,
+                    user_id,
                     username,
                     guild_id,
                     channel_id,

@@ -95,7 +95,12 @@ docker compose up -d
 ```
 
 
-# ~~Roadmap~~ Change Log
+# Change Log
+## v0.3.8 (2024/06/??)
+- [x] Brainf**k interpreter.
+- [x] Switched all locks from blocking to non-blocking async.
+- [ ] discordbotlist.com
+...
 ## v0.3.7 (2024/05/29)
 - [x] crackgpt 0.2.0!
       Added back chatgpt support, which I am now self hosting for CrackTunes
