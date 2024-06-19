@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            select metadata.id, title, artist, album, track, date, channels, channel, start_time, duration, sample_rate, source_url, thumbnail\n            from play_log \n            join metadata on \n            play_log.metadata_id = metadata.id \n            where guild_id = $1 order by created_at desc limit 5\n            ",
+  "query": "\n            select metadata.id, title, artist, album, track, date, channels, channel, start_time, duration, sample_rate, source_url, thumbnail\n            from play_log \n            join metadata on \n            play_log.metadata_id = metadata.id \n            where guild_id = $1 order by created_at desc limit 100\n            ",
   "describe": {
     "columns": [
       {
@@ -90,5 +90,5 @@
       true
     ]
   },
-  "hash": "dd00c051149a6cd41760e6d8c4d42cc26d31879966ce0f5e079d225e28fb527c"
+  "hash": "ae218b1b3ace1521c18583bd684c731cab7f8524e084a35a2741c9b328e6f0db"
 }

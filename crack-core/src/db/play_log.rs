@@ -88,7 +88,7 @@ impl PlayLog {
                 play_log.metadata_id = metadata.id)
                 left join track_reaction on play_log.id = track_reaction.play_log_id
             where guild_id = $1 and (track_reaction is null or track_reaction.dislikes >= $2)
-            order by play_log.created_at desc limit 5
+            order by play_log.created_at desc limit 100
             "#,
             guild_id,
             max_dislikes
@@ -122,7 +122,7 @@ impl PlayLog {
             from play_log 
             join metadata on 
             play_log.metadata_id = metadata.id 
-            where guild_id = $1 order by created_at desc limit 5
+            where guild_id = $1 order by created_at desc limit 100
             "#,
             guild_id
         )
@@ -148,7 +148,7 @@ impl PlayLog {
             from play_log 
             join metadata on 
             play_log.metadata_id = metadata.id 
-            where user_id = $1 order by created_at desc limit 5
+            where user_id = $1 order by created_at desc limit 100
             "#,
             user_id
         )
