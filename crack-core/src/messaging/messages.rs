@@ -70,6 +70,7 @@ pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going t
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";
 pub const KICKED: &str = "Kicked";
+pub const GRABBED_NOTICE: &str = "📃 Sent you a DM with the current track!";
 pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";

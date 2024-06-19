@@ -34,6 +34,38 @@ pub trait MessageInterfaceCtxExt {
         message: CrackedMessage,
         as_embed: bool,
     ) -> impl Future<Output = Result<ReplyHandle<'_>, CrackedError>>;
+
+    /// Sends a message ecknowledging that the user has grabbed the current track.
+    fn send_grabbed_notice(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+}
+
+impl MessageInterfaceCtxExt for crate::Context<'_> {
+    /// Sends a message notifying the use they found a command.
+    async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
+    }
+
+    async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::InviteLink).await
+    }
+
+    async fn send_reply(
+        &self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> Result<ReplyHandle, CrackedError> {
+        let color = serenity::Colour::from(&message);
+        let params = SendMessageParams::new(message)
+            .with_color(color)
+            .with_as_embed(as_embed);
+        let handle = self.send_message(params).await?;
+        //Ok(handle.into_message().await?)
+        Ok(handle)
+    }
+
+    async fn send_grabbed_notice(&self) -> Result<ReplyHandle, Error> {
+        utils::send_reply_embed(self, CrackedMessage::GrabbedNotice).await
+    }
 }
 
 /// Trait to extend the Context struct with additional convenience functionality.

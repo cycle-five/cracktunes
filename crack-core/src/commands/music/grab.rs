@@ -11,6 +11,8 @@ use crate::{errors::CrackedError, Context, Error};
     guild_only
 )]
 pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
+    use crate::poise_ext::MessageInterfaceCtxExt;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
@@ -30,11 +32,7 @@ pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    let reply_handle = ctx.say("Sent you a DM with the current track").await?;
-
-    let msg = reply_handle.into_message().await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    ctx.send_grabbed_notice().await?;
 
     Ok(())
 }
