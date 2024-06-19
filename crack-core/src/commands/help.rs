@@ -68,6 +68,7 @@ enum HelpCommandMode<'a> {
     Command(&'a Command),
 }
 
+/// Shows the help menu.
 #[poise::command(
     prefix_command,
     slash_command,

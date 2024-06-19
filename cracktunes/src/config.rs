@@ -11,7 +11,7 @@ use crack_core::{
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use crack_core::{http_utils::SendMessageParams, messaging::message::CrackedMessage};
-use poise::serenity_prelude::Client;
+use poise::serenity_prelude::{Client, UserId};
 use poise::serenity_prelude::{FullEvent, GatewayIntents, GuildId};
 use songbird::serenity::SerenityInit;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
@@ -110,8 +110,6 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
     config: BotConfig,
-    //TODO: can this be create in this function instead of passed in?
-    //event_log: EventLog,
     event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
     // FrameworkOptions contains all of poise's configuration option in one struct
@@ -123,24 +121,19 @@ pub async fn poise_framework(
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let commands = crack_core::commands::all_commands();
-    let commands_str = commands
-        .iter()
-        .map(|x| x.qualified_name.as_str())
-        .collect::<Vec<&str>>()
-        .join(", ");
+    let commands_str = crack_core::commands::all_command_names();
 
-    tracing::warn!("Commands: {}", commands_str);
+    tracing::warn!("Commands: {:#?}", commands_str);
 
     let options = poise::FrameworkOptions::<_, Error> {
-        // #[cfg(feature = "set_owners_from_config")]
-        // owners: config
-        //     .owners
-        //     .as_ref()
-        //     .unwrap_or(&vec![])
-        //     .iter()
-        //     .map(|id| UserId::new(*id))
-        //     .collect(),
         commands,
+        owners: config
+            .owners
+            .as_ref()
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|id| UserId::new(*id))
+            .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
@@ -154,7 +147,7 @@ pub async fn poise_framework(
                             GuildId::new(1)
                         },
                     };
-                    let guild_settings_map = data.guild_settings_map.read().await;
+                    let guild_settings_map = data.guild_settings_map.read().await.clone();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {
                         let prefixes = &guild_settings.additional_prefixes;
@@ -214,7 +207,7 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
-        initialize_owners: true,
+        initialize_owners: false,
         ..Default::default()
     };
     let guild_settings_map = config

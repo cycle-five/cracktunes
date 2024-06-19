@@ -54,15 +54,21 @@ pub fn all_commands() -> Vec<crate::Command> {
         chat(),
     ]
     .into_iter()
-    .chain(music::music_commands())
-    .chain(playlist::commands())
-    .chain(utility::utility_commands())
     .chain(help::help_commands())
-    .chain(admin::admin_commands())
-    .chain(settings::settings_commands())
+    .chain(music::music_commands())
+    // .chain(playlist::commands())
+    // .chain(utility::utility_commands())
+    // .chain(admin::admin_commands())
+    // .chain(settings::settings_commands())
     .collect()
 }
 
 pub fn all_command_names() -> Vec<String> {
     all_commands().into_iter().map(|c| c.name).collect()
+}
+
+#[poise::command(prefix_command)]
+pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
+    poise::builtins::register_application_commands_buttons(ctx).await?;
+    Ok(())
 }
