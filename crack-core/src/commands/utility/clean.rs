@@ -1,9 +1,6 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
-    errors::CrackedError,
-    messaging::message::CrackedMessage,
-    utils::send_reply,
-    Context, Error,
+    commands::sub_help as help, errors::CrackedError, messaging::message::CrackedMessage,
+    utils::send_reply, Context, Error,
 };
 
 const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
@@ -11,11 +8,12 @@ const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
 /// Clean up old messages from the bot.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
-    category = "Music",
+    category = "Utility",
     prefix_command,
     slash_command,
     guild_only,
-    check = "cmd_check_music",
+    required_permissions = "MANAGE_MESSAGES",
+    required_bot_permissions = "MANAGE_MESSAGES",
     subcommands("help")
 )]
 pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {

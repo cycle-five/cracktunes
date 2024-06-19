@@ -1,6 +1,5 @@
 pub mod autopause;
 pub mod autoplay;
-pub mod clean;
 pub mod clear;
 pub mod collector;
 pub mod doplay;
@@ -29,7 +28,6 @@ pub mod voteskip;
 
 pub use autopause::*;
 pub use autoplay::*;
-pub use clean::*;
 pub use clear::*;
 pub use collector::*;
 pub use doplay::*;
@@ -58,9 +56,9 @@ pub fn music_commands() -> [crate::Command; 24] {
     [
         autopause(),
         autoplay(),
-        clean(),
         clear(),
         grab(),
+        leave(),
         lyrics(),
         nowplaying(),
         pause(),
