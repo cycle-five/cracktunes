@@ -2,11 +2,11 @@ use colored::Colorize;
 #[cfg(feature = "crack-metrics")]
 use crack_core::metrics::COMMAND_ERRORS;
 use crack_core::{
-    commands::CacheHttpExt,
     db,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::{handle_event, SerenityHandler},
+    http_utils::CacheHttpExt,
     utils::{check_reply, count_command},
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
