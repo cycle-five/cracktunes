@@ -278,7 +278,7 @@ pub async fn send_embed_response_poise<'ctx>(
     let is_reply = true;
     let params = SendMessageParams::default()
         .with_ephemeral(is_ephemeral)
-        .with_embed(embed)
+        .with_embed(Some(embed))
         .with_reply(is_reply);
 
     ctx.send_message(params)

@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 /// Brainfk interpreter.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(category = "Code", slash_command, prefix_command, user_cooldown = "30")]
 pub async fn bf(
     ctx: Context<'_>,
     #[description = "Brainfk program to run."] program: String,

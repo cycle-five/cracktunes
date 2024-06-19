@@ -1,21 +1,32 @@
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
-use crate::{Context, poise_ext::ContextExt, Error};
+use crate::{poise_ext::ContextExt, Context, Error};
 
 /// Get recently played tracks form the guild.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
-    playlog_(ctx).await
+    playlog_internal(ctx).await
 }
 
 /// Get recently played tracks for the guild.
 #[cfg(not(tarpaulin_include))]
-pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
     // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
-    let last_played = ctx.get_last_played().await?;
+    use crate::utils::create_paged_embed;
 
+    let last_played = ctx.get_last_played().await?;
+    let last_played_str = last_played.join("\n");
+
+    let embed = create_paged_embed(
+        ctx,
+        ctx.author().name.clone(),
+        "Playlog".to_string(),
+        last_played_str,
+        756,
+    )
+    .await;
     let _ = send_reply(&ctx, CrackedMessage::PlayLog(last_played), true).await?;
 
     Ok(())

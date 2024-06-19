@@ -12,6 +12,7 @@ use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
+use songbird::tracks::TrackQueue;
 use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
@@ -86,6 +87,8 @@ pub trait ContextExt {
     fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
     /// Return the call that the bot is currently in, if it is in one.
     fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Return the queue owned.
+    fn get_queue(&self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
     fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError>;
     /// Add a message to the cache
@@ -181,6 +184,13 @@ impl ContextExt for crate::Context<'_> {
         manager.get(guild_id).ok_or(CrackedError::NotConnected)
     }
 
+    /// Get the queue owned.
+    async fn get_queue(&self) -> Result<TrackQueue, CrackedError> {
+        let lock = self.get_call().await?;
+        let call = lock.lock().await;
+        Ok(call.queue().clone())
+    }
+
     /// Get the database pool
     fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
         self.data().get_db_pool()
@@ -264,11 +274,12 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         let color = serenity::Colour::from(&message);
+        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&message);
         let params = SendMessageParams::new(message)
             .with_color(color)
-            .with_as_embed(as_embed);
+            .with_as_embed(as_embed)
+            .with_embed(embed);
         let handle = self.send_message(params).await?;
-        //Ok(handle.into_message().await?)
         Ok(handle)
     }
 

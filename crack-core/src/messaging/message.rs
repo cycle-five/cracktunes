@@ -38,6 +38,7 @@ pub enum CrackedMessage {
     Clean(i32),
     CrackedError(CrackedError),
     CrackedRed(String),
+    CreateEmbed(CreateEmbed),
     CommandFound(String),
     DomainInfo(String),
     Error,
@@ -237,6 +238,7 @@ impl Display for CrackedMessage {
             )),
             Self::CrackedError(err) => f.write_str(&format!("{}", err)),
             Self::CrackedRed(s) => f.write_str(s),
+            Self::CreateEmbed(embed) => f.write_str(&format!("{:#?}", embed)),
             Self::CommandFound(s) => f.write_str(s),
             Self::DomainInfo(info) => f.write_str(info),
             Self::Error => f.write_str(ERROR),
@@ -473,6 +475,15 @@ impl From<&CrackedMessage> for Colour {
             CrackedMessage::CrackedRed(_) => Colour::RED,
             CrackedMessage::Other(_) => Colour::GOLD,
             _ => Colour::BLUE,
+        }
+    }
+}
+
+impl From<&CrackedMessage> for Option<CreateEmbed> {
+    fn from(message: &CrackedMessage) -> Option<CreateEmbed> {
+        match message {
+            CrackedMessage::CreateEmbed(embed) => Some(embed.clone()),
+            _ => None,
         }
     }
 }

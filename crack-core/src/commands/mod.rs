@@ -70,7 +70,8 @@ pub fn all_command_names() -> Vec<String> {
     all_commands().into_iter().map(|c| c.name).collect()
 }
 
-#[poise::command(prefix_command)]
+/// Interactively register bot commands.
+#[poise::command(prefix_command, hide_in_help = true)]
 pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::register_application_commands_buttons(ctx).await?;
     Ok(())

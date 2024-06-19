@@ -73,11 +73,8 @@ impl SendMessageParams {
         Self { cache_msg, ..self }
     }
 
-    pub fn with_embed(self, embed: CreateEmbed) -> Self {
-        Self {
-            embed: Some(embed),
-            ..self
-        }
+    pub fn with_embed(self, embed: Option<CreateEmbed>) -> Self {
+        Self { embed, ..self }
     }
 }
 
