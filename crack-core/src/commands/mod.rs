@@ -33,6 +33,8 @@ use serenity::all::Message;
 pub type MessageResult = Result<Message, CrackedError>;
 pub type EmptyResult = Result<(), crate::Error>;
 
+use crate::{Context, Error};
+
 pub trait ConvertToEmptyResult {
     fn convert(self) -> EmptyResult;
 }
@@ -46,6 +48,7 @@ impl ConvertToEmptyResult for MessageResult {
 /// Return all the commands that are available in the bot.
 pub fn all_commands() -> Vec<crate::Command> {
     vec![
+        register(),
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]

@@ -1,10 +1,18 @@
+use crate::commands::sub_help as help;
 use crate::utils::check_reply;
 use crate::{Context, Error};
 use crack_gpt::GptContext;
 use poise::CreateReply;
 
 /// Chat with cracktunes using GPT-4o
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(
+    category = "AI",
+    slash_command,
+    prefix_command,
+    subcommands("help"),
+    user_cooldown = "30",
+    guild_cooldown = "30"
+)]
 pub async fn chat(
     ctx: Context<'_>,
     #[rest]

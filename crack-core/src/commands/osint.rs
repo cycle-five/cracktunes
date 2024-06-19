@@ -1,8 +1,8 @@
-pub use crate::{
+use crate::{
     commands::sub_help as help,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    utils::{send_reply, send_reply_embed},
+    utils::send_reply_embed,
     Context, Error,
 };
 use crack_osint::{check_password_pwned, VirusTotalClient};
