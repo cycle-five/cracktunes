@@ -19,11 +19,11 @@ jobs:
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-          rustup toolchain install nightly --profile minimal --no-self-update
+          # rustup toolchain install nightly --profile minimal --no-self-update
           rustup default ${{ matrix.rust-version }}
           rustup update
           rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
-          rustup component add rustfmt clippy --toolchain nightly
+          # rustup component add rustfmt clippy --toolchain nightly
         shell: bash
       - 
         uses: ikalnytskyi/action-setup-postgres@v4
@@ -57,7 +57,7 @@ jobs:
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-        run: cargo +nightly fmt --all -- --check
+        run: cargo +nightly fmt --workspace -- --check
 
       - name: Run clippy
         env:
