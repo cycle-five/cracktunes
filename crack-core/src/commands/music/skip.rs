@@ -1,7 +1,9 @@
 use crate::{
+    commands::{cmd_check_music, sub_help as help},
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{get_track_metadata, send_reply},
+    poise_ext::PoiseContextExt,
+    utils::get_track_metadata,
     Context, Error,
 };
 use serenity::all::Message;
@@ -11,10 +13,17 @@ use tokio::sync::MutexGuard;
 
 /// Skip the current track, or a number of tracks.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    prefix_command,
+    slash_command,
+    check = "cmd_check_music",
+    subcommands("help"),
+    guild_only
+)]
 pub async fn skip(
     ctx: Context<'_>,
-    #[description = "Number of tracks to skip"] tracks_to_skip: Option<usize>,
+    #[description = "Number of tracks to skip"] num_tracks: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
@@ -31,7 +40,7 @@ pub async fn skip(
         },
     };
 
-    let to_skip = tracks_to_skip.unwrap_or(1);
+    let to_skip = num_tracks.unwrap_or(1);
 
     let handler = call.lock().await;
     let queue = handler.queue();
@@ -58,38 +67,27 @@ pub async fn create_skip_response(
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
 ) -> Result<Message, CrackedError> {
-    match handler.queue().current() {
+    let send_msg = match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
-            send_reply(
-                &ctx,
-                CrackedMessage::SkipTo {
-                    title: metadata.title.as_ref().unwrap().to_owned(),
-                    url: metadata.source_url.as_ref().unwrap().to_owned(),
-                },
-                true,
-            )
-            .await?
-            .into_message()
-            .await
-            .map_err(|e| e.into())
+            CrackedMessage::SkipTo {
+                title: metadata.title.as_ref().unwrap().to_owned(),
+                url: metadata.source_url.as_ref().unwrap().to_owned(),
+            }
         },
         None => {
             if tracks_to_skip > 1 {
-                send_reply(&ctx, CrackedMessage::SkipAll, true)
-                    .await?
-                    .into_message()
-                    .await
-                    .map_err(|e| e.into())
+                CrackedMessage::SkipAll
             } else {
-                send_reply(&ctx, CrackedMessage::Skip, true)
-                    .await?
-                    .into_message()
-                    .await
-                    .map_err(|e| e.into())
+                CrackedMessage::Skip
             }
         },
-    }
+    };
+    ctx.send_reply(send_msg, true)
+        .await?
+        .into_message()
+        .await
+        .map_err(|e| e.into())
 }
 
 /// Downvote and skip song causing it to *not* be used in music recommendations.

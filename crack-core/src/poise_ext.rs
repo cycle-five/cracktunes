@@ -28,6 +28,12 @@ pub trait MessageInterfaceCtxExt {
 
     /// Send a message to the user with the invite link for the bot.
     fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
+    fn send_reply(
+        &self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> impl Future<Output = Result<ReplyHandle<'_>, CrackedError>>;
 }
 
 /// Trait to extend the Context struct with additional convenience functionality.

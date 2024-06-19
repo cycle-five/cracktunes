@@ -26,11 +26,8 @@ use poise::serenity_prelude::Mentionable;
     required_bot_permissions = "SEND_MESSAGES"
 )]
 pub async fn uptime(ctx: Context<'_>) -> CommandResult {
-    let seconds = ctx
-        .data()
-        .start_time
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
+    let now = std::time::SystemTime::now();
+    let seconds = now.duration_since(ctx.data().start_time)?.as_secs();
     let mention = {
         let current_user = ctx.cache().current_user();
         current_user.mention().to_string()

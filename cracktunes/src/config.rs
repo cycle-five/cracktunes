@@ -123,6 +123,13 @@ pub async fn poise_framework(
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let commands = crack_core::commands::all_commands();
+    let commands_str = commands
+        .iter()
+        .map(|x| x.qualified_name.as_str())
+        .collect::<Vec<&str>>()
+        .join(", ");
+
+    tracing::warn!("Commands: {}", commands_str);
 
     let options = poise::FrameworkOptions::<_, Error> {
         // #[cfg(feature = "set_owners_from_config")]
@@ -201,12 +208,13 @@ pub async fn poise_framework(
                 Ok(true)
             })
         }),
-        // Enforce command checks even for owners (enforced by default)
-        // Set to true to bypass checks, which is useful for testing
-        skip_checks_for_owners: false,
         event_handler: |ctx, event, framework, data_global| {
             Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
         },
+        // Enforce command checks even for owners (enforced by default)
+        // Set to true to bypass checks, which is useful for testing
+        skip_checks_for_owners: false,
+        initialize_owners: true,
         ..Default::default()
     };
     let guild_settings_map = config
@@ -218,14 +226,14 @@ pub async fn poise_framework(
         .collect::<HashMap<GuildId, GuildSettings>>();
 
     let db_url = config.get_database_url();
-    let pool_opts = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
+    let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
         Ok(pool) => Some(pool),
         Err(e) => {
             tracing::error!("Error getting database pool: {}, db_url: {}", e, db_url);
             None
         },
     };
-    let channel = match pool_opts.clone().map(db::worker_pool::setup_workers) {
+    let db_channel = match database_pool.clone().map(db::worker_pool::setup_workers) {
         Some(c) => Some(c.await),
         None => None,
     };
@@ -240,8 +248,8 @@ pub async fn poise_framework(
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log_async,
-        database_pool: pool_opts,
-        db_channel: channel,
+        database_pool,
+        db_channel,
         ..Default::default()
     }));
 

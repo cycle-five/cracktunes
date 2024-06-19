@@ -24,7 +24,7 @@ use crate::{Context, Error};
 pub async fn role(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Role command called");
 
-    ctx.send_found_command("role".to_string()).await?;
+    ctx.send_found_command("admin role".to_string()).await?;
 
     Ok(())
 }

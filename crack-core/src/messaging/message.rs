@@ -323,7 +323,7 @@ impl Display for CrackedMessage {
             Self::Uptime { mention, seconds } => f.write_str(&format!(
                 "**{}**\n: {}",
                 mention,
-                duration_to_string(Duration::from_millis(*seconds)),
+                duration_to_string(Duration::from_secs(*seconds)),
             )),
             Self::UserAuthorized {
                 id,
