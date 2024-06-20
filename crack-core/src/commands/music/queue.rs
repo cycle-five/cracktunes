@@ -1,8 +1,11 @@
 use crate::{
+    commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::interface::{create_nav_btns, create_queue_embed},
-    messaging::messages::QUEUE_EXPIRED,
+    messaging::{
+        interface::{create_nav_btns, create_queue_embed},
+        messages::QUEUE_EXPIRED,
+    },
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
@@ -19,7 +22,15 @@ const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    slash_command,
+    prefix_command,
+    aliases("list", "q"),
+    subcommands("help"),
+    guild_only
+)]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     use crate::utils::get_interaction_new;
 

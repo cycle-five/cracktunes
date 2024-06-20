@@ -141,6 +141,69 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         },
     };
 
+    // // let neutral_colour = Colour::from_rgb(0x00, 0x00, 0x00);
+    // let neutral_colour = Colour::BLURPLE;
+    // let embed = CreateEmbed::default()
+    //     .title("{command_name} Help!".to_string().replace(
+    //         "{command_name}",
+    //         &match &mode {
+    //             HelpCommandMode::Root => ctx.cache().current_user().name.to_string(),
+    //             HelpCommandMode::Group(c) | HelpCommandMode::Command(c) => {
+    //                 format!("`{}`", c.qualified_name)
+    //             },
+    //         },
+    //     ))
+    //     .description(match &mode {
+    //         HelpCommandMode::Root => show_group_description(&get_command_mapping(commands)),
+    //         HelpCommandMode::Command(command_obj) => {
+    //             let mut msg = format!(
+    //                 "{}\n```/{}",
+    //                 command_obj
+    //                     .description
+    //                     .as_deref()
+    //                     .unwrap_or_else(|| "Command description not found!"),
+    //                 command_obj.qualified_name
+    //             );
+
+    //             format_params(&mut msg, command_obj);
+    //             msg.push_str("```\n");
+
+    //             if !command_obj.parameters.is_empty() {
+    //                 msg.push_str("__**Parameter Descriptions**__\n");
+    //                 command_obj.parameters.iter().for_each(|p| {
+    //                     let name = &p.name;
+    //                     let description =
+    //                         p.description.as_deref().unwrap_or_else(|| "no description");
+    //                     writeln!(msg, "`{name}`: {description}").unwrap();
+    //                 });
+    //             };
+
+    //             msg
+    //         },
+    //         HelpCommandMode::Group(group) => show_group_description(&{
+    //             let mut map = IndexMap::new();
+    //             map.insert(
+    //                 group.qualified_name.as_ref(),
+    //                 group.subcommands.iter().collect(),
+    //             );
+    //             map
+    //         }),
+    //     })
+    //     .colour(neutral_colour)
+    //     .author(
+    //         serenity::CreateEmbedAuthor::new(ctx.author().name.as_str())
+    //             .icon_url(ctx.author().face()),
+    //     )
+    //     .footer(serenity::CreateEmbedFooter::new(match mode {
+    //         HelpCommandMode::Group(c) => Cow::Owned(
+    //             ctx.gettext("Use `/help {command_name} [command]` for more info on a command")
+    //                 .replace("{command_name}", &c.qualified_name),
+    //         ),
+    //         HelpCommandMode::Command(_) | HelpCommandMode::Root => {
+    //             Cow::Borrowed(ctx.gettext("Use `/help [command]` for more info on a command"))
+    //         },
+    //     }));
+
     poise::builtins::help(
         ctx,
         command,

@@ -38,7 +38,7 @@ pub enum CrackedMessage {
     Clean(i32),
     CrackedError(CrackedError),
     CrackedRed(String),
-    CreateEmbed(CreateEmbed),
+    CreateEmbed(Box<CreateEmbed>),
     CommandFound(String),
     DomainInfo(String),
     Error,
@@ -482,7 +482,7 @@ impl From<&CrackedMessage> for Colour {
 impl From<&CrackedMessage> for Option<CreateEmbed> {
     fn from(message: &CrackedMessage) -> Option<CreateEmbed> {
         match message {
-            CrackedMessage::CreateEmbed(embed) => Some(embed.clone()),
+            CrackedMessage::CreateEmbed(embed) => Some(*embed.clone()),
             _ => None,
         }
     }

@@ -279,7 +279,11 @@ pub async fn poise_framework(
     let framework = poise::Framework::new(options, |ctx, ready, framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
-            poise::builtins::register_globally(&ctx, &framework.options().commands).await?;
+            crack_core::commands::register::register_globally_cracked(
+                &ctx,
+                &framework.options().commands,
+            )
+            .await?;
             ctx.data
                 .write()
                 .await
