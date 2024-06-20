@@ -87,6 +87,10 @@ pub trait ContextExt {
     fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
     /// Return the call that the bot is currently in, if it is in one.
     fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    /// Return the call and the guild id. This is convenience function I found I had many cases for.
+    fn get_call_guild_id(
+        &self,
+    ) -> impl Future<Output = Result<(Arc<Mutex<Call>>, GuildId), CrackedError>>;
     /// Return the queue owned.
     fn get_queue(&self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
@@ -182,6 +186,18 @@ impl ContextExt for crate::Context<'_> {
             .await
             .ok_or(CrackedError::NotConnected)?;
         manager.get(guild_id).ok_or(CrackedError::NotConnected)
+    }
+
+    /// Return the call that the bot is currently in, if it is in one.
+    async fn get_call_guild_id(&self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let manager = songbird::get(self.serenity_context())
+            .await
+            .ok_or(CrackedError::NotConnected)?;
+        manager
+            .get(guild_id)
+            .map(|x| (x, guild_id))
+            .ok_or(CrackedError::NotConnected)
     }
 
     /// Get the queue owned.
