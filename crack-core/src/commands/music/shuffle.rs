@@ -1,12 +1,19 @@
 use crate::{
-    handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    poise_ext::ContextExt, utils::send_reply, Context, CrackedError, Error,
+    commands::cmd_check_music, handlers::track_end::update_queue_messages,
+    messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context,
+    CrackedError, Error,
 };
 use rand::Rng;
 
 /// Shuffle the current queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let call = ctx.get_call().await?;
