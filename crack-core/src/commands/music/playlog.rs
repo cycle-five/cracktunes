@@ -1,4 +1,4 @@
-use crate::commands::{cmd_check_music, sub_help as help};
+use crate::commands::cmd_check_music;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::{create_paged_embed, send_reply};
 use crate::{poise_ext::ContextExt, Context, Error};
@@ -10,7 +10,6 @@ use crate::{poise_ext::ContextExt, Context, Error};
     check = "cmd_check_music",
     slash_command,
     prefix_command,
-    subcommands("help"),
     guild_only
 )]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {

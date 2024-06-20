@@ -14,10 +14,11 @@ use std::cmp::min;
 
 /// Remove track(s) from the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
 pub async fn remove(
     ctx: Context<'_>,
-    #[description = "Start index in the track queue to remove"] b_index: usize,
+    #[description = "Start index in the track queue to remove, or the number of tracks to remove if the second argument is not present."]
+    b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;

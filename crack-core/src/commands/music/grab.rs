@@ -1,3 +1,5 @@
+use crate::commands::help;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::utils::send_now_playing;
 use crate::{errors::CrackedError, Context, Error};
 
@@ -10,8 +12,15 @@ use crate::{errors::CrackedError, Context, Error};
     aliases("save"),
     guild_only
 )]
-pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::poise_ext::MessageInterfaceCtxExt;
+pub async fn grab(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())

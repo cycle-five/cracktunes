@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help, MyAuxMetadata},
+    commands::{cmd_check_music, help, MyAuxMetadata},
     errors::CrackedError,
     http_utils,
     messaging::interface::create_lyrics_embed,
@@ -14,15 +14,20 @@ use crate::{
     check = "cmd_check_music",
     prefix_command,
     slash_command,
-    subcommands("help"),
     guild_only
 )]
 pub async fn lyrics(
     ctx: Context<'_>,
+    #[flag]
+    #[description = "Show a help menu for this command."]
+    help: bool,
     #[rest]
     #[description = "The search query."]
     query: Option<String>,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     lyrics_internal(ctx, query).await
 }
 

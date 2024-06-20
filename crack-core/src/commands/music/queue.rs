@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
+    commands::cmd_check_music,
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
     messaging::{
@@ -28,7 +28,6 @@ const EMBED_TIMEOUT: u64 = 3600;
     slash_command,
     prefix_command,
     aliases("list", "q"),
-    subcommands("help"),
     guild_only
 )]
 pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {

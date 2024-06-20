@@ -1,6 +1,6 @@
 use crate::{
     handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    utils::send_reply, Context, Error,
+    poise_ext::ContextExt, utils::send_reply, Context, CrackedError, Error,
 };
 use rand::Rng;
 
@@ -8,9 +8,8 @@ use rand::Rng;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let call = ctx.get_call().await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {

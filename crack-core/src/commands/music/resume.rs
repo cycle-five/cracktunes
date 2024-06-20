@@ -7,7 +7,7 @@ use crate::{
 
 /// Resume the current track.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(category = "Music", slash_command, prefix_command, guild_only)]
 pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())

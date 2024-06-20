@@ -1,4 +1,3 @@
-use crate::commands::sub_help as help;
 use crate::utils::check_reply;
 use crate::{Context, Error};
 use crack_gpt::GptContext;
@@ -9,7 +8,6 @@ use poise::CreateReply;
     category = "AI",
     slash_command,
     prefix_command,
-    subcommands("help"),
     user_cooldown = "30",
     guild_cooldown = "30"
 )]
@@ -19,6 +17,7 @@ pub async fn chat(
     #[description = "Query to send to the model."]
     query: String,
 ) -> Result<(), Error> {
+    // Do we need this?
     ctx.defer().await?;
 
     let user_id = ctx.author().id.get();

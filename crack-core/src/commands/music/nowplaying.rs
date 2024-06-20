@@ -1,6 +1,6 @@
 use crate::poise_ext::ContextExt;
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
+    commands::{cmd_check_music, help},
     errors::CrackedError,
     messaging::interface::create_now_playing_embed,
     utils::send_embed_response_poise,
@@ -15,10 +15,17 @@ use crate::{
     prefix_command,
     slash_command,
     guild_only,
-    aliases("np"),
-    subcommands("help")
+    aliases("np")
 )]
-pub async fn nowplaying(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn nowplaying(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show a help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     nowplaying_internal(ctx).await
 }
 

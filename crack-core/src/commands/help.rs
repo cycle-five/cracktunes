@@ -44,7 +44,7 @@ pub async fn autocomplete(
 #[poise::command(
     category = "Utility",
     rename = "help",
-    slash_command,
+    //slash_command, FIXME: Can we have this work with the slash commands?
     prefix_command,
     hide_in_help
 )]
@@ -82,6 +82,22 @@ async fn help(
     command: Option<String>,
 ) -> Result<(), Error> {
     command_func(ctx, command.as_deref()).await
+}
+
+/// Wrapper around the help function.
+pub async fn wrapper(ctx: Context<'_>) -> Result<(), Error> {
+    poise::builtins::help(
+        ctx,
+        Some(ctx.command().name.as_str()),
+        poise::builtins::HelpConfiguration {
+            show_context_menu_commands: false,
+            show_subcommands: false,
+            extra_text_at_bottom: EXTRA_TEXT_AT_BOTTOM,
+            ..Default::default()
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(), Error> {

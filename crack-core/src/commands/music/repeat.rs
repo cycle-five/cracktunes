@@ -6,7 +6,7 @@ use songbird::tracks::{LoopState, TrackHandle};
 
 /// Toggle looping of the current track.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
 pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())

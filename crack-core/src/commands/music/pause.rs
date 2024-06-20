@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
+    commands::cmd_check_music,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     poise_ext::ContextExt,
@@ -14,7 +14,6 @@ use crate::{
     check = "cmd_check_music",
     slash_command,
     prefix_command,
-    subcommands("help"),
     guild_only
 )]
 pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
