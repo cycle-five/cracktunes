@@ -5,7 +5,8 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    Context as CrackContext, poise_ext::ContextExt, Error,
+    poise_ext::ContextExt,
+    Context as CrackContext, Error,
 };
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::{
