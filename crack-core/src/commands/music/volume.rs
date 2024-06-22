@@ -1,19 +1,33 @@
 use self::serenity::builder::CreateEmbed;
+use crate::commands::{cmd_check_music, help, ContextExt};
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::utils::{get_guild_name, send_embed_response_poise};
-use crate::{Context, poise_ext::ContextExt, Error};
+use crate::{Context, Error};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 
 /// Get or set the volume of the bot.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("vol"))]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    aliases("vol"),
+    slash_command,
+    prefix_command,
+    guild_only
+)]
 pub async fn volume(
     ctx: Context<'_>,
     #[description = "Set the volume of the bot"] level: Option<u32>,
+    #[flag]
+    #[description = "Show a help menu for this command."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     volume_internal(&ctx, level).await
 }
 pub async fn volume_internal<'ctx>(

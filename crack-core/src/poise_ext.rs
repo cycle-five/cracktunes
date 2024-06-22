@@ -1,8 +1,10 @@
 use crate::commands::play_utils::TrackReadyData;
-use crate::commands::MyAuxMetadata;
+use crate::commands::{has_voted_bot_id, MyAuxMetadata};
+use crate::db;
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::GuildSettings;
+use crate::http_utils;
 use crate::Error;
 use crate::{
     commands::CrackedError, http_utils::SendMessageParams, messaging::message::CrackedMessage,
@@ -114,6 +116,9 @@ pub trait ContextExt {
 
     /// Send a message to the user with the invite link for the bot.
     fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
+    /// Check if the authoring user has voted for the bot on several sites within the last 12 hours.
+    fn check_and_record_vote(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -242,6 +247,31 @@ impl ContextExt for crate::Context<'_> {
 
     async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
         utils::send_reply_embed(self, CrackedMessage::InviteLink).await
+    }
+
+    // ----------- DB Write functions ----------- //
+
+    async fn check_and_record_vote(&self) -> Result<bool, CrackedError> {
+        let user_id: UserId = self.author().id;
+        let bot_id: UserId = http_utils::get_bot_id(self).await?;
+        let pool = self.get_db_pool()?;
+        let has_voted = has_voted_bot_id(
+            http_utils::get_client().clone(),
+            u64::from(bot_id),
+            u64::from(user_id),
+        )
+        .await?;
+        let has_voted_db =
+            db::UserVote::has_voted_recently_topgg(i64::from(user_id), &pool).await?;
+        let record_vote = has_voted && !has_voted_db;
+
+        if record_vote {
+            let username = self.author().name.clone();
+            db::User::insert_or_update_user(&pool, i64::from(user_id), username).await?;
+            db::UserVote::insert_user_vote(&pool, i64::from(user_id), "top.gg".to_string()).await?;
+        }
+
+        Ok(has_voted)
     }
 }
 

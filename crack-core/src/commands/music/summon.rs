@@ -1,4 +1,4 @@
-use crate::commands::{cmd_check_music, do_join, set_global_handlers, sub_help as help};
+use crate::commands::{cmd_check_music, do_join, help, set_global_handlers, sub_help as help};
 use crate::{
     connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
     Context, Error,
@@ -11,14 +11,21 @@ use tokio::sync::Mutex;
 /// Summon the bot to your voice channel.
 #[poise::command(
     category = "Music",
+    check = "cmd_check_music",
     slash_command,
     prefix_command,
     aliases("join", "come here", "comehere", "come", "here"),
-    subcommands("help"),
-    guild_only,
-    check = "cmd_check_music"
+    guild_only
 )]
-pub async fn summon(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn summon(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show a help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     summon_internal(ctx, None, None).await
 }
 
