@@ -1,5 +1,8 @@
 use crate::{
-    commands::music::{create_skip_response, force_skip_top_track},
+    commands::{
+        cmd_check_music,
+        music::{create_skip_response, force_skip_top_track},
+    },
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
@@ -14,8 +17,28 @@ use std::collections::HashSet;
 
 /// Vote to skip the current track
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn voteskip(ctx: Context<'_>) -> Result<(), Error> {
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    slash_command,
+    prefix_command,
+    guild_only
+)]
+pub async fn voteskip(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    voteskip_internal(ctx).await
+}
+
+/// Internal function for voteskip
+#[cfg(not(tarpaulin_include))]
+async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     // use crate::db::TrackReaction;
 
     let guild_id = ctx.guild_id().unwrap();

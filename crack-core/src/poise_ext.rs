@@ -11,9 +11,11 @@ use crate::{
     utils, utils::OptionTryUnwrap, CrackedResult, Data,
 };
 use colored::Colorize;
+use core::time::Duration;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
+use songbird::input::AuxMetadata;
 use songbird::tracks::TrackQueue;
 use songbird::Call;
 use std::{future::Future, sync::Arc};
@@ -40,6 +42,14 @@ pub trait MessageInterfaceCtxExt {
 
     /// Sends a message ecknowledging that the user has grabbed the current track.
     fn send_grabbed_notice(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
+    /// Send a now playing message
+    fn send_now_playing(
+        &self,
+        chan_id: ChannelId,
+        cur_pos: Option<Duration>,
+        metadata: Option<AuxMetadata>,
+    ) -> impl Future<Output = Result<Message, Error>>;
 }
 
 impl MessageInterfaceCtxExt for crate::Context<'_> {
@@ -68,6 +78,23 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
 
     async fn send_grabbed_notice(&self) -> Result<ReplyHandle, Error> {
         utils::send_reply_embed(self, CrackedMessage::GrabbedNotice).await
+    }
+
+    async fn send_now_playing(
+        &self,
+        chan_id: ChannelId,
+        cur_pos: Option<Duration>,
+        metadata: Option<AuxMetadata>,
+    ) -> Result<Message, Error> {
+        let call = self.get_call().await?;
+        utils::send_now_playing(
+            chan_id,
+            self.serenity_context().http.clone(),
+            call,
+            cur_pos,
+            metadata,
+        )
+        .await
     }
 }
 

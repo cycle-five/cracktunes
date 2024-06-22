@@ -1,7 +1,6 @@
 use crate::commands::help;
 use crate::poise_ext::MessageInterfaceCtxExt;
-use crate::utils::send_now_playing;
-use crate::{errors::CrackedError, Context, Error};
+use crate::{Context, Error};
 
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]
@@ -21,25 +20,15 @@ pub async fn grab(
     if help {
         return help::wrapper(ctx).await;
     }
+    grab_internal(ctx).await
+}
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NotConnected)?;
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
-    let channel = ctx
-        .author()
-        .create_dm_channel(&ctx.serenity_context().http)
-        .await?;
+#[cfg(not(tarpaulin_include))]
+/// Internal function for grab.
+async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
+    let chan_id = ctx.author().create_dm_channel(&ctx).await?.id;
 
-    let _ = send_now_playing(
-        channel.id,
-        ctx.serenity_context().http.clone(),
-        call.clone(),
-        None,
-        None,
-    )
-    .await?;
+    ctx.send_now_playing(chan_id, None, None).await?;
 
     ctx.send_grabbed_notice().await?;
 
