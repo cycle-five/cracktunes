@@ -1,13 +1,33 @@
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, messaging::messages::FAIL_LOOP,
-    utils::send_reply, Context, Error,
+    commands::cmd_check_music, errors::CrackedError, messaging::message::CrackedMessage,
+    messaging::messages::FAIL_LOOP, utils::send_reply, Context, Error,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
 /// Toggle looping of the current track.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
-pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
+pub async fn repeat(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    repeat_internal(ctx).await
+}
+
+/// Internal repeat function.
+#[cfg(not(tarpaulin_include))]
+pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await

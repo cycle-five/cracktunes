@@ -107,3 +107,25 @@ fn parse_channel_id(
         None => Ok(None),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::commands::music::summon::parse_channel_id;
+    use serenity::model::id::ChannelId;
+
+    #[test]
+    fn test_parse_channel_id() {
+        let channel = None;
+
+        assert_eq!(parse_channel_id(channel, None).unwrap(), None);
+        assert_eq!(
+            parse_channel_id(None, Some("123".to_string())).unwrap(),
+            Some(ChannelId::new(123))
+        );
+        assert_eq!(
+            parse_channel_id(None, Some("abc".to_string())).is_err(),
+            true
+        );
+        assert_eq!(parse_channel_id(None, None).unwrap(), None);
+    }
+}

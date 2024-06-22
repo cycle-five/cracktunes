@@ -20,6 +20,21 @@ pub async fn remove(
     #[description = "Start index in the track queue to remove, or the number of tracks to remove if the second argument is not present."]
     b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    remove_internal(ctx, b_index, e_index).await
+}
+
+/// Internal remove function.
+pub async fn remove_internal(
+    ctx: Context<'_>,
+    b_index: usize,
+    e_index: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())

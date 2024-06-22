@@ -1,3 +1,4 @@
+use crate::utils::get_interaction_new;
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
@@ -30,9 +31,21 @@ const EMBED_TIMEOUT: u64 = 3600;
     aliases("list", "q"),
     guild_only
 )]
-pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::utils::get_interaction_new;
+pub async fn queue(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    queue_internal(ctx).await
+}
 
+/// Internal queue function.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
