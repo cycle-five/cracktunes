@@ -87,6 +87,7 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
         metadata: Option<AuxMetadata>,
     ) -> Result<Message, Error> {
         let call = self.get_call().await?;
+        // We don't add this message to the cache because we shouldn't delete it.
         utils::send_now_playing(
             chan_id,
             self.serenity_context().http.clone(),
@@ -550,4 +551,12 @@ impl SongbirdManagerExt for songbird::Songbird {
             },
         }
     }
+}
+
+use poise::serenity_prelude::Context as SerenityContext;
+use std::collections::HashSet;
+pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool {
+    let allowed_bots = HashSet::from([1111844110597374042, 1124707756750934159]);
+    let author_id = msg.author.id;
+    allowed_bots.contains(&author_id.get())
 }

@@ -1,23 +1,22 @@
-use colored::Colorize;
 #[cfg(feature = "crack-metrics")]
-use crack_core::metrics::COMMAND_ERRORS;
-use crack_core::{
+use crate::metrics::COMMAND_ERRORS;
+use crate::poise_ext::PoiseContextExt;
+use crate::{
     db,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::{handle_event, SerenityHandler},
+    handlers::{handle_event, serenity::ForwardBotTestCommandsHandler, SerenityHandler},
     http_utils::CacheHttpExt,
+    http_utils::SendMessageParams,
+    messaging::message::CrackedMessage,
     utils::{check_reply, count_command},
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
-use crack_core::{http_utils::SendMessageParams, messaging::message::CrackedMessage};
-use poise::serenity_prelude::{Client, UserId};
-use poise::serenity_prelude::{FullEvent, GatewayIntents, GuildId};
+use colored::Colorize;
+use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::serenity::SerenityInit;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
-
-use crack_core::poise_ext::PoiseContextExt;
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -56,57 +55,6 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
-// /// Check if the user is authorized to use the osint commands.
-// fn is_authorized_osint(member: Option<Cow<'_, Member>>, os_int_role: Option<RoleId>) -> bool {
-//     let member = match member {
-//         Some(m) => m,
-//         None => {
-//             // FIXME: Why would this happen?
-//             tracing::warn!("Member not found");
-//             return true;
-//         },
-//     };
-//     let perms = member.permissions.unwrap_or_default();
-//     let has_role = os_int_role
-//         .map(|x| member.roles.contains(x.as_ref()))
-//         .unwrap_or(true);
-//     let is_admin = perms.contains(Permissions::ADMINISTRATOR);
-
-//     is_admin || has_role
-// }
-
-// /// Check if the user is authorized to use mod commands.
-// fn is_authorized_mod(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
-//     // implementation of the is_authorized_mod function
-//     // ...
-//     is_authorized_admin(member, roles) // placeholder return value
-// }
-
-// /// Check if the user is authorized to use admin commands.
-// fn is_authorized_admin(member: Option<Cow<'_, Member>>, roles: HashSet<u64>) -> bool {
-//     let member = match member {
-//         Some(m) => m,
-//         None => {
-//             tracing::warn!("No member found");
-//             return false;
-//         },
-//     };
-//     // implementation of the is_authorized_admin function
-//     // ...
-//     let perms = member.permissions.unwrap_or_default();
-//     let _has_role = roles
-//         .intersection(
-//             &member
-//                 .roles
-//                 .iter()
-//                 .map(|x| x.get())
-//                 .collect::<HashSet<u64>>(),
-//         )
-//         .count()
-//         > 0;
-//     perms.contains(Permissions::ADMINISTRATOR)
-// }
-
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
     config: BotConfig,
@@ -120,8 +68,9 @@ pub async fn poise_framework(
     // FIXME: Is this the proper way to allocate this memory?
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
-    let commands = crack_core::commands::all_commands();
-    let commands_str = crack_core::commands::all_command_names();
+    let commands = crate::commands::all_commands();
+    let commands_map = crate::commands::all_commands_map();
+    let commands_str = crate::commands::all_command_names();
 
     tracing::warn!("Commands: {:#?}", commands_str);
 
@@ -279,7 +228,7 @@ pub async fn poise_framework(
     let framework = poise::Framework::new(options, |ctx, ready, framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
-            crack_core::commands::register::register_globally_cracked(
+            crate::commands::register::register_globally_cracked(
                 &ctx,
                 &framework.options().commands,
             )
@@ -295,12 +244,20 @@ pub async fn poise_framework(
         is_loop_running: false.into(),
         data: data2.clone(),
     };
+
+    let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
+        options: Default::default(),
+        cmd_lookup: commands_map,
+        shard_manager: std::sync::Mutex::new(None),
+    });
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
         .event_handler(serenity_handler)
+        .event_handler_arc(bot_test_handler.clone())
         .await
         .unwrap();
+    *bot_test_handler.shard_manager.lock().unwrap() = Some(client.shard_manager.clone());
     let shard_manager = client.shard_manager.clone();
 
     // let data2 = client.data.clone();

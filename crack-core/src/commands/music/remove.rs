@@ -17,7 +17,7 @@ use std::cmp::min;
 #[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
 pub async fn remove(
     ctx: Context<'_>,
-    #[description = "Start index in the track queue to remove, or the number of tracks to remove if the second argument is not present."]
+    #[description = "Index in the queue to remove (Or number of tracks to remove if no second argument."]
     b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
     #[flag]

@@ -62,8 +62,8 @@ pub fn all_commands() -> Vec<crate::Command> {
     .into_iter()
     .chain(help::help_commands())
     .chain(music::music_commands())
+    .chain(utility::utility_commands())
     // .chain(playlist::commands())
-    // .chain(utility::utility_commands())
     // .chain(admin::admin_commands())
     // .chain(settings::settings_commands())
     .collect()
@@ -71,6 +71,13 @@ pub fn all_commands() -> Vec<crate::Command> {
 
 pub fn all_command_names() -> Vec<String> {
     all_commands().into_iter().map(|c| c.name).collect()
+}
+
+pub fn all_commands_map() -> dashmap::DashMap<String, crate::Command> {
+    all_commands()
+        .into_iter()
+        .map(|c| (c.name.clone(), c))
+        .collect::<dashmap::DashMap<_, _>>()
 }
 
 // use poise::serenity_prelude as serenity;

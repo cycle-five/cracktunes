@@ -6,7 +6,6 @@ use crack_core::BotConfig;
 use crack_core::BotCredentials;
 use crack_core::EventLogAsync;
 pub use crack_core::PhoneCodeData;
-use cracktunes::poise_framework;
 use std::collections::HashMap;
 use std::env;
 #[cfg(feature = "crack-tracing")]
@@ -66,6 +65,8 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+use crack_core::config;
+
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
 async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
@@ -75,7 +76,7 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     let config = load_bot_config().await.unwrap();
     tracing::warn!("Using config: {:?}", config);
 
-    let mut client = poise_framework(config, event_log_async).await?;
+    let mut client = config::poise_framework(config, event_log_async).await?;
 
     // Force the client to init.
     http_utils::init_http_client().await?;

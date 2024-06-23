@@ -28,6 +28,7 @@ use std::{
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 pub mod commands;
+pub mod config;
 pub mod connection;
 pub mod db;
 pub mod errors;

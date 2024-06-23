@@ -4,12 +4,13 @@ use crate::{
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
+use poise::serenity_prelude as serenity;
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::all::User;
+use serenity::User;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -170,7 +171,9 @@ pub async fn handle_event(
             }
 
             if new_message.author.bot {
-                return Ok(());
+                if !crate::poise_ext::check_bot_message(ctx, new_message) {
+                    return Ok(());
+                }
             }
             log_event!(
                 log_message,
