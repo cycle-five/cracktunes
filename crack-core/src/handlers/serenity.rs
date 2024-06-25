@@ -3,10 +3,8 @@ use crate::{
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::voice_chat_stats::cam_status_loop,
-    // http_utils::get_bot_id,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig,
-    Data,
+    BotConfig, Data,
 };
 use ::serenity::{
     all::Message,
@@ -15,6 +13,7 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+// use dashmap;
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
 use serenity::{
     async_trait,
@@ -782,49 +781,94 @@ pub async fn voice_state_diff_str(
     Ok(result)
 }
 
-use crate::Error;
-use dashmap;
+// /// `ForwardBotTestCommandsHandler` is a handler to check for bot test commands
+// /// for cracktunes and forward them to the bot despite being from another bot.
+// pub struct ForwardBotTestCommandsHandler<'a> {
+//     pub poise_ctx: crate::Context<'a>,
+//     pub options: poise::FrameworkOptions<(), Error>,
+//     pub cmd_lookup: dashmap::DashMap<String, crate::Command>,
+//     pub shard_manager: std::sync::Mutex<Option<std::sync::Arc<serenity::ShardManager>>>,
+// }
 
-pub struct ForwardBotTestCommandsHandler {
-    pub options: poise::FrameworkOptions<(), Error>,
-    pub cmd_lookup: dashmap::DashMap<String, crate::Command>,
-    pub shard_manager: std::sync::Mutex<Option<std::sync::Arc<serenity::ShardManager>>>,
-}
-#[serenity::async_trait]
-impl serenity::EventHandler for ForwardBotTestCommandsHandler {
-    async fn message(&self, ctx: serenity::Context, new_message: serenity::Message) {
-        let allowed_bot_ids = vec![
-            serenity::UserId::new(1111844110597374042),
-            serenity::UserId::new(1124707756750934159),
-            serenity::UserId::new(1115229568006103122),
-        ];
-        if !allowed_bot_ids.contains(&new_message.author.id) {
-            tracing::error!("Not an allowed bot id");
-            return;
-        }
-        let id = new_message.author.id;
-        tracing::error!("Allowing bot id {:} to run command...", id);
-        let cmd = new_message.content.split_whitespace().next().unwrap();
-        match self.cmd_lookup.get(cmd) {
-            Some(cmd) => {
-                tracing::error!("Allowing bot id {:} to run command {:#?}", id, cmd);
-                // FrameworkContext contains all data that poise::Framework usually manages
-                let shard_manager = (*self.shard_manager.lock().unwrap()).clone().unwrap();
-                let framework_data = poise::FrameworkContext {
-                    bot_id: serenity::UserId::new(1111844110597374042),
-                    options: &self.options,
-                    user_data: &(),
-                    shard_manager: &shard_manager,
-                };
+// // use serenity::model::channel::Message;
 
-                let event = serenity::FullEvent::Message { new_message };
-                poise::dispatch_event(framework_data, &ctx, event).await;
-            },
-            None => {
-                tracing::error!("Command not found");
-            },
-        }
-    }
+// #[serenity::async_trait]
+// impl serenity::EventHandler for ForwardBotTestCommandsHandler<'_> {
+//     async fn message(&self, _ctx: SerenityContext, new_message: Message) {
+//         let allowed_bot_ids = vec![
+//             serenity::UserId::new(1111844110597374042),
+//             serenity::UserId::new(1124707756750934159),
+//             serenity::UserId::new(1115229568006103122),
+//         ];
+//         if !new_message.author.bot {
+//             return;
+//         }
+//         if !allowed_bot_ids.contains(&new_message.author.id) {
+//             tracing::error!("Not an allowed bot id");
+//             return;
+//         }
+//         let id = new_message.author.id;
+//         // let guard = ctx.data.read().await;
+//         // let prefix = match guard.get::<crate::guild::settings::GuildSettingsMap>() {
+//         //     Some(map) => map
+//         //         .get(&new_message.guild_id.unwrap())
+//         //         .map(|x| x.prefix.clone()),
+//         //     _ => None,
+//         // };
+//         tracing::error!("Allowing bot id {:} to run command...", id);
+//         let opt_cmd = parse_command(new_message.content.clone());
+//         tracing::error!("opt_cmd: {:?}", opt_cmd);
+//         if !opt_cmd.is_some() {
+//             tracing::error!("BYE");
+//             return;
+//         }
+//         tracing::error!("HERE");
+//         let cmd = opt_cmd.unwrap();
+//         let _ = execute_command_or_err(self.poise_ctx, cmd).await;
+//     }
+// }
 
-    // For slash commands or edit tracking to work, forward interaction_create and message_update
-}
+// fn parse_command(content: String) -> Option<String> {
+//     content
+//         .clone()
+//         .split_whitespace()
+//         .next()
+//         .map(|cmd| cmd[1..].to_string())
+// }
+
+// async fn execute_command_or_err(ctx: crate::Context<'_>, command: String) -> CommandResult {
+//     poise::extract_command_and_run_checks(framework, ctx, interaction, interaction_type, has_sent_initial_response, invocation_data, options, parent_commands)
+//     match command.as_str() {
+//         "ping" => crate::commands::ping_internal(ctx).await,
+//         _ => return Err(Box::new(CrackedError::CommandNotFound(command))),
+//     }
+//     // cmd.create_as_slash_command()
+//     //     .unwrap()
+//     //     .execute(cache_http, ctx)
+//     //     .await
+//     //     .map_err(|err| err.into())
+//     //     .map(|_| ())
+// }
+
+// #[cfg(test)]
+// mod test {
+//     use super::parse_command;
+
+//     #[test]
+//     fn test_parse_command() {
+//         let command_str = "~ping".to_string();
+//         let want = "ping".to_string();
+//         let got = parse_command(command_str).unwrap();
+
+//         assert_eq!(want, got);
+//     }
+
+//     #[test]
+//     fn test_parse_command_two() {
+//         let command_str = "!play lalalalal alla".to_string();
+//         let want = "play".to_string();
+//         let got = parse_command(command_str).unwrap();
+
+//         assert_eq!(want, got);
+//     }
+// }

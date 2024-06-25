@@ -5,7 +5,7 @@ use crate::{
     db,
     errors::CrackedError,
     guild::settings::{GuildSettings, GuildSettingsMap},
-    handlers::{handle_event, serenity::ForwardBotTestCommandsHandler, SerenityHandler},
+    handlers::{handle_event, SerenityHandler},
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -69,7 +69,7 @@ pub async fn poise_framework(
     let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let commands = crate::commands::all_commands();
-    let commands_map = crate::commands::all_commands_map();
+    let _commands_map = crate::commands::all_commands_map();
     let commands_str = crate::commands::all_command_names();
 
     tracing::warn!("Commands: {:#?}", commands_str);
@@ -85,10 +85,21 @@ pub async fn poise_framework(
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
+            ignore_bots: false,
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
-            stripped_dynamic_prefix: Some(|_ctx, msg, data| {
+            stripped_dynamic_prefix: Some(|ctx, msg, data| {
                 Box::pin(async move {
+                    // allow specific bots with specific prefixes to use bot commands for testing.
+                    if msg.author.bot {
+                        if !crate::poise_ext::check_bot_message(ctx, msg) {
+                            return Ok(None);
+                        }
+
+                        if !msg.content.starts_with("{test}!") {
+                            return Ok(None);
+                        }
+                    }
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
@@ -245,19 +256,20 @@ pub async fn poise_framework(
         data: data2.clone(),
     };
 
-    let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
-        options: Default::default(),
-        cmd_lookup: commands_map,
-        shard_manager: std::sync::Mutex::new(None),
-    });
+    // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
+
+    //     options: Default::default(),
+    //     cmd_lookup: commands_map,
+    //     shard_manager: std::sync::Mutex::new(None),
+    // });
     let client = Client::builder(token, intents)
         .framework(framework)
         .register_songbird()
         .event_handler(serenity_handler)
-        .event_handler_arc(bot_test_handler.clone())
+        //.event_handler_arc(bot_test_handler.clone())
         .await
         .unwrap();
-    *bot_test_handler.shard_manager.lock().unwrap() = Some(client.shard_manager.clone());
+    //*bot_test_handler.shard_manager.lock().unwrap() = Some(client.shard_manager.clone());
     let shard_manager = client.shard_manager.clone();
 
     // let data2 = client.data.clone();
