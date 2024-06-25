@@ -1,3 +1,4 @@
+use crate::commands::CrackedError;
 use crate::guild::settings::{GuildSettings, DEFAULT_PREFIX};
 use crate::Data;
 use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
@@ -5,7 +6,11 @@ use serenity::all::{Channel, GuildId};
 use serenity::model::id::ChannelId;
 
 /// Set a log channel for a specific guild.
-#[poise::command(prefix_command, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "SEND_MESSAGES"
+)]
 pub async fn log_channel_for_guild(
     ctx: Context<'_>,
     #[description = "GuildId to set logging for"] guild_id: GuildId,
@@ -26,22 +31,33 @@ pub async fn log_channel_for_guild(
 }
 
 /// Set a channel to send all logs.
-#[poise::command(prefix_command, owners_only)]
+#[poise::command(
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "SEND_MESSAGES"
+)]
 pub async fn all_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send all logs"] channel: Option<Channel>,
     #[description = "ChannelId to send all logs"] channel_id: Option<
         serenity::model::id::ChannelId,
     >,
+    #[flag]
+    #[description = "Show the help menu for this command"]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     let channel_id = if let Some(channel) = channel {
         channel.id()
+    } else if let Some(channel_id) = channel_id {
+        channel_id
     } else {
-        channel_id.unwrap()
+        return Err(Box::new(CrackedError::Other("No channel provided")));
     };
     let guild_id = ctx.guild_id().unwrap();
 
-    // set_all_log_channel_old_data(ctx.serenity_context().data.clone(), guild_id, channel_id).await?;
     set_all_log_channel_data(ctx.data(), guild_id, channel_id).await?;
 
     send_reply(

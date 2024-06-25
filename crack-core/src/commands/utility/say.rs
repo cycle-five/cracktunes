@@ -50,6 +50,6 @@ pub async fn say_channel_id(
 
 /// Internal say function.
 pub async fn say_internal(ctx: Context<'_>, chan_id: ChannelId, msg: String) -> Result<(), Error> {
-    chan_id.say(&ctx.serenity_context(), msg).await?;
+    chan_id.say(&ctx, msg).await?;
     Ok(())
 }

@@ -85,7 +85,7 @@ pub async fn poise_framework(
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(config.get_prefix()),
-            ignore_bots: false,
+            ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
             stripped_dynamic_prefix: Some(|ctx, msg, data| {
@@ -98,6 +98,8 @@ pub async fn poise_framework(
 
                         if !msg.content.starts_with("{test}!") {
                             return Ok(None);
+                        } else {
+                            return Ok(Some(msg.content.split_at(7)));
                         }
                     }
                     let guild_id = match msg.guild_id {

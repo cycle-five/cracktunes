@@ -2,12 +2,14 @@ pub mod clean;
 pub mod invite;
 pub mod ping;
 mod say;
+mod smoketest;
 pub mod version;
 
 pub use clean::*;
 pub use invite::*;
 pub use ping::*;
 pub use say::*;
+pub use smoketest::*;
 pub use version::*;
 
 use crate::{CommandResult, Context, CrackedMessage, Error};
@@ -44,7 +46,7 @@ pub async fn uptime(ctx: Context<'_>) -> CommandResult {
 }
 
 /// Get all the utility commands.
-pub fn utility_commands() -> [crate::Command; 8] {
+pub fn utility_commands() -> [crate::Command; 9] {
     [
         invite(),
         ping(),
@@ -54,5 +56,6 @@ pub fn utility_commands() -> [crate::Command; 8] {
         clean(),
         say_channel(),
         say_channel_id(),
+        smoketest(),
     ]
 }

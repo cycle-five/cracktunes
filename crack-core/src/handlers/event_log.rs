@@ -173,6 +173,8 @@ pub async fn handle_event(
             if new_message.author.bot {
                 if !crate::poise_ext::check_bot_message(ctx, new_message) {
                     return Ok(());
+                } else {
+                    return Ok(());
                 }
             }
             log_event!(
