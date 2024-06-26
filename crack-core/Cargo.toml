@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.2.16"
+version = "0.3.0-rc.0"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "A Discord music bot built on Rust and Crack."
@@ -24,7 +24,7 @@ lyric_finder = "0.1"
 rand = "0.8"
 regex = "1.10"
 serde_json = "1.0"
-serde_with = "3.4"
+serde_with = "3.6"
 url = "2.5"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_stream = { version = "1.0", features = ["tokio"] }
