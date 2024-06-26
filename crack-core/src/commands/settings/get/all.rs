@@ -1,3 +1,4 @@
+use crate::commands::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
@@ -7,19 +8,27 @@ use crate::{Context, Error};
 /// Get the current bot settings for this guild.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Settings",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral,
     aliases("get_all_settings")
 )]
-pub async fn all(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn all(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Shows the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        crate::commands::help::wrapper(ctx).await?;
+    }
     get_settings(ctx).await
 }
 
 /// Get the current bot settings for this guild.
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let settings_ro = {
         let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
         let settings = guild_settings_map

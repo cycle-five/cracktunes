@@ -50,3 +50,16 @@ pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
 
     Ok(())
 }
+
+pub fn commands() -> [crate::Command; 8] {
+    [
+        all(),
+        all_log_channel(),
+        auto_role(),
+        premium(),
+        join_leave_log_channel(),
+        welcome_settings(),
+        idle_timeout(),
+        volume(),
+    ]
+}

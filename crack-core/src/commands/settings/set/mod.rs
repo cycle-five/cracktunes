@@ -49,7 +49,7 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn get_settings_set_commands() -> [crate::Command; 8] {
+pub fn settings_set_commands() -> [crate::Command; 8] {
     [
         all_log_channel(),
         auto_role(),

@@ -1,5 +1,5 @@
 use poise::serenity_prelude::Mentionable;
-use serenity::all::RoleId;
+use serenity::all::{Role, RoleId};
 
 use crate::{
     errors::CrackedError, guild::operations::GuildSettingsOperations,
@@ -14,11 +14,16 @@ use crate::{
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "MANAGE_ROLES"
 )]
-pub async fn auto_role(
+pub async fn auto_role_id(
     ctx: Context<'_>,
-    #[description = "The role to assign to new users"] auto_role_id_str: String,
+    #[description = "The id of the role to assign to new users."] auto_role_id_str: String,
+    #[flag]
+    #[description = "Show the help menu for this command"]
+    help: bool,
 ) -> Result<(), Error> {
-    //let name = get_guild_name(ctx.serenity_context(), guild_id).await;
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     let auto_role_id = match auto_role_id_str.parse::<u64>() {
         Ok(x) => x,
         Err(e) => {
@@ -29,6 +34,26 @@ pub async fn auto_role(
     let role = RoleId::from(auto_role_id);
 
     auto_role_internal(ctx, role).await
+}
+
+/// Set the auto role for the server.
+#[poise::command(
+    category = "Settings",
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "MANAGE_ROLES"
+)]
+pub async fn auto_role(
+    ctx: Context<'_>,
+    #[description = "The role to assign to new users"] auto_role: Role,
+    #[flag]
+    #[description = "Show the help menu for this command"]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    auto_role_internal(ctx, auto_role.id).await
 }
 
 /// Set the auto role for the server.
