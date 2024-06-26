@@ -191,9 +191,14 @@ pub enum CrackedMessage {
     VoiceChannelCreated {
         channel_name: String,
     },
+    Volume {
+        vol: f32,
+        old_vol: f32,
+    },
     WaybackSnapshot {
         url: String,
     },
+    WelcomeSettings(String),
 }
 
 impl CrackedMessage {
@@ -390,7 +395,11 @@ impl Display for CrackedMessage {
             },
             Self::VoteTopggVoted => f.write_str(VOTE_TOPGG_VOTED),
             Self::VoteTopggNotVoted => f.write_str(VOTE_TOPGG_NOT_VOTED),
+            Self::Volume { vol, old_vol } => {
+                f.write_str(&format!("{}: {}\n{}: {}", VOLUME, vol, OLD_VOLUME, old_vol))
+            },
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::WelcomeSettings(settings) => f.write_str(settings),
         }
     }
 }

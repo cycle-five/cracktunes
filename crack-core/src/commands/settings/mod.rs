@@ -48,5 +48,6 @@ pub fn settings_commands() -> Vec<crate::Command> {
     vec![settings()]
         .into_iter()
         .chain(set::settings_set_commands())
+        .chain(get::commands())
         .collect()
 }

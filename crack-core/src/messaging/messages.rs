@@ -158,7 +158,8 @@ pub const WAYBACK_SNAPSHOT: &str = "Wayback snapshot for";
 pub const VERSION_LATEST: &str = "Find the latest version [here]";
 pub const VERSION: &str = "Version";
 pub const VERSION_LATEST_HASH: &str = "Build hash [here]";
-pub const VOLUME: &str = "🔊 Volume";
+pub const VOLUME: &str = "🔊 Volume";
+pub const OLD_VOLUME: &str = "Old Volume";
 pub const VOICE_CHANNEL_CREATED: &str = "🔊 Created voice channel!";
 
 pub const VOTE_TOPGG_TEXT: &str = "✅ Vote for CrackTunes on";

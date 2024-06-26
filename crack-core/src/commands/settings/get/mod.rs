@@ -31,14 +31,13 @@ pub use log_channels::*;
     subcommands(
         "all",
         "all_log_channel",
-        "auto_role",
+        "get_auto_role",
         "premium",
         "join_leave_log_channel",
         "welcome_settings",
         "idle_timeout",
-        "volume",
-        // "self_deafen",
-    ),
+        "get_volume",
+    )
 )]
 
 /// Get settings
@@ -55,11 +54,11 @@ pub fn commands() -> [crate::Command; 8] {
     [
         all(),
         all_log_channel(),
-        auto_role(),
+        get_auto_role(),
         premium(),
         join_leave_log_channel(),
         welcome_settings(),
         idle_timeout(),
-        volume(),
+        get_volume(),
     ]
 }

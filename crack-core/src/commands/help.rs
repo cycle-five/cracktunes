@@ -93,6 +93,7 @@ pub async fn wrapper(ctx: Context<'_>) -> Result<(), Error> {
             show_context_menu_commands: false,
             show_subcommands: false,
             extra_text_at_bottom: EXTRA_TEXT_AT_BOTTOM,
+            include_description: false,
             ..Default::default()
         },
     )

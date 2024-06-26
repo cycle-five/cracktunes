@@ -13,10 +13,17 @@ use crate::{Context, Data, Error};
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral,
-    aliases("get_auto_role")
+    aliases("auto_role")
 )]
-pub async fn auto_role(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn get_auto_role(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    flag: bool,
+) -> Result<(), Error> {
+    if flag {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     get_auto_role_internal(data, guild_id)

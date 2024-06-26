@@ -2,6 +2,8 @@ use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
 
+use super::settings::DEFAULT_VOLUME_LEVEL;
+
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
     fn set_guild_settings(
@@ -45,6 +47,8 @@ pub trait GuildSettingsOperations {
     fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
+    fn set_volume(&self, guild_id: GuildId, volume: u64) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
         -> impl Future<Output = bool>;
@@ -275,6 +279,34 @@ impl GuildSettingsOperations for Data {
             .entry(guild_id)
             .or_default()
             .autoplay = autoplay;
+    }
+
+    /// Get the current autoplay settings.
+    async fn get_volume(&self, guild_id: GuildId) -> (f32, f32) {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|settings| (settings.volume, settings.old_volume))
+            .unwrap_or((DEFAULT_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL))
+    }
+
+    /// Set the current autoplay settings.
+    async fn set_volume(&self, guild_id: GuildId, vol: u64) -> () {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.old_volume = e.volume as f32;
+                e.volume = vol as f32;
+            })
+            .or_insert_with(|| {
+                let mut settings = GuildSettings::default();
+                settings.volume = vol as f32;
+                settings.old_volume = vol as f32;
+                settings
+            });
     }
 
     /// Get the current reply with embed setting.
