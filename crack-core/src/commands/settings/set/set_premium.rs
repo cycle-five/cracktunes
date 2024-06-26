@@ -44,11 +44,17 @@ pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(),
 }
 
 /// Set the premium status of the guild.
-#[poise::command(prefix_command, owners_only)]
+#[poise::command(category = "Settings", prefix_command, owners_only)]
 #[cfg(not(tarpaulin_include))]
 pub async fn premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] premium: bool,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     set_premium_internal(ctx, premium).await.map_err(Into::into)
 }

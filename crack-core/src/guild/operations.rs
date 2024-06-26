@@ -41,6 +41,8 @@ pub trait GuildSettingsOperations {
     fn get_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool) -> impl Future<Output = ()>;
     fn toggle_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn get_auto_role(&self, guild_id: GuildId) -> impl Future<Output = Option<u64>>;
+    fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
@@ -232,6 +234,27 @@ impl GuildSettingsOperations for Data {
             })
             .or_insert_with(Default::default)
             .autopause
+    }
+
+    /// Get the current auto role for the guild.
+    async fn get_auto_role(&self, guild_id: GuildId) -> Option<u64> {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .and_then(|x| x.welcome_settings.as_ref())
+            .and_then(|x| x.auto_role)
+    }
+
+    /// Set the auto role for the guild.
+    async fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.set_auto_role(Some(auto_role));
+            });
     }
 
     /// Get the current autoplay settings.

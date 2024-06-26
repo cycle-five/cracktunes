@@ -44,6 +44,9 @@ pub async fn settings(
     Ok(())
 }
 
-pub fn settings_commands() -> [crate::Command; 2] {
-    [settings(), set::all_log_channel()]
+pub fn settings_commands() -> Vec<crate::Command> {
+    vec![settings()]
+        .into_iter()
+        .chain(set::get_settings_set_commands())
+        .collect()
 }

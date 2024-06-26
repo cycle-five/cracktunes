@@ -8,8 +8,8 @@ use poise::CreateReply;
 /// Set the idle timeout for the bot in vc.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Settings",
     prefix_command,
-    ephemeral,
     aliases("set_idle_timeout"),
     required_permissions = "ADMINISTRATOR"
 )]

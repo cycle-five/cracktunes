@@ -7,7 +7,12 @@ use crate::Error;
 use serenity::all::Channel;
 
 /// Set the join-leave log channel.
-#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Settings",
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "SEND_MESSAGES"
+)]
 pub async fn join_leave_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send join/leave logs"] channel: Option<Channel>,

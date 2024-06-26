@@ -4,14 +4,25 @@ use crate::{
 };
 use serenity::all::Channel;
 
-#[poise::command(prefix_command, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Settings",
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "SEND_MESSAGES"
+)]
 pub async fn music_channel(
     ctx: Context<'_>,
     #[description = "Channel to respond to music commands in."] channel: Option<Channel>,
     #[description = "ChannelId of Channel to respond to music commands in."] channel_id: Option<
         serenity::model::id::ChannelId,
     >,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     if channel.is_none() && channel_id.is_none() {
         return Err(CrackedError::Other("Must provide either a channel or a channel id").into());
     }
@@ -29,6 +40,7 @@ pub async fn music_channel(
     let opt_settings = data.guild_settings_map.read().await.clone();
     let settings = opt_settings.get(&guild_id);
 
+    // FIXME: Do this with the async work queue.
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
