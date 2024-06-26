@@ -327,6 +327,7 @@ pub trait PoiseContextExt<'ctx> {
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
 }
 
+/// Implementation of the extension trait for the poise::Context.
 impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Checks if we're in a prefix context or not.
     fn is_prefix(&self) -> bool {

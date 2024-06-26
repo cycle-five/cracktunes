@@ -170,12 +170,9 @@ pub async fn handle_event(
                     .unwrap_or_default();
             }
 
-            if new_message.author.bot {
-                if !crate::poise_ext::check_bot_message(ctx, new_message) {
-                    return Ok(());
-                } else {
-                    return Ok(());
-                }
+            // Should we log bot messages?
+            if new_message.author.bot && !crate::poise_ext::check_bot_message(ctx, new_message) {
+                return Ok(());
             }
             log_event!(
                 log_message,
@@ -372,9 +369,9 @@ pub async fn handle_event(
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildDelete { incomplete, full } => {
-            let log_data = (event_name, incomplete, full);
+            let log_data = (incomplete, full);
             log_event!(
-                log_unimplemented_event,
+                log_guild_delete_event,
                 guild_settings,
                 event_in,
                 &log_data,

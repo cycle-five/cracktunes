@@ -8,6 +8,7 @@ use serenity::all::{
     GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
     IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId,
     MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
+    UnavailableGuild,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -376,6 +377,57 @@ pub async fn log_guild_create(
     };
     let description = format!("Guild is {}new", is_new_str);
     let id = guild.id.to_string();
+    let avatar_url = "";
+    send_log_embed_thumb(
+        &guild_name,
+        &channel_id,
+        http,
+        &id,
+        &title,
+        &description,
+        avatar_url,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Logs a guild delete event.
+#[cfg(not(tarpaulin_include))]
+pub async fn log_guild_delete_event(
+    channel_id: ChannelId,
+    http: &impl CacheHttp,
+    log_data: &(&UnavailableGuild, &Option<Guild>),
+) -> Result<(), Error> {
+    let &(unavailable, full) = log_data;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+
+    // FIXME!
+    // // make sure we have the guild stored or store it
+    // if guild_settings_map.read().await.get(&guild_id).is_none() {
+    //     let new_settings =
+    //         GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), Some(guild_name.clone()));
+    //     guild_settings_map
+    //         .write()
+    //         .await
+    //         .insert(guild_id, new_settings.clone());
+    // }
+
+    let title = format!("Guild Delete: {}", guild_name);
+    let mut description = if !unavailable.unavailable {
+        "Bot was removed from the guild."
+    } else {
+        "Guild was deleted."
+    }
+    .to_string();
+
+    if full.is_some() {
+        let guild: &Guild = full.as_ref().unwrap();
+        description = format!(
+            "Guild was deleted.\nGuild Name: {}\nGuild ID: {}\nGuild Owner: {}",
+            guild.name, guild.id, guild.owner_id
+        );
+    }
+    let id = unavailable.id.to_string();
     let avatar_url = "";
     send_log_embed_thumb(
         &guild_name,

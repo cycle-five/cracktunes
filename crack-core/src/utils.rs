@@ -815,6 +815,7 @@ pub fn count_command(command: &str, is_prefix: bool) {
     );
 }
 
+/// Get the guild id from an interaction.
 pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
     match interaction {
         Interaction::Command(int) => int.guild_id,
@@ -835,7 +836,6 @@ pub fn duration_to_string(duration: Duration) -> String {
     secs %= 60;
     format!("{:02}:{:02}:{:02}", hours, minutes, secs)
 }
-
 
 #[cfg(test)]
 mod test {
