@@ -96,7 +96,10 @@ pub async fn poise_framework(
                             return Ok(None);
                         }
 
-                        if !msg.content.starts_with("{test}!") {
+                        // FIXME: Make this less hacky
+                        if !msg.content.starts_with("{test}!")
+                            || ctx.cache.current_user().name.starts_with("Crack")
+                        {
                             return Ok(None);
                         } else {
                             return Ok(Some(msg.content.split_at(7)));

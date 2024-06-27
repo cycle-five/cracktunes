@@ -106,6 +106,15 @@ pub fn get_all_test_messages() -> Vec<String> {
         "{test}!uptime",
         "{test}!clean",
         "{test}!vote",
+        // Settings
+        "{test}!settings",
+        "{test}!settings get",
+        "{test}!settings get auto_role",
+        "{test}!settings get idle_timeouit",
+        "{test}!settings get premium",
+        "{test}!settings get volume",
+        "{test}!settings get welcome_settings",
+        "{test}!settings get log_channels",
         "{test}!say_channel <#1232025110802862180> Smoke Test...",
         "{test}!say_channel_id 1232025110802862180 Complete.",
     ]
