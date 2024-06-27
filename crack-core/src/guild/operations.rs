@@ -292,20 +292,19 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Set the current autoplay settings.
-    async fn set_volume(&self, guild_id: GuildId, vol: u64) -> () {
+    async fn set_volume(&self, guild_id: GuildId, vol: u64) {
         self.guild_settings_map
             .write()
             .await
             .entry(guild_id)
             .and_modify(|e| {
-                e.old_volume = e.volume as f32;
+                e.old_volume = e.volume;
                 e.volume = vol as f32;
             })
-            .or_insert_with(|| {
-                let mut settings = GuildSettings::default();
-                settings.volume = vol as f32;
-                settings.old_volume = vol as f32;
-                settings
+            .or_insert_with(|| GuildSettings {
+                volume: vol as f32,
+                old_volume: vol as f32,
+                ..Default::default()
             });
     }
 
