@@ -1,10 +1,10 @@
 use std::{borrow::Cow, fmt::Display};
 
-use self::serenity::model::mention::Mention;
 use ::serenity::builder::CreateEmbed;
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
-use poise::serenity_prelude::{self as serenity, UserId};
+use poise::serenity_prelude as serenity;
+use serenity::{Mention, Mentionable, UserId};
 use std::time::Duration;
 
 use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
@@ -19,6 +19,7 @@ pub enum CrackedMessage {
     AutopauseOn,
     AutoplayOff,
     AutoplayOn,
+    AutoRole(serenity::RoleId),
     BugNone(String),
     CategoryCreated {
         channel_id: serenity::ChannelId,
@@ -51,6 +52,7 @@ pub enum CrackedMessage {
     Leaving,
     LoopDisable,
     LoopEnable,
+    NoAutoRole,
     NowPlaying,
     Other(String),
     OwnersOnly,
@@ -218,6 +220,7 @@ impl Display for CrackedMessage {
         match self {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
+            Self::AutoRole(role_id) => f.write_str(&format!("{} {}", AUTO_ROLE, role_id.mention())),
             Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::InviteLink => f.write_str(&format!(
@@ -252,6 +255,7 @@ impl Display for CrackedMessage {
             Self::Leaving => f.write_str(LEAVING),
             Self::LoopDisable => f.write_str(LOOP_DISABLED),
             Self::LoopEnable => f.write_str(LOOP_ENABLED),
+            Self::NoAutoRole => f.write_str(NO_AUTO_ROLE),
             Self::NowPlaying => f.write_str(QUEUE_NOW_PLAYING),
             Self::Other(message) => f.write_str(message),
             Self::OwnersOnly => f.write_str(OWNERS_ONLY),
@@ -517,7 +521,7 @@ mod test {
         assert_eq!(message.discriminant(), 3);
 
         let message = CrackedMessage::Clear;
-        assert_eq!(message.discriminant(), 9);
+        assert_eq!(message.discriminant(), 10);
     }
 
     #[test]
