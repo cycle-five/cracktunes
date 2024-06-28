@@ -1,4 +1,5 @@
-use crate::{Context, Error};
+use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::{Context, CrackedMessage, Error};
 
 pub mod get;
 pub mod prefix;
@@ -39,15 +40,24 @@ pub async fn settings(
         help::wrapper(ctx).await?;
     }
 
-    ctx.say("You found the settings command").await?;
+    ctx.send_reply(CrackedMessage::CommandFound(String::from("settings")), true)
+        .await?;
 
     Ok(())
 }
 
-pub fn settings_commands() -> Vec<crate::Command> {
+pub fn commands() -> Vec<crate::Command> {
     vec![settings()]
         .into_iter()
-        .chain(set::settings_set_commands())
+        //.chain(set::commands())
+        //.chain(get::commands())
+        .collect()
+}
+
+pub fn sub_commands() -> Vec<crate::Command> {
+    vec![]
+        .into_iter()
+        .chain(set::commands())
         .chain(get::commands())
         .collect()
 }

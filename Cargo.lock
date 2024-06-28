@@ -369,7 +369,7 @@ dependencies = [
  "boa_profiler",
  "bytemuck",
  "cfg-if",
- "dashmap",
+ "dashmap 5.5.3",
  "fast-float",
  "hashbrown 0.14.5",
  "icu_normalizer",
@@ -787,9 +787,10 @@ dependencies = [
  "crack-gpt",
  "crack-osint",
  "ctor",
- "dashmap",
+ "dashmap 6.0.1",
  "either",
  "ffprobe",
+ "indexmap 2.2.6",
  "itertools 0.13.0",
  "lazy_static",
  "lyric_finder",
@@ -1026,6 +1027,20 @@ dependencies = [
  "once_cell",
  "parking_lot_core 0.9.10",
  "serde",
+]
+
+[[package]]
+name = "dashmap"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "804c8821570c3f8b70230c2ba75ffa5c0f9a4189b9a432b6656c536712acae28"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core 0.9.10",
 ]
 
 [[package]]
@@ -2403,7 +2418,7 @@ checksum = "c325dfab65f261f386debee8b0969da215b3fa0037e74c8a1234db7ba986d803"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-utils",
- "dashmap",
+ "dashmap 5.5.3",
  "skeptic",
  "smallvec",
  "tagptr",
@@ -4195,7 +4210,7 @@ dependencies = [
  "bitflags 2.5.0",
  "bytes",
  "chrono",
- "dashmap",
+ "dashmap 5.5.3",
  "flate2",
  "futures",
  "fxhash",
@@ -4351,7 +4366,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "crypto_secretbox",
- "dashmap",
+ "dashmap 5.5.3",
  "derivative",
  "discortp",
  "flume",
@@ -5624,7 +5639,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb704842c709bc76f63e99e704cb208beeccca2abbabd0d9aec02e48ca1cee0f"
 dependencies = [
  "chrono",
- "dashmap",
+ "dashmap 5.5.3",
  "hashbrown 0.14.5",
  "mini-moka",
  "parking_lot 0.12.3",

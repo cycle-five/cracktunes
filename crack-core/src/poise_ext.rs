@@ -334,7 +334,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         matches!(self, crate::Context::Prefix(_))
     }
 
-    /// Get the VC that
+    /// Get the VC that author of the incoming message is in if any.
     fn author_vc(&self) -> Option<serenity::ChannelId> {
         require_guild!(self, None)
             .voice_states
