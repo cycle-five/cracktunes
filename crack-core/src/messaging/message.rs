@@ -334,7 +334,7 @@ impl Display for CrackedMessage {
                 CATEGORY_CREATED, channel_id, channel_name
             )),
             Self::Uptime { mention, seconds } => f.write_str(&format!(
-                "**{}**\n: {}",
+                "**{}**\n {}",
                 mention,
                 duration_to_string(Duration::from_secs(*seconds)),
             )),
