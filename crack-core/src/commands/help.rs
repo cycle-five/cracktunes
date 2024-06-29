@@ -328,7 +328,7 @@ pub fn help_commands() -> [Command; 1] {
 
 // Contains the built-in help command and surrounding infrastructure
 
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, CreateReply};
 use std::fmt::Write as _;
 
 // /// Optional configuration for how the help message from [`help()`] looks
@@ -553,13 +553,16 @@ async fn help_single_command(
         format!("No such command `{}`", command_name)
     };
 
-    // let reply = CreateReply::default()
-    //     .content(reply)
-    //     .ephemeral(config.ephemeral);
+    if reply.len() > 1000 {
+        let bot_name = ctx.cache().current_user().name.clone();
+        create_paged_embed(ctx, bot_name, "Help".to_string(), reply, 900).await?;
+    } else {
+        let reply = CreateReply::default()
+            .content(reply)
+            .ephemeral(config.ephemeral);
+        ctx.send(reply).await?;
+    }
 
-    create_paged_embed(ctx, "Help".to_string(), "Help".to_string(), reply, 756).await?;
-
-    // ctx.send(reply).await?;
     Ok(())
 }
 
@@ -685,6 +688,7 @@ async fn help_all_commands(
     //     .ephemeral(config.ephemeral);
 
     // ctx.send(reply).await?;
-    create_paged_embed(ctx, "Help".to_string(), "Help".to_string(), menu, 756).await?;
+    let bot_name = ctx.cache().current_user().name.clone();
+    create_paged_embed(ctx, bot_name, "Help".to_string(), menu, 900).await?;
     Ok(())
 }

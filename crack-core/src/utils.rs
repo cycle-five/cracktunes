@@ -552,13 +552,7 @@ pub async fn create_paged_embed(
     content: String,
     page_size: usize,
 ) -> Result<(), CrackedError> {
-    let formatted = format!(
-        r#"```markdown
-        {}
-        ```"#,
-        content
-    );
-    let page_getter = create_page_getter_newline(&formatted, page_size);
+    let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
@@ -678,7 +672,7 @@ pub fn create_page_getter_newline(
     let chunks = split_string_into_chunks_newline(string, chunk_size);
     move |page| {
         let page = page % chunks.len();
-        chunks[page].clone()
+        format!("```markdown\n{}\n```", chunks[page].clone())
     }
 }
 
