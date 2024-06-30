@@ -21,6 +21,10 @@ use typemap_rev::TypeMapKey;
 pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
+#[allow(dead_code)]
+pub(crate) const PIPED_WATCH_URL: &str = "https://piped.video/watch?v=";
+pub(crate) const YOUTUBE_WATCH_URL: &str = "https://www.youtube.com/watch?v=";
+pub(crate) const VIDEO_WATCH_URL: &str = YOUTUBE_WATCH_URL;
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;

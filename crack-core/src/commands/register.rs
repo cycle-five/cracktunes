@@ -39,7 +39,6 @@ pub fn create_application_commands_cracked<U, E>(
 
     let mut commands_builder = Vec::with_capacity(commands.len());
     for command in commands {
-        tracing::warn!("Creating command: {:?}", command.name);
         if let Some(slash_command) = command.create_as_slash_command() {
             commands_builder.push(slash_command);
         }

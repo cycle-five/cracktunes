@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::guild::settings::VIDEO_WATCH_URL;
 use std::fmt::Display;
 use tokio::process::Command;
 use tokio::runtime::Handle;
@@ -82,7 +83,7 @@ impl MyYoutubeDl {
                     None
                 } else {
                     let id_string = String::from_utf8_lossy(x);
-                    let url = format!("{}{}", "https://www.youtube.com/watch?v=", &id_string);
+                    let url = format!("{}{}", VIDEO_WATCH_URL, &id_string);
                     drop(id_string);
                     Some(url)
                 }
