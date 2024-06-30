@@ -610,7 +610,7 @@ impl Data {
     ) -> Result<TrackReaction, CrackedError> {
         let pool = self.get_db_pool()?;
         let play_log_id =
-            PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into()).await?;
+            PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into(), 1).await?;
         let pool = self.database_pool.as_ref().unwrap();
         let id = *play_log_id.first().unwrap() as i32;
         let _ = TrackReaction::insert(pool, id).await;

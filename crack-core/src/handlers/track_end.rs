@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     commands::{forget_skip_votes, play_utils::enqueue_track_pgwrite_asdf, MyAuxMetadata},
-    db::PlayLog,
+    db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
@@ -43,7 +43,6 @@ pub struct ModifyQueueHandler {
     pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
-
 /// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
@@ -106,7 +105,6 @@ impl EventHandler for TrackEndHandler {
                     (channel, track)
                 };
                 let chan_id = channel;
-                // let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
                 match (track, autoplay) {
                     (None, false) => (
                         channel,
@@ -119,21 +117,15 @@ impl EventHandler for TrackEndHandler {
                             verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
                                 .unwrap();
                         // Get last played tracks from the db
-                        let last_played = PlayLog::get_last_played(
-                            self.data.database_pool.as_ref().unwrap(),
-                            None,
-                            Some(self.guild_id.get() as i64),
-                        )
-                        .await
-                        .unwrap_or_default();
+                        let pool = self.data.database_pool.as_ref().unwrap();
+                        let last_played = pool
+                            .get_last_played_by_guild(self.guild_id, 5)
+                            .await
+                            .unwrap_or_default();
                         let res_rec =
                             Spotify::get_recommendations(spotify, last_played.clone()).await;
                         let (rec, msg) = match res_rec {
                             Ok(rec) => {
-                                // let msg0 = format!(
-                                //     "Previously played: \n{}",
-                                //     last_played.clone().join("\n")
-                                // );
                                 let msg1 =
                                     format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
                                 (rec, msg1)
@@ -205,7 +197,7 @@ impl EventHandler for TrackEndHandler {
             (chan_id, chan_name, my_metadata, cur_pos)
         };
 
-        tracing::warn!("Sending now playing message");
+        tracing::info!("Sending now playing message");
 
         match send_now_playing(
             chan_id,
@@ -216,13 +208,9 @@ impl EventHandler for TrackEndHandler {
         )
         .await
         {
-            Ok(message) => {
-                self.data.add_msg_to_cache(self.guild_id, message).await;
-                tracing::info!("Sent now playing message");
-            },
+            Ok(_) => tracing::trace!("Sent now playing message"),
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
-        }
-
+        };
         None
     }
 }
