@@ -1,5 +1,7 @@
 use crate::guild::operations::GuildSettingsOperations;
+use crate::poise_ext::PoiseContextExt;
 use crate::CrackedError;
+use crate::CrackedMessage;
 use crate::{Context, Error};
 
 /// Get the current `premium` setting for the guild.
@@ -21,7 +23,7 @@ pub async fn premium_internal(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
     let res = data.get_premium(guild_id).await.unwrap_or(false);
 
-    ctx.say(format!("Premium status: {}", res))
+    ctx.send_reply(CrackedMessage::Premium(res), true)
         .await
         .map_err(|e| e.into())
         .map(|_| ())
