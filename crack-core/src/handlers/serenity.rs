@@ -135,65 +135,6 @@ impl EventHandler for SerenityHandler {
         }
     }
 
-    /*
-    async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
-        struct MyMessage(serenity::Message);
-        impl fmt::Display for MyMessage {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let mut result = String::new();
-                let msg = &self.0;
-                // let guild_id = match msg.guild_id {
-                //     Some(guild_id) => guild_id,
-                //     None => {
-                //         tracing::warn!("Non-gateway message received: {:?}", msg);
-                //         GuildId(0)
-                //     }
-                // };
-                let name = msg.author.name.clone();
-                let content = msg.content.clone();
-                result.push_str(&format!("Message: {} {}", name.purple(), content.purple(),));
-                msg.embeds.iter().for_each(|x| {
-                    result.push_str(&format!(
-                        "{}{}{}",
-                        x.title.as_ref().unwrap_or(&String::new()).purple(),
-                        x.description.as_ref().unwrap_or(&String::new()).purple(),
-                        x.fields.iter().fold(String::new(), |acc, x| {
-                            format!("{}{}{}", acc, x.name.purple(), x.value.purple())
-                        })
-                    ));
-                });
-                write!(f, "{}", result)
-            }
-        }
-
-        let guild_id = match msg.guild_id {
-            Some(guild_id) => guild_id,
-            None => {
-                tracing::warn!("Non-gateway message received: {:?}", msg);
-                return;
-            }
-        };
-
-        let guild_name = {
-            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
-            guild.name.clone()
-        };
-        let name = msg.author.name.clone();
-        // let guild_name = guild.name;
-        let content = msg.content.clone();
-        let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
-
-        tracing::info!(
-            "Message: {} {} {} {}",
-            name.purple(),
-            guild_name.purple(),
-            channel_name.purple(),
-            content.purple(),
-        );
-        let _mm = MyMessage(msg);
-    }
-    */
-
     async fn voice_state_update(
         &self,
         ctx: SerenityContext,
@@ -262,7 +203,6 @@ impl EventHandler for SerenityHandler {
 
         let config = self.data.bot_settings.clone();
         let video_status_poll_interval = config.get_video_status_poll_interval();
-        // let config.get
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
         let arc_ctx = Arc::new(ctx.clone());
@@ -589,36 +529,6 @@ async fn check_delete_old_messages(
     }
     Ok(())
 }
-// #[allow(dead_code)]
-// async fn disconnect_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().disconnect_member())
-//         .await
-// }
-
-// async fn server_defeafen_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().deafen(true))
-//         .await
-// }
-
-// async fn server_mute_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().mute(true))
-//         .await
-// }
 
 /// Returns a string describing the difference between two voice states.
 pub async fn voice_state_diff_str(
