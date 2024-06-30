@@ -383,7 +383,7 @@ impl Display for CrackedMessage {
             Self::UserMuted { mention, id } => f.write_str(&format!("{MUTED}\n{mention} {id}")),
             Self::UserUnmuted { mention, id } => f.write_str(&format!("{UNMUTED}\n{mention} {id}")),
             Self::Version { current, hash } => f.write_str(&format!(
-                "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}/tree/{})",
+                "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}tree/{})",
                 VERSION,
                 current,
                 RELEASES_LINK,
