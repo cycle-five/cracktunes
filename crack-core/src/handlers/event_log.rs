@@ -171,7 +171,8 @@ pub async fn handle_event(
             }
 
             // Should we log bot messages?
-            if new_message.author.bot && !crate::poise_ext::check_bot_message(ctx, new_message) {
+            if new_message.author.bot {
+                //&& !crate::poise_ext::check_bot_message(ctx, new_message) {
                 return Ok(());
             }
             log_event!(
