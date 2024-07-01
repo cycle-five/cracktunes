@@ -8,19 +8,19 @@ license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
 [workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.7" }
+crack-core = { path = "crack-core", default-features = true, version = "0.3" }
 crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "crack-gpt", default-features = true, version = "0.2" }
 crack-bf = { path = "crack-bf", default-features = true, version = "0.1" }
 
-reqwest = { version = "0.12.4", default-features = false, features = [
+reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
   "rustls-tls",
   "cookies",
 ] }
-tracing = "0.1.40"
+tracing = "0.1"
 vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
 
 
@@ -39,7 +39,7 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-version = "0.12.2"
+version = "0.12"
 git = "https://github.com/CycleFive/serenity"
 branch = "current"
 default-features = false
@@ -62,7 +62,7 @@ features = [
 [workspace.dependencies.songbird]
 git = "https://github.com/cycle-five/songbird"
 branch = "current"
-version = "0.4.1"
+version = "0.4"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
 [workspace.dependencies.poise]
@@ -72,14 +72,14 @@ default-features = true
 features = ["cache", "chrono"]
 
 [workspace.dependencies.tokio]
-version = "1.38.0"
+version = "1.38"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.17.0"
+cargo-dist-version = "0.17"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
