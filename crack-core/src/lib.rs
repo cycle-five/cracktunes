@@ -206,7 +206,7 @@ impl Display for BotConfig {
                 .cloned()
                 .unwrap_or(DEFAULT_PREFIX.to_string())
         ));
-        result.push_str(&format!("credentials: {:?}\n", self.credentials));
+        result.push_str(&format!("credentials: {:?}\n", self.credentials.is_some()));
         result.push_str(&format!("database_url: {:?}\n", self.database_url));
         result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
         write!(f, "{}", result)
