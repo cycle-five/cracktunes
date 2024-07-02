@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::guild::settings::VIDEO_WATCH_URL;
 use std::fmt::Display;
 use tokio::process::Command;
 use tokio::runtime::Handle;
@@ -77,17 +78,16 @@ impl MyYoutubeDl {
         Ok(output
             .stdout
             .split(|&b| b == b'\n')
-            .map(|x| {
-                let res = String::from_utf8_lossy(x);
-                let asdf = format!("{}{}", "https://www.youtube.com/watch?v=", &res);
-                drop(res);
-                asdf
+            .filter_map(|x| {
+                if x.is_empty() {
+                    None
+                } else {
+                    let id_string = String::from_utf8_lossy(x);
+                    let url = format!("{}{}", VIDEO_WATCH_URL, &id_string);
+                    drop(id_string);
+                    Some(url)
+                }
             })
-            // .filter_map(|x| {
-            //     serde_json::from_slice(x)
-            //         .ok()
-            //         .map(|x: serde_json::Value| x.as_str().unwrap().to_string())
-            // })
             .collect::<Vec<String>>())
     }
 }
@@ -97,7 +97,8 @@ mod test {
 
     #[tokio::test]
     async fn test_ytdl() {
-        let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
+        let url =
+            "https://www.youtube.com/playlist?list=PLzk-s3QLDrQ8tGpRzZ01woRoUd4ed-84q".to_string();
         let mut ytdl = crate::sources::ytdl::MyYoutubeDl::new(url);
         let playlist = ytdl.get_playlist().await;
         if playlist.is_err() {

@@ -32,7 +32,7 @@ impl EventHandler for IdleHandler {
         // guaranteed to be the first track in the actual queue, so search the entire list
         let bot_is_playing = track_list
             .iter()
-            .any(|track| matches!(track.0.playing, PlayMode::Play));
+            .any(|&(track_state, _track_handle)| matches!(track_state.playing, PlayMode::Play));
 
         // if there's a track playing, then reset the counter
         if bot_is_playing {

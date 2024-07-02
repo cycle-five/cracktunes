@@ -1,4 +1,4 @@
-use crate::{Context, ContextExt, Error};
+use crate::{poise_ext::ContextExt, Context, Error};
 use serenity::all::CreateMessage;
 
 /// Broadcast a message to all guilds where the bot is currently in a voice channel.

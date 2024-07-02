@@ -35,7 +35,7 @@ const HELP_STR: &str = r#"
         /invite       Vote link for cracktunes on top.gg
         /leave        Leave  a voice channel.
         /lyrics       Search for song lyrics.
-        /grab         interface::create_now_playing_embed, Send the current tack to your DMs.
+        /grab         Send the current tack to your DMs.
         /nowplaying   Get the currently playing track.
         /pause        Pause the current track.
         /play         Play a song.
@@ -98,15 +98,15 @@ impl Debug for GptContext {
 
 impl GptContext {
     pub fn new() -> Self {
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
         GptContext {
             msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
-            key: std::env::var("OPENAI_API_KEY")
-                .unwrap_or_else(|_| "".to_string())
-                .into(),
+            key: Some(api_key.clone()),
             config: AzureConfig::default()
                 .with_api_base("https://openai-resource-prod.openai.azure.com")
                 .with_deployment_id("gpt-4o-prod")
-                .with_api_version("2024-02-01"),
+                .with_api_version("2024-02-01")
+                .with_api_key(api_key),
             help: HELP_STR.to_string(),
             client: None,
         }
@@ -172,7 +172,7 @@ impl GptContext {
         let messages = match self.msg_cache.write().await.entry(user_id) {
             ttl_cache::Entry::Occupied(mut messages) => {
                 let asdf = messages.get_mut();
-                asdf.push(make_user_message(query));
+                asdf.insert(0, make_user_message(query));
                 asdf.clone()
             },
             ttl_cache::Entry::Vacant(messages) => messages
@@ -237,23 +237,7 @@ pub fn init_convo(help_msg: String, query: String) -> Vec<ChatCompletionRequestM
 
 #[cfg(test)]
 mod test {
-    use ctor;
-
     use crate::GptContext;
-
-    #[ctor::ctor]
-    fn set_env() {
-        use std::env;
-        if env::var("OPENAI_API_KEY").is_err() {
-            // Read the API key from a file called ~/openai_api_key
-            // and set it as an environment variable.
-            let key = match std::fs::read_to_string("/home/lothrop/openai_api_key") {
-                Ok(key) => key,
-                Err(_) => "ASDF".to_string(),
-            };
-            env::set_var("OPENAI_API_KEY", key);
-        }
-    }
 
     #[tokio::test]
     async fn test_openai_azure_response() {

@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -54,8 +54,8 @@ pub async fn timeout(
     {
         // Handle error, send error message
         tracing::error!("Failed to timeout user: {}", e);
-        send_response_poise(
-            ctx,
+        send_reply(
+            &ctx,
             CrackedMessage::Other(format!("Failed to timeout user: {}", e)),
             true,
         )
@@ -68,7 +68,7 @@ pub async fn timeout(
             timeout_until: timeout_until.clone(),
         };
         tracing::info!("User timed out: {}", msg);
-        send_response_poise(ctx, msg, true).await?;
+        send_reply(&ctx, msg, true).await?;
     }
     Ok(())
 }

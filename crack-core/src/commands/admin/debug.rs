@@ -33,7 +33,7 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
         None => {
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(ctx, embed).await?;
+            send_embed_response_poise(&ctx, embed).await?;
             return Ok(());
         },
     };
@@ -47,7 +47,7 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
         "data: {}old_data_str{}\nqueue: {}",
         data_str, old_data_str, queue_str
     ));
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(&ctx, embed).await?;
 
     Ok(())
 }

@@ -1,4 +1,5 @@
-// // pub mod checkpass;
+#[cfg(feature = "checkpass")]
+pub mod checkpass;
 // // pub mod ip;
 // // pub mod ipv;
 // // pub mod paywall;
@@ -10,7 +11,8 @@ pub mod virustotal;
 // pub mod wayback;
 // pub mod whois;
 
-// pub use checkpass::*;
+#[cfg(feature = "checkpass")]
+pub use checkpass::*;
 // pub use crack_core::PhoneCodeData;
 // pub use ip::ip;
 // pub use ipv::*;
@@ -24,8 +26,9 @@ pub use virustotal::*;
 // pub use whois::*;
 
 // pub use crack_core::{
-//     messaging::message::CrackedMessage, utils::send_response_poise, Context, Error, Result,
+//     messaging::message::CrackedMessage, utils::send_reply, Context, Error, Result,
 // };
+pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 
 // /// Osint Commands
 // #[poise::command(

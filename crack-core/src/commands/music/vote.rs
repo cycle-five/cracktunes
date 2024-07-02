@@ -1,6 +1,7 @@
 use crate::db;
 use crate::errors::CrackedError;
 use crate::http_utils;
+use crate::poise_ext::ContextExt;
 use crate::{
     messaging::messages::{
         VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL,
@@ -18,36 +19,22 @@ pub struct CheckResponse {
 
 /// Vote link for cracktunes on top.gg
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(category = "Base", slash_command, prefix_command)]
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
-    vote_internal(ctx).await
+    vote_topgg_internal(ctx).await
 }
 
 /// Internal vote function without the #command macro
 #[cfg(not(tarpaulin_include))]
-pub async fn vote_internal(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: Option<GuildId> = ctx.guild_id();
-
     let user_id: UserId = ctx.author().id;
+    let bot_id: UserId = http_utils::get_bot_id(ctx).await?;
 
     tracing::info!("user_id: {:?}, guild_id: {:?}", user_id, guild_id);
 
-    let bot_id: UserId = http_utils::get_bot_id(ctx).await?;
     tracing::info!("bot_id: {:?}", bot_id);
-    let has_voted = match check_and_record_vote(
-        ctx.data().database_pool.as_ref().unwrap(),
-        user_id.get() as i64,
-        ctx.author().name.clone(),
-        bot_id.get() as i64,
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!("Error checking and recording vote: {:?}", e);
-            false
-        },
-    };
+    let has_voted = ctx.check_and_record_vote().await?;
 
     let msg_str = if has_voted {
         VOTE_TOPGG_VOTED

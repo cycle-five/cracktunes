@@ -4,7 +4,7 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
-    utils::send_response_poise_text,
+    utils::send_reply,
     utils::{get_track_metadata, send_embed_response_poise},
     Context, Error,
 };
@@ -14,15 +14,33 @@ use std::cmp::min;
 
 /// Remove track(s) from the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
 pub async fn remove(
     ctx: Context<'_>,
-    #[description = "Start index in the track queue to remove"] b_index: usize,
+    #[description = "Index in the queue to remove (Or number of tracks to remove if no second argument."]
+    b_index: usize,
     #[description = "End index in the track queue to remove"] e_index: Option<usize>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    remove_internal(ctx, b_index, e_index).await
+}
+
+/// Internal remove function.
+pub async fn remove_internal(
+    ctx: Context<'_>,
+    b_index: usize,
+    e_index: Option<usize>,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let remove_index = b_index;
     let remove_until = match e_index {
@@ -64,9 +82,9 @@ pub async fn remove(
     if remove_until == remove_index {
         let embed = create_remove_enqueued_embed(track).await;
         //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
-        send_embed_response_poise(ctx, embed).await?;
+        send_embed_response_poise(&ctx, embed).await?;
     } else {
-        send_response_poise_text(ctx, CrackedMessage::RemoveMultiple).await?;
+        send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
 
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;

@@ -12,18 +12,10 @@
         }
     ],
     "rust-analyzer.cargo.features": [
-        "crack-gpt"
+        "crack-gpt",
+        "crack-osint",
+        "crack-bf",
     ],
-    //     "crack-osint",
-    //     "crack-core",
-    //     "crack-telemetry",
-    //     "crack-tracing",
-    //     "db",
-    //     "playlist",
-    //     "cache",
-    //     "ignore-presence-log",
-    // ],
-    // "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
         "./crack-gpt/Cargo.toml",

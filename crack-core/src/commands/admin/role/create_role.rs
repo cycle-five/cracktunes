@@ -2,15 +2,24 @@ use poise::serenity_prelude::{Colour, Permissions};
 use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
 
-use crate::commands::{ConvertToEmptyResult, EmptyResult};
+use crate::commands::{sub_help as help, EmptyResult};
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 
 /// Create role.
 #[allow(clippy::too_many_arguments)]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    slash_command,
+    subcommands("help"),
+    hide_in_help = true,
+    ephemeral
+)]
 pub async fn create(
     ctx: Context<'_>,
     #[description = "Name of the role to create."] name: String,
@@ -21,13 +30,13 @@ pub async fn create(
     #[description = "Optional initial colour"] colour: Option<u32>,
     #[description = "Optional emoji"] unicode_emoji: Option<String>,
     #[description = "Optional reason for the audit_log"] audit_log_reason: Option<String>,
-    #[description = "Optional initial perms"] icon: Option<Attachment>,
+    #[description = "Optional icon"] icon: Option<Attachment>,
 ) -> EmptyResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let icon = match icon {
         Some(attachment) => {
             let url = attachment.url.clone();
-            Some(CreateAttachment::url(ctx, &url).await?)
+            Some(CreateAttachment::url(&ctx, &url).await?)
         },
         None => None,
     };
@@ -47,8 +56,8 @@ pub async fn create(
     )
     .await?;
 
-    send_response_poise(
-        ctx,
+    send_reply(
+        &ctx,
         CrackedMessage::RoleCreated {
             role_name: role.name.clone(),
             role_id: role.id,
@@ -56,7 +65,8 @@ pub async fn create(
         true,
     )
     .await
-    .convert()
+    .map(|_| ())
+    .map_err(Into::into)
 }
 
 /// Internal create role function.

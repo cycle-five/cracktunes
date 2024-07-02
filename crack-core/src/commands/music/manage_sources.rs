@@ -31,13 +31,10 @@ pub async fn allow(ctx: Context<'_>) -> Result<(), Error> {
     use ::serenity::builder::{CreateInteractionResponse, CreateModal};
 
     use crate::utils::get_guild_name;
-    let guild_settings = settings.entry(guild_id).or_insert_with(|| {
-        GuildSettings::new(
-            guild_id,
-            Some(&prefix),
-            get_guild_name(ctx.serenity_context(), guild_id),
-        )
-    });
+    let name = get_guild_name(ctx.serenity_context(), guild_id).await;
+    let guild_settings = settings
+        .entry(guild_id)
+        .or_insert_with(|| GuildSettings::new(guild_id, Some(&prefix), name));
 
     // transform the domain sets from the settings into a string
     let allowed_str = guild_settings

@@ -31,14 +31,13 @@ pub use log_channels::*;
     subcommands(
         "all",
         "all_log_channel",
-        "auto_role",
+        "get_auto_role",
         "premium",
         "join_leave_log_channel",
         "welcome_settings",
         "idle_timeout",
-        "volume",
-        // "self_deafen",
-    ),
+        "get_volume",
+    )
 )]
 
 /// Get settings
@@ -49,4 +48,17 @@ pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("You found the settings-get command").await?;
 
     Ok(())
+}
+
+pub fn commands() -> [crate::Command; 8] {
+    [
+        all(),
+        all_log_channel(),
+        get_auto_role(),
+        premium(),
+        join_leave_log_channel(),
+        welcome_settings(),
+        idle_timeout(),
+        get_volume(),
+    ]
 }

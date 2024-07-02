@@ -1,15 +1,16 @@
 use super::event_log_impl::*;
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, ArcTRwMap, Data, Error,
+    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
+use poise::serenity_prelude as serenity;
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::all::User;
+use serenity::User;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -151,7 +152,7 @@ pub async fn handle_event(
                 event_in,
                 log_data,
                 &guild_id,
-                ctx,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -169,7 +170,9 @@ pub async fn handle_event(
                     .unwrap_or_default();
             }
 
+            // Should we log bot messages?
             if new_message.author.bot {
+                //&& !crate::poise_ext::check_bot_message(ctx, new_message) {
                 return Ok(());
             }
             log_event!(
@@ -367,9 +370,9 @@ pub async fn handle_event(
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildDelete { incomplete, full } => {
-            let log_data = (event_name, incomplete, full);
+            let log_data = (incomplete, full);
             log_event!(
-                log_unimplemented_event,
+                log_guild_delete_event,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -976,6 +979,24 @@ pub async fn handle_event(
         },
         FullEvent::VoiceServerUpdate { event } => {
             event_log.write_log_obj_async(event_name, event).await
+        },
+        FullEvent::VoiceChannelStatusUpdate {
+            old,
+            status,
+            id,
+            guild_id,
+        } => {
+            let log_data = (old, status, id, guild_id);
+            log_event!(
+                log_voice_channel_status_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx,
+                event_log,
+                event_name
+            )
         },
         FullEvent::WebhookUpdate {
             guild_id,

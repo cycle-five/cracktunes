@@ -14,7 +14,7 @@ pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<
     let embed = build_tracks_embed_metadata(playlist_name, aux_metadata.as_slice(), 0).await;
 
     // Send the embed
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(&ctx, embed).await?;
 
     Ok(())
 }

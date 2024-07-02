@@ -1,4 +1,5 @@
 use crate::errors::CrackedError;
+use crate::messaging::messages::TEST;
 use ::chrono::Duration;
 use sqlx::{
     types::chrono::{self},
@@ -38,7 +39,7 @@ pub struct UserVote {
 impl User {
     /// Insert a test user into the database.
     pub async fn insert_test_user(pool: &PgPool, user_id: Option<i64>, username: Option<String>) {
-        let user = username.unwrap_or("test".to_string());
+        let user = username.unwrap_or(TEST.to_string());
         let user_id = user_id.unwrap_or(1);
         let result = sqlx::query!(
             r#"insert into public.user
@@ -170,6 +171,7 @@ impl UserVote {
 #[cfg(test)]
 mod test {
     use super::UserVote;
+    use super::TEST;
     use crate::db::User;
     use chrono::{Duration, Utc};
     use sqlx::PgPool;
@@ -189,23 +191,23 @@ mod test {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user(pool: PgPool) {
-        User::insert_test_user(&pool, Some(1), Some("test".to_string())).await;
+        User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
-        assert_eq!(user.username, "test");
+        assert_eq!(user.username, TEST);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_or_update_user(pool: PgPool) {
-        User::insert_or_update_user(&pool, 1, "test".to_string())
+        User::insert_or_update_user(&pool, 1, TEST.to_string())
             .await
             .unwrap();
         let user = User::get_user(&pool, 1).await.unwrap();
-        assert_eq!(user.username, "test");
+        assert_eq!(user.username, TEST);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user_vote(pool: PgPool) {
-        let insert_res = UserVote::insert_user_vote(&pool, 1, "test".to_string()).await;
+        let insert_res = UserVote::insert_user_vote(&pool, 1, TEST.to_string()).await;
         assert!(insert_res.is_ok());
         let user_votes = UserVote::get_user_votes(1, &pool).await;
         assert!(user_votes.is_ok());
@@ -213,17 +215,17 @@ mod test {
         assert_eq!(user_votes.len(), 1);
         let first = user_votes.first();
         assert!(first.is_some());
-        assert_eq!(first.unwrap().site, "test");
+        assert_eq!(first.unwrap().site, TEST);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_has_voted_recently(pool: PgPool) {
-        UserVote::insert_user_vote(&pool, 1, "test".to_string())
+        UserVote::insert_user_vote(&pool, 1, TEST.to_string())
             .await
             .unwrap();
         let has_voted = UserVote::has_voted_recently(
             1,
-            "test".to_string(),
+            TEST.to_string(),
             Utc::now()
                 .naive_utc()
                 .checked_add_signed(Duration::seconds(-5 * 60))

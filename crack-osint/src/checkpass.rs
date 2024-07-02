@@ -1,4 +1,4 @@
-use crate::{send_response_poise, Context, CrackedMessage, Error};
+use crate::Error;
 use reqwest::Client;
 use sha1::{Digest, Sha1};
 
@@ -18,19 +18,4 @@ pub async fn check_password_pwned(password: &str) -> Result<bool, Error> {
     let pwned = response.contains(&hash_str[5..]);
 
     Ok(pwned)
-}
-
-/// Check if a password has been pwned.
-#[poise::command(prefix_command, hide_in_help)]
-pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> {
-    let pwned = check_password_pwned(&password).await?;
-    let message = if pwned {
-        CrackedMessage::PasswordPwned
-    } else {
-        CrackedMessage::PasswordSafe
-    };
-
-    send_response_poise(ctx, message).await?;
-
-    Ok(())
 }

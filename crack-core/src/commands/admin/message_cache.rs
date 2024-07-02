@@ -1,15 +1,16 @@
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise_text;
+use crate::utils::send_reply;
 use crate::Context;
+use crate::CrackedError;
 use crate::Error;
 
 /// Get the message cache.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, ephemeral)]
 pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let cache_str = {
-        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().unwrap().clone();
+        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await.clone();
         message_cache
             .entry(guild_id)
             .or_default()
@@ -20,9 +21,7 @@ pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
 
     tracing::warn!("message_cache: {}", cache_str);
 
-    let msg = send_response_poise_text(ctx, CrackedMessage::Other(cache_str)).await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    send_reply(&ctx, CrackedMessage::Other(cache_str), false).await?;
 
     Ok(())
 }

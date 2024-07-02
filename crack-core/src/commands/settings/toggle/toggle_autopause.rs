@@ -1,7 +1,5 @@
-use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, utils::get_guild_name, Context, Data,
-    Error,
-};
+use crate::http_utils::CacheHttpExt;
+use crate::{errors::CrackedError, guild::settings::GuildSettings, Context, Data, Error};
 use serenity::all::GuildId;
 use sqlx::PgPool;
 
@@ -13,14 +11,16 @@ use sqlx::PgPool;
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
-    let res = toggle_autopause_(
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
+    let res = toggle_autopause_internal(
         ctx.data().clone(),
         ctx.data()
             .database_pool
             .clone()
             .ok_or(CrackedError::NoDatabasePool)?,
-        ctx.guild_id().ok_or(CrackedError::NoGuildId)?,
-        get_guild_name(ctx.serenity_context(), ctx.guild_id().unwrap()),
+        guild_id,
+        Some(guild_name),
         ctx.data().bot_settings.get_prefix(),
     )
     .await?;
@@ -32,7 +32,7 @@ pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Toggle the autopause for the bot.
 #[cfg(not(tarpaulin_include))]
-pub async fn toggle_autopause_(
+pub async fn toggle_autopause_internal(
     data: Data,
     pool: PgPool,
     guild_id: GuildId,

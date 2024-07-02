@@ -220,12 +220,17 @@ pub async fn playlist_track_to_metadata(
 use crate::db;
 
 use super::PlaylistTrack;
+
+pub enum MetadataAnd {
+    Track(Metadata, PlaylistTrack),
+}
+
 /// Convert an `AuxMetadata` structure to the database structures.
 pub fn aux_metadata_to_db_structures(
     metadata: &AuxMetadata,
     guild_id: i64,
     channel_id: i64,
-) -> Result<(Metadata, db::PlaylistTrack), CrackedError> {
+) -> Result<MetadataAnd, CrackedError> {
     let track = metadata.track.clone();
     let title = metadata.title.clone();
     let artist = metadata.artist.clone();
@@ -272,7 +277,7 @@ pub fn aux_metadata_to_db_structures(
         channel_id: Some(channel_id),
     };
 
-    Ok((metadata, db_track))
+    Ok(MetadataAnd::Track(metadata, db_track))
 }
 
 /// Convert an `AuxMetadata` structure to the database structures.
@@ -322,4 +327,32 @@ pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedE
     // };
 
     Ok(aux_metadata)
+}
+
+impl From<Metadata> for AuxMetadata {
+    fn from(metadata: Metadata) -> Self {
+        aux_metadata_from_db(&metadata).unwrap()
+    }
+}
+
+impl From<AuxMetadata> for Metadata {
+    fn from(metadata: AuxMetadata) -> Self {
+        aux_metadata_to_db_structures(&metadata, 0, 0)
+            .map(|MetadataAnd::Track(metadata, _)| metadata)
+            .unwrap()
+    }
+}
+
+impl From<AuxMetadata> for db::PlaylistTrack {
+    fn from(metadata: AuxMetadata) -> Self {
+        aux_metadata_to_db_structures(&metadata, 0, 0)
+            .map(|MetadataAnd::Track(_, playlist_track)| playlist_track)
+            .unwrap()
+    }
+}
+
+impl From<AuxMetadata> for MetadataAnd {
+    fn from(metadata: AuxMetadata) -> Self {
+        aux_metadata_to_db_structures(&metadata, 0, 0).unwrap()
+    }
 }

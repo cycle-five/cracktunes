@@ -1,32 +1,42 @@
 pub mod admin;
+#[cfg(feature = "crack-bf")]
+pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
+pub mod help;
 pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
-pub mod ping;
+pub mod permissions;
 pub mod playlist;
 pub mod settings;
-pub mod version;
+pub mod utility;
 
 pub use admin::*;
+#[cfg(feature = "crack-bf")]
+pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
+pub use help::sub_help;
 pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
-pub use ping::*;
-pub use playlist::playlist;
-use serenity::all::Message;
+pub use permissions::*;
 pub use settings::*;
-pub use version::*;
+pub use utility::*;
+
+pub mod register;
+pub use register::*;
 
 pub use crate::errors::CrackedError;
+use serenity::all::Message;
 
 pub type MessageResult = Result<Message, CrackedError>;
 pub type EmptyResult = Result<(), crate::Error>;
+
+use crate::{Context, Error};
 
 pub trait ConvertToEmptyResult {
     fn convert(self) -> EmptyResult;
@@ -36,4 +46,89 @@ impl ConvertToEmptyResult for MessageResult {
     fn convert(self) -> EmptyResult {
         self.map(|_| ()).map_err(|e| e.into())
     }
+}
+
+/// Return all the commands that are available in the bot.
+pub fn all_commands() -> Vec<crate::Command> {
+    vec![
+        register(),
+        #[cfg(feature = "crack-bf")]
+        bf(),
+        #[cfg(feature = "crack-osint")]
+        osint(),
+        #[cfg(feature = "crack-gpt")]
+        chat(),
+    ]
+    .into_iter()
+    .chain(help::help_commands())
+    .chain(music::music_commands())
+    .chain(utility::utility_commands())
+    .chain(settings::commands())
+    // .chain(playlist::commands())
+    // .chain(admin::admin_commands())
+    .collect()
+}
+
+pub fn all_command_names() -> Vec<String> {
+    all_commands().into_iter().map(|c| c.name).collect()
+}
+
+pub fn all_commands_map() -> dashmap::DashMap<String, crate::Command> {
+    all_commands()
+        .into_iter()
+        .map(|c| (c.name.clone(), c))
+        .collect::<dashmap::DashMap<_, _>>()
+}
+
+// use poise::serenity_prelude as serenity;
+// /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
+// /// to register the commands on Discord
+// ///
+// /// Also see [`register_application_commands_buttons`] for a ready to use register command
+// ///
+// /// ```rust,no_run
+// /// # use poise::serenity_prelude as serenity;
+// /// # async fn foo(ctx: poise::Context<'_, (), ()>) -> Result<(), serenity::Error> {
+// /// let commands = &ctx.framework().options().commands;
+// /// let create_commands = poise::builtins::create_application_commands_minus_help(commands);
+// ///
+// /// serenity::Command::set_global_commands(ctx, create_commands).await?;
+// /// # Ok(()) }
+// /// ```
+// pub fn create_application_commands_minus_help<U, E>(
+//     commands: &[poise::Command<U, E>],
+// ) -> Vec<serenity::CreateCommand> {
+//     /// We decided to extract context menu commands recursively, despite the subcommand hierarchy
+//     /// not being preserved. Because it's more confusing to just silently discard context menu
+//     /// commands if they're not top-level commands.
+//     /// https://discord.com/channels/381880193251409931/919310428344029265/947970605985189989
+//     fn recursively_add_context_menu_commands<U, E>(
+//         builder: &mut Vec<serenity::CreateCommand>,
+//         command: &poise::Command<U, E>,
+//     ) {
+//         if let Some(context_menu_command) = command.create_as_context_menu_command() {
+//             builder.push(context_menu_command);
+//         }
+//         for subcommand in &command.subcommands {
+//             if subcommand.name != "help" {
+//                 recursively_add_context_menu_commands(builder, subcommand);
+//             }
+//         }
+//     }
+
+//     let mut commands_builder = Vec::with_capacity(commands.len());
+//     for command in commands {
+//         if let Some(slash_command) = command.create_as_slash_command() {
+//             commands_builder.push(slash_command);
+//         }
+//         recursively_add_context_menu_commands(&mut commands_builder, command);
+//     }
+//     commands_builder
+// }
+
+/// Interactively register bot commands.
+#[poise::command(prefix_command, hide_in_help = true)]
+pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
+    register_application_commands_buttons_cracked(ctx).await?;
+    Ok(())
 }

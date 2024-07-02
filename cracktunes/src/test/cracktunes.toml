@@ -51,5 +51,6 @@ autopause = false
 self_deafen = true
 volume = 0.3
 timeout = 0
+[command_settings]
 
 [[guild_cache]]

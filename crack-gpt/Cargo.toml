@@ -9,13 +9,14 @@ description = "GPT module for Cracktunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
-
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
 
 [dependencies]
-async-openai = "0.21.0"
-ctor = "0.2.8"
-ttl_cache = "0.5.1"
-const_format = "0.2.32"
+async-openai = "0.23"
+ctor = "0.2"
+ttl_cache = "0.5"
+const_format = "0.2"
 tracing = { workspace = true }
 tokio = { workspace = true }

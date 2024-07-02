@@ -1,7 +1,7 @@
 use crate::guild::settings::GuildSettings;
+use crate::http_utils::CacheHttpExt;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::get_guild_name;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 
@@ -12,8 +12,10 @@ pub async fn add_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to add to the bot"] prefix: String,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
+    use crate::{commands::CrackedError, http_utils::CacheHttpExt};
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
     let additional_prefixes = {
         let mut settings = ctx.data().guild_settings_map.write().await;
         let new_settings = settings
@@ -33,8 +35,8 @@ pub async fn add_prefix(
             ));
         new_settings.additional_prefixes.clone()
     };
-    send_response_poise(
-        ctx,
+    send_reply(
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
@@ -52,8 +54,10 @@ pub async fn clear_prefixes(
     ctx: Context<'_>,
     #[description = "The prefix to add to the bot"] prefix: String,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let guild_name = get_guild_name(ctx.serenity_context(), guild_id).unwrap_or_default();
+    use crate::commands::CrackedError;
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
     let additional_prefixes = {
         let mut settings = ctx.data().guild_settings_map.write().await;
         let new_settings = settings
@@ -68,8 +72,8 @@ pub async fn clear_prefixes(
             ));
         new_settings.additional_prefixes.clone()
     };
-    send_response_poise(
-        ctx,
+    send_reply(
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
@@ -92,8 +96,8 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
             .map(|e| e.additional_prefixes.clone())
             .unwrap_or_default()
     };
-    let msg = send_response_poise(
-        ctx,
+    let _ = send_reply(
+        &ctx,
         CrackedMessage::Other(format!(
             "Current additional prefixes {}",
             additional_prefixes.join(", ")
@@ -101,6 +105,5 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
         true,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

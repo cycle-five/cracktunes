@@ -62,12 +62,12 @@ impl EventHandler for RandomMuteHandler {
         // let member = guild.member(&self.ctx, self.user.id).await.unwrap();
         let r = rand::thread_rng().gen_range(0..100);
         if r < 50 {
-            let _msg = mute_internal(self.ctx.clone(), self.user.clone(), self.guild_id, true)
+            let _msg = mute_internal(&self.ctx, self.user.clone(), self.guild_id, true)
                 .await
                 .unwrap();
         // } else if r < 75 {
         } else {
-            let _msg = mute_internal(self.ctx.clone(), self.user.clone(), self.guild_id, false)
+            let _msg = mute_internal(&self.ctx, self.user.clone(), self.guild_id, false)
                 .await
                 .unwrap();
         }

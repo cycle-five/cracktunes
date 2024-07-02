@@ -1,29 +1,36 @@
-use crate::db::PlayLog;
+use crate::commands::cmd_check_music;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
-use crate::{Context, Error};
+use crate::utils::{create_paged_embed, send_reply};
+use crate::{poise_ext::ContextExt, Context, Error};
 
 /// Get recently played tracks form the guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    slash_command,
+    prefix_command,
+    guild_only
+)]
 pub async fn playlog(ctx: Context<'_>) -> Result<(), Error> {
-    playlog_(ctx).await
+    playlog_internal(ctx).await
 }
 
 /// Get recently played tracks for the guild.
 #[cfg(not(tarpaulin_include))]
-pub async fn playlog_(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
+    let last_played = ctx.get_last_played().await?;
+    let last_played_str = last_played.join("\n");
 
-    let last_played = PlayLog::get_last_played(
-        ctx.data().database_pool.as_ref().unwrap(),
-        None,
-        Some(guild_id.get() as i64),
+    create_paged_embed(
+        ctx,
+        ctx.author().name.clone(),
+        "Playlog".to_string(),
+        last_played_str,
+        756,
     )
     .await?;
-
-    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    // let _ = send_reply(&ctx, CrackedMessage::PlayLog(last_played), true).await?;
 
     Ok(())
 }
@@ -35,20 +42,15 @@ pub async fn myplaylog(ctx: Context<'_>) -> Result<(), Error> {
     myplaylog_(ctx).await
 }
 
+// use crate::commands::CrackedError;
 #[cfg(not(tarpaulin_include))]
 pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let user_id = ctx.author().id;
 
-    let last_played = PlayLog::get_last_played(
-        ctx.data().database_pool.as_ref().unwrap(),
-        Some(user_id.get() as i64),
-        Some(guild_id.get() as i64),
-    )
-    .await?;
+    let last_played = ctx.get_last_played_by_user(user_id).await?;
 
-    let msg = send_response_poise(ctx, CrackedMessage::PlayLog(last_played), true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    let _ = send_reply(&ctx, CrackedMessage::PlayLog(last_played), true).await?;
 
     Ok(())
 }

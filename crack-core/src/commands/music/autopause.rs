@@ -1,14 +1,23 @@
 use crate::{
+    commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
+    http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
-    utils::{get_guild_name, send_response_poise},
+    poise_ext::PoiseContextExt,
     Context, Error,
 };
 
 /// Toggle autopause.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    slash_command,
+    prefix_command,
+    subcommands("help"),
+    guild_only,
+    check = "cmd_check_music"
+)]
 pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
     autopause_internal(ctx).await
 }
@@ -17,24 +26,17 @@ pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let prefix = ctx.data().bot_settings.get_prefix();
 
-    let autopause = {
-        let name = get_guild_name(ctx.serenity_context(), guild_id);
-        let prefix = Some(prefix.as_str());
-        let mut guild_settings = ctx
-            .data()
-            .get_or_create_guild_settings(guild_id, name, prefix)
-            .await;
-        guild_settings.toggle_autopause();
-        guild_settings.autopause
+    let autopause = ctx.data().toggle_autopause(guild_id).await;
+    let params = SendMessageParams {
+        msg: if autopause {
+            CrackedMessage::AutopauseOn
+        } else {
+            CrackedMessage::AutopauseOff
+        },
+        ..Default::default()
     };
-    let msg = if autopause {
-        send_response_poise(ctx, CrackedMessage::AutopauseOn, true)
-    } else {
-        send_response_poise(ctx, CrackedMessage::AutopauseOff, true)
-    }
-    .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.send_message(params).await?;
+
     Ok(())
 }

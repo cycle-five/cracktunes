@@ -1,10 +1,9 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
-use serenity::all::Message;
 use serenity::builder::EditMember;
 
 /// Unmute a user.
@@ -27,29 +26,26 @@ pub async fn unmute(
 /// Unmute a user
 /// impl for other internal use.
 #[cfg(not(tarpaulin_include))]
-pub async fn unmute_impl(
-    ctx: Context<'_>,
-    user: serenity::model::user::User,
-) -> Result<Message, Error> {
+pub async fn unmute_impl(ctx: Context<'_>, user: serenity::model::user::User) -> Result<(), Error> {
     let id = user.id;
     let mention = user.mention();
     let guild_id = ctx
         .guild_id()
         .ok_or(CrackedError::Other("Guild ID not found"))?;
     if let Err(e) = guild_id
-        .edit_member(ctx, user.clone().id, EditMember::new().mute(false))
+        .edit_member(&ctx, user.clone().id, EditMember::new().mute(false))
         .await
     {
         // Handle error, send error message
-        send_response_poise(
-            ctx,
+        send_reply(
+            &ctx,
             CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
             true,
         )
         .await
     } else {
         // Send success message
-        send_response_poise(ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
-    }
-    .map_err(Into::into)
+        send_reply(&ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
+    }?;
+    Ok(())
 }

@@ -1,11 +1,12 @@
 use super::QueryType;
 use crate::{
     commands::{Mode, MyAuxMetadata, RequestingUser},
-    db::{aux_metadata_to_db_structures, Metadata, PlayLog, User},
+    db::{aux_metadata_to_db_structures, Metadata, MetadataAnd, PlayLog, User},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    Context as CrackContext, ContextExt, Error,
+    poise_ext::ContextExt,
+    Context as CrackContext, Error,
 };
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
 use songbird::{
@@ -158,7 +159,7 @@ pub async fn queue_keyword_list_back<'a>(
             .collect::<Vec<String>>()
             .join("\n");
         msg.edit(
-            ctx,
+            &ctx,
             EditMessage::new().embed(CreateEmbed::default().description(format!(
                 "Queuing {} songs... \n{}",
                 chunk.len(),
@@ -262,7 +263,7 @@ pub async fn write_metadata_pg(
     channel_id: ChannelId,
 ) -> Result<Metadata, CrackedError> {
     let returned_metadata = {
-        let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
+        let MetadataAnd::Track(metadata, _) = match aux_metadata_to_db_structures(
             &aux_metadata,
             guild_id.get() as i64,
             channel_id.get() as i64,

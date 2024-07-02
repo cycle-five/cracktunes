@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use poise::futures_util::StreamExt;
+use poise::serenity_prelude as serenity;
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::{Error, PgPool};
 
@@ -13,6 +14,35 @@ pub struct PlayLog {
     pub guild_id: i64,
     pub metadata_id: i64,
     pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct PlayLogQuery {
+    pub user_id: Option<i64>,
+    pub guild_id: Option<i64>,
+    pub limit: Option<i64>,
+    pub max_dislikes: Option<i32>,
+}
+
+pub trait PgPoolExtPlayLog {
+    fn insert_playlog_entry(
+        &self,
+        user_id: serenity::UserId,
+        guild_id: serenity::GuildId,
+        metadata_id: i64,
+        //) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PlayLog, Error>> + Send>>;
+    ) -> impl std::future::Future<Output = Result<PlayLog, Error>>;
+
+    fn get_last_played(
+        &self,
+        query: &PlayLogQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<String>, Error>>;
+
+    fn get_last_played_by_guild(
+        &self,
+        guild_id: serenity::GuildId,
+        limit: i64,
+    ) -> impl std::future::Future<Output = Result<Vec<String>, Error>>;
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +59,56 @@ impl Display for TitleArtist {
         let artist = self.artist.as_deref().unwrap_or_default();
         let _ = fmt.write_str(artist);
         Ok(())
+    }
+}
+
+impl PgPoolExtPlayLog for PgPool {
+    async fn insert_playlog_entry(
+        &self,
+        user_id: serenity::UserId,
+        guild_id: serenity::GuildId,
+        metadata_id: i64,
+    ) -> Result<PlayLog, Error> {
+        PlayLog::create(
+            self,
+            user_id.get() as i64,
+            guild_id.get() as i64,
+            metadata_id,
+        )
+        .await
+    }
+
+    async fn get_last_played(&self, query: &PlayLogQuery) -> Result<Vec<String>, Error> {
+        match (&query.user_id, &query.guild_id) {
+            (Some(user_id), None) => {
+                PlayLog::get_last_played_by_user(self, *user_id, query.limit.unwrap_or(i64::MAX))
+                    .await
+            },
+            (None, Some(guild_id)) => {
+                PlayLog::get_last_played_by_guild_filter_limit(
+                    self,
+                    *guild_id,
+                    query.max_dislikes.unwrap_or(1),
+                    query.limit.unwrap_or(i64::MAX),
+                )
+                .await
+            },
+            _ => Ok(vec![]),
+        }
+    }
+
+    async fn get_last_played_by_guild(
+        &self,
+        guild_id: serenity::GuildId,
+        limit: i64,
+    ) -> Result<Vec<String>, Error> {
+        let query = PlayLogQuery {
+            user_id: None,
+            guild_id: Some(guild_id.get() as i64),
+            limit: Some(limit),
+            max_dislikes: None,
+        };
+        self.get_last_played(&query).await
     }
 }
 
@@ -57,6 +137,15 @@ impl PlayLog {
     }
 
     /// Get the last played track for the given user and guild.
+    pub async fn get_last_played_by_guild_limit(
+        conn: &PgPool,
+        guild_id: i64,
+        limit: i64,
+    ) -> Result<Vec<String>, Error> {
+        Self::get_last_played_by_guild_filter_limit(conn, guild_id, 0, limit).await
+    }
+
+    /// Get the last played track for the given user and guild.
     pub async fn get_last_played(
         conn: &PgPool,
         user_id: Option<i64>,
@@ -67,7 +156,7 @@ impl PlayLog {
         } else if user_id.is_none() && guild_id.is_some() {
             Self::get_last_played_by_guild(conn, guild_id.unwrap()).await
         } else {
-            Self::get_last_played_by_user(conn, user_id.unwrap()).await
+            Self::get_last_played_by_user(conn, user_id.unwrap(), 100).await
         }
     }
 
@@ -77,6 +166,16 @@ impl PlayLog {
         guild_id: i64,
         max_dislikes: i32,
     ) -> Result<Vec<String>, Error> {
+        PlayLog::get_last_played_by_guild_filter_limit(conn, guild_id, max_dislikes, 100).await
+    }
+
+    pub async fn get_last_played_by_guild_filter_limit(
+        conn: &PgPool,
+        guild_id: i64,
+        max_dislikes: i32,
+        limit: i64,
+    ) -> Result<Vec<String>, Error> {
+        let max_dislikes = if max_dislikes < 0 { 1 } else { max_dislikes };
         //let last_played: Vec<TitleArtist> = sqlx::query_as!(
         let mut last_played: Vec<TitleArtist> = Vec::new();
         let mut last_played_stream = sqlx::query_as!(
@@ -87,11 +186,12 @@ impl PlayLog {
                 join metadata on 
                 play_log.metadata_id = metadata.id)
                 left join track_reaction on play_log.id = track_reaction.play_log_id
-            where guild_id = $1 and (track_reaction is null or track_reaction.dislikes >= $2)
-            order by play_log.created_at desc limit 5
+            where guild_id = $1 and (track_reaction is null or track_reaction.dislikes <= $2)
+            order by play_log.created_at desc limit $3
             "#,
             guild_id,
-            max_dislikes
+            max_dislikes,
+            limit
         )
         .fetch(conn);
         while let Some(item) = last_played_stream.next().await {
@@ -113,7 +213,11 @@ impl PlayLog {
     pub async fn get_last_played_by_guild_metadata(
         conn: &PgPool,
         guild_id: i64,
+        limit: i64,
     ) -> Result<Vec<i64>, Error> {
+        if limit <= 0 {
+            return Ok(vec![]);
+        }
         let mut last_played: Vec<Metadata> = Vec::new();
         let mut last_played_stream = sqlx::query_as!(
             Metadata,
@@ -122,9 +226,10 @@ impl PlayLog {
             from play_log 
             join metadata on 
             play_log.metadata_id = metadata.id 
-            where guild_id = $1 order by created_at desc limit 5
+            where guild_id = $1 order by created_at desc limit $2
             "#,
-            guild_id
+            guild_id,
+            limit
         )
         .fetch(conn);
         while let Some(item) = last_played_stream.next().await {
@@ -138,7 +243,11 @@ impl PlayLog {
     pub async fn get_last_played_by_user(
         conn: &PgPool,
         user_id: i64,
+        limit: i64,
     ) -> Result<Vec<String>, Error> {
+        if limit < 0 {
+            return Ok(vec![]);
+        }
         //let last_played: Vec<TitleArtist> = sqlx::query_as!(
         let mut last_played: Vec<TitleArtist> = Vec::new();
         let mut last_played_stream = sqlx::query_as!(
@@ -148,9 +257,10 @@ impl PlayLog {
             from play_log 
             join metadata on 
             play_log.metadata_id = metadata.id 
-            where user_id = $1 order by created_at desc limit 5
+            where user_id = $1 order by created_at desc limit $2
             "#,
-            user_id
+            user_id,
+            limit
         )
         .fetch(conn);
         while let Some(item) = last_played_stream.next().await {

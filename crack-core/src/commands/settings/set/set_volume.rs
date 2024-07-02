@@ -25,12 +25,24 @@ pub async fn set_volume(
 
 /// Set the volume for this guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Settings",
+    prefix_command,
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn volume(
     ctx: Context<'_>,
     #[description = "Volume to set the bot settings to"] volume: f32,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    use crate::commands::CrackedError;
+
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let (vol, old_vol) = {
         let guild_settings_map = &ctx.data().guild_settings_map;
@@ -42,14 +54,14 @@ pub async fn volume(
         .await?
         .into_message()
         .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
 #[cfg(test)]
 mod test {
     use crate::commands::settings::set::set_volume::set_volume;
-    use crate::guild::settings::{GuildSettingsMapParam, DEFAULT_VOLUME_LEVEL};
+    use crate::guild::settings::GuildSettingsMapParam;
     use serenity::model::id::GuildId;
 
     #[tokio::test]
@@ -57,9 +69,15 @@ mod test {
         let guild_id = GuildId::new(1);
         let guild_settings_map = GuildSettingsMapParam::default();
 
+        // let init_volume = guild_settings_map
+        //     .read()
+        //     .await
+        //     .get(&guild_id)
+        //     .map(|x| x.volume)
+        //     .unwrap_or(DEFAULT_VOLUME_LEVEL);
         let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.5).await;
         assert_eq!(vol, 0.5);
-        assert_eq!(old_vol, DEFAULT_VOLUME_LEVEL);
+        assert_eq!(old_vol, 0.5);
         assert_eq!(
             guild_settings_map
                 .read()

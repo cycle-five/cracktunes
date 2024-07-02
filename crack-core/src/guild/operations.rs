@@ -2,6 +2,8 @@ use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
 use std::{future::Future, sync::Arc};
 
+use super::settings::DEFAULT_VOLUME_LEVEL;
+
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
     fn set_guild_settings(
@@ -40,8 +42,13 @@ pub trait GuildSettingsOperations {
     ) -> impl Future<Output = ()>;
     fn get_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autopause(&self, guild_id: GuildId, autopause: bool) -> impl Future<Output = ()>;
+    fn toggle_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn get_auto_role(&self, guild_id: GuildId) -> impl Future<Output = Option<u64>>;
+    fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
+    fn set_volume(&self, guild_id: GuildId, volume: u64) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
         -> impl Future<Output = bool>;
@@ -86,23 +93,15 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .and_then(|x| {
-                x.command_channels
-                    .music_channel
-                    .as_ref()
-                    .map(|x| x.channel_id)
-            })
+            .and_then(|x| x.get_music_channel())
     }
 
     /// Set the music channel for the guild.
     async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
-        self.guild_settings_map
-            .write()
-            .await
-            .entry(guild_id)
-            .and_modify(|e| {
-                e.set_music_channel(channel_id.get());
-            });
+        let mut guard = self.guild_settings_map.write().await;
+        let _ = guard
+            .get_mut(&guild_id)
+            .map(|x| x.set_music_channel(channel_id.get()));
     }
 
     /// Save the guild settings to the database.
@@ -228,6 +227,40 @@ impl GuildSettingsOperations for Data {
             });
     }
 
+    /// Toggle the autopause setting.
+    async fn toggle_autopause(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.autopause = !e.autopause;
+            })
+            .or_insert_with(Default::default)
+            .autopause
+    }
+
+    /// Get the current auto role for the guild.
+    async fn get_auto_role(&self, guild_id: GuildId) -> Option<u64> {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .and_then(|x| x.welcome_settings.as_ref())
+            .and_then(|x| x.auto_role)
+    }
+
+    /// Set the auto role for the guild.
+    async fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.set_auto_role(Some(auto_role));
+            });
+    }
+
     /// Get the current autoplay settings.
     async fn get_autoplay(&self, guild_id: GuildId) -> bool {
         self.guild_cache_map
@@ -246,6 +279,33 @@ impl GuildSettingsOperations for Data {
             .entry(guild_id)
             .or_default()
             .autoplay = autoplay;
+    }
+
+    /// Get the current autoplay settings.
+    async fn get_volume(&self, guild_id: GuildId) -> (f32, f32) {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|settings| (settings.volume, settings.old_volume))
+            .unwrap_or((DEFAULT_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL))
+    }
+
+    /// Set the current autoplay settings.
+    async fn set_volume(&self, guild_id: GuildId, vol: u64) {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.old_volume = e.volume;
+                e.volume = vol as f32;
+            })
+            .or_insert_with(|| GuildSettings {
+                volume: vol as f32,
+                old_volume: vol as f32,
+                ..Default::default()
+            });
     }
 
     /// Get the current reply with embed setting.
@@ -282,10 +342,7 @@ pub async fn get_guilds(ctx: Arc<SerenityContext>) -> Vec<GuildId> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        guild::{permissions::CommandChannel, settings::CommandChannels},
-        Data, DataInner,
-    };
+    use crate::{Data, DataInner};
     use serenity::model::id::ChannelId;
     use std::collections::HashMap;
     use tokio::sync::RwLock;
@@ -368,21 +425,9 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);
-        guild_settings_map.insert(
-            guild_id,
-            crate::GuildSettings {
-                command_channels: CommandChannels {
-                    music_channel: Some(CommandChannel {
-                        command: "".to_string(),
-                        guild_id,
-                        channel_id,
-                        permission_settings: Default::default(),
-                    }),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
+        let mut settings = crate::GuildSettings::default();
+        settings.set_music_channel(channel_id.get());
+        guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
@@ -396,21 +441,9 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = ChannelId::new(2);
-        guild_settings_map.insert(
-            guild_id,
-            crate::GuildSettings {
-                command_channels: CommandChannels {
-                    music_channel: Some(CommandChannel {
-                        command: "".to_string(),
-                        guild_id,
-                        channel_id,
-                        permission_settings: Default::default(),
-                    }),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
+        let mut settings = crate::GuildSettings::default();
+        settings.set_music_channel(channel_id.get());
+        guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()

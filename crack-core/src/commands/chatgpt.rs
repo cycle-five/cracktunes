@@ -4,13 +4,20 @@ use crack_gpt::GptContext;
 use poise::CreateReply;
 
 /// Chat with cracktunes using GPT-4o
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(
+    category = "AI",
+    slash_command,
+    prefix_command,
+    user_cooldown = "30",
+    guild_cooldown = "30"
+)]
 pub async fn chat(
     ctx: Context<'_>,
     #[rest]
     #[description = "Query to send to the model."]
     query: String,
 ) -> Result<(), Error> {
+    // Do we need this?
     ctx.defer().await?;
 
     let user_id = ctx.author().id.get();

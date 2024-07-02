@@ -73,7 +73,7 @@ apt install -y pkg-config
 The following command will run all tests:
 
 ```shell
-cargo +nightly test --all
+cargo +nightly test --all-features --workspace
 ```
 
 Some tests are available inside the `src/tests` folder, others are in their respective
@@ -82,7 +82,19 @@ Increasing the test coverage is also welcome. Test coverage is tracked using
 [tarpaulin]().
 
 ```shell
-cargo +nightly tarpaulin --all
+cargo +nightly tarpaulin --all-features --workspace
+```
+
+## Linting
+
+```shell
+cargo +nightly clippy --profile=release --all-features --workspace -- -D warnings -D clippy:all
+```
+
+##  Build
+
+```shell
+cargo +nightly build --profile=release --features crack-osint,crack-bf,crack-fpt --workspace --locked
 ```
 
 ### Docker Compose
@@ -95,15 +107,24 @@ docker compose up -d
 ```
 
 
-# ~~Roadmap~~ Change Log
+# Change Log
+## TODO:
+- [ ] discordbotlist.com
+- [ ] Change `let _ = send_reply(&ctx, msg, true).await?;`
+      to `ctx.send_reply(msg, true).await?;`
+## v0.3.8 (2024/06/??)
+- [x] Brainf**k interpreter.
+- [x] Switched all locks from blocking to non-blocking async.
+- [ ] 
+...
 ## v0.3.7 (2024/05/29)
-- [x] crackgpt 0.2.0!
-      Added back chatgpt support, which I am now self hosting for CrackTunes
-      and is backed by GPT 4o.
-- [x] Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
-- [x] Remove the grafana dashboard.
-- [x] Switch to async logging.
-- [x] Add an async service to handle the database (accept writes on a channel,
+- crackgpt 0.2.0!
+  Added back chatgpt support, which I am now self hosting for CrackTunes
+  and is backed by GPT 4o.
+- Use the rusty_ytdl library as a first try, fallback to yt-dlp if it fails.
+- Remove the grafana dashboard.
+- Switch to async logging.
+- Add an async service to handle the database (accept writes on a channel,
       and write to the database in a separate thread).
       Eventually this could be a seperate service (REST / GRPC).
 ## v0.3.6 (2024/05/03)

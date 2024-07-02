@@ -1,13 +1,18 @@
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use serenity::all::Channel;
 
 /// Set the join-leave log channel.
-#[poise::command(prefix_command, ephemeral, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Settings",
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "SEND_MESSAGES"
+)]
 pub async fn join_leave_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send join/leave logs"] channel: Option<Channel>,
@@ -55,8 +60,8 @@ pub async fn join_leave_log_channel(
     let pg_pool = ctx.data().database_pool.clone().unwrap();
     settings.map(|s| s.save(&pg_pool)).unwrap().await?;
 
-    send_response_poise(
-        ctx,
+    send_reply(
+        &ctx,
         CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
         true,
     )
