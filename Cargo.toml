@@ -1,28 +1,12 @@
 [workspace]
 members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt", "crack-bf"]
 resolver = "2"
+repository = "https://github.com/cycle-five/cracktunes"
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
-
-[workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3" }
-crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
-crack-gpt = { path = "crack-gpt", default-features = true, version = "0.2" }
-crack-bf = { path = "crack-bf", default-features = true, version = "0.1" }
-
-reqwest = { version = "0.12", default-features = false, features = [
-  "blocking",
-  "json",
-  "multipart",
-  "rustls-tls",
-  "cookies",
-] }
-tracing = "0.1"
-vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
-
 
 [workspace.dependencies.sqlx]
 version = "0.7.4"
@@ -65,36 +49,52 @@ branch = "current"
 version = "0.4"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
-[workspace.dependencies.poise]
-git = "https://github.com/cycle-five/poise"
-branch = "current"
-default-features = true
-features = ["cache", "chrono"]
+# [workspace.dependencies.poise]
+# git = "https://github.com/cycle-five/poise"
+# branch = "current"
+# default-features = true
+# features = ["cache", "chrono"]
 
 [workspace.dependencies.tokio]
 version = "1.38"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
+[workspace.dependencies]
+crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
+crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
+crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
+crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
+poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = false, features = [
+  "cache",
+  "chrono",
+] }
+vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
+tracing = "0.1"
+reqwest = { version = "0.12", default-features = false, features = [
+  "blocking",
+  "json",
+  "multipart",
+  "rustls-tls",
+  "cookies",
+] }
+
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.17"
+cargo-dist-version = "0.17.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "homebrew", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-  "aarch64-apple-darwin",
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
-  "x86_64-pc-windows-msvc",
-]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Publish jobs to run in CI
 pr-run-mode = "plan"
 # Whether to install an updater program
 install-updater = false
+# Where to host releases
+hosting = "github"
 
 [profile.release]
 incremental = true

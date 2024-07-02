@@ -9,7 +9,9 @@ description = "OSINT module for Cracktunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
+# repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
 
 [dependencies]
 whois-rust = "1.6"
@@ -17,6 +19,7 @@ sha1 = "0.10"
 ipinfo = { git = "https://github.com/cycle-five/ipinfo-rs", version = "3.0.1" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
 tokio = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }

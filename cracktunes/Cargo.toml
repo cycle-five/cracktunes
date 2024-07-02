@@ -9,8 +9,16 @@ license = "MIT"
 keywords = ["music", "discord", "bot", "crack", "tunes", "cracktunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
+# repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
 build = "build.rs"
+workspace = "../"
+
+[package.metadata.wix]
+upgrade-guid = "902F8F40-A9A8-4DEE-96C0-A6274889F356"
+path-guid = "9E215C2B-01F0-419D-BA4F-0E8C9FAC57AB"
+license = false
+eula = false
 
 [features]
 default = ["crack-tracing", "ignore-presence-log"]
@@ -29,26 +37,16 @@ crack-tracing = ["tracing-subscriber"]
 crack-metrics = ["prometheus", "warp"]
 
 [dependencies]
-# core
-crack-core = { workspace = true }
 # modules, each should be optional
 crack-osint = { path = "../crack-osint/", optional = true }
 crack-gpt = { path = "../crack-gpt/", optional = true }
 crack-bf = { path = "../crack-bf/", optional = true }
 
-# Core's dependencies
-poise = { workspace = true }
-tokio = { workspace = true }
-songbird = { workspace = true }
-sqlx = { workspace = true }
 async-trait = { version = "0.1" }
 # mockall = { version = "0.12.1" }
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"
 colored = "2.1"
-# Figure this one out better
-
-tracing = { workspace = true }
 tracing-appender = { version = "0.2", optional = true }
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
@@ -63,11 +61,19 @@ opentelemetry = { version = "0.23", optional = true }
 opentelemetry_sdk = { version = "0.23", optional = true }
 tracing-bunyan-formatter = { version = "0.3", optional = true }
 
+crack-core = { workspace = true }
+# Core's dependencies
+poise = { workspace = true }
+tokio = { workspace = true }
+songbird = { workspace = true }
+sqlx = { workspace = true }
+# Figure this one out better
+
+tracing = { workspace = true }
 # # Is this even needed? What did I add it for?
 # This is needed for the tests to run in the IDE
-
 [dev-dependencies]
 sqlx = { workspace = true }
 
 [build-dependencies]
-vergen = { workspace = true }
+vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }

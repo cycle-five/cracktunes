@@ -17,9 +17,14 @@ keywords = [
 ]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
 
 
 [dependencies]
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+# [workspace.metadata.dist]
+# dist = false

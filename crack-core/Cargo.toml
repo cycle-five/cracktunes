@@ -9,8 +9,9 @@ license = "MIT"
 keywords = ["music", "discord", "bot", "crack", "tunes", "cracktunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
-
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
 
 [features]
 default = ["cache", "playlist", "ignore-presence-log"]
@@ -59,6 +60,7 @@ indexmap = "2.2"
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
+
 reqwest = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
@@ -85,12 +87,24 @@ git = "https://github.com/cycle-five/ffprobe-rs"
 features = ["async-tokio"]
 version = "0.4.0"
 
+# [workspace.metadata.dist]
+# dist = false
+
 [dev-dependencies]
 ctor = "0.2"
 mockall = "0.12"
 tungstenite = "0.23"
 async-tungstenite = "0.26"
-sqlx = { workspace = true }
+sqlx = { version = "0.7", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "postgres",
+    "chrono",
+    "time",
+    "migrate",
+    "json",
+] }
 
 [build-dependencies]
-vergen = { workspace = true }
+vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
