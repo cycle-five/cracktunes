@@ -27,7 +27,6 @@ features = [
     "crack-osint",
     "crack-bf",
     "crack-tracing",
-    "crack-telemetry",
     "ignore-presence-log",
 ]
 
