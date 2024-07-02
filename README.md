@@ -97,6 +97,26 @@ cargo +nightly clippy --profile=release --all-features --workspace -- -D warning
 cargo +nightly build --profile=release --features crack-osint,crack-bf,crack-fpt --workspace --locked
 ```
 
+## Distribution
+
+```shell
+cargo dist init --hosting github
+# make change `pr-run-mode = "upload"`
+git add .
+git commit -am "chore: cargo-dist"
+cargo dist build --profile=release --features crack-gpt,crack-bf,crack-osint
+```
+
+## Release
+
+```shell
+git tag vX.X.X
+git push --tags
+
+# publish to crates.io (optional)
+cargo publish
+```
+
 ### Docker Compose
 
 Within the project folder, simply run the following:
@@ -115,7 +135,7 @@ docker compose up -d
 ## v0.3.8 (2024/06/??)
 - [x] Brainf**k interpreter.
 - [x] Switched all locks from blocking to non-blocking async.
-- [ ] 
+- [ ] Unify messaging module.
 ...
 ## v0.3.7 (2024/05/29)
 - crackgpt 0.2.0!

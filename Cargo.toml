@@ -1,7 +1,6 @@
 [workspace]
 members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt", "crack-bf"]
 resolver = "2"
-repository = "https://github.com/cycle-five/cracktunes"
 
 [workspace.package]
 edition = "2021"
@@ -82,15 +81,19 @@ reqwest = { version = "0.12", default-features = false, features = [
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.17.0"
+cargo-dist-version = "0.17.3"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+targets = [
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+]
 # Publish jobs to run in CI
-pr-run-mode = "plan"
+pr-run-mode = "upload"
 # Whether to install an updater program
 install-updater = false
 # Where to host releases

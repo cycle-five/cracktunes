@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.7"
+version = "0.3.8"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -9,6 +9,7 @@ license = "MIT"
 keywords = ["music", "discord", "bot", "crack", "tunes", "cracktunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
+# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
 #repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
