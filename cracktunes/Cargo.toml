@@ -17,8 +17,18 @@ workspace = "../"
 [package.metadata.wix]
 upgrade-guid = "902F8F40-A9A8-4DEE-96C0-A6274889F356"
 path-guid = "9E215C2B-01F0-419D-BA4F-0E8C9FAC57AB"
-license = false
+license = true
 eula = false
+
+[package.metadata.dist]
+features = [
+    "crack-gpt",
+    "crack-osint",
+    "crack-bf",
+    "crack-tracing",
+    "crack-telemetry",
+    "ignore-presence-log",
+]
 
 [features]
 default = ["crack-tracing", "ignore-presence-log"]
