@@ -864,6 +864,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-voting"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dbl-rs",
+ "lazy_static",
+ "serde",
+ "tokio",
+ "tracing",
+ "warp",
+]
+
+[[package]]
 name = "cracktunes"
 version = "0.3.8"
 dependencies = [
@@ -1065,6 +1078,17 @@ name = "data-encoding"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
+
+[[package]]
+name = "dbl-rs"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19ef31459083b8ac95c1f31be8f88d124a0d23aa11de592895600ff4b0da2e90"
+dependencies = [
+ "reqwest",
+ "serde",
+ "url",
+]
 
 [[package]]
 name = "der"
@@ -1887,7 +1911,7 @@ dependencies = [
  "hyper 1.4.0",
  "hyper-util",
  "rustls 0.23.10",
- "rustls-native-certs 0.7.0",
+ "rustls-native-certs 0.7.1",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.26.0",
@@ -2493,6 +2517,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.68",
+]
+
+[[package]]
+name = "multer"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01acbdc23469fd8fe07ab135923371d5f5a422fbf9c522158677c8eb15bc51c2"
+dependencies = [
+ "bytes",
+ "encoding_rs",
+ "futures-util",
+ "http 0.2.12",
+ "httparse",
+ "log",
+ "memchr",
+ "mime",
+ "spin 0.9.8",
+ "version_check",
 ]
 
 [[package]]
@@ -3475,7 +3517,7 @@ dependencies = [
  "pin-project-lite",
  "quinn",
  "rustls 0.23.10",
- "rustls-native-certs 0.7.0",
+ "rustls-native-certs 0.7.1",
  "rustls-pemfile 2.1.2",
  "rustls-pki-types",
  "serde",
@@ -3815,7 +3857,7 @@ dependencies = [
  "log",
  "ring 0.17.8",
  "rustls-pki-types",
- "rustls-webpki 0.102.4",
+ "rustls-webpki 0.102.5",
  "subtle",
  "zeroize",
 ]
@@ -3829,7 +3871,7 @@ dependencies = [
  "once_cell",
  "ring 0.17.8",
  "rustls-pki-types",
- "rustls-webpki 0.102.4",
+ "rustls-webpki 0.102.5",
  "subtle",
  "zeroize",
 ]
@@ -3848,9 +3890,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f1fb85efa936c42c6d5fc28d2629bb51e4b2f4b8a5211e297d599cc5a093792"
+checksum = "a88d6d420651b496bdd98684116959239430022a115c1240e6c3993be0b15fba"
 dependencies = [
  "openssl-probe",
  "rustls-pemfile 2.1.2",
@@ -3896,9 +3938,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.102.4"
+version = "0.102.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff448f7e92e913c4b7d4c6d8e4540a1724b319b4152b8aef6d4cf8339712b33e"
+checksum = "f9a6fccd794a42c2c105b513a2f62bc3fd8f3ba57a4593677ceb0bd035164d78"
 dependencies = [
  "ring 0.17.8",
  "rustls-pki-types",
@@ -5929,6 +5971,7 @@ dependencies = [
  "log",
  "mime",
  "mime_guess",
+ "multer",
  "percent-encoding",
  "pin-project",
  "rustls-pemfile 2.1.2",
@@ -5938,6 +5981,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-rustls 0.25.0",
+ "tokio-tungstenite 0.21.0",
  "tokio-util",
  "tower-service",
  "tracing",
@@ -6382,18 +6426,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae87e3fcd617500e5d106f0380cf7b77f3c6092aae37191433159dda23cfb087"
+checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15e934569e47891f7d9411f1a451d947a60e000ab3bd24fbb970f000387d1b3b"
+checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -18,6 +18,17 @@ services:
     expose:
       - "${PUB_PORT:-5432}"
     restart: always
+  crack-voting:
+    container_name: crack-voting
+    image: cyclefive/crack-voting:dev
+    volumes:
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+    links:
+      - crack_postgres
+    ports:
+      - "127.0.0.1:3030:3030"
   cracktunes:
     container_name: cracktunes
     image: cyclefive/cracktunes:dev

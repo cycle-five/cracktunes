@@ -76,7 +76,7 @@ COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/names.txt $HOME/app/names.txt
 # RUN ls -al / && ls -al /data
 
-ENV APP_ENVIRONMENT production
 RUN . "$HOME/app/.env"
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
+ENV APP_ENVIRONMENT=production
+ENV DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
 CMD ["/home/cyclefive/app/cracktunes"]

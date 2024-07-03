@@ -1,0 +1,31 @@
+[package]
+name = "crack-voting"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Service to handle toplist voting for Crack Tunes."
+keywords = ["music", "discord", "bot", "crack", "tunes", "top.gg", "dbl"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+#repository = "https://github.com/cycle-five/cracktunes/crack-voting"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[package.metadata.wix]
+upgrade-guid = "E1895C93-409A-4681-87E4-B2808D22D0F8"
+path-guid = "08ECB7E7-1E6E-4C7A-9C08-2EF1DD1CE768"
+license = false
+eula = false
+
+[dependencies]
+lazy_static = "1.5"
+dbl-rs = "0.4"
+warp = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { workspace = true }
+tracing = { workspace = true }

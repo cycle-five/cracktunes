@@ -1,5 +1,12 @@
 [workspace]
-members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt", "crack-bf"]
+members = [
+  "cracktunes",
+  "crack-core",
+  "crack-osint",
+  "crack-gpt",
+  "crack-bf",
+  "crack-voting",
+]
 resolver = "2"
 
 [workspace.package]
@@ -87,11 +94,7 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "npm", "homebrew", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
-  "x86_64-pc-windows-msvc",
-]
+targets = ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Publish jobs to run in CI
 pr-run-mode = "upload"
 # Whether to install an updater program
