@@ -11,7 +11,6 @@ categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
 # The official main repo is sr.ht, this is needed for the CI/CD pipeline.
 #repository = "https://git.sr.ht/~cycle-five/cracktunes"
-#repository = "https://github.com/cycle-five/cracktunes/crack-voting"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
@@ -29,3 +28,4 @@ serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { workspace = true }
 tracing = { workspace = true }
+sqlx = { workspace = true }

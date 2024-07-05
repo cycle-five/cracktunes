@@ -871,6 +871,7 @@ dependencies = [
  "dbl-rs",
  "lazy_static",
  "serde",
+ "sqlx",
  "tokio",
  "tracing",
  "warp",

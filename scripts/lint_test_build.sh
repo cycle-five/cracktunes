@@ -1,13 +1,8 @@
 #!/bin/sh
-cargo +nightly fmt --all -- --check
-cargo +nightly clippy --all -- -D clippy::all -D warnings
-RES1=$?
-cargo tarpaulin --verbose --workspace --timeout 120 --out xml
-RES2=$?
+export PROFILE=release
+cargo +nightly fmt --all -- --check --profile=$PROFILE
+cargo +nightly clippy --profile=$PROFILE --workspace -- -D clippy::all -D warnings
+cargo +nightly test --profile=$PROFILE --workspace
+cargo +nightly tarpaulin --profile=$PROFILE --verbose --workspace --timeout 120 --out xml
+cargo +nightly build --profile=$PROFILE --workspace
 
-if [ ${RES1} = 0 ] && [ ${RES2} = 0 ]; then
-	echo "Building..."
-else
-	echo "Something broke, still building..."
-fi
-cargo build --profile=release-with-debug

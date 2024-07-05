@@ -25,6 +25,7 @@ services:
       - ./.env:/app/.env:ro
     environment:
       - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-asdfasdf}
     links:
       - crack_postgres
     ports:

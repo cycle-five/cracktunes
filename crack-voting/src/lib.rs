@@ -1,12 +1,10 @@
 use dbl::types::Webhook;
 use lazy_static::lazy_static;
 use std::env;
-use warp::body::BodyDeserializeError;
-use warp::http::StatusCode;
-use warp::path;
-use warp::{reject, Filter, Rejection, Reply};
+use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq)]
+/// NewClass for the Webhook to store in the database.
+#[derive(Debug, serde::Deserialize, serde::Serialize, sqlx::FromRow, Clone, PartialEq, Eq)]
 pub struct CrackedWebhook {
     webhook: Webhook,
     created_at: chrono::DateTime<chrono::Utc>,
@@ -27,7 +25,8 @@ impl std::fmt::Display for Unauthorized {
 impl std::error::Error for Unauthorized {}
 
 lazy_static! {
-    static ref WEBHOOK_SECRET: String = env::var("WEBHOOK_SECRET").expect("missing secret");
+    static ref WEBHOOK_SECRET: String =
+        env::var("WEBHOOK_SECRET").unwrap_or("missing secret".to_string());
 }
 
 /// Get the webhook secret from the environment.
@@ -84,5 +83,39 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
         ))
     } else {
         Err(err)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use warp::http::StatusCode;
+
+    #[tokio::test]
+    async fn test_bad_req() {
+        let res = warp::test::request()
+            .method("POST")
+            .path("/dbl/webhook")
+            .reply(&get_webhook())
+            .await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_authorized() {
+        let res = warp::test::request()
+            .method("POST")
+            .path("/dbl/webhook")
+            .header("authorization", get_secret())
+            .json(&Webhook {
+                bot: dbl::types::BotId(1),
+                user: dbl::types::UserId(3),
+                kind: dbl::types::WebhookType::Test,
+                is_weekend: false,
+                query: Some("test".to_string()),
+            })
+            .reply(&get_webhook())
+            .await;
+        assert_eq!(res.status(), StatusCode::OK);
     }
 }
