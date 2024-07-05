@@ -24,6 +24,20 @@ impl std::fmt::Display for Unauthorized {
 
 impl std::error::Error for Unauthorized {}
 
+/// Custom error type for unauthorized requests.
+#[derive(Debug)]
+struct SQLX(sqlx::Error);
+
+impl warp::reject::Reject for SQLX {}
+
+impl std::fmt::Display for SQLX {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.to_string())
+    }
+}
+
+impl std::error::Error for SQLX {}
+
 lazy_static! {
     static ref WEBHOOK_SECRET: String =
         env::var("WEBHOOK_SECRET").unwrap_or("missing secret".to_string());
@@ -32,6 +46,25 @@ lazy_static! {
 /// Get the webhook secret from the environment.
 fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
+}
+
+///
+async fn write_webhook_to_db(pool: sqlx::PgPool, webhook: Webhook) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"INSERT INTO vote_webhook
+            (bot_id, user_id, kind, is_weekend, query, created_at)
+        VALUES
+            ($1, $2, $3, $4, $5, now())
+        "#,
+        webhook.bot.0 as i64,
+        webhook.user.0 as i64,
+        webhook.kind as i16,
+        webhook.is_weekend,
+        webhook.query,
+    )
+    .execute(&pool)
+    .await?;
+    Ok(())
 }
 
 /// Create a filter that checks the `Authorization` header against the secret.
@@ -49,24 +82,34 @@ fn header(secret: &'static str) -> impl Filter<Extract = (), Error = Rejection> 
         .untuple_one()
 }
 
+async fn process_webhook(hook: Webhook) -> Result<impl Reply, Rejection> {
+    let pool = sqlx::PgPool::connect(&env::var("DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    write_webhook_to_db(pool, hook.clone())
+        .await
+        .map_err(SQLX)?;
+    println!("{:?}", hook);
+    Ok(warp::reply())
+}
 /// Create a filter that handles the webhook.
-fn get_webhook() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+async fn get_webhook() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let secret = get_secret();
     println!("get_webhook");
+
     warp::post()
         .and(path!("dbl" / "webhook"))
         .and(header(secret))
         .and(warp::body::json())
-        .map(|hook: Webhook| {
-            println!("{:?}", hook);
-            warp::reply()
-        })
+        .and_then(move |hook: Webhook| async move { process_webhook(hook).await })
         .recover(custom_error)
 }
 
 /// Run the server.
 pub async fn run() {
-    warp::serve(get_webhook()).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(get_webhook().await)
+        .run(([127, 0, 0, 1], 3030))
+        .await;
 }
 
 /// Custom error handling for the server.
@@ -96,7 +139,7 @@ mod test {
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
-            .reply(&get_webhook())
+            .reply(&get_webhook().await)
             .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
@@ -114,7 +157,7 @@ mod test {
                 is_weekend: false,
                 query: Some("test".to_string()),
             })
-            .reply(&get_webhook())
+            .reply(&get_webhook().await)
             .await;
         assert_eq!(res.status(), StatusCode::OK);
     }
