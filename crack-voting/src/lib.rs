@@ -3,6 +3,34 @@ use lazy_static::lazy_static;
 use std::env;
 use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
 
+const WEBHOOK_SECRET_DEFAULT: &str = "my-that-secret";
+const DATABASE_URL_DEFAULT: &str = "postgres://postgres:mysecretpassword@localhost/postgres";
+
+lazy_static! {
+    static ref WEBHOOK_SECRET: String =
+        env::var("WEBHOOK_SECRET").unwrap_or(WEBHOOK_SECRET_DEFAULT.to_string());
+    static ref DATABASE_URL: String =
+        env::var("DATABASE_URL").unwrap_or(DATABASE_URL_DEFAULT.to_string());
+}
+
+/// Struct to hold the context for the voting server.
+#[derive(Debug, Clone)]
+pub struct VotingContext {
+    pool: sqlx::PgPool,
+    secret: String,
+}
+
+/// Implement the `VotingContext`.
+impl VotingContext {
+    async fn new() -> Self {
+        let pool = sqlx::PgPool::connect(&DATABASE_URL)
+            .await
+            .expect("failed to connect to database");
+        let secret = get_secret().to_string();
+        VotingContext { pool, secret }
+    }
+}
+
 /// NewClass for the Webhook to store in the database.
 #[derive(Debug, serde::Deserialize, serde::Serialize, sqlx::FromRow, Clone, PartialEq, Eq)]
 pub struct CrackedWebhook {
@@ -26,30 +54,27 @@ impl std::error::Error for Unauthorized {}
 
 /// Custom error type for unauthorized requests.
 #[derive(Debug)]
-struct SQLX(sqlx::Error);
+struct Sqlx(sqlx::Error);
 
-impl warp::reject::Reject for SQLX {}
+impl warp::reject::Reject for Sqlx {}
 
-impl std::fmt::Display for SQLX {
+impl std::fmt::Display for Sqlx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0.to_string())
     }
 }
 
-impl std::error::Error for SQLX {}
-
-lazy_static! {
-    static ref WEBHOOK_SECRET: String =
-        env::var("WEBHOOK_SECRET").unwrap_or("missing secret".to_string());
-}
-
+impl std::error::Error for Sqlx {}
 /// Get the webhook secret from the environment.
 fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
 }
 
-///
-async fn write_webhook_to_db(pool: sqlx::PgPool, webhook: Webhook) -> Result<(), sqlx::Error> {
+/// Write the received webhook to the database.
+async fn write_webhook_to_db(
+    ctx: &'static VotingContext,
+    webhook: Webhook,
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"INSERT INTO vote_webhook
             (bot_id, user_id, kind, is_weekend, query, created_at)
@@ -62,13 +87,13 @@ async fn write_webhook_to_db(pool: sqlx::PgPool, webhook: Webhook) -> Result<(),
         webhook.is_weekend,
         webhook.query,
     )
-    .execute(&pool)
+    .execute(&ctx.pool)
     .await?;
     Ok(())
 }
 
 /// Create a filter that checks the `Authorization` header against the secret.
-fn header(secret: &'static str) -> impl Filter<Extract = (), Error = Rejection> + Clone {
+fn header(secret: &str) -> impl Filter<Extract = (), Error = Rejection> + Clone + '_ {
     warp::header::<String>("authorization")
         .and_then(move |val: String| async move {
             if val == secret {
@@ -82,34 +107,36 @@ fn header(secret: &'static str) -> impl Filter<Extract = (), Error = Rejection> 
         .untuple_one()
 }
 
-async fn process_webhook(hook: Webhook) -> Result<impl Reply, Rejection> {
-    let pool = sqlx::PgPool::connect(&env::var("DATABASE_URL").unwrap())
-        .await
-        .unwrap();
-    write_webhook_to_db(pool, hook.clone())
-        .await
-        .map_err(SQLX)?;
+/// Async function to process the received webhook.
+async fn process_webhook(
+    ctx: &'static VotingContext,
+    hook: Webhook,
+) -> Result<impl Reply, Rejection> {
+    write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
     println!("{:?}", hook);
     Ok(warp::reply())
 }
 /// Create a filter that handles the webhook.
-async fn get_webhook() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let secret = get_secret();
+async fn get_webhook(
+    ctx: &'static VotingContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_webhook");
 
     warp::post()
         .and(path!("dbl" / "webhook"))
-        .and(header(secret))
+        .and(header(&ctx.secret))
         .and(warp::body::json())
-        .and_then(move |hook: Webhook| async move { process_webhook(hook).await })
+        .and_then(move |hook: Webhook| async move { process_webhook(ctx, hook).await })
         .recover(custom_error)
 }
 
 /// Run the server.
-pub async fn run() {
-    warp::serve(get_webhook().await)
+pub async fn run() -> &'static VotingContext {
+    let ctx = Box::leak(Box::new(VotingContext::new().await));
+    warp::serve(get_webhook(ctx).await)
         .run(([127, 0, 0, 1], 3030))
         .await;
+    ctx
 }
 
 /// Custom error handling for the server.
@@ -131,21 +158,27 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use warp::http::StatusCode;
+    use super::{get_secret, get_webhook};
+    use super::{StatusCode, VotingContext, Webhook};
 
-    #[tokio::test]
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    //#[sqlx::test(migrator = "MIGRATOR")]
+    #[sqlx::test]
     async fn test_bad_req() {
+        let ctx = Box::leak(Box::new(VotingContext::new().await));
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
-            .reply(&get_webhook().await)
+            .reply(&get_webhook(ctx).await)
             .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 
-    #[tokio::test]
+    //#[sqlx::test(migrator = "MIGRATOR")]
+    #[sqlx::test]
     async fn test_authorized() {
+        let ctx = Box::leak(Box::new(VotingContext::new().await));
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
@@ -157,7 +190,7 @@ mod test {
                 is_weekend: false,
                 query: Some("test".to_string()),
             })
-            .reply(&get_webhook().await)
+            .reply(&get_webhook(ctx).await)
             .await;
         assert_eq!(res.status(), StatusCode::OK);
     }

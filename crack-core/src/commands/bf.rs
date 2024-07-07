@@ -33,11 +33,11 @@ pub async fn bf(
 
 /// Run a brainfk program. Program and input string maybe empty,
 /// no handling is done for invalid programs.
-pub async fn bf_internal<'ctx>(
-    ctx: Context<'ctx>,
+pub async fn bf_internal(
+    ctx: Context<'_>,
     program: String,
     input: String,
-) -> Result<ReplyHandle<'ctx>, CrackedError> {
+) -> Result<ReplyHandle<'_>, CrackedError> {
     tracing::info!("program: {program}, input: {input}");
     let mut bf = BrainfuckProgram::new(program);
 
