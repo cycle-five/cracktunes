@@ -25,4 +25,5 @@
     "rust-analyzer.checkOnSave": true,
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
+    "keyboard.dispatch": "keyCode",
 }

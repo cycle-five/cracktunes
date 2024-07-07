@@ -2,9 +2,11 @@ use dbl::types::Webhook;
 use lazy_static::lazy_static;
 use std::env;
 use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
+// #[cfg(test)]
+// pub mod test;
 
-const WEBHOOK_SECRET_DEFAULT: &str = "my-that-secret";
-const DATABASE_URL_DEFAULT: &str = "postgres://postgres:mysecretpassword@localhost/postgres";
+const WEBHOOK_SECRET_DEFAULT: &str = "my-secret";
+const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
 
 lazy_static! {
     static ref WEBHOOK_SECRET: String =
@@ -26,6 +28,11 @@ impl VotingContext {
         let pool = sqlx::PgPool::connect(&DATABASE_URL)
             .await
             .expect("failed to connect to database");
+        let secret = get_secret().to_string();
+        VotingContext { pool, secret }
+    }
+
+    pub async fn new_with_pool(pool: sqlx::PgPool) -> Self {
         let secret = get_secret().to_string();
         VotingContext { pool, secret }
     }
@@ -75,7 +82,7 @@ async fn write_webhook_to_db(
     ctx: &'static VotingContext,
     webhook: Webhook,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query!(
+    let res = sqlx::query!(
         r#"INSERT INTO vote_webhook
             (bot_id, user_id, kind, is_weekend, query, created_at)
         VALUES
@@ -88,7 +95,11 @@ async fn write_webhook_to_db(
         webhook.query,
     )
     .execute(&ctx.pool)
-    .await?;
+    .await;
+    match res {
+        Ok(_) => println!("Webhook written to database"),
+        Err(e) => eprintln!("Failed to write webhook to database: {}", e),
+    }
     Ok(())
 }
 
@@ -112,15 +123,15 @@ async fn process_webhook(
     ctx: &'static VotingContext,
     hook: Webhook,
 ) -> Result<impl Reply, Rejection> {
-    write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
     println!("{:?}", hook);
+    write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
     Ok(warp::reply())
 }
 /// Create a filter that handles the webhook.
 async fn get_webhook(
     ctx: &'static VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("get_webhook");
+    println!("get_webhook: secret: {}", ctx.secret);
 
     warp::post()
         .and(path!("dbl" / "webhook"))
@@ -158,34 +169,41 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
 
 #[cfg(test)]
 mod test {
-    use super::{get_secret, get_webhook};
-    use super::{StatusCode, VotingContext, Webhook};
+    use sqlx::{Pool, Postgres};
+
+    use crate::{get_secret, get_webhook};
+    use crate::{StatusCode, VotingContext, Webhook};
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    //#[sqlx::test(migrator = "MIGRATOR")]
-    #[sqlx::test]
-    async fn test_bad_req() {
+    #[sqlx::test(migrator = "MIGRATOR")]
+    //#[sqlx::test]
+    async fn test_bad_req(_pool: Pool<Postgres>) {
         let ctx = Box::leak(Box::new(VotingContext::new().await));
+        let secret = get_secret();
+        println!("Secret {}", secret);
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
+            .header("authorization", secret)
             .reply(&get_webhook(ctx).await)
             .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 
-    //#[sqlx::test(migrator = "MIGRATOR")]
-    #[sqlx::test]
-    async fn test_authorized() {
-        let ctx = Box::leak(Box::new(VotingContext::new().await));
+    #[sqlx::test(migrator = "MIGRATOR")]
+    //#[sqlx::test]
+    async fn test_authorized(pool: Pool<Postgres>) {
+        let ctx = Box::leak(Box::new(VotingContext::new_with_pool(pool).await));
+        let secret = get_secret();
+        println!("Secret {}", secret);
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
-            .header("authorization", get_secret())
+            .header("authorization", secret)
             .json(&Webhook {
-                bot: dbl::types::BotId(1),
-                user: dbl::types::UserId(3),
+                bot: dbl::types::BotId(11),
+                user: dbl::types::UserId(31),
                 kind: dbl::types::WebhookType::Test,
                 is_weekend: false,
                 query: Some("test".to_string()),

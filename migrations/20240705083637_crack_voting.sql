@@ -1,6 +1,6 @@
 -- Add migration script here
 CREATE TYPE WEBHOOK_KIND AS ENUM('upvote', 'test');
-CREATE TABLE VOTE_WEBHOOK (
+CREATE TABLE IF NOT EXISTS vote_webhook (
     id SERIAL PRIMARY KEY,
     bot_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
