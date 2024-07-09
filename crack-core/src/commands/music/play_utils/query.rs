@@ -2,6 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
+use crate::CrackedResult;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -577,11 +578,9 @@ impl QueryType {
         // }
     }
 
-    // FIXME: Do you want to have a reqwest client we keep around and pass into
-    // this instead of creating a new one every time?
     pub async fn get_track_source_and_metadata(
         &self,
-    ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    ) -> CrackedResult<(SongbirdInput, Vec<MyAuxMetadata>)> {
         use colored::Colorize;
         let client = http_utils::get_client().clone();
         tracing::warn!("{}", format!("query_type: {:?}", self).red());

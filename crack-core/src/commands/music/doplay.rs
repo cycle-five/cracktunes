@@ -3,6 +3,7 @@ use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, get_call_with_fail_msg, sub_help as help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use crate::CrackedResult;
 use ::serenity::all::CommandInteraction;
 //FIXME
 use crate::utils::edit_embed_response2;
@@ -230,7 +231,9 @@ async fn play_internal(
     // takes a long time.
     let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(&queue, mode).await.unwrap();
+            let estimated_time = calculate_time_until_play(&queue, mode)
+                .await
+                .unwrap_or_default();
 
             match (query_type, mode) {
                 (
@@ -312,7 +315,7 @@ async fn match_mode<'a>(
     mode: Mode,
     query_type: QueryType,
     search_msg: &'a mut Message,
-) -> Result<bool, CrackedError> {
+) -> CrackedResult<bool> {
     tracing::info!("mode: {:?}", mode);
 
     match mode {
@@ -336,7 +339,7 @@ async fn match_mode<'a>(
 pub fn check_banned_domains(
     guild_settings: &GuildSettings,
     query_type: Option<QueryType>,
-) -> Result<Option<QueryType>, CrackedError> {
+) -> CrackedResult<Option<QueryType>> {
     if let Some(QueryType::Keywords(_)) = query_type {
         if !guild_settings.allow_all_domains.unwrap_or(true)
             && (guild_settings.banned_domains.contains("youtube.com")
@@ -541,7 +544,7 @@ pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
-) -> Result<(), CrackedError> {
+) -> CrackedResult<()> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 

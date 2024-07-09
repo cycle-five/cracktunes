@@ -82,6 +82,7 @@ async fn write_webhook_to_db(
     ctx: &'static VotingContext,
     webhook: Webhook,
 ) -> Result<(), sqlx::Error> {
+    println!("write_webhook_to_db");
     let res = sqlx::query!(
         r#"INSERT INTO vote_webhook
             (bot_id, user_id, kind, is_weekend, query, created_at)
@@ -123,15 +124,15 @@ async fn process_webhook(
     ctx: &'static VotingContext,
     hook: Webhook,
 ) -> Result<impl Reply, Rejection> {
-    println!("{:?}", hook);
+    println!("process_webhook");
     write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
-    Ok(warp::reply())
+    Ok(warp::reply::html("Success."))
 }
 /// Create a filter that handles the webhook.
 async fn get_webhook(
     ctx: &'static VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("get_webhook: secret: {}", ctx.secret);
+    println!("get_webhook");
 
     warp::post()
         .and(path!("dbl" / "webhook"))
@@ -141,11 +142,22 @@ async fn get_webhook(
         .recover(custom_error)
 }
 
+/// Get the routes for the server.
+async fn get_routes(
+    ctx: &'static VotingContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    println!("get_routes");
+    let webhook = get_webhook(ctx).await;
+    let health = warp::path!("health").map(|| "Hello, world!");
+    webhook.or(health)
+}
+
 /// Run the server.
 pub async fn run() -> &'static VotingContext {
     let ctx = Box::leak(Box::new(VotingContext::new().await));
-    warp::serve(get_webhook(ctx).await)
-        .run(([127, 0, 0, 1], 3030))
+    warp::serve(get_routes(ctx).await)
+        //.run(([127, 0, 0, 1], 3030))
+        .run(([0, 0, 0, 0], 3030))
         .await;
     ctx
 }

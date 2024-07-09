@@ -153,16 +153,13 @@ impl EventHandler for TrackEndHandler {
                         };
                         let cache_http = (&self.cache, self.http.as_ref());
                         let tracks = enqueue_track_pgwrite_asdf(
-                            self.data.database_pool.as_ref().unwrap(),
-                            self.guild_id,
-                            chan_id,
                             UserId::new(1),
                             cache_http,
                             &self.call,
                             &query,
                         )
                         .await
-                        .unwrap_or_default();
+                        .ok()?;
                         let (my_metadata, pos) = match tracks.first() {
                             Some(t) => {
                                 let (my_metadata, pos) =
