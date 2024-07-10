@@ -20,6 +20,9 @@ path-guid = "08ECB7E7-1E6E-4C7A-9C08-2EF1DD1CE768"
 license = false
 eula = false
 
+[package.metadata.dist]
+dist = false
+
 [dependencies]
 lazy_static = "1.5"
 dbl-rs = "0.4"
@@ -33,3 +36,4 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }
+
