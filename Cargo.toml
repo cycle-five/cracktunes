@@ -52,8 +52,9 @@ features = [
 [workspace.dependencies.songbird]
 git = "https://github.com/cycle-five/songbird"
 branch = "current"
-version = "0.4"
+version = "0.4.2"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
+
 
 # [workspace.dependencies.poise]
 # git = "https://github.com/cycle-five/poise"
@@ -75,7 +76,7 @@ poise = { branch = "current", git = "https://github.com/cycle-five/poise", defau
   "cache",
   "chrono",
 ] }
-vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
+vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
@@ -94,7 +95,11 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "npm", "homebrew", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+targets = [
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+]
 # Publish jobs to run in CI
 pr-run-mode = "upload"
 # Whether to install an updater program
