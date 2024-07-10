@@ -20,6 +20,7 @@ Secrets.toml
 cracktunes.env
 cracktunes.toml
 dotenv
+plan-dist-manifest.json
 
 # IDE config
 #.vscode/
