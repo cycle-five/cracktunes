@@ -55,12 +55,9 @@ branch = "current"
 version = "0.4.2"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
-
-# [workspace.dependencies.poise]
-# git = "https://github.com/cycle-five/poise"
-# branch = "current"
-# default-features = true
-# features = ["cache", "chrono"]
+[workspace.dependencies.symphonia]
+version = "0.5.4"
+features = ["all-formats", "all-codecs"]
 
 [workspace.dependencies.tokio]
 version = "1.38"
@@ -72,10 +69,7 @@ crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = false, features = [
-  "cache",
-  "chrono",
-] }
+poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true}
 vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = [
@@ -84,6 +78,9 @@ reqwest = { version = "0.12", default-features = false, features = [
   "multipart",
   "rustls-tls",
   "cookies",
+  "charset",
+  "http2",
+  "macos-system-configuration"
 ] }
 
 # Config for 'cargo dist'

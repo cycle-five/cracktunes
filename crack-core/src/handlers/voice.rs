@@ -3,6 +3,7 @@ use serenity::async_trait;
 use serenity::client::EventHandler;
 use serenity::prelude::RwLock;
 use serenity::{client::Context as SerenityContext, model::gateway::Ready};
+use songbird::tracks::PlayMode;
 use songbird::{
     model::payload::{ClientDisconnect, Speaking},
     Event, EventContext, EventHandler as VoiceEventHandler,
@@ -163,11 +164,40 @@ impl VoiceEventHandler for Receiver {
                 }
                 tracing::warn!("{:?}", track_data);
                 for &(track_state, track_handle) in track_data.iter() {
-                    tracing::warn!(
-                        "Track started: {:?} (handle: {:?})",
-                        track_state,
-                        track_handle,
-                    );
+                    match track_state.playing {
+                        PlayMode::Play => {
+                            tracing::warn!(
+                                "Track started: {:?} (handle: {:?})",
+                                track_state,
+                                track_handle,
+                            );
+                        },
+                        PlayMode::Pause => {
+                            tracing::warn!(
+                                "Track paused: {:?} (handle: {:?})",
+                                track_state,
+                                track_handle,
+                            );
+                        },
+                        PlayMode::Stop | PlayMode::End => {
+                            tracing::warn!(
+                                "Track ended: {:?} (handle: {:?})",
+                                track_state,
+                                track_handle,
+                            );
+                        },
+                        PlayMode::Errored(_) => {
+                            tracing::warn!(
+                                "Track errored: {:?} (handle: {:?})",
+                                track_state,
+                                track_handle,
+                            );
+                        },
+                        _ => {
+                            // There is a new variant of PlayMode that is not handled.
+                            unimplemented!()
+                        }
+                    }
                 }
             },
             Ctx::VoiceTick(_)
