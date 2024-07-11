@@ -25,7 +25,3 @@ workspace = "../"
 
 [dependencies]
 tokio = { workspace = true }
-tracing = { workspace = true }
-
-# [workspace.metadata.dist]
-# dist = false

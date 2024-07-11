@@ -52,8 +52,6 @@ crack-osint = { path = "../crack-osint/", optional = true }
 crack-gpt = { path = "../crack-gpt/", optional = true }
 crack-bf = { path = "../crack-bf/", optional = true }
 
-async-trait = { version = "0.1" }
-# mockall = { version = "0.12.1" }
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"
 colored = "2.1"
@@ -75,7 +73,6 @@ crack-core = { workspace = true }
 # Core's dependencies
 poise = { workspace = true }
 tokio = { workspace = true }
-songbird = { workspace = true }
 sqlx = { workspace = true }
 # Figure this one out better
 

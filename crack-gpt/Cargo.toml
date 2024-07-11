@@ -16,8 +16,6 @@ workspace = "../"
 
 [dependencies]
 async-openai = "0.23"
-ctor = "0.2"
 ttl_cache = "0.5"
 const_format = "0.2"
-tracing = { workspace = true }
 tokio = { workspace = true }
