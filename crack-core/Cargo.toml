@@ -48,7 +48,6 @@ serde_json = "1.0"
 url = "2.5"
 sys-info = "0.9"
 prometheus = { version = "0.13", features = ["process"], optional = true }
-proc-macro2 = "1.0"
 typemap_rev = "0.3"
 either = "1.12"
 chrono = { version = "0.4", features = ["serde"] }

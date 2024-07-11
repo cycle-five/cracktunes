@@ -17,9 +17,11 @@
         "crack-bf",
     ],
     "rust-analyzer.linkedProjects": [
-        "./crack-core/Cargo.toml",
-        "./crack-gpt/Cargo.toml",
-        "./crack-osint/Cargo.toml"
+		"./crack-core/Cargo.toml",
+		"./crack-bf/Cargo.toml",
+		"./crack-gpt/Cargo.toml",
+		"./crack-osint/Cargo.toml",
+		"./crack-voting/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": true,
