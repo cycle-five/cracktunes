@@ -508,4 +508,15 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
     }
+
+    // #[tokio::test]
+    // async fn test_youtube_query_queues() {
+    //     let url = "https://www.youtube.com/playlist?list=PLzk-s3QLDrQ8tGpRzZ01woRoUd4ed-84q"
+    //         .to_string();
+    //     let mut ytdl = QueryType::Youtube(url);
+    //     let ctx = crate::test::test_context().await;
+    //     let call = ctx.get_call().await;
+    //     let res = queue_track_front(ctx, &call, &ytdl).await;
+    //     assert!(res.is_ok());
+    // }
 }

@@ -416,18 +416,18 @@ impl Seek for MediaSourceStream {
 
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        false
+        true
     }
 
     fn byte_len(&self) -> Option<u64> {
-        // Some(self.stream.content_length() as u64)
-        Some(0)
+        Some(self.stream.content_length() as u64)
+        // Some(0)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::http_utils;
+    use crate::{http_utils, sources::rusty_ytdl::RustyYoutubeClient};
     use rusty_ytdl::search::YouTube;
     use songbird::input::YoutubeDl;
     use std::sync::Arc;
@@ -529,4 +529,22 @@ mod test {
 
         println!("{:?}", res_all);
     }
+
+    #[tokio::test]
+    async fn test_rusty_ytdl_plays() {
+        let client = http_utils::get_client();
+        let rusty_ytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
+        let result = rusty_ytdl.search(String::from("The Night Chicago Died"), 1).await.unwrap();
+        let result = result.first().unwrap();
+        let metadata = RustyYoutubeClient::search_result_to_aux_metadata(result);
+        let url = metadata.source_url.unwrap();
+
+        println!("{:?}", url);
+
+    }
+
+    // #[tokio::test]
+    // async fn test_can_play_ytdl() {
+    //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string(); 
+    // }
 }

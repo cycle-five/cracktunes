@@ -599,7 +599,7 @@ impl QueryType {
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
                 video_info_to_source_and_metadata(client.clone(), query.clone()).await
-                // let mut ytdl = YoutubeDl::new(client, query);
+                // let mut ytdl = YoutubeDl::new(client, query.clone());
                 // tracing::warn!("ytdl: {:?}", ytdl);
                 // let metadata = ytdl.aux_metadata().await?;
                 // let my_metadata = MyAuxMetadata::Data(metadata);

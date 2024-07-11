@@ -262,7 +262,6 @@ mod test {
         let url = "https://example.com";
 
         let final_url = resolve_final_url(url).await.unwrap();
-        // assert_eq!(final_url, "https://example.com/");
         assert_eq!(final_url, "https://example.com/");
     }
 }
