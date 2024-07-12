@@ -484,7 +484,7 @@ impl EventLogAsync {
             event: obj,
         };
         let mut buf = serde_json::to_vec(&entry).unwrap();
-        let _ = buf.write(&[b'\n']);
+        let _ = buf.write(b"\n");
         let buf: &[u8] = buf.as_slice();
         self.lock()
             .await
@@ -495,7 +495,7 @@ impl EventLogAsync {
     /// Write an object to the log file.
     pub async fn write_obj<T: serde::Serialize>(&self, obj: &T) -> Result<(), Error> {
         let mut buf = serde_json::to_vec(obj).unwrap();
-        let _ = buf.write(&[b'\n']);
+        let _ = buf.write(b"\n");
         let buf: &[u8] = buf.as_slice();
         self.lock()
             .await
