@@ -30,8 +30,8 @@ features = [
 
 [workspace.dependencies.serenity]
 version = "0.12"
-git = "https://github.com/CycleFive/serenity"
-branch = "current"
+# git = "https://github.com/CycleFive/serenity"
+#branch = "current"
 default-features = false
 features = [
   "builder",
@@ -50,8 +50,8 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-git = "https://github.com/cycle-five/songbird"
-branch = "current"
+#git = "https://github.com/cycle-five/songbird"
+#branch = "current"
 version = "0.4.2"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
@@ -69,18 +69,16 @@ crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true}
-vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
+#poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true}
+poise = "0.6.1"
+vergen = { version = "8", features = ["git", "gitcl", "cargo", "si", "build"] }
 tracing = "0.1"
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.11", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
   "rustls-tls",
   "cookies",
-  "charset",
-  "http2",
-  "macos-system-configuration"
 ] }
 
 # Config for 'cargo dist'

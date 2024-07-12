@@ -26,7 +26,8 @@ crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
 
 [dependencies]
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "v0.7.2-boa", features = [
+#rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "v0.7.2-boa", features = [
+rusty_ytdl = { version  = "0.7", default-features = false, features = [
     "live",
     "rustls-tls",
     "search",
@@ -39,7 +40,7 @@ anyhow = "1.0"
 bytes = "1.6"
 colored = "2.1"
 lazy_static = "1.5"
-lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "master", features = ["rustls-tls"], version = "0.1.7" }
+lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "old-reqwest", features = ["rustls-tls"], version = "0.1.7" }
 rand = "0.8"
 regex = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -103,4 +104,4 @@ sqlx = { version = "0.7", features = [
 ] }
 
 [build-dependencies]
-vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
+vergen = { workspace = true }

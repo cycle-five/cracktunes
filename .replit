@@ -1,4 +1,4 @@
-run = "cargo build"
+run = "cargo run --release --features crack-gpt,crack-osint,crack-bf,crack-voting"
 hidden = ["target"]
 entrypoint = "src/main.rs"
 modules = ["rust-stable:v4-20240117-0bd73cd"]
@@ -25,4 +25,4 @@ pattern = "**/*.rs"
 start = "rust-analyzer"
 
 [deployment]
-run = ["sh", "-c", "cargo run"]
+run = ["sh", "-c", "cargo dist"]
