@@ -416,18 +416,20 @@ impl Seek for MediaSourceStream {
 
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        true
+        //true
+        false
     }
 
     fn byte_len(&self) -> Option<u64> {
-        Some(self.stream.content_length() as u64)
+        None
+        // Some(self.stream.content_length() as u64)
         // Some(0)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{http_utils, sources::rusty_ytdl::RustyYoutubeClient};
+    use crate::{http_utils, sources::youtube::search_query_to_source_and_metadata_rusty};
     use rusty_ytdl::search::YouTube;
     use songbird::input::YoutubeDl;
     use std::sync::Arc;
@@ -532,19 +534,44 @@ mod test {
 
     #[tokio::test]
     async fn test_rusty_ytdl_plays() {
-        let client = http_utils::get_client();
-        let rusty_ytdl = RustyYoutubeClient::new_with_client(client.clone()).unwrap();
-        let result = rusty_ytdl.search(String::from("The Night Chicago Died"), 1).await.unwrap();
-        let result = result.first().unwrap();
-        let metadata = RustyYoutubeClient::search_result_to_aux_metadata(result);
-        let url = metadata.source_url.unwrap();
+        use crate::sources::rusty_ytdl::QueryType;
+        let client = http_utils::get_client().clone();
+        let (input, metadata) = search_query_to_source_and_metadata_rusty(
+            client,
+            QueryType::Keywords("The Night Chicago Died".to_string()),
+        )
+        .await
+        .unwrap();
 
-        println!("{:?}", url);
+        println!("{:?}", metadata);
+        println!("{:?}", input.is_playable());
 
+        // let rusty_search = crate::sources::rusty_ytdl::RustyYoutubeSearch {
+        //     rusty_ytdl: crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client)
+        //         .unwrap(),
+        //     metadata: None,
+        //     query: QueryType::Keywords("The Night Chicago Died".to_string()),
+        // };
+
+        // let live_input = LiveInput::Wrapped(rusty_search.into_media_source());
+        // assert!(live_input.is_playable());
+        
+        let mut driver = songbird::driver::Driver::default();
+
+        let handle = driver.play_input(input);
+
+        let timestamp = handle.seek_async(std::time::Duration::from_secs(30)).await.unwrap();
+        
+
+        assert_eq!(
+            timestamp,
+            std::time::Duration::from_secs(30),
+            "Seek timestamp is not 30 seconds",
+        );
     }
 
     // #[tokio::test]
     // async fn test_can_play_ytdl() {
-    //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string(); 
+    //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string();
     // }
 }

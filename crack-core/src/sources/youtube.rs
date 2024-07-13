@@ -197,6 +197,6 @@ mod test {
                 let phrase = "Your IP is likely being blocked by Youtube";
                 assert!(e.to_string().contains(phrase));
             },
-        } 
+        }
     }
 }

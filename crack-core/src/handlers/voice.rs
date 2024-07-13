@@ -196,7 +196,7 @@ impl VoiceEventHandler for Receiver {
                         _ => {
                             // There is a new variant of PlayMode that is not handled.
                             unimplemented!()
-                        }
+                        },
                     }
                 }
             },

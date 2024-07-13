@@ -15,10 +15,7 @@ use crate::{
     sources::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        youtube::{
-            search_query_to_source_and_metadata_ytdl,
-            video_info_to_source_and_metadata,
-        },
+        youtube::{search_query_to_source_and_metadata_ytdl, video_info_to_source_and_metadata},
     },
     utils::{edit_response_poise, yt_search_select},
     Context, Error,
@@ -608,11 +605,8 @@ impl QueryType {
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
                 //let res = search_query_to_source_and_metadata_rusty(
-                let res = search_query_to_source_and_metadata_ytdl(
-                    client.clone(),
-                    query.clone(),
-                )
-                .await;
+                let res =
+                    search_query_to_source_and_metadata_ytdl(client.clone(), query.clone()).await;
                 match res {
                     Ok((input, metadata)) => Ok((input, metadata)),
                     Err(_) => {
