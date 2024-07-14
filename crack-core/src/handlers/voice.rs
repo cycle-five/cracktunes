@@ -219,6 +219,7 @@ impl VoiceEventHandler for Receiver {
 
 /// Registers the voice handlers for a call instance for the bot.
 /// These are kept per guild.
+/// FIXME: This seems to be called too many times?
 pub async fn register_voice_handlers(
     buffer: Arc<RwLock<Vec<u8>>>,
     call: Arc<tokio::sync::Mutex<Call>>,

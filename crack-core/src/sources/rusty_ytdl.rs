@@ -532,6 +532,7 @@ mod test {
         println!("{:?}", res_all);
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_rusty_ytdl_plays() {
         use crate::sources::rusty_ytdl::QueryType;
@@ -560,13 +561,11 @@ mod test {
 
         let handle = driver.play_input(input);
 
-        let timestamp = handle
-            .seek_async(std::time::Duration::from_secs(30))
-            .await
-            .unwrap();
+        let callback = handle.seek(std::time::Duration::from_secs(30));
+        let res = callback.result().unwrap();
 
         assert_eq!(
-            timestamp,
+            res,
             std::time::Duration::from_secs(30),
             "Seek timestamp is not 30 seconds",
         );

@@ -100,8 +100,6 @@ pub async fn get_call_with_fail_msg(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>
 
     let call: Arc<Mutex<Call>> = do_join(ctx, &manager, guild_id, channel_id).await?;
 
-    set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
-
     Ok(call)
 }
 

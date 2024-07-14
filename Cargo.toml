@@ -29,8 +29,9 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-version = "0.12"
+# Broken? try self-host.
 git = "https://github.com/CycleFive/serenity"
+version = "0.12"
 branch = "current"
 default-features = false
 features = [
@@ -50,6 +51,7 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
+# Broken? try self-hosted?
 git = "https://github.com/cycle-five/songbird"
 branch = "current"
 version = "0.4.2"

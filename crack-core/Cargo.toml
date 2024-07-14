@@ -26,7 +26,7 @@ crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
 
 [dependencies]
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "v0.7.2-boa", features = [
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-features = false, branch = "main", features = [
     "live",
     "rustls-tls",
     "search",
