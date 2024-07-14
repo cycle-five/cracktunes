@@ -175,15 +175,21 @@ pub async fn poise_framework(
         initialize_owners: false,
         ..Default::default()
     };
-    let guild_settings_map = config
-        .clone()
+    let config_ref = &config;
+    let guild_settings_map = config_ref
+        //.clone()
         .guild_settings_map
-        .unwrap_or_default()
-        .iter()
-        .map(|gs| (gs.guild_id, gs.clone()))
-        .collect::<HashMap<GuildId, GuildSettings>>();
+        .as_ref()
+        .map(|x| {
+            x.iter()
+             .map(|gs| (gs.guild_id, gs.clone()))
+             .collect::<HashMap<GuildId, GuildSettings>>()
+        })
+        .unwrap_or_default();
+        // .and_then(|gs| )
+        // .map(|gs| (gs.guild_id, gs.clone()))
 
-    let db_url = config.get_database_url();
+    let db_url: &str = &config_ref.get_database_url();
     let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
         Ok(pool) => Some(pool),
         Err(e) => {

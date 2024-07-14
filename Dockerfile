@@ -1,6 +1,6 @@
 # Build image
 # Necessary dependencies to build CrackTunes
-FROM debian:bookworm-slim as build
+FROM debian:bookworm-slim AS build
 ARG SQLX_OFFLINE=true
 
 RUN apt-get update && apt-get install -y \
@@ -17,13 +17,13 @@ RUN apt-get update && apt-get install -y \
 # Get Rust
 RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
        && . "$HOME/.cargo/env" \
-       && rustup default stable
+       && rustup default nightly
 
 WORKDIR "/app"
 
 COPY . .
 COPY names.txt /app/names.txt
-RUN . "$HOME/.cargo/env" && cargo build --release --locked
+RUN . "$HOME/.cargo/env" && cargo build --release --locked --features crack-bf,crack-gpt,crack-osint
 
 # Release image
 # Necessary dependencies to run CrackTunes
@@ -51,15 +51,14 @@ RUN groupadd --gid $USER_GID $USERNAME \
 USER $USERNAME
 
 RUN sudo apt-get update \
-       # && apt-get upgrade -y \
+       && apt-get upgrade -y \
        && sudo apt-get install -y ffmpeg curl \
        # Clean up
        && sudo apt-get autoremove -y \
        && sudo apt-get clean -y \
        && sudo rm -rf /var/lib/apt/lists/*
 
-#RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux \
-RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/2024.05.11.232654/yt-dlp_linux \
+RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.09/yt-dlp_linux \
        && sudo chmod +x /usr/local/bin/yt-dlp
 
 
