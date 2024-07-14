@@ -177,7 +177,6 @@ pub async fn poise_framework(
     };
     let config_ref = &config;
     let guild_settings_map = config_ref
-        //.clone()
         .guild_settings_map
         .as_ref()
         .map(|x| {
@@ -186,8 +185,6 @@ pub async fn poise_framework(
              .collect::<HashMap<GuildId, GuildSettings>>()
         })
         .unwrap_or_default();
-        // .and_then(|gs| )
-        // .map(|gs| (gs.guild_id, gs.clone()))
 
     let db_url: &str = &config_ref.get_database_url();
     let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
