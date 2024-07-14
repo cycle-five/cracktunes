@@ -555,13 +555,15 @@ mod test {
 
         // let live_input = LiveInput::Wrapped(rusty_search.into_media_source());
         // assert!(live_input.is_playable());
-        
+
         let mut driver = songbird::driver::Driver::default();
 
         let handle = driver.play_input(input);
 
-        let timestamp = handle.seek_async(std::time::Duration::from_secs(30)).await.unwrap();
-        
+        let timestamp = handle
+            .seek_async(std::time::Duration::from_secs(30))
+            .await
+            .unwrap();
 
         assert_eq!(
             timestamp,
