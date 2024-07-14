@@ -1,6 +1,7 @@
 use crate::poise_ext::ContextExt;
 use crate::{
     commands::cmd_check_music,
+    commands::get_call_or_join_author,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     poise_ext::PoiseContextExt,
@@ -86,11 +87,10 @@ pub async fn create_skip_response(
     guild_only
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::commands::get_call_with_fail_msg;
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
 
-    let call = get_call_with_fail_msg(ctx).await?;
+    let call = get_call_or_join_author(ctx).await?;
 
     let handler = call.lock().await;
     let queue = handler.queue();

@@ -1,8 +1,9 @@
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
-use crate::commands::{cmd_check_music, get_call_with_fail_msg, sub_help as help};
+use crate::commands::{cmd_check_music, sub_help as help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::CrackedResult;
 use ::serenity::all::CommandInteraction;
 //FIXME
@@ -154,7 +155,6 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    use crate::http_utils::SendMessageParams;
 
     //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
@@ -185,17 +185,10 @@ async fn play_internal(
 
     tracing::warn!(target: "PLAY", "url: {}", url);
 
-    // reply with a temporary message while we fetch the source
-    // needed because interactions must be replied within 3s and queueing takes longer
+    let call = get_call_or_join_author(ctx).await?;
+
     let mut search_msg = msg_int::send_search_message(&ctx).await?;
-
-    // ctx.data()
-    //     .add_msg_to_cache(guild_id, search_msg.clone())
-    //     .await;
-
     tracing::debug!("search response msg: {:?}", search_msg);
-
-    let call = get_call_with_fail_msg(ctx).await?;
 
     // determine whether this is a link or a query string
     let query_type = query_type_from_url(ctx, url, file).await?;
