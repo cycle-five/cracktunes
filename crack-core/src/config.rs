@@ -187,7 +187,7 @@ pub async fn poise_framework(
         .unwrap_or_default();
 
     let db_url: &str = &config_ref.get_database_url();
-    let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(&db_url).await {
+    let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(db_url).await {
         Ok(pool) => Some(pool),
         Err(e) => {
             tracing::error!("Error getting database pool: {}, db_url: {}", e, db_url);
