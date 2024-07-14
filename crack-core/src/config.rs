@@ -214,8 +214,6 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
-    //let save_data = data.clone();
-
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::privileged()
         | GatewayIntents::GUILDS
