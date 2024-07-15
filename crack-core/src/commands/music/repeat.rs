@@ -35,10 +35,13 @@ pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
-    let track = handler.queue().current().unwrap();
+    let track = match handler.queue().current() {
+        Some(track) => track,
+        None => return Err(Box::new(CrackedError::NothingPlaying)),
+    };
     drop(handler);
 
-    let was_looping = track.get_info().await.unwrap().loops == LoopState::Infinite;
+    let was_looping = track.get_info().await?.loops == LoopState::Infinite;
     let toggler = if was_looping {
         TrackHandle::disable_loop
     } else {

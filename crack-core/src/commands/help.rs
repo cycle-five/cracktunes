@@ -58,7 +58,6 @@ pub async fn builtin_help(
 #[poise::command(
     category = "Utility",
     rename = "help",
-    //slash_command, FIXME: Can we have this work with the slash commands?
     prefix_command,
     hide_in_help
 )]
@@ -402,6 +401,7 @@ impl TwoColumnList {
             .unwrap_or(0);
         let mut text = String::new();
         for (command, description) in self.0 {
+            let command = command.replace("_", r#"\_"#);
             if let Some(description) = description {
                 let padding = " ".repeat(longest_command - command.len() + 3);
                 writeln!(text, "{}{}{}", command, padding, description).unwrap();
@@ -606,6 +606,7 @@ fn preformat_command(
         unreachable!();
     };
 
+    // Make sure we escape underscores, lest they be interpreted as italics
     let prefix = format!("{}{}{}", indent, prefix, command.name);
     commands.push_two_colums(
         prefix.clone(),
@@ -673,7 +674,7 @@ async fn generate_all_commands(
 
     menu += "\n";
     menu += config.extra_text_at_bottom;
-    menu += "\n```";
+    //menu += "\n```";
 
     Ok(menu)
 }
