@@ -501,6 +501,12 @@ impl From<&CrackedMessage> for Option<CreateEmbed> {
     }
 }
 
+impl From<CrackedMessage> for crate::CrackedResult2<CrackedMessage> {
+    fn from(msg: CrackedMessage) -> crate::CrackedResult2<CrackedMessage> {
+        crate::CrackedResult2::Ok(msg)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::CrackedMessage;

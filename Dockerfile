@@ -4,20 +4,20 @@ FROM debian:bookworm-slim AS build
 ARG SQLX_OFFLINE=true
 
 RUN apt-get update && apt-get install -y \
-       autoconf \
-       automake \
-       cmake \
-       libtool \
-       libssl-dev \
-       pkg-config \
-       libopus-dev \
-       curl \
-       git
+  autoconf \
+  automake \
+  cmake \
+  libtool \
+  libssl-dev \
+  pkg-config \
+  libopus-dev \
+  curl \
+  git
 
 # Get Rust
 RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
-       && . "$HOME/.cargo/env" \
-       && rustup default nightly
+  && . "$HOME/.cargo/env" \
+  && rustup default nightly
 
 WORKDIR "/app"
 
@@ -40,28 +40,26 @@ RUN mkdir -p /data && chown -R ${USER_UID}:${USER_GID} /data
 
 # Update the package list, install sudo, create a non-root user, and grant password-less sudo permissions
 RUN groupadd --gid $USER_GID $USERNAME \
-       && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-       #
-       # [Optional] Add sudo support. Omit if you don't need to install software after connecting.
-       && apt-get update \
-       && apt-get install -y sudo \
-       && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-       && chmod 0440 /etc/sudoers.d/$USERNAME
+  && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+  #
+  # [Optional] Add sudo support. Omit if you don't need to install software after connecting.
+  && apt-get update \
+  && apt-get install -y sudo \
+  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+  && chmod 0440 /etc/sudoers.d/$USERNAME
+
+
+RUN apt-get update \
+  &&  apt-get upgrade -y \
+  &&  apt-get install -y ffmpeg curl \
+  &&  apt-get autoremove -y \
+  &&  apt-get clean -y \
+  &&  rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.09/yt-dlp_linux \
+  && chmod +x /usr/local/bin/yt-dlp
 
 USER $USERNAME
-
-RUN sudo apt-get update \
-       && apt-get upgrade -y \
-       && sudo apt-get install -y ffmpeg curl \
-       # Clean up
-       && sudo apt-get autoremove -y \
-       && sudo apt-get clean -y \
-       && sudo rm -rf /var/lib/apt/lists/*
-
-RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.09/yt-dlp_linux \
-       && sudo chmod +x /usr/local/bin/yt-dlp
-
-
 
 RUN yt-dlp -v -h
 

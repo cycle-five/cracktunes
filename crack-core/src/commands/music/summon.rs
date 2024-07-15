@@ -1,12 +1,104 @@
-use crate::commands::{cmd_check_music, do_join, help, set_global_handlers, sub_help as help};
+use crate::commands::{
+    cmd_check_music, do_join, help, set_global_handlers, sub_help as help, uptime_internal,
+};
+use crate::messaging::message::CrackedMessage;
 use crate::{
     connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
     Context, Error,
 };
 use ::serenity::all::{Channel, ChannelId, Mentionable};
+use chrono::Duration;
+use serde::{Deserialize, Serialize};
+use songbird::tracks::{PlayMode, TrackHandle};
 use songbird::Call;
+use std::borrow::Cow;
+use std::ops::DerefMut;
 use std::sync::Arc;
+use std::{fmt, fmt::Display};
+use symphonia::core::conv::IntoSample;
 use tokio::sync::Mutex;
+
+#[derive(Debug, Clone, Default)]
+pub struct BotStatus<'ctx> {
+    pub name: Cow<'ctx, String>,
+    pub play_mode: PlayMode,
+    //pub queue: Vec<TrackHandle>,
+    pub queue_len: usize,
+    pub current_channel: Option<ChannelId>,
+    pub uptime: Duration,
+}
+
+impl<'ctx> Display for BotStatus<'ctx> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "BotStatus {{\n\tplay_mode: {:?},\n\tqueue_len: {},\n\tcurrent_channel: {:?},\n\tuptime: {:?}\n\t}}",
+            self.play_mode, self.queue_len, self.current_channel, self.uptime
+        )
+    }
+}
+
+use poise::serenity_prelude as serenity;
+
+#[poise::command(
+    category = "Music",
+    slash_command,
+    prefix_command,
+    guild_only,
+    owners_only
+)]
+pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
+    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
+    let _user_id = ctx.get_user_id();
+
+    // Get the voice channel we're in if any.
+    let call = manager.get(guild_id);
+    let mut vc_status = match call {
+        Some(call) => {
+            let handler = call.lock().await;
+            let channel_id = handler.current_channel();
+            let _is_connected = handler.current_connection().is_some();
+            let queue = handler.queue();
+            let track = queue.current().clone();
+            let user_id = &ctx.cache().current_user().await;
+            let bot_name = Cow::Borrowed(user_id.name);
+
+            let bot_status = match track {
+                Some(track) => BotStatus {
+                    name: bot_name.into(),
+                    play_mode: track.get_info().await.unwrap_or_default().playing,
+                    current_channel: channel_id.map(|id| serenity::ChannelId::new(id.0.into())),
+                    queue_len: queue.clone().len(),
+                    uptime: Duration::zero(),
+                },
+                None => Default::default(),
+            };
+            bot_status
+        },
+        _ => Default::default(),
+    };
+    let uptime = match uptime_internal(ctx).await {
+        CrackedMessage::Uptime { seconds, .. } => Duration::seconds(seconds as i64),
+        _ => Duration::zero(),
+    };
+    vc_status.uptime = uptime;
+
+    // let handler = call.lock().await;
+    // let channel_id = handler.current_channel();
+    // let is_connected = handler.current_connection().is_some();
+    // let queue = handler.queue().clone();
+
+    // let mut bot_status = BotStatus {
+    //     is_playing: handler.is_playing(),
+    //     is_paused: handler.is_paused(),
+    //     is_stopped: handler.is_stopped(),
+    //     current_channel: channel_id.map(|c| c.0),
+    // };
+
+    Ok(())
+}
 
 /// Summon the bot to your voice channel.
 #[poise::command(
@@ -64,7 +156,7 @@ pub async fn summon_internal(
         None => get_voice_channel_for_user_summon(&guild, &user_id)?,
     };
 
-    let call: Arc<Mutex<Call>> = match manager.get(guild_id) {
+    let _call: Arc<Mutex<Call>> = match manager.get(guild_id) {
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
@@ -82,7 +174,7 @@ pub async fn summon_internal(
             .map_err(Into::into),
     }?;
 
-    set_global_handlers(ctx, call, guild_id, channel_id).await?;
+    // set_global_handlers(ctx, call, guild_id, channel_id).await?;
 
     Ok(())
 }
