@@ -649,6 +649,7 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
             None => chunk,
         };
         chunks.push(chunk.to_string());
+        //chunks.push(format!("```\n{}\n```", chunk));
         cur = next;
     }
 
@@ -668,11 +669,13 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
 pub fn create_page_getter_newline(
     string: &str,
     chunk_size: usize,
+//) -> impl Fn(usize) -> String + '_ {
 ) -> impl Fn(usize) -> String + '_ {
     let chunks = split_string_into_chunks_newline(string, chunk_size);
+    //let n = chunks.len();
     move |page| {
         let page = page % chunks.len();
-        format!("```markdown\n{}\n```", chunks[page].clone())
+        format!("```md\n{}\n```", chunks[page].clone())
     }
 }
 

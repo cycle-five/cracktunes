@@ -67,12 +67,12 @@ impl EventHandler for TrackEndHandler {
             (autopause, volume)
         };
 
-        self.call.lock().await.queue().modify_queue(|v| {
-            if let Some(track) = v.front_mut() {
-                let _ = track.set_volume(volume);
-            };
-        });
-        tracing::error!("Set volume");
+        // self.call.lock().await.queue().modify_queue(|v| {
+        //     if let Some(track) = v.front_mut() {
+        //         let _ = track.set_volume(volume);
+        //     };
+        // });
+        // tracing::error!("Set volume");
 
         if autopause {
             tracing::error!("Pausing");
@@ -90,20 +90,33 @@ impl EventHandler for TrackEndHandler {
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 
+        let (channel, track) = {
+            let handler = self.call.lock().await;
+            let channel = match music_channel {
+                Some(c) => c,
+                _ => handler
+                    .current_channel()
+                    .map(|c| ChannelId::new(c.0.get()))
+                    .unwrap(),
+            };
+            let track = handler.queue().current().clone();
+            (channel, track)
+        };
+
         let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
             let (sb_chan_id, my_metadata, cur_pos) = {
-                let (channel, track) = {
-                    let handler = self.call.lock().await;
-                    let channel = match music_channel {
-                        Some(c) => c,
-                        _ => handler
-                            .current_channel()
-                            .map(|c| ChannelId::new(c.0.get()))
-                            .unwrap(),
-                    };
-                    let track = handler.queue().current().clone();
-                    (channel, track)
-                };
+                // let (channel, track) = {
+                //     let handler = self.call.lock().await;
+                //     let channel = match music_channel {
+                //         Some(c) => c,
+                //         _ => handler
+                //             .current_channel()
+                //             .map(|c| ChannelId::new(c.0.get()))
+                //             .unwrap(),
+                //     };
+                //     let track = handler.queue().current().clone();
+                //     (channel, track)
+                // };
                 let chan_id = channel;
                 match (track, autoplay) {
                     (None, false) => (

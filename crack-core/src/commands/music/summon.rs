@@ -38,7 +38,7 @@ pub async fn summon(
     subcommands("help"),
     guild_only
 )]
-pub async fn summon_channel(
+pub async fn summonchannel(
     ctx: Context<'_>,
     #[description = "Channel to summon the bot to."] channel: Option<Channel>,
     #[description = "Channel Id of the channel to summon the bot to."] channel_id_str: Option<

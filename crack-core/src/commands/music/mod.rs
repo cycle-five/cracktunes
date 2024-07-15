@@ -74,7 +74,7 @@ pub fn music_commands() -> [crate::Command; 24] {
         skip(),
         stop(),
         summon::summon(),
-        summon_channel(),
+        summonchannel(),
         volume(),
         vote(),
         voteskip(),

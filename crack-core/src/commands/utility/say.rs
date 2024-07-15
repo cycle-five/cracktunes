@@ -11,7 +11,7 @@ use serenity::all::{Channel, ChannelId};
     owners_only,
     required_permissions = "ADMINISTRATOR"
 )]
-pub async fn say_channel(
+pub async fn saychan(
     ctx: Context<'_>,
     #[flag]
     #[description = "show the help menu for this command."]
@@ -34,7 +34,7 @@ pub async fn say_channel(
     owners_only,
     required_permissions = "ADMINISTRATOR"
 )]
-pub async fn say_channel_id(
+pub async fn saychanid(
     ctx: Context<'_>,
     #[flag]
     #[description = "show the help menu for this command."]

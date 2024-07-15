@@ -331,36 +331,6 @@ pub fn help_commands() -> [Command; 1] {
 use poise::{serenity_prelude as serenity, CreateReply};
 use std::fmt::Write as _;
 
-// /// Optional configuration for how the help message from [`help()`] looks
-// pub struct HelpConfiguration<'a> {
-//     /// Extra text displayed at the bottom of your message. Can be used for help and tips specific
-//     /// to your bot
-//     pub extra_text_at_bottom: &'a str,
-//     /// Whether to make the response ephemeral if possible. Can be nice to reduce clutter
-//     pub ephemeral: bool,
-//     /// Whether to list context menu commands as well
-//     pub show_context_menu_commands: bool,
-//     /// Whether to list context menu commands as well
-//     pub show_subcommands: bool,
-//     /// Whether to include [`crate::Command::description`] (above [`crate::Command::help_text`]).
-//     pub include_description: bool,
-//     #[doc(hidden)]
-//     pub __non_exhaustive: (),
-// }
-
-// impl Default for HelpConfiguration<'_> {
-//     fn default() -> Self {
-//         Self {
-//             extra_text_at_bottom: "",
-//             ephemeral: true,
-//             show_context_menu_commands: false,
-//             show_subcommands: false,
-//             include_description: true,
-//             __non_exhaustive: (),
-//         }
-//     }
-// }
-
 /// Convenience function to align descriptions behind commands
 struct TwoColumnList(Vec<(String, Option<String>)>);
 
@@ -401,7 +371,7 @@ impl TwoColumnList {
             .unwrap_or(0);
         let mut text = String::new();
         for (command, description) in self.0 {
-            let command = command.replace("_", r#"\_"#);
+            //let command = command.replace("_", r#"\\_"#);
             if let Some(description) = description {
                 let padding = " ".repeat(longest_command - command.len() + 3);
                 writeln!(text, "{}{}{}", command, padding, description).unwrap();
@@ -558,10 +528,10 @@ async fn help_single_command(
         let bot_name = ctx.cache().current_user().name.clone();
         create_paged_embed(ctx, bot_name, "Help".to_string(), reply, 900).await?;
     } else {
-        let reply = CreateReply::default()
+        let create_reply= CreateReply::default()
             .content(reply)
             .ephemeral(config.ephemeral);
-        ctx.send(reply).await?;
+        ctx.send(create_reply).await?;
     }
 
     Ok(())
@@ -606,7 +576,6 @@ fn preformat_command(
         unreachable!();
     };
 
-    // Make sure we escape underscores, lest they be interpreted as italics
     let prefix = format!("{}{}{}", indent, prefix, command.name);
     commands.push_two_colums(
         prefix.clone(),
@@ -634,7 +603,8 @@ async fn generate_all_commands(
 
     let options_prefix = get_prefix_from_options(ctx).await;
 
-    let mut menu = String::from("```\n");
+    //let mut menu = String::from("```\n");
+    let mut menu = String::from("");
 
     let mut commandlist = TwoColumnList::new();
     for (category_name, commands) in categories {

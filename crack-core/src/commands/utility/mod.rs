@@ -54,8 +54,8 @@ pub fn utility_commands() -> [crate::Command; 9] {
         servers(),
         uptime(),
         clean(),
-        say_channel(),
-        say_channel_id(),
+        saychan(),
+        saychanid(),
         smoketest(),
     ]
 }
