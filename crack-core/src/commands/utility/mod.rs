@@ -1,4 +1,5 @@
 pub mod clean;
+mod debug;
 pub mod invite;
 pub mod ping;
 mod say;
@@ -6,6 +7,7 @@ mod smoketest;
 pub mod version;
 
 pub use clean::*;
+pub use debug::*;
 pub use invite::*;
 pub use ping::*;
 pub use say::*;

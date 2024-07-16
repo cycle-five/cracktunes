@@ -8,6 +8,7 @@ pub async fn invite(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Testable internal function for invite.
+#[cfg(not(tarpaulin_include))]
 pub async fn invite_internal(ctx: Context<'_>) -> Result<(), Error> {
     let _ = ctx.send_invite_link().await?;
     Ok(())
