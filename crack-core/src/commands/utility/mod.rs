@@ -62,16 +62,17 @@ pub async fn uptime_internal(ctx: Context<'_>) -> CrackedMessage {
 }
 
 /// Get all the utility commands.
-pub fn utility_commands() -> [crate::Command; 9] {
+pub fn utility_commands() -> [crate::Command; 10] {
     [
+        clean(),
+        debug(),
         invite(),
         ping(),
-        version(),
         servers(),
-        uptime(),
-        clean(),
         saychan(),
         saychanid(),
         smoketest(),
+        uptime(),
+        version(),
     ]
 }

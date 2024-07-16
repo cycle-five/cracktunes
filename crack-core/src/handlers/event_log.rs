@@ -91,6 +91,8 @@ pub async fn handle_event(
     data_global: &Data,
 ) -> Result<(), Error> {
     // let event_log = Arc::new(&data_global.event_log);
+
+    use crate::db::GuildEntity;
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
@@ -344,6 +346,24 @@ pub async fn handle_event(
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildCreate { guild, is_new } => {
+            if is_new.unwrap_or(false) {
+                tracing::warn!("New Guild!!! {}", guild.name);
+                if data_global.database_pool.is_some() {
+                    GuildEntity::get_or_create(
+                        data_global.database_pool.as_ref().unwrap(),
+                        guild.id.get() as i64,
+                        guild.name.clone(),
+                        data_global
+                            .bot_settings
+                            .prefix
+                            .clone()
+                            .unwrap_or("r!".to_string()),
+                    )
+                    .await?;
+                } else {
+                    tracing::error!("No database pool available");
+                }
+            }
             log_event!(
                 log_guild_create,
                 guild_settings,
