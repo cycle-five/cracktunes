@@ -1,21 +1,17 @@
-use crate::commands::{
-    cmd_check_music, do_join, help, set_global_handlers, sub_help as help, uptime_internal,
-};
+use crate::commands::{cmd_check_music, do_join, help, sub_help as help, uptime_internal};
 use crate::messaging::message::CrackedMessage;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::{
     connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
     Context, Error,
 };
 use ::serenity::all::{Channel, ChannelId, Mentionable};
 use chrono::Duration;
-use serde::{Deserialize, Serialize};
-use songbird::tracks::{PlayMode, TrackHandle};
+use songbird::tracks::PlayMode;
 use songbird::Call;
 use std::borrow::Cow;
-use std::ops::DerefMut;
 use std::sync::Arc;
 use std::{fmt, fmt::Display};
-use symphonia::core::conv::IntoSample;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Default)]
@@ -50,7 +46,7 @@ use poise::serenity_prelude as serenity;
 pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
+    let _guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
     let _user_id = ctx.get_user_id();
 
     // Get the voice channel we're in if any.
@@ -62,8 +58,9 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
             let _is_connected = handler.current_connection().is_some();
             let queue = handler.queue();
             let track = queue.current().clone();
-            let user_id = &ctx.cache().current_user().await;
-            let bot_name = Cow::Borrowed(user_id.name);
+            let cur_user = ctx.cache().current_user().clone();
+            // let name = cur_user.name.clone();
+            let bot_name: Cow<'_, String> = Cow::Owned(cur_user.name.clone());
 
             let bot_status = match track {
                 Some(track) => BotStatus {
@@ -84,6 +81,9 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
         _ => Duration::zero(),
     };
     vc_status.uptime = uptime;
+
+    let msg = vc_status.to_string();
+    ctx.send_reply(CrackedMessage::Other(msg), true).await?;
 
     // let handler = call.lock().await;
     // let channel_id = handler.current_channel();

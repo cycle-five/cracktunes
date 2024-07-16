@@ -12,7 +12,7 @@ pub use say::*;
 pub use smoketest::*;
 pub use version::*;
 
-use crate::{CommandResult, Context, CrackedMessage, CrackedResult, Error};
+use crate::{CommandResult, Context, CrackedMessage, Error};
 use poise::serenity_prelude::Mentionable;
 
 /// Get information about the servers this bot is in.
@@ -47,7 +47,10 @@ pub async fn uptime(ctx: Context<'_>) -> CommandResult {
 
 pub async fn uptime_internal(ctx: Context<'_>) -> CrackedMessage {
     let now = std::time::SystemTime::now();
-    let seconds = now.duration_since(ctx.data().start_time).unwrap_or_default().as_secs();
+    let seconds = now
+        .duration_since(ctx.data().start_time)
+        .unwrap_or_default()
+        .as_secs();
     let mention = {
         let current_user = ctx.cache().current_user();
         current_user.mention().to_string()

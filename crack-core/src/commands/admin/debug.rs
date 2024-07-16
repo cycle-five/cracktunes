@@ -8,7 +8,7 @@ use songbird::tracks::TrackQueue;
 
 /// Print some debug info.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
 
     let data_str = format!("{:#?}", data);
