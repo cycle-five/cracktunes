@@ -36,4 +36,3 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }
-

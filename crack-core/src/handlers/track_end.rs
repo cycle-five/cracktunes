@@ -112,7 +112,7 @@ impl EventHandler for TrackEndHandler {
             return None;
         }
 
-        let query = match get_recommended_track_query(&pool, self.guild_id).await {
+        let query = match get_recommended_track_query(pool, self.guild_id).await {
             Ok(query) => query,
             Err(e) => {
                 let msg = format!("Error: {}", e);
