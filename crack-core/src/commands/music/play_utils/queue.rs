@@ -40,7 +40,7 @@ pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, Crack
         track,
         metadata,
         user_id: UserId::new(1),
-        username: "(auto)".to_string(),
+        username: "auto".to_string(),
     })
 }
 

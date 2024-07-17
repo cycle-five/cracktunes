@@ -2,6 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
+use crate::sources::youtube::video_info_to_source_and_metadata;
 use crate::CrackedResult;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
@@ -594,11 +595,11 @@ impl QueryType {
             },
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
-                // video_info_to_source_and_metadata(client.clone(), query.clone()).await
-                let mut ytdl = YoutubeDl::new(client, query.clone());
-                let metadata = ytdl.aux_metadata().await?;
-                let my_metadata = MyAuxMetadata::Data(metadata);
-                Ok((ytdl.into(), vec![my_metadata]))
+                video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                // let mut ytdl = YoutubeDl::new(client, query.clone());
+                // let metadata = ytdl.aux_metadata().await?;
+                // let my_metadata = MyAuxMetadata::Data(metadata);
+                // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
