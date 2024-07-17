@@ -8,7 +8,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        rust-version: ["nightly", "stable", "1.75", "1.76"]
+        rust-version: ["nightly", "stable"]
         cache-key: [""]
     runs-on: ubuntu-latest
       # redis:
