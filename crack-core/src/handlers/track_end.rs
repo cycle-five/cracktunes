@@ -1,9 +1,7 @@
+use crate::commands::play_utils::queue_track_ready_front;
+use crate::commands::play_utils::ready_query2;
 use crate::{
-    commands::{
-        forget_skip_votes,
-        play_utils::{enqueue_track_pgwrite_asdf, QueryType},
-        MyAuxMetadata,
-    },
+    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -13,18 +11,19 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message, send_now_playing},
-    CrackedResult, Data, Error,
+    CrackedResult,
+    Data, //, Error,
 };
 use ::serenity::{
-    all::{Cache, ChannelId, UserId},
+    all::{Cache, ChannelId},
     async_trait,
     builder::EditMessage,
     http::Http,
     model::id::GuildId,
 };
 use serenity::all::CacheHttp;
-use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
-use std::{sync::Arc, time::Duration};
+use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Handler for the end of a track event.
@@ -55,7 +54,7 @@ impl EventHandler for TrackEndHandler {
 
         tracing::error!("Autoplay: {}", autoplay);
 
-        let (autopause, volume) = {
+        let (autopause, _volume) = {
             let settings = self.data.guild_settings_map.read().await.clone();
             let autopause = settings
                 .get(&self.guild_id)
@@ -69,13 +68,6 @@ impl EventHandler for TrackEndHandler {
             tracing::error!("Volume: {}", volume);
             (autopause, volume)
         };
-
-        // self.call.lock().await.queue().modify_queue(|v| {
-        //     if let Some(track) = v.front_mut() {
-        //         let _ = track.set_volume(volume);
-        //     };
-        // });
-        // tracing::error!("Set volume");
 
         if autopause {
             tracing::trace!("Pausing");
@@ -120,8 +112,6 @@ impl EventHandler for TrackEndHandler {
             return None;
         }
 
-        let cache_http = (&self.cache, self.http.as_ref());
-
         let query = match get_recommended_track_query(&pool, self.guild_id).await {
             Ok(query) => query,
             Err(e) => {
@@ -130,37 +120,24 @@ impl EventHandler for TrackEndHandler {
                 return None;
             },
         };
-        let tracks = enqueue_track_pgwrite_asdf(UserId::new(1), cache_http, &self.call, &query)
+        let track_ready = ready_query2(query).await.ok()?;
+        let MyAuxMetadata::Data(metadata) = &track_ready.metadata;
+        let metadata = Some(metadata.clone());
+
+        let track = queue_track_ready_front(&self.call, track_ready)
             .await
             .ok()?;
-        let (my_metadata, pos) = match tracks.first() {
-            Some(t) => {
-                let (my_metadata, pos) = extract_track_metadata(t).await.unwrap_or_default();
-                let _ = t.set_volume(volume);
-                (my_metadata, pos)
-            },
-            None => {
-                let msg = format!("No tracks found for query: {:?}", query);
-                tracing::warn!("{}", msg);
-                (
-                    MyAuxMetadata::Data(AuxMetadata::default()),
-                    Duration::from_secs(0),
-                )
-            },
-        };
 
         let chan_id = channel;
-        let cur_position = pos;
-        let MyAuxMetadata::Data(metadata) = my_metadata;
-
-        tracing::info!("Sending now playing message");
+        let track_state = track.first().as_ref()?.get_info().await;
+        let cur_position = track_state.map(|x| x.position).ok();
 
         match send_now_playing(
             chan_id,
             self.http.clone(),
             self.call.clone(),
-            Some(cur_position),
-            Some(metadata),
+            cur_position,
+            metadata,
         )
         .await
         {
@@ -169,18 +146,6 @@ impl EventHandler for TrackEndHandler {
         };
         None
     }
-}
-
-/// Extracts the metadata and position of a track.
-async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
-    let pos = track.get_info().await?.position;
-    let track_clone = track.clone();
-    let mutex_guard = track_clone.typemap().read().await;
-    let my_metadata = mutex_guard
-        .get::<crate::commands::MyAuxMetadata>()
-        .ok_or_else(|| CrackedError::Other("No metadata found"))?
-        .clone();
-    Ok((my_metadata, pos))
 }
 
 /// Event handler to set the volume of the playing track to the volume

@@ -7,7 +7,7 @@ use crate::{
     poise_ext::ContextExt,
     Context as CrackContext, Error,
 };
-use serenity::all::{CacheHttp, CreateEmbed, EditMessage, Message, UserId};
+use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{
     input::Input as SongbirdInput,
     tracks::{Track, TrackHandle},
@@ -22,6 +22,26 @@ pub struct TrackReadyData {
     pub metadata: MyAuxMetadata,
     pub user_id: UserId,
     pub username: String,
+}
+
+/// Takes a query and returns a track that is ready to be played, along with relevant metadata.
+pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
+    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
+        query_type.get_track_source_and_metadata().await?;
+    let metadata = match metadata_vec.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
+    let track: Track = source.into();
+
+    Ok(TrackReadyData {
+        track,
+        metadata,
+        user_id: UserId::new(1),
+        username: "(auto)".to_string(),
+    })
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -257,44 +277,6 @@ pub async fn queue_query_list_offset<'a>(
     Ok(())
 }
 
-/// Enqueues a track and adds metadata to the database. (parameters broken out)
-// TODO: This is redundant with the other queuing functions. Remove it.
-#[cfg(not(tarpaulin_include))]
-pub async fn enqueue_track_pgwrite_asdf(
-    user_id: UserId,
-    cache_http: impl CacheHttp,
-    call: &Arc<Mutex<Call>>,
-    query_type: &QueryType,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    use crate::commands::play_utils::queue;
-
-    tracing::info!("query_type: {:?}", query_type);
-    // is this comment still relevant to this section of code?
-    // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
-    let res = match metadata.first() {
-        Some(x) => x.clone(),
-        None => {
-            return Err(CrackedError::Other("metadata.first() failed"));
-        },
-    };
-    let track: Track = source.into();
-
-    let username = cache_http.user_id_to_username_or_default(user_id);
-
-    queue::queue_track_ready_front(
-        call,
-        queue::TrackReadyData {
-            track,
-            metadata: res.clone(),
-            user_id,
-            username,
-        },
-    )
-    .await
-}
-
 /// Get the play mode and the message from the parameters to the play command.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
 pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
@@ -515,15 +497,4 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
     }
-
-    // #[tokio::test]
-    // async fn test_youtube_query_queues() {
-    //     let url = "https://www.youtube.com/playlist?list=PLzk-s3QLDrQ8tGpRzZ01woRoUd4ed-84q"
-    //         .to_string();
-    //     let mut ytdl = QueryType::Youtube(url);
-    //     let ctx = crate::test::test_context().await;
-    //     let call = ctx.get_call().await;
-    //     let res = queue_track_front(ctx, &call, &ytdl).await;
-    //     assert!(res.is_ok());
-    // }
 }

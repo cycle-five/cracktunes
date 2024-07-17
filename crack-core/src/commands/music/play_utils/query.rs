@@ -15,7 +15,6 @@ use crate::{
     sources::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        youtube::search_query_to_source_and_metadata_ytdl,
     },
     utils::{edit_response_poise, yt_search_select},
     Context, Error,
@@ -597,24 +596,17 @@ impl QueryType {
                 tracing::warn!("In VideoLink");
                 // video_info_to_source_and_metadata(client.clone(), query.clone()).await
                 let mut ytdl = YoutubeDl::new(client, query.clone());
-                // tracing::warn!("ytdl: {:?}", ytdl);
                 let metadata = ytdl.aux_metadata().await?;
                 let my_metadata = MyAuxMetadata::Data(metadata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                //let res = search_query_to_source_and_metadata_rusty(
-                let res =
-                    search_query_to_source_and_metadata_ytdl(client.clone(), query.clone()).await;
-                match res {
-                    Ok((input, metadata)) => Ok((input, metadata)),
-                    Err(_) => {
-                        tracing::error!("falling back to ytdl!");
-                        search_query_to_source_and_metadata_ytdl(client.clone(), query.clone())
-                            .await
-                    },
-                }
+                // video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                let metadata = ytdl.aux_metadata().await?;
+                let my_metadata = MyAuxMetadata::Data(metadata);
+                Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");
