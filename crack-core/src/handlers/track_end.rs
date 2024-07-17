@@ -1,3 +1,20 @@
+use crate::{
+    commands::{
+        forget_skip_votes,
+        play_utils::{enqueue_track_pgwrite_asdf, QueryType},
+        MyAuxMetadata,
+    },
+    db::PgPoolExtPlayLog,
+    errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
+    messaging::{
+        interface::{create_nav_btns, create_queue_embed},
+        messages::SPOTIFY_AUTH_FAILED,
+    },
+    sources::spotify::{Spotify, SPOTIFY},
+    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
+    CrackedResult, Data, Error,
+};
 use ::serenity::{
     all::{Cache, ChannelId, UserId},
     async_trait,
@@ -9,20 +26,6 @@ use serenity::all::CacheHttp;
 use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
-
-use crate::{
-    commands::{forget_skip_votes, play_utils::enqueue_track_pgwrite_asdf, MyAuxMetadata},
-    db::PgPoolExtPlayLog,
-    errors::{verify, CrackedError},
-    guild::operations::GuildSettingsOperations,
-    messaging::{
-        interface::{create_nav_btns, create_queue_embed},
-        messages::SPOTIFY_AUTH_FAILED,
-    },
-    sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
-    Data, Error,
-};
 
 /// Handler for the end of a track event.
 // This needs enough context to be able to send messages to the appropriate
@@ -75,22 +78,32 @@ impl EventHandler for TrackEndHandler {
         // tracing::error!("Set volume");
 
         if autopause {
-            tracing::error!("Pausing");
+            tracing::trace!("Pausing");
             self.call.lock().await.queue().pause().ok();
         } else {
-            tracing::error!("Not pausing");
+            tracing::trace!("Not pausing");
         }
 
-        tracing::error!("Forgetting skip votes");
+        tracing::trace!("Forgetting skip votes");
         // FIXME
         match forget_skip_votes(&self.data, self.guild_id).await {
-            Ok(_) => tracing::warn!("Forgot skip votes"),
+            Ok(_) => tracing::trace!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 
-        let (channel, track) = {
+        if !autoplay {
+            return None;
+        }
+
+        let pool = if let Some(pool) = &self.data.database_pool {
+            pool
+        } else {
+            return None;
+        };
+
+        let (channel, next_track) = {
             let handler = self.call.lock().await;
             let channel = match music_channel {
                 Some(c) => c,
@@ -103,109 +116,42 @@ impl EventHandler for TrackEndHandler {
             (channel, track)
         };
 
-        let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
-            let (sb_chan_id, my_metadata, cur_pos) = {
-                // let (channel, track) = {
-                //     let handler = self.call.lock().await;
-                //     let channel = match music_channel {
-                //         Some(c) => c,
-                //         _ => handler
-                //             .current_channel()
-                //             .map(|c| ChannelId::new(c.0.get()))
-                //             .unwrap(),
-                //     };
-                //     let track = handler.queue().current().clone();
-                //     (channel, track)
-                // };
-                let chan_id = channel;
-                match (track, autoplay) {
-                    (None, false) => (
-                        channel,
-                        MyAuxMetadata::Data(AuxMetadata::default()),
-                        Duration::from_secs(0),
-                    ),
-                    (None, true) => {
-                        let spotify = SPOTIFY.lock().await;
-                        let spotify =
-                            verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
-                                .unwrap();
-                        // Get last played tracks from the db
-                        let pool = self.data.database_pool.as_ref().unwrap();
-                        let last_played = pool
-                            .get_last_played_by_guild(self.guild_id, 5)
-                            .await
-                            .unwrap_or_default();
-                        let res_rec =
-                            Spotify::get_recommendations(spotify, last_played.clone()).await;
-                        let (rec, msg) = match res_rec {
-                            Ok(rec) => {
-                                let msg1 =
-                                    format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
-                                (rec, msg1)
-                            },
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
-                                let rec = vec![];
-                                (rec, msg)
-                            },
-                        };
-                        tracing::warn!("{}", msg);
-                        let msg = chan_id
-                            .say((&self.cache, self.http.as_ref()), msg)
-                            .await
-                            .unwrap();
-                        self.data.add_msg_to_cache(self.guild_id, msg).await;
-                        let query = match Spotify::search(spotify, &rec[0]).await {
-                            Ok(query) => query,
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
-                                tracing::warn!("{}", msg);
-                                // chan_id.say(&self.http, msg).await.unwrap();
-                                return None;
-                            },
-                        };
-                        let cache_http = (&self.cache, self.http.as_ref());
-                        let tracks = enqueue_track_pgwrite_asdf(
-                            UserId::new(1),
-                            cache_http,
-                            &self.call,
-                            &query,
-                        )
-                        .await
-                        .ok()?;
-                        let (my_metadata, pos) = match tracks.first() {
-                            Some(t) => {
-                                let (my_metadata, pos) =
-                                    extract_track_metadata(t).await.unwrap_or_default();
-                                let _ = t.set_volume(volume);
-                                (my_metadata, pos)
-                            },
-                            None => {
-                                let msg = format!("No tracks found for query: {:?}", query);
-                                tracing::warn!("{}", msg);
-                                (
-                                    MyAuxMetadata::Data(AuxMetadata::default()),
-                                    Duration::from_secs(0),
-                                )
-                            },
-                        };
+        if next_track.is_some() {
+            return None;
+        }
 
-                        (channel, my_metadata, pos)
-                    },
-                    (Some(track), _) => {
-                        let _ = track.set_volume(volume);
-                        let (my_metadata, pos) =
-                            extract_track_metadata(&track).await.unwrap_or_default();
+        let cache_http = (&self.cache, self.http.as_ref());
 
-                        (channel, my_metadata, pos)
-                    },
-                }
-            };
-            // let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
-            let chan_id = sb_chan_id;
-            let chan_name = chan_id.name(&self.http).await.unwrap();
-            (chan_id, chan_name, my_metadata, cur_pos)
+        let query = match get_recommended_track_query(&pool, self.guild_id).await {
+            Ok(query) => query,
+            Err(e) => {
+                let msg = format!("Error: {}", e);
+                tracing::warn!("{}", msg);
+                return None;
+            },
         };
+        let tracks = enqueue_track_pgwrite_asdf(UserId::new(1), cache_http, &self.call, &query)
+            .await
+            .ok()?;
+        let (my_metadata, pos) = match tracks.first() {
+            Some(t) => {
+                let (my_metadata, pos) = extract_track_metadata(t).await.unwrap_or_default();
+                let _ = t.set_volume(volume);
+                (my_metadata, pos)
+            },
+            None => {
+                let msg = format!("No tracks found for query: {:?}", query);
+                tracing::warn!("{}", msg);
+                (
+                    MyAuxMetadata::Data(AuxMetadata::default()),
+                    Duration::from_secs(0),
+                )
+            },
+        };
+
+        let chan_id = channel;
+        let cur_position = pos;
+        let MyAuxMetadata::Data(metadata) = my_metadata;
 
         tracing::info!("Sending now playing message");
 
@@ -295,5 +241,27 @@ pub async fn update_queue_messages(
         if edit_message.is_err() {
             forget_queue_message(data, message, guild_id).await.ok();
         };
+    }
+}
+
+/// Get's the recommended tracks for a guild. Returns `QueryType::None` on failure.
+/// Looks at the top
+async fn get_recommended_track_query(
+    pool: &sqlx::PgPool,
+    guild_id: GuildId,
+) -> CrackedResult<QueryType> {
+    let spotify = SPOTIFY.lock().await;
+    let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+
+    let last_played = pool.get_last_played_by_guild(guild_id, 5).await?;
+    let res_rec = Spotify::get_recommendations(spotify, last_played.clone()).await?;
+
+    if res_rec.is_empty() {
+        return Ok(QueryType::None);
+    }
+
+    match Spotify::search(spotify, &res_rec[0]).await {
+        Ok(query) => Ok(query),
+        Err(e) => Err(e),
     }
 }

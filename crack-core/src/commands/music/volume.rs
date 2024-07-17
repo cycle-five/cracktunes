@@ -30,6 +30,9 @@ pub async fn volume(
     }
     volume_internal(&ctx, level).await
 }
+
+#[cfg(not(tarpaulin_include))]
+/// Internal method to handle volume changes.
 pub async fn volume_internal<'ctx>(
     ctx: &'ctx Context<'_>,
     level: Option<u32>,

@@ -14,6 +14,7 @@ use serenity::all::User;
     slash_command,
     required_permissions = "ADMINISTRATOR"
 )]
+#[cfg(not(tarpaulin_include))]
 pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Authorized.").await?;
 
