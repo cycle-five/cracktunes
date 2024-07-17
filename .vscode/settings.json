@@ -28,5 +28,7 @@
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
     "keyboard.dispatch": "keyCode",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    //"terminal.integrated.fontFamily": "0xProto Nerd Font Mono"
+    "terminal.integrated.fontFamily": "monospace"
 }

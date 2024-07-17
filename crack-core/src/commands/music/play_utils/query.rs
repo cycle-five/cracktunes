@@ -15,7 +15,7 @@ use crate::{
     sources::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        youtube::{search_query_to_source_and_metadata_ytdl, video_info_to_source_and_metadata},
+        youtube::search_query_to_source_and_metadata_ytdl,
     },
     utils::{edit_response_poise, yt_search_select},
     Context, Error,
@@ -595,12 +595,12 @@ impl QueryType {
             },
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
-                video_info_to_source_and_metadata(client.clone(), query.clone()).await
-                // let mut ytdl = YoutubeDl::new(client, query.clone());
+                // video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                let mut ytdl = YoutubeDl::new(client, query.clone());
                 // tracing::warn!("ytdl: {:?}", ytdl);
-                // let metadata = ytdl.aux_metadata().await?;
-                // let my_metadata = MyAuxMetadata::Data(metadata);
-                // Ok((ytdl.into(), vec![my_metadata]))
+                let metadata = ytdl.aux_metadata().await?;
+                let my_metadata = MyAuxMetadata::Data(metadata);
+                Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");

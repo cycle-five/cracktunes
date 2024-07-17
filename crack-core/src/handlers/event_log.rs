@@ -348,8 +348,9 @@ pub async fn handle_event(
         FullEvent::GuildCreate { guild, is_new } => {
             if is_new.unwrap_or(false) {
                 tracing::warn!("New Guild!!! {}", guild.name);
+                let mut guild_settings: Option<GuildSettings> = None;
                 if data_global.database_pool.is_some() {
-                    GuildEntity::get_or_create(
+                    let (_, new_guild_settings) = GuildEntity::get_or_create(
                         data_global.database_pool.as_ref().unwrap(),
                         guild.id.get() as i64,
                         guild.name.clone(),
@@ -360,8 +361,13 @@ pub async fn handle_event(
                             .unwrap_or("r!".to_string()),
                     )
                     .await?;
+                    guild_settings = Some(new_guild_settings);
                 } else {
                     tracing::error!("No database pool available");
+                };
+                if guild_settings.is_some() {
+                    let settings = guild_settings.unwrap();
+                    data_global.insert_guild(guild.id, settings).await?;
                 }
             }
             log_event!(
