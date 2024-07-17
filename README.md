@@ -130,10 +130,17 @@ docker compose up -d
 
 ## TODO:
 
-- [ ] discordbotlist.com
+- [ ] discordbotlist.com (voting service)
+- [ ] Finish adding help option to all commands
+- [ ] Update and make wider use of rusty_ytdlp.
 
-## v0.3.8 (2024/06/??)
+## v0.3.8 (2024/07/17)
 
+- [x] Looked at rolling back to reqwest 2.11 because it was causing problems.
+      Decided to stick with 2.12 and keep using the forked and patched version
+      of serenity, poise, songbird, etc.
+- [x] Pulled in songbird update to support soundcloud and streaming m8u3 files.
+- [x] More refactoring.
 - [x] Brainf\*\*k interpreter.
 - [x] Switched all locks from blocking to non-blocking async.
 - [x] Unify messaging module.
@@ -141,6 +148,7 @@ docker compose up -d
 - [-] Change `let _ = send_reply(&ctx, msg, true).await?;`
       to `ctx.send_reply(msg, true).await?;` (half done)
       ...
+For next version...
 
 ## v0.3.7 (2024/05/29)
 
