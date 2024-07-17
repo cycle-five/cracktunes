@@ -131,8 +131,6 @@ docker compose up -d
 ## TODO:
 
 - [ ] discordbotlist.com
-- [ ] Change `let _ = send_reply(&ctx, msg, true).await?;`
-      to `ctx.send_reply(msg, true).await?;`
 
 ## v0.3.8 (2024/06/??)
 
@@ -140,6 +138,8 @@ docker compose up -d
 - [x] Switched all locks from blocking to non-blocking async.
 - [x] Unify messaging module.
 - [x] Fixed repeat bug when nothing is playing.
+- [-] Change `let _ = send_reply(&ctx, msg, true).await?;`
+      to `ctx.send_reply(msg, true).await?;` (half done)
       ...
 
 ## v0.3.7 (2024/05/29)

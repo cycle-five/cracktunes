@@ -34,38 +34,38 @@ pub const DOMAIN_FORM_BANNED_PLACEHOLDER: &str =
     "Add domains separated by \';\'. If left blank, all (except for allowed) are blocked by default.";
 pub const DOMAIN_FORM_TITLE: &str = "Manage sources";
 
-pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
+pub const EMPTY_SEARCH_RESULT: &str = "⚠️ No search results found!";
 pub const ERROR: &str = "Fatality! Something went wrong ☹️";
 pub const EXTRA_TEXT_AT_BOTTOM: &str =
     "This is a friendly cracking, smoking parrot that plays music.";
-pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
-pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
+pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
+pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
 pub const FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA: &str =
-    "⚠️ Failed to fetch metadata from rusty_ytdl!";
-pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
+    "⚠️ Failed to fetch metadata from rusty_ytdl!";
+pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
 ///?
-pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
-pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
-pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
-pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
-pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";
-pub const FAIL_INVALID_PERMS: &str = "⚠️ Invalid permissions!!";
-pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";
-pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
-pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
+pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
+pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
+pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
+pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
+pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";
+pub const FAIL_INVALID_PERMS: &str = "⚠️ Invalid permissions!!";
+pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";
+pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
+pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
 pub const FAIL_NO_VIRUSTOTAL_API_KEY: &str =
-    "⚠️ The VIRUS_TOTAL_API_KEY environment variable is not set!";
-pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
-pub const FAIL_NO_QUERY_PROVIDED: &str = "⚠️ No query provided!";
+    "⚠️ The VIRUS_TOTAL_API_KEY environment variable is not set!";
+pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
+pub const FAIL_NO_QUERY_PROVIDED: &str = "⚠️ No query provided!";
 pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
-pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
-pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
-pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
-pub const FAIL_TO_SET_CHANNEL_SIZE: &str = "⚠️ Failed to set channel size!";
-pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";
-pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
-pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
-pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
+pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
+pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
+pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
+pub const FAIL_TO_SET_CHANNEL_SIZE: &str = "⚠️ Failed to set channel size!";
+pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";
+pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
+pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
+pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
 
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
@@ -146,7 +146,7 @@ pub const STOPPED: &str = "⏹️ Stopped!";
 pub const SUGGESTION: &str = "📝 Suggestion";
 pub const SUBCOMMAND_NOT_FOUND: &str = "⚠️ Subcommand {subcommand} for group {group} not found!";
 pub const TIMEOUT: &str = "⏱️ User Timed Out!";
-pub const TRACK_DURATION: &str = "Track duration: ";
+pub const TRACK_DURATION: &str = "Track duration:";
 pub const TRACK_NOT_FOUND: &str = "⚠️ **Could not play track!**\nYour request yielded no results.";
 pub const TRACK_INAPPROPRIATE: &str = "⚠️ **Could not play track!**\nThe video you requested may be inappropriate for some users, so sign-in is required.";
 pub const TRACK_TIME_TO_PLAY: &str = "Estimated time until play:";

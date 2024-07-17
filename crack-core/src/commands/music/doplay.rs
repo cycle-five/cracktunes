@@ -3,8 +3,8 @@ use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, sub_help as help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
-use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::CrackedResult;
+use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use ::serenity::all::CommandInteraction;
 //FIXME
 use crate::utils::edit_embed_response2;
@@ -155,7 +155,6 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-
     //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     let is_prefix = ctx.prefix() != "/";
@@ -514,7 +513,7 @@ async fn build_queued_embed(
     // let title_text = &format!("[**{}**]({})", meta_title, source_url);
 
     let footer_text = format!(
-        "{}{}\n{}{}",
+        "{} {}\n{} {}",
         TRACK_DURATION,
         get_human_readable_timestamp(metadata.duration),
         TRACK_TIME_TO_PLAY,
