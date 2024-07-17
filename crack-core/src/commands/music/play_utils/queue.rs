@@ -58,6 +58,13 @@ pub async fn queue_track_ready_front(
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(ready_track.track).await;
     let new_q = handler.queue().current_queue();
+    // Zeroth index: Currently playing track
+    // First index: Current next track
+    // Second index onward: Tracks to be played, we get in here most likely,
+    // but if we're in one of the first two we don't want to do anything.
+    if new_q.len() < 3 {
+        return Ok(new_q);
+    }
     handler.queue().modify_queue(|queue| {
         let back = queue.pop_back().unwrap();
         queue.insert(1, back);
