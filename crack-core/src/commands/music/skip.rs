@@ -87,7 +87,6 @@ pub async fn create_skip_response(
     guild_only
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
 
     let call = get_call_or_join_author(ctx).await?;

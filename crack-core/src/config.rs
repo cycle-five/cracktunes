@@ -181,8 +181,8 @@ pub async fn poise_framework(
         .as_ref()
         .map(|x| {
             x.iter()
-             .map(|gs| (gs.guild_id, gs.clone()))
-             .collect::<HashMap<GuildId, GuildSettings>>()
+                .map(|gs| (gs.guild_id, gs.clone()))
+                .collect::<HashMap<GuildId, GuildSettings>>()
         })
         .unwrap_or_default();
 

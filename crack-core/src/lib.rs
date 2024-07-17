@@ -613,7 +613,7 @@ impl Data {
             PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into(), 1).await?;
         let pool = self.database_pool.as_ref().unwrap();
         let id = *play_log_id.first().unwrap() as i32;
-        let _ = TrackReaction::insert(pool, id).await;
+        let _ = TrackReaction::insert(pool, id).await?;
         TrackReaction::add_dislike(pool, id).await
     }
 

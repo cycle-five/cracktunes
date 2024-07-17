@@ -71,7 +71,7 @@ crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true}
+poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
 vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = [
@@ -82,7 +82,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "cookies",
   "charset",
   "http2",
-  "macos-system-configuration"
+  "macos-system-configuration",
 ] }
 
 # Config for 'cargo dist'
@@ -92,7 +92,7 @@ cargo-dist-version = "0.17.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell"]
+installers = ["shell", "npm"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu"]
 # Publish jobs to run in CI
@@ -101,12 +101,12 @@ pr-run-mode = "upload"
 install-updater = false
 # Where to host releases
 hosting = "github"
-# The archive format to use for windows builds (defaults .zip)
-windows-archive = ".tar.gz"
 # The archive format to use for non-windows builds (defaults .tar.xz)
 unix-archive = ".tar.gz"
 # A namespace to use when publishing this package to the npm registry
 npm-scope = "@cracktunes"
+# The archive format to use for windows builds (defaults .zip)
+windows-archive = ".tar.gz"
 
 [profile.release]
 incremental = true
@@ -124,5 +124,5 @@ opt-level = 3
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
-inherits = "release"
+inherits = "release-with-performance"
 lto = "thin"

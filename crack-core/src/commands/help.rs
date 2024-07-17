@@ -55,12 +55,7 @@ pub async fn builtin_help(
 
 /// Show the help menu.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(
-    category = "Utility",
-    rename = "help",
-    prefix_command,
-    hide_in_help
-)]
+#[poise::command(category = "Utility", rename = "help", prefix_command, hide_in_help)]
 pub async fn sub_help(ctx: Context<'_>) -> Result<(), Error> {
     // This makes it possible to just make `help` a subcommand of any command
     // `/fruit help` turns into `/help fruit`
@@ -528,7 +523,7 @@ async fn help_single_command(
         let bot_name = ctx.cache().current_user().name.clone();
         create_paged_embed(ctx, bot_name, "Help".to_string(), reply, 900).await?;
     } else {
-        let create_reply= CreateReply::default()
+        let create_reply = CreateReply::default()
             .content(reply)
             .ephemeral(config.ephemeral);
         ctx.send(create_reply).await?;
