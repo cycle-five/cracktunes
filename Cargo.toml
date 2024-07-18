@@ -1,25 +1,18 @@
 [workspace]
-members = ["cracktunes", "crack-core", "crack-osint", "crack-gpt"]
+members = [
+  "cracktunes",
+  "crack-core",
+  "crack-osint",
+  "crack-gpt",
+  "crack-bf",
+  "crack-voting",
+]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
-
-[workspace.dependencies]
-crack-core = { path = "crack-core", default-features = true, version = "0.3.7" }
-crack-osint = { path = "crack-osint", default-features = true, version = "0.1" }
-crack-gpt = { path = "crack-gpt", default-features = true, version = "0.1" }
-
-reqwest = { version = "0.12.4", default-features = false, features = [
-  "blocking",
-  "json",
-  "multipart",
-  "rustls-tls",
-] }
-tracing = "0.1.40"
-
 
 [workspace.dependencies.sqlx]
 version = "0.7.4"
@@ -30,13 +23,15 @@ features = [
   "macros",
   "postgres",
   "chrono",
+  "time",
   "migrate",
   "json",
 ]
 
 [workspace.dependencies.serenity]
-version = "0.12.1"
+# Broken? try self-host.
 git = "https://github.com/CycleFive/serenity"
+version = "0.12"
 branch = "current"
 default-features = false
 features = [
@@ -56,21 +51,62 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
+# Broken? try self-hosted?
 git = "https://github.com/cycle-five/songbird"
 branch = "current"
-version = "0.4.1"
+version = "0.4.2"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
-[workspace.dependencies.poise]
-git = "https://github.com/cycle-five/poise"
-branch = "current"
-default-features = true
-features = ["cache", "chrono"]
+[workspace.dependencies.symphonia]
+version = "0.5.4"
+features = ["all-formats", "all-codecs"]
 
 [workspace.dependencies.tokio]
-version = "1.37.0"
+version = "1.38"
 default-features = false
-features = ["macros", "rt", "rt-multi-thread", "signal", "sync"]
+features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
+
+[workspace.dependencies]
+crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
+crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
+crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
+crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
+poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
+vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
+tracing = "0.1"
+reqwest = { version = "0.12", default-features = false, features = [
+  "blocking",
+  "json",
+  "multipart",
+  "rustls-tls",
+  "cookies",
+  "charset",
+  "http2",
+  "macos-system-configuration",
+] }
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.17.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "npm"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-unknown-linux-gnu"]
+# Publish jobs to run in CI
+pr-run-mode = "upload"
+# Whether to install an updater program
+install-updater = false
+# Where to host releases
+hosting = "github"
+# The archive format to use for non-windows builds (defaults .tar.xz)
+unix-archive = ".tar.gz"
+# A namespace to use when publishing this package to the npm registry
+npm-scope = "@cracktunes"
+# The archive format to use for windows builds (defaults .zip)
+windows-archive = ".tar.gz"
 
 [profile.release]
 incremental = true
@@ -85,3 +121,8 @@ debug = 1
 inherits = "release"
 lto = true
 opt-level = 3
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release-with-performance"
+lto = "thin"

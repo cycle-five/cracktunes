@@ -1,18 +1,32 @@
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
-    Error,
+    commands::{cmd_check_music, help},
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    utils::send_reply,
+    Context, Error,
 };
 use songbird::error::JoinError;
 
-/// Leave  a voice channel.
+/// Tell the bot to leave the voice channel it is in.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Music",
     prefix_command,
     slash_command,
     guild_only,
-    aliases("dc", "fuckoff", "fuck off")
+    aliases("dc", "fuckoff", "fuck off"),
+    //subcommands("help"),
+    check = "cmd_check_music"
 )]
-pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn leave(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show a help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     leave_internal(ctx).await
 }
 
@@ -37,7 +51,6 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
     };
 
-    let msg = send_response_poise(ctx, crack_msg, true).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    let _ = send_reply(&ctx, crack_msg, true).await?;
     Ok(())
 }

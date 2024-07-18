@@ -1,6 +1,9 @@
 use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
+use crate::messaging::interface::create_search_response;
+use crate::sources::youtube::video_info_to_source_and_metadata;
+use crate::CrackedResult;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -13,12 +16,8 @@ use crate::{
     sources::{
         rusty_ytdl::RustyYoutubeClient,
         spotify::{Spotify, SpotifyTrack, SPOTIFY},
-        youtube::{
-            search_query_to_source_and_metadata_rusty, search_query_to_source_and_metadata_ytdl,
-            video_info_to_source_and_metadata,
-        },
     },
-    utils::{edit_response_poise, send_search_response, yt_search_select},
+    utils::{edit_response_poise, yt_search_select},
     Context, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
@@ -297,7 +296,7 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => {
                 self.mode_search_keywords(ctx, call, query.clone()).await
             },
-            _ => send_search_failed(ctx).await.map(|_| Vec::new()),
+            _ => send_search_failed(&ctx).await.map(|_| Vec::new()),
         }
     }
 
@@ -319,7 +318,7 @@ impl QueryType {
         )
         .await?;
         queue_track_back(ctx, &call, &qt).await
-        // update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await
+        // update_queue_messages(ctx, ctx.data(), &queue, guild_id).await
     }
 
     pub async fn mode_next(
@@ -393,7 +392,7 @@ impl QueryType {
                     .search(None)
                     .await?;
                 let user_id = ctx.author().id;
-                send_search_response(ctx, guild_id, user_id, query.clone(), res).await?;
+                create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
@@ -441,7 +440,7 @@ impl QueryType {
                 // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
                 Ok(true)
             },
-            QueryType::None => send_no_query_provided(ctx).await.map(|_| false),
+            QueryType::None => send_no_query_provided(&ctx).await.map(|_| false),
         }
     }
 
@@ -477,7 +476,7 @@ impl QueryType {
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(&ctx, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }
@@ -576,11 +575,9 @@ impl QueryType {
         // }
     }
 
-    // FIXME: Do you want to have a reqwest client we keep around and pass into
-    // this instead of creating a new one every time?
     pub async fn get_track_source_and_metadata(
         &self,
-    ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    ) -> CrackedResult<(SongbirdInput, Vec<MyAuxMetadata>)> {
         use colored::Colorize;
         let client = http_utils::get_client().clone();
         tracing::warn!("{}", format!("query_type: {:?}", self).red());
@@ -599,27 +596,18 @@ impl QueryType {
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
                 video_info_to_source_and_metadata(client.clone(), query.clone()).await
-                // let mut ytdl = YoutubeDl::new(client, query);
-                // tracing::warn!("ytdl: {:?}", ytdl);
+                // let mut ytdl = YoutubeDl::new(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
                 // let my_metadata = MyAuxMetadata::Data(metadata);
                 // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                let res = search_query_to_source_and_metadata_rusty(
-                    client.clone(),
-                    QueryType::Keywords(query.clone()),
-                )
-                .await;
-                match res {
-                    Ok((input, metadata)) => Ok((input, metadata)),
-                    Err(_) => {
-                        tracing::error!("falling back to ytdl!");
-                        search_query_to_source_and_metadata_ytdl(client.clone(), query.clone())
-                            .await
-                    },
-                }
+                // video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                let metadata = ytdl.aux_metadata().await?;
+                let my_metadata = MyAuxMetadata::Data(metadata);
+                Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");

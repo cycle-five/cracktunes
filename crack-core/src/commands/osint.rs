@@ -1,17 +1,18 @@
-use crate::utils::send_channel_message;
-pub use crate::{
+use crate::{
+    commands::sub_help as help,
+    http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    utils::{send_response_poise, SendMessageParams},
+    utils::send_reply_embed,
     Context, Error,
 };
-use crack_osint::VirusTotalClient;
+use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
 use std::result::Result;
-use std::sync::Arc;
 
 /// Osint Commands
 #[poise::command(
+    category = "OsInt",
     prefix_command,
     slash_command,
     subcommands(
@@ -21,11 +22,12 @@ use std::sync::Arc;
         // "socialmedia",
         // "wayback",
         // "whois",
-        // "checkpass",
         // "phlookup",
         // "phcode",
+        "checkpass",
         "scan",
         "virustotal_result",
+        "help",
     ),
 )]
 pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
@@ -40,7 +42,9 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
         .await?
         .into_message()
         .await?;
-    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
+    ctx.data()
+        .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
+        .await;
     tracing::warn!("{}", msg_str.clone());
 
     Ok(())
@@ -84,23 +88,22 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
         ephemeral: false,
         reply: true,
         msg: message,
+        ..Default::default()
     };
 
-    let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
+    let _msg = ctx.send_channel_message(params).await?;
     Ok(())
 }
 
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error> {
-    use crate::http_utils;
-
     ctx.reply("Scanning...").await?;
     let api_key = std::env::var("VIRUSTOTAL_API_KEY")
         .map_err(|_| crate::CrackedError::Other("VIRUSTOTAL_API_KEY"))?;
     let channel_id = ctx.channel_id();
     tracing::info!("channel_id: {}", channel_id);
-    let client = VirusTotalClient::new(&api_key, http_utils::get_client().clone());
+    let client = VirusTotalClient::new(&api_key, crate::http_utils::get_client().clone());
 
     tracing::info!("client: {:?}", client);
 
@@ -120,9 +123,25 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
         ephemeral: false,
         reply: true,
         msg: message,
+        ..Default::default()
     };
 
-    let _msg = send_channel_message(Arc::new(ctx.http()), params).await?;
+    let _msg = ctx.send_channel_message(params).await?;
+    Ok(())
+}
+
+/// Check if a password has been pwned.
+#[poise::command(prefix_command, hide_in_help)]
+pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> {
+    let pwned = check_password_pwned(&password).await?;
+    let message = if pwned {
+        CrackedMessage::PasswordPwned
+    } else {
+        CrackedMessage::PasswordSafe
+    };
+
+    send_reply_embed(&ctx, message).await?;
+
     Ok(())
 }
 

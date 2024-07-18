@@ -5,6 +5,8 @@ use self::serenity::model::{
 use crate::{errors::CrackedError, Error};
 use poise::serenity_prelude as serenity;
 
+/// Enum for types of voice connection relationships.
+#[derive(Debug, PartialEq)]
 pub enum Connection {
     User(ChannelId),
     Bot(ChannelId),
@@ -13,6 +15,7 @@ pub enum Connection {
     Neither,
 }
 
+/// Check the voice connection relationship to anopther user_id (bot).
 pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId) -> Connection {
     let user_channel = get_voice_channel_for_user(guild, user_id).ok();
     let bot_channel = get_voice_channel_for_user(guild, bot_id).ok();
@@ -32,10 +35,50 @@ pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId)
     }
 }
 
+/// Get the voice channel a user is in within a guild.
 pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<ChannelId, Error> {
     guild
         .voice_states
         .get(user_id)
         .and_then(|voice_state| voice_state.channel_id)
         .ok_or(CrackedError::NotConnected.into())
+}
+
+/// Get the voice channel a user is in within a guild, return a different error than normal
+/// for the summoning case.
+pub fn get_voice_channel_for_user_summon(
+    guild: &Guild,
+    user_id: &UserId,
+) -> Result<ChannelId, Error> {
+    match get_voice_channel_for_user(guild, user_id) {
+        Ok(channel_id) => Ok(channel_id),
+        Err(_) => {
+            tracing::warn!(
+                "User {} is not in a voice channel in guild {}",
+                user_id,
+                guild.id
+            );
+            Err(CrackedError::WrongVoiceChannel.into())
+        },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{check_voice_connections, Connection};
+    use poise::serenity_prelude as serenity;
+    use serenity::Guild;
+    use serenity::UserId;
+
+    #[test]
+    fn test_check_voice_connections() {
+        let guild = Guild::default();
+        let user_id = UserId::new(1);
+        let bot_id = UserId::new(2);
+
+        assert_eq!(
+            check_voice_connections(&guild, &user_id, &bot_id),
+            Connection::Neither
+        );
+    }
 }

@@ -19,6 +19,8 @@ Secrets.toml
 .env.old
 cracktunes.env
 cracktunes.toml
+dotenv
+dist-manifest.json
 
 # IDE config
 #.vscode/

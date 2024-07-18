@@ -3,13 +3,16 @@ name = "crack-osint"
 version = "0.1.4"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
-publish = false
+publish = true
 license = "MIT"
 description = "OSINT module for Cracktunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-repository = "https://git.sr.ht/~cycle-five/cracktunes"
+# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
+# repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
 
 [dependencies]
 whois-rust = "1.6"
@@ -17,24 +20,18 @@ sha1 = "0.10"
 ipinfo = { git = "https://github.com/cycle-five/ipinfo-rs", version = "3.0.1" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
 tokio = { workspace = true }
-# poise = { workspace = true }
 tracing = { workspace = true }
-reqwest = { version = "0.12.4", default-features = false, features = [
-    "blocking",
-    "json",
-    "multipart",
-    "rustls-tls",
-    "cookies",
-] }
+reqwest = { workspace = true }
 
 [features]
-default = []
+default = ["checkpass", "virustotal", "scan"]
 checkpass = []
-phone = []
-social = []
-wayback = []
-whois = []
 virustotal = []
 scan = []
-ip = []
+#phone = []
+#social = []
+#wayback = []
+#whois = []
+#ip = []

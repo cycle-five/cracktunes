@@ -1,5 +1,6 @@
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::messaging::messages::UNKNOWN;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
@@ -10,7 +11,8 @@ use poise::serenity_prelude::Mentionable;
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    owners_only
+    owners_only,
+    category = "admin"
 )]
 pub async fn deauthorize(
     ctx: Context<'_>,
@@ -26,7 +28,7 @@ pub async fn deauthorize(
         .to_partial_guild(ctx)
         .await
         .map(|g| g.name)
-        .unwrap_or_else(|_| "Unknown".to_string());
+        .unwrap_or_else(|_| UNKNOWN.to_string());
 
     let res = ctx
         .data()
@@ -49,8 +51,8 @@ pub async fn deauthorize(
     tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     let mention = user.mention();
-    let msg = send_response_poise(
-        ctx,
+    let _ = send_reply(
+        &ctx,
         CrackedMessage::UserDeauthorized {
             id,
             mention,
@@ -60,8 +62,6 @@ pub async fn deauthorize(
         true,
     )
     .await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg);
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use serenity::all::{Mentionable, User};
@@ -27,15 +27,15 @@ pub async fn kick(
     let as_embed = ctx.data().get_reply_with_embed(guild_id).await;
     let guild = guild_id.to_partial_guild(&ctx).await?;
     if let Err(e) = guild.kick(&ctx, id).await {
-        send_response_poise(
-            ctx,
+        send_reply(
+            &ctx,
             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
             as_embed,
         )
         .await?;
     } else {
         // Send success message
-        send_response_poise(ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
+        send_reply(&ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
     }
     Ok(())
 }
@@ -97,7 +97,7 @@ pub async fn rename_all(
         }
         let r = rand::random::<usize>() % names.len();
         let random_name = names.remove(r).clone();
-        let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(ctx, guild_id).await {
+        let (emoji, new_name) = if let Some(cur_nick) = member.user.nick_in(&ctx, guild_id).await {
             // if cur_nick.contains("&amp;") {
             //     random_name = cur_nick.replace("&amp;", "&");
             // }
@@ -162,14 +162,14 @@ pub async fn rename_all(
 //     let guild = guild_id.to_partial_guild(&ctx).await?;
 //     if let Err(e) = guild.kick(&ctx, user_id).await {
 //         // Handle error, send error message
-//         send_response_poise(
-//             ctx,
+//         send_reply(
+//             &ctx,
 //             CrackedMessage::Other(format!("Failed to kick user: {}", e)),
 //         )
 //         .await?;
 //     } else {
 //         // Send success message
-//         send_response_poise(ctx, CrackedMessage::UserKicked { user_id }).await?;
+//         send_reply(&ctx, CrackedMessage::UserKicked { user_id }).await?;
 //     }
 //     Ok(())
 // }

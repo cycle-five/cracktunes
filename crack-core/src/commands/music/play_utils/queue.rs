@@ -1,19 +1,18 @@
 use super::QueryType;
 use crate::{
     commands::{Mode, MyAuxMetadata, RequestingUser},
-    db::{aux_metadata_to_db_structures, Metadata, PlayLog, User},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    Context as CrackContext, ContextExt, Error,
+    poise_ext::ContextExt,
+    Context as CrackContext, Error,
 };
-use serenity::all::{CacheHttp, ChannelId, CreateEmbed, EditMessage, GuildId, Message, UserId};
+use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{
-    input::{AuxMetadata, Input as SongbirdInput},
+    input::Input as SongbirdInput,
     tracks::{Track, TrackHandle},
     Call,
 };
-use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -23,6 +22,26 @@ pub struct TrackReadyData {
     pub metadata: MyAuxMetadata,
     pub user_id: UserId,
     pub username: String,
+}
+
+/// Takes a query and returns a track that is ready to be played, along with relevant metadata.
+pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
+    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
+        query_type.get_track_source_and_metadata().await?;
+    let metadata = match metadata_vec.first() {
+        Some(x) => x.clone(),
+        None => {
+            return Err(CrackedError::Other("metadata.first() failed"));
+        },
+    };
+    let track: Track = source.into();
+
+    Ok(TrackReadyData {
+        track,
+        metadata,
+        user_id: UserId::new(1),
+        username: "auto".to_string(),
+    })
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -59,6 +78,13 @@ pub async fn queue_track_ready_front(
     let mut handler = call.lock().await;
     let track_handle = handler.enqueue(ready_track.track).await;
     let new_q = handler.queue().current_queue();
+    // Zeroth index: Currently playing track
+    // First index: Current next track
+    // Second index onward: Tracks to be played, we get in here most likely,
+    // but if we're in one of the first two we don't want to do anything.
+    if new_q.len() < 3 {
+        return Ok(new_q);
+    }
     handler.queue().modify_queue(|queue| {
         let back = queue.pop_back().unwrap();
         queue.insert(1, back);
@@ -158,7 +184,7 @@ pub async fn queue_keyword_list_back<'a>(
             .collect::<Vec<String>>()
             .join("\n");
         msg.edit(
-            ctx,
+            &ctx,
             EditMessage::new().embed(CreateEmbed::default().description(format!(
                 "Queuing {} songs... \n{}",
                 chunk.len(),
@@ -249,117 +275,6 @@ pub async fn queue_query_list_offset<'a>(
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 
     Ok(())
-}
-
-/// Writes metadata to the database for a playing track.
-#[cfg(not(tarpaulin_include))]
-pub async fn write_metadata_pg(
-    database_pool: &PgPool,
-    aux_metadata: AuxMetadata,
-    user_id: UserId,
-    username: String,
-    guild_id: GuildId,
-    channel_id: ChannelId,
-) -> Result<Metadata, CrackedError> {
-    let returned_metadata = {
-        let (metadata, _playlist_track) = match aux_metadata_to_db_structures(
-            &aux_metadata,
-            guild_id.get() as i64,
-            channel_id.get() as i64,
-        ) {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("aux_metadata_to_db_structures error: {}", e);
-                return Err(CrackedError::Other("aux_metadata_to_db_structures error"));
-            },
-        };
-        let updated_metadata =
-            match crate::db::metadata::Metadata::get_or_create(database_pool, &metadata).await {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!("crate::db::metadata::Metadata::create error: {}", e);
-                    metadata.clone()
-                },
-            };
-
-        match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
-            Ok(_) => {
-                tracing::info!("Users::insert_or_update");
-            },
-            Err(e) => {
-                tracing::error!("Users::insert_or_update error: {}", e);
-            },
-        };
-        match PlayLog::create(
-            database_pool,
-            user_id.get() as i64,
-            guild_id.get() as i64,
-            updated_metadata.id as i64,
-        )
-        .await
-        {
-            Ok(x) => {
-                tracing::info!("PlayLog::create: {:?}", x);
-            },
-            Err(e) => {
-                tracing::error!("PlayLog::create error: {}", e);
-            },
-        };
-        metadata
-    };
-    Ok(returned_metadata)
-}
-
-/// Enqueues a track and adds metadata to the database. (parameters broken out)
-// TODO: This is redundant with the other queuing functions. Remove it.
-#[cfg(not(tarpaulin_include))]
-pub async fn enqueue_track_pgwrite_asdf(
-    database_pool: &PgPool,
-    guild_id: GuildId,
-    channel_id: ChannelId,
-    user_id: UserId,
-    cache_http: impl CacheHttp,
-    call: &Arc<Mutex<Call>>,
-    query_type: &QueryType,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    // use crate::sources::youtube::get_track_source_and_metadata;
-
-    tracing::info!("query_type: {:?}", query_type);
-    // is this comment still relevant to this section of code?
-    // safeguard against ytdl dying on a private/deleted video and killing the playlist
-    let (source, metadata): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
-    let res = match metadata.first() {
-        Some(x) => x.clone(),
-        None => {
-            return Err(CrackedError::Other("metadata.first() failed"));
-        },
-    };
-    let track: Track = source.into();
-
-    let username = cache_http.user_id_to_username_or_default(user_id);
-
-    let MyAuxMetadata::Data(aux_metadata) = res.clone();
-
-    let returned_metadata = write_metadata_pg(
-        database_pool,
-        aux_metadata,
-        user_id,
-        username,
-        guild_id,
-        channel_id,
-    )
-    .await?;
-
-    tracing::info!("returned_metadata: {:?}", returned_metadata);
-
-    let mut handler = call.lock().await;
-    let track_handle = handler.enqueue(track).await;
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(res.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
-
-    Ok(handler.queue().current_queue())
 }
 
 /// Get the play mode and the message from the parameters to the play command.

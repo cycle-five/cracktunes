@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS "user" (
 );
 
 INSERT INTO "user" (id, username, discriminator, avatar_url, bot, created_at, updated_at, last_seen) VALUES
-(1, 'test', 1234, 'https://example.com/avatar.jpg', false, NOW(), NOW(), NOW());
+(1, '🔧 Test', 1234, 'https://example.com/avatar.jpg', false, NOW(), NOW(), NOW());
 
 CREATE TABLE IF NOT EXISTS user_votes (
     id SERIAL PRIMARY KEY,
@@ -31,7 +31,9 @@ CREATE TABLE permission_settings (
     allowed_roles BIGINT[] NOT NULL,
     denied_roles BIGINT[] NOT NULL,
     allowed_users BIGINT[] NOT NULL,
-    denied_users BIGINT[] NOT NULL
+    denied_users BIGINT[] NOT NULL,
+    allowed_channels BIGINT[] NOT NULL DEFAULT array[]::BIGINT[],
+    denied_channels BIGINT[] NOT NULL DEFAULT array[]::BIGINT[]
 );
     -- allowed_commands JSONB NOT NULL,
     -- denied_commands JSONB NOT NULL,
@@ -43,7 +45,7 @@ CREATE TABLE IF NOT EXISTS guild (
 );
 
 INSERT INTO guild (id, "name", created_at, updated_at) VALUES
-(1, 'test', NOW(), NOW());
+(1, '🔧 Test', NOW(), NOW());
 
 CREATE TABLE command_channel (
     command TEXT NOT NULL,

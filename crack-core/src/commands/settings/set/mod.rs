@@ -1,3 +1,5 @@
+use crate::messaging::message::CrackedMessage;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::{Context, Error};
 
 // pub mod welcome;
@@ -21,6 +23,7 @@ pub use set_welcome_settings::*;
 
 /// Settings-get commands
 #[poise::command(
+    category = "Settings",
     slash_command,
     prefix_command,
     subcommands(
@@ -36,15 +39,29 @@ pub use set_welcome_settings::*;
         // "log_all",
         // "log_guild"
     ),
-    ephemeral,
     required_permissions = "ADMINISTRATOR",
 )]
 /// Set settings
 #[cfg(not(tarpaulin_include))]
 pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
-    tracing::warn!("");
-
-    ctx.say("You found the settings-set command").await?;
+    ctx.send_reply(
+        CrackedMessage::CommandFound(String::from("settings-set")),
+        true,
+    )
+    .await?;
 
     Ok(())
+}
+
+pub fn commands() -> [crate::Command; 8] {
+    [
+        all_log_channel(),
+        auto_role(),
+        idle_timeout(),
+        join_leave_log_channel(),
+        music_channel(),
+        premium(),
+        volume(),
+        welcome_settings(),
+    ]
 }

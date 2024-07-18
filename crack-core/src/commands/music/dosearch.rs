@@ -1,5 +1,8 @@
 use crate::{
-    errors::CrackedError, messaging::interface::create_search_results_reply, Context, Error,
+    commands::{cmd_check_music, sub_help as help},
+    errors::CrackedError,
+    messaging::interface::create_search_results_reply,
+    Context, Error,
 };
 use poise::ReplyHandle;
 use reqwest::Client;
@@ -8,7 +11,15 @@ use songbird::input::YoutubeDl;
 
 /// Search for a song and play it.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    prefix_command,
+    slash_command,
+    guild_only,
+    check = "cmd_check_music",
+    aliases("ytsearch"),
+    subcommands("help")
+)]
 pub async fn do_yt_search(
     ctx: Context<'_>,
     #[rest]

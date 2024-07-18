@@ -1,35 +1,36 @@
-use crate::utils::send_now_playing;
-use crate::{errors::CrackedError, Context, Error};
+use crate::commands::help;
+use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::{Context, Error};
 
-/// interface::create_now_playing_embed,
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, aliases("save"), guild_only)]
-pub async fn grab(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
-    let channel = ctx
-        .author()
-        .create_dm_channel(&ctx.serenity_context().http)
-        .await?;
+#[poise::command(
+    category = "Music",
+    slash_command,
+    prefix_command,
+    aliases("save"),
+    guild_only
+)]
+pub async fn grab(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
+    grab_internal(ctx).await
+}
 
-    let msg = send_now_playing(
-        channel.id,
-        ctx.serenity_context().http.clone(),
-        call.clone(),
-        None,
-        None,
-    )
-    .await?;
+#[cfg(not(tarpaulin_include))]
+/// Internal function for grab.
+async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
+    let chan_id = ctx.author().create_dm_channel(&ctx).await?.id;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.send_now_playing(chan_id, None, None).await?;
 
-    let reply_handle = ctx.say("Sent you a DM with the current track").await?;
-
-    let msg = reply_handle.into_message().await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.send_grabbed_notice().await?;
 
     Ok(())
 }

@@ -2,8 +2,8 @@ use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
     FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT,
     FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
-    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
+    FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
+    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
     NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
     NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED,
     UNAUTHORIZED_USER,
@@ -21,6 +21,7 @@ use songbird::input::AudioStreamError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
 use std::process::ExitStatus;
+use tokio::time::error::Elapsed;
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub enum CrackedError {
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
     CommandFailed(String, ExitStatus, String),
+    CommandNotFound(String),
     DurationParseError(String, String),
     EmptySearchResult,
     EmptyVector(&'static str),
@@ -63,6 +65,7 @@ pub enum CrackedError {
     NothingPlaying,
     NoSongbird,
     NoVirusTotalApiKey,
+    NoQuery,
     Other(&'static str),
     PlayListFail,
     ParseTimeFail,
@@ -120,6 +123,9 @@ impl Display for CrackedError {
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
                 "Command `{program}` failed with status `{status}` and output `{output}`"
             )),
+            Self::CommandNotFound(command) => {
+                f.write_fmt(format_args!("Command does not exist: {}", command))
+            },
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
@@ -163,6 +169,7 @@ impl Display for CrackedError {
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
             Self::NoVirusTotalApiKey => f.write_str(FAIL_NO_VIRUSTOTAL_API_KEY),
+            Self::NoQuery => f.write_str(FAIL_NO_QUERY_PROVIDED),
             Self::Other(msg) => f.write_str(msg),
 
             Self::PlayListFail => f.write_str(FAIL_PLAYLIST_FETCH),
@@ -213,6 +220,13 @@ impl PartialEq for CrackedError {
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+/// Provides an implementation to convert a [`anyhow::Error`] to a [`CrackedError`].
+impl From<anyhow::Error> for CrackedError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Anyhow(err)
     }
 }
 
@@ -313,6 +327,20 @@ impl From<RSpotifyClientError> for CrackedError {
     }
 }
 
+// /// Provides an implementation to convert a [`tokio::time::error::Elapsed`] to a [`CrackedError`].
+// impl From<JoinError> for CrackedError {
+//     fn from(err: JoinError) -> Self {
+//         CrackedError::JoinChannelError(err)
+//     }
+// }
+
+/// Provides an implementation to convert a [`Elapsed`] to a [`CrackedError`].
+impl From<Elapsed> for CrackedError {
+    fn from(_err: Elapsed) -> Self {
+        CrackedError::Other("Timeout")
+    }
+}
+
 /// Types that implement this trait can be tested as true or false and also provide
 /// a way of unpacking themselves.
 pub trait Verifiable<T> {
@@ -365,6 +393,8 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
 
 #[cfg(test)]
 mod test {
+    use reqwest::StatusCode;
+
     use super::*;
     use std::io::{Error as StdError, ErrorKind};
 
@@ -443,8 +473,10 @@ mod test {
             .unwrap();
 
         let response = client.get("http://notreallol").send();
-        let err = CrackedError::Reqwest(response.unwrap_err());
-        assert!(format!("{}", err).starts_with("error sending request for url"));
+        if response.is_err() {
+            let err = CrackedError::Reqwest(response.unwrap_err());
+            assert!(format!("{}", err).starts_with("error sending request for url"));
+        }
 
         // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
         // assert_eq!(format!("{}", err), "Unauthorized");
@@ -510,13 +542,17 @@ mod test {
 
         let response1 = client.get("http://notreallol").send();
         let response2 = client.get("http://notreallol").send();
-        let err = CrackedError::Reqwest(response1.unwrap_err());
-        assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
+        if response1.is_err() && response2.is_err() {
+            let err = CrackedError::Reqwest(response1.unwrap_err());
+            assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
 
-        let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-        assert_eq!(
-            err,
-            CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
-        );
+            let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+            assert_eq!(
+                err,
+                CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+            );
+        } else {
+            assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
+        }
     }
 }

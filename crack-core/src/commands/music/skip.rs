@@ -1,7 +1,11 @@
+use crate::poise_ext::ContextExt;
 use crate::{
+    commands::cmd_check_music,
+    commands::get_call_or_join_author,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::{get_track_metadata, send_response_poise_text},
+    poise_ext::PoiseContextExt,
+    utils::get_track_metadata,
     Context, Error,
 };
 use serenity::all::Message;
@@ -11,27 +15,19 @@ use tokio::sync::MutexGuard;
 
 /// Skip the current track, or a number of tracks.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn skip(
     ctx: Context<'_>,
-    #[description = "Number of tracks to skip"] tracks_to_skip: Option<usize>,
+    #[description = "Number of tracks to skip"] num_tracks: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
-    let call = match manager.get(guild_id) {
-        Some(call) => call,
-        None => {
-            tracing::warn!(
-                "Not in voice channel: manager.get({}) returned None",
-                guild_id
-            );
-            return Ok(());
-        },
-    };
-
-    let to_skip = tracks_to_skip.unwrap_or(1);
+    let (call, guild_id) = ctx.get_call_guild_id().await?;
+    let to_skip = num_tracks.unwrap_or(1);
 
     let handler = call.lock().await;
     let queue = handler.queue();
@@ -46,7 +42,7 @@ pub async fn skip(
 
     force_skip_top_track(&handler).await?;
     let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
@@ -58,50 +54,53 @@ pub async fn create_skip_response(
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
 ) -> Result<Message, CrackedError> {
-    match handler.queue().current() {
+    let send_msg = match handler.queue().current() {
         Some(track) => {
             let metadata = get_track_metadata(&track).await;
-            send_response_poise_text(
-                ctx,
-                CrackedMessage::SkipTo {
-                    title: metadata.title.as_ref().unwrap().to_owned(),
-                    url: metadata.source_url.as_ref().unwrap().to_owned(),
-                },
-            )
-            .await
+            CrackedMessage::SkipTo {
+                title: metadata.title.as_ref().unwrap().to_owned(),
+                url: metadata.source_url.as_ref().unwrap().to_owned(),
+            }
         },
         None => {
             if tracks_to_skip > 1 {
-                send_response_poise_text(ctx, CrackedMessage::SkipAll).await
+                CrackedMessage::SkipAll
             } else {
-                send_response_poise_text(ctx, CrackedMessage::Skip).await
+                CrackedMessage::Skip
             }
         },
-    }
+    };
+    ctx.send_reply(send_msg, true)
+        .await?
+        .into_message()
+        .await
+        .map_err(|e| e.into())
 }
 
 /// Downvote and skip song causing it to *not* be used in music recommendations.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::commands::get_call_with_fail_msg;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
 
-    let call = get_call_with_fail_msg(ctx).await?;
+    let call = get_call_or_join_author(ctx).await?;
 
     let handler = call.lock().await;
     let queue = handler.queue();
     let metadata = get_track_metadata(&queue.current().unwrap()).await;
 
     let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
-    let res1 = ctx.data().downvote_track(guild_id, source_url);
+    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
+    let res2 = force_skip_top_track(&handler).await?;
 
-    let res2 = force_skip_top_track(&handler);
-
-    tracing::warn!("downvoting track: {}", source_url);
-
-    tokio::join!(res1, res2).0?;
+    tracing::warn!("downvoted track: {:#?}", res1);
+    tracing::warn!("refetched queue: {:#?}", res2);
 
     Ok(())
 }

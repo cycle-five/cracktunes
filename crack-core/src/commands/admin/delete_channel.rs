@@ -1,6 +1,6 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 
@@ -28,16 +28,16 @@ pub async fn delete_channel(
             if let Some((channel_id, guild_chan)) = channel {
                 if let Err(e) = guild_chan.delete(&ctx).await {
                     // Handle error, send error message
-                    send_response_poise(
-                        ctx,
+                    send_reply(
+                        &ctx,
                         CrackedMessage::Other(format!("Failed to delete channel: {}", e)),
                         true,
                     )
                     .await?;
                 } else {
                     // Send success message
-                    send_response_poise(
-                        ctx,
+                    send_reply(
+                        &ctx,
                         CrackedMessage::ChannelDeleted {
                             channel_id,
                             channel_name: channel_name.clone(),
@@ -47,8 +47,8 @@ pub async fn delete_channel(
                     .await?;
                 }
             } else {
-                send_response_poise(
-                    ctx,
+                send_reply(
+                    &ctx,
                     CrackedMessage::Other("Channel not found.".to_string()),
                     true,
                 )

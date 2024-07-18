@@ -12,25 +12,23 @@
         }
     ],
     "rust-analyzer.cargo.features": [
-        "crack-gpt"
+        "crack-gpt",
+        "crack-osint",
+        "crack-bf",
     ],
-    //     "crack-osint",
-    //     "crack-core",
-    //     "crack-telemetry",
-    //     "crack-tracing",
-    //     "db",
-    //     "playlist",
-    //     "cache",
-    //     "ignore-presence-log",
-    // ],
-    // "rust-analyzer.cargo.features": "all",
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
+        "./crack-bf/Cargo.toml",
         "./crack-gpt/Cargo.toml",
-        "./crack-osint/Cargo.toml"
+        "./crack-osint/Cargo.toml",
+        "./crack-voting/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
     "rust-analyzer.checkOnSave": true,
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
+    "keyboard.dispatch": "keyCode",
+    "editor.formatOnSave": true,
+    //"terminal.integrated.fontFamily": "0xProto Nerd Font Mono"
+    "terminal.integrated.fontFamily": "monospace"
 }

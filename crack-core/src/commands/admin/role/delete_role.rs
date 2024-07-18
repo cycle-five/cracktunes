@@ -1,13 +1,20 @@
-use serenity::all::{Message, Role, RoleId};
+use poise::ReplyHandle;
+use serenity::all::{Role, RoleId};
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_response_poise, Context,
-    Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
 };
 
 /// Delete role.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    hide_in_help = true,
+    ephemeral
+)]
 pub async fn delete(
     ctx: Context<'_>,
     #[description = "Role to delete."] mut role: Role,
@@ -17,7 +24,14 @@ pub async fn delete(
 
 /// Delete role by id
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "ADMINISTRATOR",
+    prefix_command,
+    hide_in_help = true,
+    ephemeral
+)]
 pub async fn delete_by_id(
     ctx: Context<'_>,
     #[description = "RoleId to delete."] role_id: RoleId,
@@ -28,27 +42,26 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
+use std::borrow::Cow;
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,
     role_id: u64,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'_>, CrackedError> {
     let role_id = RoleId::new(role_id);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut role = guild_id
-        .roles(&ctx)
+        .roles(&ctx.clone())
         .await?
         .into_iter()
         .find(|r| r.0 == role_id)
         .ok_or(CrackedError::RoleNotFound(role_id))?;
-    role.1.delete(&ctx).await?;
+    role.1.delete(&ctx.clone()).await?;
     // Send success message
-    send_response_poise(
-        ctx,
-        CrackedMessage::RoleDeleted {
-            role_name: role.1.name.clone(),
-            role_id,
-        },
+    let role_name: Cow<'_, String> = Cow::Owned(role.1.name.to_string());
+    send_reply(
+        &ctx,
+        CrackedMessage::RoleDeleted { role_id, role_name },
         true,
     )
     .await

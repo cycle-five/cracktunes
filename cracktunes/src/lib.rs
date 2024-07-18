@@ -1,7 +1,3 @@
-pub mod config;
-
-pub use config::*;
-
 use std::collections::HashSet;
 
 /// Osint commands list

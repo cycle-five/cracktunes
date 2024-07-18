@@ -1,18 +1,8 @@
-use ::serenity::{
-    all::{Cache, ChannelId, UserId},
-    async_trait,
-    builder::EditMessage,
-    http::Http,
-    model::id::GuildId,
-};
-use serenity::all::CacheHttp;
-use songbird::{input::AuxMetadata, tracks::TrackHandle, Call, Event, EventContext, EventHandler};
-use std::{sync::Arc, time::Duration};
-use tokio::sync::Mutex;
-
+use crate::commands::play_utils::queue_track_ready_front;
+use crate::commands::play_utils::ready_query2;
 use crate::{
-    commands::{forget_skip_votes, play_utils::enqueue_track_pgwrite_asdf, MyAuxMetadata},
-    db::PlayLog,
+    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
+    db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
@@ -21,8 +11,20 @@ use crate::{
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message, send_now_playing},
-    Data, Error,
+    CrackedResult,
+    Data, //, Error,
 };
+use ::serenity::{
+    all::{Cache, ChannelId},
+    async_trait,
+    builder::EditMessage,
+    http::Http,
+    model::id::GuildId,
+};
+use serenity::all::CacheHttp;
+use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Handler for the end of a track event.
 // This needs enough context to be able to send messages to the appropriate
@@ -43,7 +45,6 @@ pub struct ModifyQueueHandler {
     pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
-
 /// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
@@ -53,7 +54,7 @@ impl EventHandler for TrackEndHandler {
 
         tracing::error!("Autoplay: {}", autoplay);
 
-        let (autopause, volume) = {
+        let (autopause, _volume) = {
             let settings = self.data.guild_settings_map.read().await.clone();
             let autopause = settings
                 .get(&self.guild_id)
@@ -68,175 +69,83 @@ impl EventHandler for TrackEndHandler {
             (autopause, volume)
         };
 
-        self.call.lock().await.queue().modify_queue(|v| {
-            if let Some(track) = v.front_mut() {
-                let _ = track.set_volume(volume);
-            };
-        });
-        tracing::error!("Set volume");
-
         if autopause {
-            tracing::error!("Pausing");
+            tracing::trace!("Pausing");
             self.call.lock().await.queue().pause().ok();
         } else {
-            tracing::error!("Not pausing");
+            tracing::trace!("Not pausing");
         }
 
-        tracing::error!("Forgetting skip votes");
+        tracing::trace!("Forgetting skip votes");
         // FIXME
         match forget_skip_votes(&self.data, self.guild_id).await {
-            Ok(_) => tracing::warn!("Forgot skip votes"),
+            Ok(_) => tracing::trace!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 
-        let (chan_id, _chan_name, MyAuxMetadata::Data(metadata), cur_position) = {
-            let (sb_chan_id, my_metadata, cur_pos) = {
-                let (channel, track) = {
-                    let handler = self.call.lock().await;
-                    let channel = match music_channel {
-                        Some(c) => c,
-                        _ => handler
-                            .current_channel()
-                            .map(|c| ChannelId::new(c.0.get()))
-                            .unwrap(),
-                    };
-                    let track = handler.queue().current().clone();
-                    (channel, track)
-                };
-                let chan_id = channel;
-                // let chan_id = channel.map(|c| ChannelId::new(c.0.get())).unwrap();
-                match (track, autoplay) {
-                    (None, false) => (
-                        channel,
-                        MyAuxMetadata::Data(AuxMetadata::default()),
-                        Duration::from_secs(0),
-                    ),
-                    (None, true) => {
-                        let spotify = SPOTIFY.lock().await;
-                        let spotify =
-                            verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))
-                                .unwrap();
-                        // Get last played tracks from the db
-                        let last_played = PlayLog::get_last_played(
-                            self.data.database_pool.as_ref().unwrap(),
-                            None,
-                            Some(self.guild_id.get() as i64),
-                        )
-                        .await
-                        .unwrap_or_default();
-                        let res_rec =
-                            Spotify::get_recommendations(spotify, last_played.clone()).await;
-                        let (rec, msg) = match res_rec {
-                            Ok(rec) => {
-                                // let msg0 = format!(
-                                //     "Previously played: \n{}",
-                                //     last_played.clone().join("\n")
-                                // );
-                                let msg1 =
-                                    format!("Autoplaying (/autoplay or /stop to stop): {}", rec[0]);
-                                (rec, msg1)
-                            },
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
-                                let rec = vec![];
-                                (rec, msg)
-                            },
-                        };
-                        tracing::warn!("{}", msg);
-                        let msg = chan_id
-                            .say((&self.cache, self.http.as_ref()), msg)
-                            .await
-                            .unwrap();
-                        self.data.add_msg_to_cache(self.guild_id, msg);
-                        let query = match Spotify::search(spotify, &rec[0]).await {
-                            Ok(query) => query,
-                            Err(e) => {
-                                let msg = format!("Error: {}", e);
-                                tracing::warn!("{}", msg);
-                                // chan_id.say(&self.http, msg).await.unwrap();
-                                return None;
-                            },
-                        };
-                        let cache_http = (&self.cache, self.http.as_ref());
-                        let tracks = enqueue_track_pgwrite_asdf(
-                            self.data.database_pool.as_ref().unwrap(),
-                            self.guild_id,
-                            chan_id,
-                            UserId::new(1),
-                            cache_http,
-                            &self.call,
-                            &query,
-                        )
-                        .await
-                        .unwrap_or_default();
-                        let (my_metadata, pos) = match tracks.first() {
-                            Some(t) => {
-                                let (my_metadata, pos) =
-                                    extract_track_metadata(t).await.unwrap_or_default();
-                                let _ = t.set_volume(volume);
-                                (my_metadata, pos)
-                            },
-                            None => {
-                                let msg = format!("No tracks found for query: {:?}", query);
-                                tracing::warn!("{}", msg);
-                                (
-                                    MyAuxMetadata::Data(AuxMetadata::default()),
-                                    Duration::from_secs(0),
-                                )
-                            },
-                        };
+        if !autoplay {
+            return None;
+        }
 
-                        (channel, my_metadata, pos)
-                    },
-                    (Some(track), _) => {
-                        let _ = track.set_volume(volume);
-                        let (my_metadata, pos) =
-                            extract_track_metadata(&track).await.unwrap_or_default();
-
-                        (channel, my_metadata, pos)
-                    },
-                }
-            };
-            // let chan_id = sb_chan_id.map(|id| ChannelId::new(id.0.get())).unwrap();
-            let chan_id = sb_chan_id;
-            let chan_name = chan_id.name(&self.http).await.unwrap();
-            (chan_id, chan_name, my_metadata, cur_pos)
+        let pool = if let Some(pool) = &self.data.database_pool {
+            pool
+        } else {
+            return None;
         };
 
-        tracing::warn!("Sending now playing message");
+        let (channel, next_track) = {
+            let handler = self.call.lock().await;
+            let channel = match music_channel {
+                Some(c) => c,
+                _ => handler
+                    .current_channel()
+                    .map(|c| ChannelId::new(c.0.get()))
+                    .unwrap(),
+            };
+            let track = handler.queue().current().clone();
+            (channel, track)
+        };
+
+        if next_track.is_some() {
+            return None;
+        }
+
+        let query = match get_recommended_track_query(pool, self.guild_id).await {
+            Ok(query) => query,
+            Err(e) => {
+                let msg = format!("Error: {}", e);
+                tracing::warn!("{}", msg);
+                return None;
+            },
+        };
+        let track_ready = ready_query2(query).await.ok()?;
+        let MyAuxMetadata::Data(metadata) = &track_ready.metadata;
+        let metadata = Some(metadata.clone());
+
+        let track = queue_track_ready_front(&self.call, track_ready)
+            .await
+            .ok()?;
+
+        let chan_id = channel;
+        let track_state = track.first().as_ref()?.get_info().await;
+        let cur_position = track_state.map(|x| x.position).ok();
 
         match send_now_playing(
             chan_id,
             self.http.clone(),
             self.call.clone(),
-            Some(cur_position),
-            Some(metadata),
+            cur_position,
+            metadata,
         )
         .await
         {
-            Ok(message) => {
-                self.data.add_msg_to_cache(self.guild_id, message);
-                tracing::info!("Sent now playing message");
-            },
+            Ok(_) => tracing::trace!("Sent now playing message"),
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
-        }
-
+        };
         None
     }
-}
-
-/// Extracts the metadata and position of a track.
-async fn extract_track_metadata(track: &TrackHandle) -> Result<(MyAuxMetadata, Duration), Error> {
-    let pos = track.get_info().await?.position;
-    let track_clone = track.clone();
-    let mutex_guard = track_clone.typemap().read().await;
-    let my_metadata = mutex_guard
-        .get::<crate::commands::MyAuxMetadata>()
-        .ok_or_else(|| CrackedError::Other("No metadata found"))?
-        .clone();
-    Ok((my_metadata, pos))
 }
 
 /// Event handler to set the volume of the playing track to the volume
@@ -297,5 +206,27 @@ pub async fn update_queue_messages(
         if edit_message.is_err() {
             forget_queue_message(data, message, guild_id).await.ok();
         };
+    }
+}
+
+/// Get's the recommended tracks for a guild. Returns `QueryType::None` on failure.
+/// Looks at the top
+async fn get_recommended_track_query(
+    pool: &sqlx::PgPool,
+    guild_id: GuildId,
+) -> CrackedResult<QueryType> {
+    let spotify = SPOTIFY.lock().await;
+    let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+
+    let last_played = pool.get_last_played_by_guild(guild_id, 5).await?;
+    let res_rec = Spotify::get_recommendations(spotify, last_played.clone()).await?;
+
+    if res_rec.is_empty() {
+        return Ok(QueryType::None);
+    }
+
+    match Spotify::search(spotify, &res_rec[0]).await {
+        Ok(query) => Ok(query),
+        Err(e) => Err(e),
     }
 }

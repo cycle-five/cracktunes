@@ -1,8 +1,12 @@
+use crate::utils::get_interaction_new;
 use crate::{
+    commands::cmd_check_music,
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::interface::{create_nav_btns, create_queue_embed},
-    messaging::messages::QUEUE_EXPIRED,
+    messaging::{
+        interface::{create_nav_btns, create_queue_embed},
+        messages::QUEUE_EXPIRED,
+    },
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
@@ -19,20 +23,34 @@ const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, aliases("list", "q"), guild_only)]
-pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
-    use crate::utils::get_interaction_new;
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    slash_command,
+    prefix_command,
+    aliases("list", "q"),
+    guild_only
+)]
+pub async fn queue(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    queue_internal(ctx).await
+}
 
-    tracing::info!("queue called");
+/// Internal queue function.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    tracing::info!("guild_id: {}", guild_id);
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NotConnected)?;
-    tracing::trace!("manager: {:?}", manager);
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
-
-    tracing::trace!("call: {:?}", call);
 
     // FIXME
     let handler = call.lock().await;
@@ -43,7 +61,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction_new(ctx) {
+    let mut message = match get_interaction_new(&ctx) {
         Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
             interaction
                 .create_response(
@@ -71,7 +89,7 @@ pub async fn queue(ctx: Context<'_>) -> Result<(), Error> {
         },
     };
 
-    ctx.data().add_msg_to_cache(guild_id, message.clone());
+    ctx.data().add_msg_to_cache(guild_id, message.clone()).await;
 
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 

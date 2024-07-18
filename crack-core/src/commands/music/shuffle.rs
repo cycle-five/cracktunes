@@ -1,16 +1,22 @@
 use crate::{
-    handlers::track_end::update_queue_messages, messaging::message::CrackedMessage,
-    utils::send_response_poise, Context, Error,
+    commands::cmd_check_music, handlers::track_end::update_queue_messages,
+    messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context,
+    CrackedError, Error,
 };
 use rand::Rng;
 
 /// Shuffle the current queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let call = ctx.get_call().await?;
 
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
@@ -25,7 +31,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue().current_queue();
     drop(handler);
 
-    send_response_poise(ctx, CrackedMessage::Shuffle, true).await?;
+    send_reply(&ctx, CrackedMessage::Shuffle, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

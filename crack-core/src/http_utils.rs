@@ -3,18 +3,79 @@ use reqwest::Client;
 use std::future::Future;
 
 use crate::errors::CrackedError;
-use crate::messaging::message::CrackedMessage;
+use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::serenity::Color;
 use serenity::all::{
     CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
 };
 
 /// Parameter structure for functions that send messages to a channel.
+#[derive(Debug, PartialEq)]
 pub struct SendMessageParams {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
+    pub color: Color,
+    pub cache_msg: bool,
     pub msg: CrackedMessage,
+    pub embed: Option<CreateEmbed>,
+}
+
+impl Default for SendMessageParams {
+    fn default() -> Self {
+        SendMessageParams {
+            channel: ChannelId::new(1),
+            as_embed: true,
+            ephemeral: false,
+            reply: true,
+            color: Color::BLUE,
+            cache_msg: true,
+            msg: CrackedMessage::Other(String::new()),
+            embed: None,
+        }
+    }
+}
+
+impl SendMessageParams {
+    pub fn new(msg: CrackedMessage) -> Self {
+        Self {
+            msg,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_as_embed(self, as_embed: bool) -> Self {
+        Self { as_embed, ..self }
+    }
+
+    pub fn with_ephemeral(self, ephemeral: bool) -> Self {
+        Self { ephemeral, ..self }
+    }
+
+    pub fn with_reply(self, reply: bool) -> Self {
+        Self { reply, ..self }
+    }
+
+    pub fn with_color(self, color: Color) -> Self {
+        Self { color, ..self }
+    }
+
+    pub fn with_msg(self, msg: CrackedMessage) -> Self {
+        Self { msg, ..self }
+    }
+
+    pub fn with_channel(self, channel: ChannelId) -> Self {
+        Self { channel, ..self }
+    }
+
+    pub fn with_cache_msg(self, cache_msg: bool) -> Self {
+        Self { cache_msg, ..self }
+    }
+
+    pub fn with_embed(self, embed: Option<CreateEmbed>) -> Self {
+        Self { embed, ..self }
+    }
 }
 
 /// Extension trait for CacheHttp to add some utility functions.
@@ -31,6 +92,10 @@ pub trait CacheHttpExt {
         &self,
         params: SendMessageParams,
     ) -> impl Future<Output = Result<serenity::model::channel::Message, CrackedError>> + Send;
+    fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
 }
 
 /// Implement the CacheHttpExt trait for any type that implements CacheHttp.
@@ -74,12 +139,15 @@ impl<T: CacheHttp> CacheHttpExt for T {
         };
         channel.send_message(self, msg).await.map_err(Into::into)
     }
+
+    async fn guild_name_from_guild_id(&self, guild_id: GuildId) -> Result<String, CrackedError> {
+        guild_name_from_guild_id(self, guild_id).await
+    }
 }
 
 /// This is a hack to get around the fact that we can't use async in statics. Is it?
 static CLIENT: Lazy<Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
-    tracing::info!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .build()
@@ -124,17 +192,18 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 #[cfg(not(tarpaulin_include))]
 pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
     // let asdf = cache.cache()?.user(user_id);
+
     match cache_http.cache() {
         Some(cache) => match cache.user(user_id) {
             Some(x) => x.name.clone(),
             None => {
                 tracing::warn!("cache.user returned None");
-                "Unknown".to_string()
+                UNKNOWN.to_string()
             },
         },
         None => {
             tracing::warn!("cache_http.cache() returned None");
-            "Unknown".to_string()
+            UNKNOWN.to_string()
         },
     }
 }
@@ -193,7 +262,6 @@ mod test {
         let url = "https://example.com";
 
         let final_url = resolve_final_url(url).await.unwrap();
-        // assert_eq!(final_url, "https://example.com/");
         assert_eq!(final_url, "https://example.com/");
     }
 }

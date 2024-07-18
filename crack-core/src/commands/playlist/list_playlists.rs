@@ -1,10 +1,21 @@
 use crate::errors::CrackedError;
 use crate::utils::{build_playlist_list_embed, send_embed_response_poise};
-use crate::{db::playlist::Playlist, Context, Error};
+use crate::{
+    commands::{cmd_check_music, sub_help as help},
+    db::playlist::Playlist,
+    Context, Error,
+};
 
-/// Get a playlist
+/// List your saved playlists.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "list")]
+#[poise::command(
+    category = "Music",
+    prefix_command,
+    slash_command,
+    rename = "list",
+    check = "cmd_check_music",
+    subcommands("help")
+)]
 pub async fn list_playlists(ctx: Context<'_>) -> Result<(), Error> {
     let user_id = ctx.author().id.get() as i64;
     let pool = ctx
@@ -17,7 +28,7 @@ pub async fn list_playlists(ctx: Context<'_>) -> Result<(), Error> {
     let embed = build_playlist_list_embed(&playlists, 0).await;
 
     // Send the embed
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(&ctx, embed).await?;
 
     Ok(())
 }

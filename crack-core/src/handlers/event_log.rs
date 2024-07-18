@@ -1,15 +1,16 @@
 use super::event_log_impl::*;
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    utils::send_log_embed_thumb, ArcTRwMap, Data, Error,
+    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use colored::Colorize;
+use poise::serenity_prelude as serenity;
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},
     FrameworkContext,
 };
 use serde::{ser::SerializeStruct, Serialize};
-use serenity::all::User;
+use serenity::User;
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -90,6 +91,8 @@ pub async fn handle_event(
     data_global: &Data,
 ) -> Result<(), Error> {
     // let event_log = Arc::new(&data_global.event_log);
+
+    use crate::db::GuildEntity;
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
@@ -151,7 +154,7 @@ pub async fn handle_event(
                 event_in,
                 log_data,
                 &guild_id,
-                ctx,
+                &ctx,
                 event_log,
                 event_name
             )
@@ -169,7 +172,9 @@ pub async fn handle_event(
                     .unwrap_or_default();
             }
 
+            // Should we log bot messages?
             if new_message.author.bot {
+                //&& !crate::poise_ext::check_bot_message(ctx, new_message) {
                 return Ok(());
             }
             log_event!(
@@ -341,6 +346,30 @@ pub async fn handle_event(
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildCreate { guild, is_new } => {
+            if is_new.unwrap_or(false) {
+                tracing::warn!("New Guild!!! {}", guild.name);
+                let mut guild_settings: Option<GuildSettings> = None;
+                if data_global.database_pool.is_some() {
+                    let (_, new_guild_settings) = GuildEntity::get_or_create(
+                        data_global.database_pool.as_ref().unwrap(),
+                        guild.id.get() as i64,
+                        guild.name.clone(),
+                        data_global
+                            .bot_settings
+                            .prefix
+                            .clone()
+                            .unwrap_or("r!".to_string()),
+                    )
+                    .await?;
+                    guild_settings = Some(new_guild_settings);
+                } else {
+                    tracing::error!("No database pool available");
+                };
+                if guild_settings.is_some() {
+                    let settings = guild_settings.unwrap();
+                    data_global.insert_guild(guild.id, settings).await?;
+                }
+            }
             log_event!(
                 log_guild_create,
                 guild_settings,
@@ -367,9 +396,9 @@ pub async fn handle_event(
         },
         #[cfg(feature = "cache")]
         FullEvent::GuildDelete { incomplete, full } => {
-            let log_data = (event_name, incomplete, full);
+            let log_data = (incomplete, full);
             log_event!(
-                log_unimplemented_event,
+                log_guild_delete_event,
                 guild_settings,
                 event_in,
                 &log_data,
@@ -976,6 +1005,24 @@ pub async fn handle_event(
         },
         FullEvent::VoiceServerUpdate { event } => {
             event_log.write_log_obj_async(event_name, event).await
+        },
+        FullEvent::VoiceChannelStatusUpdate {
+            old,
+            status,
+            id,
+            guild_id,
+        } => {
+            let log_data = (old, status, id, guild_id);
+            log_event!(
+                log_voice_channel_status_update,
+                guild_settings,
+                event_in,
+                &log_data,
+                &guild_id,
+                &ctx,
+                event_log,
+                event_name
+            )
         },
         FullEvent::WebhookUpdate {
             guild_id,

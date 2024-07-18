@@ -1,20 +1,19 @@
 use crate::{
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    utils::send_response_poise_text,
+    utils::send_reply,
     {Context, Error},
 };
 
 /// Resume the current track.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn resume(
-    ctx: Context<'_>,
-    #[description = "Resume the music."] _send_reply: Option<bool>,
-) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
-    let call = manager.get(guild_id).unwrap();
+#[poise::command(category = "Music", slash_command, prefix_command, guild_only)]
+pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
     let queue = handler.queue();
@@ -22,9 +21,7 @@ pub async fn resume(
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
     verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
 
-    // FIXME: Do we want to do the send_reply parameter?
-    let msg = send_response_poise_text(ctx, CrackedMessage::Resume).await?;
+    send_reply(&ctx, CrackedMessage::Resume, false).await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

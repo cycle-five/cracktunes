@@ -190,6 +190,13 @@ mod test {
         let client = reqwest::Client::new();
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let res = video_info_to_source_and_metadata(client, url).await;
-        assert!(res.is_ok());
+
+        match res {
+            Ok((_input, metadata)) => assert!(metadata.first().is_some()),
+            Err(e) => {
+                let phrase = "Your IP is likely being blocked by Youtube";
+                assert!(e.to_string().contains(phrase));
+            },
+        }
     }
 }

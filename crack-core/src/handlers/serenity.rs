@@ -13,6 +13,7 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+// use dashmap;
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
 use serenity::{
     async_trait,
@@ -134,65 +135,6 @@ impl EventHandler for SerenityHandler {
         }
     }
 
-    /*
-    async fn message(&self, ctx: SerenityContext, msg: serenity::Message) {
-        struct MyMessage(serenity::Message);
-        impl fmt::Display for MyMessage {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let mut result = String::new();
-                let msg = &self.0;
-                // let guild_id = match msg.guild_id {
-                //     Some(guild_id) => guild_id,
-                //     None => {
-                //         tracing::warn!("Non-gateway message received: {:?}", msg);
-                //         GuildId(0)
-                //     }
-                // };
-                let name = msg.author.name.clone();
-                let content = msg.content.clone();
-                result.push_str(&format!("Message: {} {}", name.purple(), content.purple(),));
-                msg.embeds.iter().for_each(|x| {
-                    result.push_str(&format!(
-                        "{}{}{}",
-                        x.title.as_ref().unwrap_or(&String::new()).purple(),
-                        x.description.as_ref().unwrap_or(&String::new()).purple(),
-                        x.fields.iter().fold(String::new(), |acc, x| {
-                            format!("{}{}{}", acc, x.name.purple(), x.value.purple())
-                        })
-                    ));
-                });
-                write!(f, "{}", result)
-            }
-        }
-
-        let guild_id = match msg.guild_id {
-            Some(guild_id) => guild_id,
-            None => {
-                tracing::warn!("Non-gateway message received: {:?}", msg);
-                return;
-            }
-        };
-
-        let guild_name = {
-            let guild = guild_id.to_guild_cached(&ctx.cache).unwrap();
-            guild.name.clone()
-        };
-        let name = msg.author.name.clone();
-        // let guild_name = guild.name;
-        let content = msg.content.clone();
-        let channel_name = msg.channel_id.name(&ctx.clone()).await.unwrap_or_default();
-
-        tracing::info!(
-            "Message: {} {} {} {}",
-            name.purple(),
-            guild_name.purple(),
-            channel_name.purple(),
-            content.purple(),
-        );
-        let _mm = MyMessage(msg);
-    }
-    */
-
     async fn voice_state_update(
         &self,
         ctx: SerenityContext,
@@ -261,7 +203,6 @@ impl EventHandler for SerenityHandler {
 
         let config = self.data.bot_settings.clone();
         let video_status_poll_interval = config.get_video_status_poll_interval();
-        // let config.get
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
         let arc_ctx = Arc::new(ctx.clone());
@@ -565,16 +506,8 @@ async fn check_delete_old_messages(
     let mut to_delete = Vec::<Message>::new();
     for guild_id in guild_ids.iter() {
         tracing::warn!("Checking guild {}", guild_id);
-        data.guild_msg_cache_ordered
-            .lock()
-            .unwrap()
-            .get_mut(guild_id);
-        if let Some(guild_cache) = data
-            .guild_msg_cache_ordered
-            .lock()
-            .unwrap()
-            .get_mut(guild_id)
-        {
+        data.guild_msg_cache_ordered.lock().await.get_mut(guild_id);
+        if let Some(guild_cache) = data.guild_msg_cache_ordered.lock().await.get_mut(guild_id) {
             let now = DateTime::<Utc>::from(SystemTime::now());
             for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
                 let delta = now.signed_duration_since(*creat_time);
@@ -596,36 +529,6 @@ async fn check_delete_old_messages(
     }
     Ok(())
 }
-// #[allow(dead_code)]
-// async fn disconnect_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().disconnect_member())
-//         .await
-// }
-
-// async fn server_defeafen_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().deafen(true))
-//         .await
-// }
-
-// async fn server_mute_member(
-//     ctx: Arc<SerenityContext>,
-//     cam: CamPollEvent,
-//     guild: GuildId,
-// ) -> Result<Member, SerenityError> {
-//     guild
-//         .edit_member(&ctx, cam.user_id, EditMember::default().mute(true))
-//         .await
-// }
 
 /// Returns a string describing the difference between two voice states.
 pub async fn voice_state_diff_str(
@@ -787,3 +690,95 @@ pub async fn voice_state_diff_str(
     }
     Ok(result)
 }
+
+// /// `ForwardBotTestCommandsHandler` is a handler to check for bot test commands
+// /// for cracktunes and forward them to the bot despite being from another bot.
+// pub struct ForwardBotTestCommandsHandler<'a> {
+//     pub poise_ctx: crate::Context<'a>,
+//     pub options: poise::FrameworkOptions<(), Error>,
+//     pub cmd_lookup: dashmap::DashMap<String, crate::Command>,
+//     pub shard_manager: std::sync::Mutex<Option<std::sync::Arc<serenity::ShardManager>>>,
+// }
+
+// // use serenity::model::channel::Message;
+
+// #[serenity::async_trait]
+// impl serenity::EventHandler for ForwardBotTestCommandsHandler<'_> {
+//     async fn message(&self, _ctx: SerenityContext, new_message: Message) {
+//         let allowed_bot_ids = vec![
+//             serenity::UserId::new(1111844110597374042),
+//             serenity::UserId::new(1124707756750934159),
+//             serenity::UserId::new(1115229568006103122),
+//         ];
+//         if !new_message.author.bot {
+//             return;
+//         }
+//         if !allowed_bot_ids.contains(&new_message.author.id) {
+//             tracing::error!("Not an allowed bot id");
+//             return;
+//         }
+//         let id = new_message.author.id;
+//         // let guard = ctx.data.read().await;
+//         // let prefix = match guard.get::<crate::guild::settings::GuildSettingsMap>() {
+//         //     Some(map) => map
+//         //         .get(&new_message.guild_id.unwrap())
+//         //         .map(|x| x.prefix.clone()),
+//         //     _ => None,
+//         // };
+//         tracing::error!("Allowing bot id {:} to run command...", id);
+//         let opt_cmd = parse_command(new_message.content.clone());
+//         tracing::error!("opt_cmd: {:?}", opt_cmd);
+//         if !opt_cmd.is_some() {
+//             tracing::error!("BYE");
+//             return;
+//         }
+//         tracing::error!("HERE");
+//         let cmd = opt_cmd.unwrap();
+//         let _ = execute_command_or_err(self.poise_ctx, cmd).await;
+//     }
+// }
+
+// fn parse_command(content: String) -> Option<String> {
+//     content
+//         .clone()
+//         .split_whitespace()
+//         .next()
+//         .map(|cmd| cmd[1..].to_string())
+// }
+
+// async fn execute_command_or_err(ctx: crate::Context<'_>, command: String) -> CommandResult {
+//     poise::extract_command_and_run_checks(framework, ctx, interaction, interaction_type, has_sent_initial_response, invocation_data, options, parent_commands)
+//     match command.as_str() {
+//         "ping" => crate::commands::ping_internal(ctx).await,
+//         _ => return Err(Box::new(CrackedError::CommandNotFound(command))),
+//     }
+//     // cmd.create_as_slash_command()
+//     //     .unwrap()
+//     //     .execute(cache_http, ctx)
+//     //     .await
+//     //     .map_err(|err| err.into())
+//     //     .map(|_| ())
+// }
+
+// #[cfg(test)]
+// mod test {
+//     use super::parse_command;
+
+//     #[test]
+//     fn test_parse_command() {
+//         let command_str = "~ping".to_string();
+//         let want = "ping".to_string();
+//         let got = parse_command(command_str).unwrap();
+
+//         assert_eq!(want, got);
+//     }
+
+//     #[test]
+//     fn test_parse_command_two() {
+//         let command_str = "!play lalalalal alla".to_string();
+//         let want = "play".to_string();
+//         let got = parse_command(command_str).unwrap();
+
+//         assert_eq!(want, got);
+//     }
+// }

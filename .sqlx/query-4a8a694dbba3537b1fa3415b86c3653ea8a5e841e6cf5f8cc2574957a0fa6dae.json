@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            select title, artist \n            from play_log \n            join metadata on \n            play_log.metadata_id = metadata.id \n            where user_id = $1 order by created_at desc limit 5\n            ",
+  "query": "\n            select title, artist \n            from play_log \n            join metadata on \n            play_log.metadata_id = metadata.id \n            where user_id = $1 order by created_at desc limit $2\n            ",
   "describe": {
     "columns": [
       {
@@ -16,6 +16,7 @@
     ],
     "parameters": {
       "Left": [
+        "Int8",
         "Int8"
       ]
     },
@@ -24,5 +25,5 @@
       true
     ]
   },
-  "hash": "0e96b214b96766fae1ae31235be40fcc90b8054a8b81e189f3bbe5836a623c0e"
+  "hash": "4a8a694dbba3537b1fa3415b86c3653ea8a5e841e6cf5f8cc2574957a0fa6dae"
 }

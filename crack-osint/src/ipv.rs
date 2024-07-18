@@ -1,5 +1,5 @@
 // use cracktunes::messaging::message::CrackedMessage;
-// use cracktunes::utils::send_response_poise;
+// use cracktunes::utils::send_reply;
 use crate::{send_response_poise, Context, CrackedMessage, Error};
 use std::net::IpAddr;
 
@@ -14,21 +14,21 @@ pub async fn ipv(ctx: Context<'_>, ip_address: String) -> Result<(), Error> {
     match ip_address.parse::<IpAddr>() {
         Ok(ip_addr) => match ip_addr {
             IpAddr::V4(_) => {
-                send_ip_version_response(ctx, &ip_address, "IPv4").await?;
-            }
+                send_ip_version_response(&ctx, &ip_address, "IPv4").await?;
+            },
             IpAddr::V6(_) => {
-                send_ip_version_response(ctx, &ip_address, "IPv6").await?;
-            }
+                send_ip_version_response(&ctx, &ip_address, "IPv6").await?;
+            },
         },
         Err(_) => {
-            send_error_response(ctx, &ip_address).await?;
-        }
+            send_error_response(&ctx, &ip_address).await?;
+        },
     }
     Ok(())
 }
 
 async fn send_error_response(ctx: Context<'_>, ip_address: &str) -> Result<(), Error> {
-    send_response_poise(ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
+    send_reply(&ctx, CrackedMessage::InvalidIP(ip_address.to_string())).await?;
     Ok(())
 }
 
@@ -37,8 +37,8 @@ async fn send_ip_version_response(
     ip_address: &str,
     version: &str,
 ) -> Result<(), Error> {
-    send_response_poise(
-        ctx,
+    send_reply(
+        &ctx,
         CrackedMessage::IPVersion(format!("The IP address {} is {}", ip_address, version)),
     )
     .await?;

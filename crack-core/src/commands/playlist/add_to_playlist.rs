@@ -1,8 +1,9 @@
 use crate::{
     commands::MyAuxMetadata,
     db::aux_metadata_to_db_structures,
-    db::{metadata::Metadata, Playlist},
+    db::{metadata::Metadata, MetadataAnd, Playlist},
     errors::CrackedError,
+    poise_ext::ContextExt as _,
     Context, Error,
 };
 use sqlx::PgPool;
@@ -38,14 +39,9 @@ pub async fn add_to_playlist(
         Some(track) => track,
         None => metadata.title.clone().ok_or(CrackedError::NoTrackName)?,
     };
-    //.unwrap_or(metadata.title.clone().ok_or(CrackedError::NoTrackName)?)
     let user_id = ctx.author().id.get() as i64;
     // Database pool to execute queries
-    let db_pool: PgPool = ctx
-        .data()
-        .database_pool
-        .clone()
-        .ok_or(CrackedError::NoDatabasePool)?;
+    let db_pool: PgPool = ctx.get_db_pool()?;
     let playlist_name = playlist;
 
     // Get playlist if exists, other create it.
@@ -59,7 +55,7 @@ pub async fn add_to_playlist(
             },
         }?;
 
-    let (in_metadata, _playlist_track) =
+    let MetadataAnd::Track(in_metadata, _) =
         aux_metadata_to_db_structures(metadata, guild_id_i64, channel_id)?;
 
     let metadata = Metadata::get_or_create(&db_pool, &in_metadata).await?;

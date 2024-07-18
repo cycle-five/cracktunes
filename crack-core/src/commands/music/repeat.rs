@@ -1,34 +1,57 @@
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, messaging::messages::FAIL_LOOP,
-    utils::send_response_poise, Context, Error,
+    commands::cmd_check_music, errors::CrackedError, messaging::message::CrackedMessage,
+    messaging::messages::FAIL_LOOP, utils::send_reply, Context, Error,
 };
 use songbird::tracks::{LoopState, TrackHandle};
 
 /// Toggle looping of the current track.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn repeat(ctx: Context<'_>) -> Result<(), Error> {
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
+pub async fn repeat(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show the help menu for this command."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    repeat_internal(ctx).await
+}
+
+/// Internal repeat function.
+#[cfg(not(tarpaulin_include))]
+pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NoSongbird)?;
-    let call = manager.get(guild_id).ok_or(CrackedError::NoSongbird)?;
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
-    let track = handler.queue().current().unwrap();
+    let track = match handler.queue().current() {
+        Some(track) => track,
+        None => return Err(Box::new(CrackedError::NothingPlaying)),
+    };
+    drop(handler);
 
-    let was_looping = track.get_info().await.unwrap().loops == LoopState::Infinite;
+    let was_looping = track.get_info().await?.loops == LoopState::Infinite;
     let toggler = if was_looping {
         TrackHandle::disable_loop
     } else {
         TrackHandle::enable_loop
     };
 
-    let msg = match toggler(&track) {
-        Ok(_) if was_looping => send_response_poise(ctx, CrackedMessage::LoopDisable, true).await,
-        Ok(_) if !was_looping => send_response_poise(ctx, CrackedMessage::LoopEnable, true).await,
+    let _ = match toggler(&track) {
+        Ok(_) if was_looping => send_reply(&ctx, CrackedMessage::LoopDisable, true).await,
+        Ok(_) if !was_looping => send_reply(&ctx, CrackedMessage::LoopEnable, true).await,
         _ => Err(CrackedError::Other(FAIL_LOOP)),
     }?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

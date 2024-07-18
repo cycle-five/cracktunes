@@ -1,29 +1,29 @@
-use serenity::all::GuildId;
-
-use crate::{Context, Data, Error};
-
-/// Get the current `premium` setting for the guild.
-pub async fn get_premium(data: &Data, guild_id: GuildId) -> bool {
-    let guild_settings_map = data.guild_settings_map.read().await;
-    let guild_settings = guild_settings_map.get(&guild_id).unwrap();
-    guild_settings.premium
-}
+use crate::guild::operations::GuildSettingsOperations;
+use crate::poise_ext::PoiseContextExt;
+use crate::CrackedError;
+use crate::CrackedMessage;
+use crate::{Context, Error};
 
 /// Get the current `premium` setting for the guild.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Settings",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral,
     aliases("get_premium_status")
 )]
 pub async fn premium(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
-    let res = get_premium(data, guild_id).await;
+    premium_internal(ctx).await
+}
 
-    ctx.say(format!("Premium status: {}", res))
+/// Get the current `premium` setting for the guild.
+pub async fn premium_internal(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let data = ctx.data();
+    let res = data.get_premium(guild_id).await.unwrap_or(false);
+
+    ctx.send_reply(CrackedMessage::Premium(res), true)
         .await
         .map_err(|e| e.into())
         .map(|_| ())

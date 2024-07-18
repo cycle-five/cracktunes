@@ -1,14 +1,20 @@
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::messaging::message::CrackedMessage;
-use crate::utils::send_response_poise;
+use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::User;
 
 /// Utilizes the permissions v2 `required_permissions` field
-#[poise::command(slash_command, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Admin",
+    prefix_command,
+    slash_command,
+    required_permissions = "ADMINISTRATOR"
+)]
+#[cfg(not(tarpaulin_include))]
 pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Authorized.").await?;
 
@@ -23,6 +29,7 @@ pub async fn authorize(
     #[description = "The user to add to authorized list"] user: User,
 ) -> Result<(), Error> {
     // let id = user_id.parse::<u64>().expect("Failed to parse user id");
+
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -55,9 +62,9 @@ pub async fn authorize(
         .to_partial_guild(ctx.http())
         .await
         .map(|g| g.name)
-        .unwrap_or_else(|_| "Unknown".to_string());
-    let msg = send_response_poise(
-        ctx,
+        .unwrap_or_else(|_| UNKNOWN.to_string());
+    let _ = send_reply(
+        &ctx,
         CrackedMessage::UserAuthorized {
             id,
             mention,
@@ -67,6 +74,5 @@ pub async fn authorize(
         true,
     )
     .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }

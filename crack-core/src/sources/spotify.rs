@@ -14,12 +14,7 @@ use rspotify::{
     },
     ClientCredsSpotify, ClientResult, Config, Credentials,
 };
-use std::{
-    env,
-    ops::{Deref, DerefMut},
-    str::FromStr,
-    time::Duration,
-};
+use std::{env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -82,22 +77,22 @@ pub struct ParsedSpotifyUrl {
 
 type SpotifyCreds = Credentials;
 
-#[derive(Debug, Clone)]
-pub struct SpotifyPlaylist(FullPlaylist);
+// #[derive(Debug, Clone)]
+// pub struct SpotifyPlaylist(FullPlaylist);
 
-impl Deref for SpotifyPlaylist {
-    type Target = FullPlaylist;
+// impl Deref for SpotifyPlaylist {
+//     type Target = FullPlaylist;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
 
-impl DerefMut for SpotifyPlaylist {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+// impl DerefMut for SpotifyPlaylist {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
 
 /// Spotify source.
 #[derive(Debug, Clone)]

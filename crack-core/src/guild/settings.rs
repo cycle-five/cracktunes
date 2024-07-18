@@ -2,26 +2,29 @@ use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
+use crate::CrackedResult;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::Write;
 use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
     env,
-    fs::{create_dir_all, OpenOptions},
 };
 use typemap_rev::TypeMapKey;
 
-use super::permissions::{CommandChannel, GenericPermissionSettings};
-
-pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
+pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
+#[allow(dead_code)]
+pub(crate) const PIPED_WATCH_URL: &str = "https://piped.video/watch?v=";
+pub(crate) const YOUTUBE_WATCH_URL: &str = "https://www.youtube.com/watch?v=";
+pub(crate) const VIDEO_WATCH_URL: &str = YOUTUBE_WATCH_URL;
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
 pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
 pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
@@ -52,75 +55,6 @@ pub fn get_settings_path() -> String {
 /// Get the log prefix, global.
 pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
-}
-
-/// Settings for a command channel.
-// #[derive(Deserialize, Serialize, Debug, Clone, Default)]
-// pub struct CommandChannelSettings {
-//     pub id: ChannelId,
-//     pub perms: GenericPermissionSettings,
-// }
-
-/// Command channels to restrict where and who can use what commands
-#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, sqlx::FromRow)]
-pub struct CommandChannels {
-    pub music_channel: Option<CommandChannel>,
-}
-
-impl CommandChannels {
-    /// Set the music channel, mutating.
-    pub fn set_music_channel(
-        &mut self,
-        channel_id: ChannelId,
-        guild_id: GuildId,
-        perms: GenericPermissionSettings,
-    ) -> &mut Self {
-        self.music_channel = Some(CommandChannel {
-            command: "music".to_string(),
-            channel_id,
-            guild_id,
-            permission_settings: perms,
-        });
-        self
-    }
-
-    /// Set the music channel, returning a new CommandChannels.
-    pub fn with_music_channel(
-        self,
-        channel_id: ChannelId,
-        guild_id: GuildId,
-        perms: GenericPermissionSettings,
-    ) -> Self {
-        let music_channel = Some(CommandChannel {
-            command: "music".to_string(),
-            channel_id,
-            guild_id,
-            permission_settings: perms,
-        });
-        Self { music_channel }
-    }
-
-    /// Get the music channel.
-    pub fn get_music_channel(&self) -> Option<CommandChannel> {
-        self.music_channel.clone()
-    }
-
-    /// Insert the command channel into the database.
-    pub async fn save(&self, pool: &PgPool) -> Option<CommandChannel> {
-        match self.music_channel {
-            Some(ref c) => c.insert_command_channel(pool).await.ok(),
-            None => None,
-        }
-    }
-
-    pub async fn load(guild_id: GuildId, pool: &PgPool) -> Result<Self, CrackedError> {
-        let music_channels =
-            CommandChannel::get_command_channels(pool, "music".to_string(), guild_id).await;
-
-        let music_channel = music_channels.first().cloned();
-
-        Ok(Self { music_channel })
-    }
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -362,15 +296,20 @@ impl UserPermission {
     }
 }
 
+use super::permissions::GenericPermissionSettings;
+
+// TODO
+//#[derive(Debug, Clone, Serialize, PartialEq)]
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: String,
     pub prefix: String,
+    // A vc token per guild.
     #[serde(default = "premium_default")]
     pub premium: bool,
-    #[serde(default = "CommandChannels::default")]
-    pub command_channels: CommandChannels,
+    // Settings for different categories of commands.
+    pub command_settings: HashMap<String, GenericPermissionSettings>,
     #[serde(default = "default_false")]
     pub autopause: bool,
     #[serde(default = "default_true")]
@@ -470,7 +409,7 @@ impl From<crate::db::GuildSettingsRead> for GuildSettings {
             .into_iter()
             .map(|x| x as u64)
             .collect();
-        settings.old_volume = settings_db.old_volume as f32;
+        settings.old_volume = settings_db.volume as f32;
         settings.volume = settings_db.volume as f32;
         settings.self_deafen = settings_db.self_deafen;
         settings.timeout = settings_db.timeout_seconds.unwrap_or(0) as u32;
@@ -504,7 +443,7 @@ impl GuildSettings {
             guild_name,
             prefix: my_prefix.clone(),
             premium: DEFAULT_PREMIUM,
-            command_channels: CommandChannels::default(),
+            command_settings: HashMap::new(),
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
@@ -635,14 +574,20 @@ impl GuildSettings {
         self.banned_domains = banned;
     }
 
-    /// Set the music channel, without mutating.
-    pub fn set_music_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.command_channels.set_music_channel(
-            ChannelId::new(channel_id),
-            self.guild_id,
-            Default::default(),
-        );
-        self
+    /// Set the music channel, mutating.
+    pub fn set_music_channel(&mut self, channel_id: u64) {
+        self.command_settings
+            .entry("music".to_string())
+            .and_modify(|perms| {
+                perms.allowed_channels.clear();
+                perms.denied_channels.clear();
+                perms.add_allowed_channel(channel_id);
+            })
+            .or_insert_with(|| {
+                let mut perms = GenericPermissionSettings::default();
+                perms.add_allowed_channel(channel_id);
+                perms
+            });
     }
 
     /// Update the allowed domains.
@@ -703,7 +648,7 @@ impl GuildSettings {
     /// Set the volume level without mutating.
     pub fn with_volume(self, volume: f32) -> Self {
         Self {
-            old_volume: self.volume,
+            old_volume: volume,
             volume,
             ..self
         }
@@ -711,7 +656,7 @@ impl GuildSettings {
 
     /// Set the volume level with mutating.
     pub fn set_volume(&mut self, volume: f32) -> &mut Self {
-        self.old_volume = self.volume;
+        self.old_volume = volume;
         self.volume = volume;
         self
     }
@@ -902,14 +847,6 @@ impl GuildSettings {
         }
     }
 
-    /// Set the command channels, notmutating.
-    pub fn with_command_channels(&self, command_channels: CommandChannels) -> Self {
-        Self {
-            command_channels,
-            ..self.clone()
-        }
-    }
-
     /// Set the server join/leave log channel, mutating.
     pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
@@ -922,19 +859,40 @@ impl GuildSettings {
         self
     }
 
+    /// Set command settings, returning a new GuildSettings.
+    pub fn with_command_settings(
+        self,
+        command_settings: HashMap<String, GenericPermissionSettings>,
+    ) -> Self {
+        Self {
+            command_settings,
+            ..self
+        }
+    }
+
+    /// Set the command settings, mutating.
+    pub fn set_command_settings(
+        &mut self,
+        command_settings: HashMap<String, GenericPermissionSettings>,
+    ) -> &mut Self {
+        self.command_settings = command_settings;
+        self
+    }
+
     /// Get the log channel for the given event type.
     pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
-            | FullEvent::PresenceUpdate { .. } => {
+            FullEvent::PresenceUpdate { .. } => {
                 None
                 //.or(log_settings.get_all_log_channel()),
-            }
-            | FullEvent::GuildMemberAddition { .. }
-            | FullEvent::GuildMemberRemoval { .. } => {
-                log_settings.get_join_leave_log_channel().or(log_settings.get_all_log_channel())
-            }
-            | FullEvent::GuildBanRemoval { .. }
+            },
+            FullEvent::GuildMemberAddition { .. } | FullEvent::GuildMemberRemoval { .. } => {
+                log_settings
+                    .get_join_leave_log_channel()
+                    .or(log_settings.get_all_log_channel())
+            },
+            FullEvent::GuildBanRemoval { .. }
             | FullEvent::GuildBanAddition { .. }
             | FullEvent::GuildScheduledEventCreate { .. }
             | FullEvent::GuildScheduledEventUpdate { .. }
@@ -951,7 +909,6 @@ impl GuildSettings {
             | FullEvent::GuildRoleCreate { .. }
             | FullEvent::GuildRoleDelete { .. }
             | FullEvent::GuildRoleUpdate { .. }
-            //| FullEvent::GuildUnavailable { .. }
             | FullEvent::GuildUpdate { .. } => log_settings
                 .get_server_log_channel()
                 .or(log_settings.get_all_log_channel()),
@@ -994,7 +951,6 @@ impl GuildSettings {
             | FullEvent::ThreadMembersUpdate { .. }
             | FullEvent::ThreadUpdate { .. }
             | FullEvent::TypingStart { .. }
-            // | FullEvent::Unknown { .. }
             | FullEvent::UserUpdate { .. }
             | FullEvent::VoiceServerUpdate { .. }
             | FullEvent::VoiceStateUpdate { .. } => {
@@ -1003,8 +959,13 @@ impl GuildSettings {
                 //     format!("Event: {:?}", event).as_str().to_string().white()
                 // );
                 log_settings.get_all_log_channel()
-            }
-            _ => todo!(),
+            },
+            //| FullEvent::GuildUnavailable { .. }
+            // | FullEvent::Unknown { .. }
+            _ => {
+                tracing::warn!("Event Not Implemented: {:?}", event);
+                None
+            },
         }
     }
 
@@ -1027,6 +988,26 @@ impl GuildSettings {
         }
         None
     }
+
+    pub fn get_music_channel(&self) -> Option<ChannelId> {
+        self.command_settings
+            .get("music")
+            .and_then(|x| x.allowed_channels.iter().map(|x| ChannelId::new(*x)).next())
+            .or(None)
+    }
+
+    pub fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
+        self.command_settings.get("music").cloned()
+    }
+
+    /// Adds a user to the denied music users list.
+    pub async fn add_denied_music_user(&mut self, user_id: UserId) -> CrackedResult<bool> {
+        let user_id = user_id.get();
+        let mut perms = self.get_music_permissions().unwrap_or_default();
+        perms.add_denied_user(user_id);
+        self.command_settings.insert("music".to_string(), perms);
+        Ok(true)
+    }
 }
 
 /// Save the guild settings to the database.
@@ -1037,6 +1018,13 @@ pub async fn save_guild_settings(
     for guild_settings in guild_settings_map.values() {
         let _ = guild_settings.save(pool).await;
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CommandSettingsMap;
+
+impl TypeMapKey for CommandSettingsMap {
+    type Value = HashMap<String, GenericPermissionSettings>;
 }
 
 /// Struct to hold the guild settings map in a typemap
