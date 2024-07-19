@@ -64,7 +64,7 @@ prometheus = { version = "0.13", features = ["process"], optional = true }
 warp = { version = "0.3", default-features = false, features = [
     "tls",
 ], optional = true }
-opentelemetry = { version = "0.23", optional = true }
+opentelemetry = { version = "0.24", optional = true }
 opentelemetry_sdk = { version = "0.23", optional = true }
 tracing-bunyan-formatter = { version = "0.3", optional = true }
 
