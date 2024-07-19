@@ -15,6 +15,7 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     cmd_check_music_internal(member, channel_id, ctx).await
 }
 
+/// Internal function (doesn't parse arguments).
 pub async fn cmd_check_music_internal(
     member: Option<Cow<'_, Member>>,
     channel_id: ChannelId,

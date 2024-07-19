@@ -2,6 +2,7 @@ use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
+use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
     Video, VideoInfo,
@@ -133,11 +134,12 @@ impl RustyYoutubeClient {
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
     pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
-        // let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
-        //     client: Some(client.clone()),
-        //     ..Default::default()
-        // })?;
-        let rusty_ytdl = YouTube::new().unwrap();
+        // TODO: Put the ipv6 block in here.
+        let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
+            client: Some(client.clone()),
+            ..Default::default()
+        })?;
+        // let rusty_ytdl = YouTube::new().unwrap();
         Ok(Self { rusty_ytdl, client })
     }
 

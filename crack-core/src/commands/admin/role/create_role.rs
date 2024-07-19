@@ -70,6 +70,7 @@ pub async fn create(
 }
 
 /// Internal create role function.
+#[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_role_internal(
     ctx: Context<'_>,
