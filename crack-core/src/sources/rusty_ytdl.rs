@@ -124,7 +124,58 @@ impl Display for RustyYoutubeSearch {
     }
 }
 
-/// Implementation of the `RustyYoutubeClient` struct.
+/// Builder for the [`RequestOptions`] struct.
+pub struct RequestOptionsBuilder {
+    pub client: Option<reqwest::Client>,
+    pub ipv6_block: Option<String>,
+}
+
+/// Default for the [`RequestOptions`] struct.
+impl Default for RequestOptionsBuilder {
+    fn default() -> Self {
+        Self {
+            client: None,
+            ipv6_block: Some("2001:4::/48".to_string()),
+        }
+    }
+}
+
+/// Implementation of the builder for the [`RequestOptions`] struct.
+impl RequestOptionsBuilder {
+    /// Creates a default builder.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Sets the client for the builder, mutating.
+    pub fn set_client(mut self, client: reqwest::Client) -> Self {
+        self.client = Some(client);
+        self
+    }
+
+    /// Sets the ipv6 block for the builder, mutating.
+    pub fn set_ipv6_block(mut self, ipv6_block: String) -> Self {
+        self.ipv6_block = Some(ipv6_block);
+        self
+    }
+
+    /// Sets the client for the builder, mutating.
+    pub fn set_default_ipv6_block(mut self) -> Self {
+        self.ipv6_block = Some("2001:4::/48".to_string());
+        self
+    }
+
+    /// Builds the [`RequestOptions`] struct.
+    pub fn build(self) -> RequestOptions {
+        RequestOptions {
+            client: self.client,
+            ipv6_block: self.ipv6_block,
+            ..Default::default()
+        }
+    }
+}
+
+/// Implementation of the [`RustyYoutubeClient`] struct.
 impl RustyYoutubeClient {
     // Create a new `RustyYoutubeClient`.
     pub fn new() -> Result<Self, CrackedError> {
@@ -134,12 +185,14 @@ impl RustyYoutubeClient {
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
     pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
-        // TODO: Put the ipv6 block in here.
-        let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
-            client: Some(client.clone()),
-            ..Default::default()
-        })?;
-        // let rusty_ytdl = YouTube::new().unwrap();
+        // TODO: Is this the best, or even correct block to use?
+
+        let req = RequestOptionsBuilder::new()
+            .set_client(client.clone())
+            .build();
+
+        let rusty_ytdl = YouTube::new_with_options(&req)?;
+
         Ok(Self { rusty_ytdl, client })
     }
 
@@ -416,6 +469,8 @@ impl Seek for MediaSourceStream {
     }
 }
 
+/// Implementation of [`MediaSource`] for the [`MediaSourceStream`] struct.
+/// FIXME: Does this need to be seekable?
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
         //true
@@ -577,4 +632,19 @@ mod test {
     // async fn test_can_play_ytdl() {
     //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string();
     // }
+
+    // RequestOptionsBuilder tests
+    #[test]
+    fn test_request_options_builder() {
+        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new();
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/48".to_string()));
+
+        let client = reqwest::Client::new();
+        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new()
+            .set_client(client.clone())
+            .set_ipv6_block("2001:4::/64".to_string());
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
+    }
 }

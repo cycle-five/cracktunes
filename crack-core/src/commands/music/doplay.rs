@@ -177,7 +177,7 @@ async fn play_internal(
 
     // TODO: Maybe put into it's own function?
     let url = match file.clone() {
-        Some(file) => file.url.as_str().to_owned().to_string(),
+        Some(file) => file.url.clone(),
         None => msg.clone(),
     };
     let url = url.as_str();
