@@ -132,16 +132,20 @@ docker compose up -d
 
 ## v0.3.10 (ETA: 2024/08/01)
 
-- [ ] changenicks command. Renames all users in the guild
-      to a random name from a list of themed names. Use your
-      own custom list, or choose from one of several fun pre-included.
-- [ ] Test coverage > 20%
-- [ ] Generate docs
-- [ ] Finish adding help option to all commands
-- [ ] discordbotlist.com (voting service)
+- [ ] All milestones recorded as GitHub issues.
+- [ ] /changenicks command. Renames all users in the guild
+      to a random nick name from a themed list of names. Use your
+      own custom list, or choose from one of the many I've
+      pre-curated and use in my own server.
+- [ ] Test Coverage > 23%.
+- [ ] Codebase architecture documentation.
+- [ ] Add help option to all commands.
+- [ ] Support discordbotlist.com (voting service).
+- [ ] Re-enable playlist support.
 
-## v0.3.9 (internal testing version, publicly skipped
-  (i.e. git branches got fucked and this was easier))
+## ~~v0.3.9~~ 
+- internal testing version, publicly skipped
+- i.e. git branches got fucked and this was easier
 
 ## v0.3.8 (2024/07/17)
 
