@@ -510,6 +510,7 @@ mod test {
                 assert!(false)
             },
             Err(e) => {
+                println!("{:?}", e);
                 assert!(e.to_string().contains("Your IP is likely being blocked"))
             },
         }

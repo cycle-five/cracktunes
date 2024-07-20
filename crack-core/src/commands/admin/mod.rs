@@ -36,6 +36,7 @@ pub use defend::*;
 pub use delete_channel::*;
 pub use get_active::*;
 pub use invite_tracker::track_invites;
+pub use kick::changenicks;
 pub use kick::*;
 pub use message_cache::*;
 pub use move_users::*;
@@ -69,7 +70,7 @@ use crate::poise_ext::PoiseContextExt;
         "deauthorize",
         "delete_channel",
         "kick",
-        "rename_all",
+        "changenicks",
         "mute",
         "message_cache",
         "move_users_to",
@@ -81,7 +82,7 @@ use crate::poise_ext::PoiseContextExt;
         "timeout",
         "user",
         "role",
-        "help"
+        "help",
     ),
     ephemeral,
     // owners_only
@@ -107,6 +108,7 @@ pub fn admin_commands() -> Vec<crate::Command> {
         deafen(),
         undeafen(),
         timeout(),
+        changenicks(),
     ]
     .into_iter()
     .chain(role::role_commands())
