@@ -130,9 +130,18 @@ docker compose up -d
 
 ## TODO:
 
-- [ ] discordbotlist.com (voting service)
+## v0.3.10 (ETA: 2024/08/01)
+
+- [ ] changenicks command. Renames all users in the guild
+      to a random name from a list of themed names. Use your
+      own custom list, or choose from one of several fun pre-included.
+- [ ] Test coverage > 20%
+- [ ] Generate docs
 - [ ] Finish adding help option to all commands
-- [ ] Update and make wider use of rusty_ytdlp.
+- [ ] discordbotlist.com (voting service)
+
+## v0.3.9 (internal testing version, publicly skipped
+  (i.e. git branches got fucked and this was easier))
 
 ## v0.3.8 (2024/07/17)
 
