@@ -270,3 +270,22 @@ impl PlayLog {
         Ok(last_played.into_iter().map(|t| t.to_string()).collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_playlog(pool: PgPool) -> Result<(), Error> {
+        let user_id = 1;
+        let guild_id = 1;
+        let metadata_id = 1;
+        let play_log = PlayLog::create(&pool, user_id, guild_id, metadata_id).await?;
+        assert_eq!(play_log.user_id, user_id);
+        assert_eq!(play_log.guild_id, guild_id);
+        assert_eq!(play_log.metadata_id, metadata_id);
+        Ok(())
+    }
+}

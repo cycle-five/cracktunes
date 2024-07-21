@@ -494,10 +494,13 @@ mod test {
     #[tokio::test]
     async fn test_ytdl() {
         // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let client = http_utils::get_client().clone();
-        let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
-        let ytdl = Arc::new(ytdl);
-        let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
+        // let client = http_utils::get_client().clone();
+        // let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
+        // let ytdl = Arc::new(ytdl);
+        // let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
+        let search = "The Night Chicago Died";
+        let rusty_ytdl = YouTube::new().unwrap();
+        let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
         match playlist {
             Ok(Some(playlist)) => {
                 let metadata =

@@ -530,6 +530,8 @@ async fn build_queued_embed(
         .footer(CreateEmbedFooter::new(footer_text))
 }
 
+use crate::sources::rusty_ytdl::RequestOptionsBuilder;
+use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
@@ -546,6 +548,10 @@ pub async fn queue_aux_metadata(
         .ok_or(CrackedError::NotConnected)?;
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
+    let req = RequestOptionsBuilder::new()
+        .set_client(client.clone())
+        .build();
+    let rusty_ytdl = YouTube::new_with_options(&req)?;
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
@@ -557,8 +563,8 @@ pub async fn queue_aux_metadata(
                 )
                 .await;
 
-            let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-            let res = ytdl.one_shot(search_query).await?;
+            //let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+            let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
             let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 

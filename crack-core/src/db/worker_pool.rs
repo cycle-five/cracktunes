@@ -140,7 +140,8 @@ mod test {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(metadata.id, 1);
+        // test data has id 1
+        assert_eq!(metadata.id, 2);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
