@@ -4,7 +4,7 @@
 
 ## v0.3.10 (ETA: 2024/08/01)
 
-- [ ] All milestones recorded as GitHub issues.
+- [x] All milestones recorded as GitHub issues.
 - [ ] /changenicks command. Renames all users in the guild
       to a random nick name from a themed list of names. Use your
       own custom list, or choose from one of the many I've

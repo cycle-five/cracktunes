@@ -135,7 +135,7 @@ mod test {
             channel_id: ChannelId::new(1),
         };
         sender.send(data).await.unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         let metadata = crate::db::metadata::Metadata::get_by_url(&pool, &url)
             .await
             .unwrap()

@@ -342,10 +342,11 @@ pub async fn get_guilds(ctx: Arc<SerenityContext>) -> Vec<GuildId> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::guild::cache::GuildCache;
     use crate::{Data, DataInner};
     use serenity::model::id::ChannelId;
     use std::collections::HashMap;
-    use tokio::sync::RwLock;
+    use tokio::sync::{Mutex, RwLock};
 
     #[tokio::test]
     async fn test_get_guild_settings() {
@@ -640,5 +641,40 @@ mod test {
         data.set_autopause(guild_id, false).await;
 
         assert_eq!(data.get_autopause(guild_id).await, false);
+    }
+
+    #[tokio::test]
+    async fn test_get_set_autorole() {
+        let mut guild_settings_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        let auto_role = 123;
+        let mut settings = crate::GuildSettings::default();
+        settings.set_auto_role(Some(auto_role));
+        guild_settings_map.insert(guild_id, settings);
+        let data = Arc::new(Data(Arc::new(DataInner {
+            guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
+            ..Default::default()
+        })));
+
+        assert_eq!(data.get_auto_role(guild_id).await, Some(auto_role));
+    }
+
+    #[tokio::test]
+    async fn test_get_set_autoplay() {
+        let mut guild_cache_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        guild_cache_map.insert(
+            guild_id,
+            GuildCache {
+                autoplay: false,
+                ..Default::default()
+            },
+        );
+        let data = Arc::new(Data(Arc::new(DataInner {
+            guild_cache_map: Arc::new(Mutex::new(guild_cache_map)),
+            ..Default::default()
+        })));
+
+        assert_eq!(data.get_autoplay(guild_id).await, false);
     }
 }

@@ -50,16 +50,6 @@ pub struct GuildEntity {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
-// CREATE TABLE log_settings (
-//     guild_id BIGINT PRIMARY KEY,
-//     all_log_channel BIGINT,
-//     raw_event_log_channel BIGINT,
-//     server_log_channel BIGINT,
-//     member_log_channel BIGINT,
-//     join_leave_log_channel BIGINT,
-//     voice_log_channel BIGINT,
-//     CONSTRAINT fk_log_settings FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
-// );
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LogSettingsRead {
@@ -267,25 +257,6 @@ impl GuildEntity {
                 .save(pool, guild_id)
                 .await?;
         }
-        // let guard: RwLockReadGuard<MyMap> = settings.command_channels.read().await;
-        // for (cmd, val) in guard.clone() {
-        //     //.expect("BUG! SHOULD BE SET") {
-        //     for (channel_id, perms) in val {
-        //         let perms_borrow = if perms.id == 0 {
-        //             let perms = perms.insert_permission_settings(pool).await?;
-        //             perms.clone()
-        //         } else {
-        //             perms
-        //         };
-        //         let ch = CommandChannel {
-        //             command: cmd.to_string(),
-        //             channel_id: serenity::ChannelId::new(channel_id),
-        //             guild_id: GuildId::new(guild_id as u64),
-        //             permission_settings: perms_borrow.clone(),
-        //         };
-        //         CommandChannel::save(&ch, pool).await?;
-        //     }
-        // }
 
         Ok(())
     }
@@ -522,5 +493,181 @@ impl GuildEntity {
                 .collect()
         })
         .map_err(|e| e.into())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashSet;
+
+    use super::*;
+    use sqlx::PgPool;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_get_or_create(pool: PgPool) {
+        let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(guild.id, 123);
+        assert_eq!(guild.name, "test");
+        assert_eq!(settings.guild_id.get(), 123);
+        assert_eq!(settings.guild_name, "test");
+        assert_eq!(settings.prefix, "test");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_update_prefix(pool: PgPool) {
+        let (mut guild, _) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+        guild
+            .update_prefix(&pool, "new_prefix".to_string())
+            .await
+            .unwrap();
+        let guild = crate::db::guild::GuildEntity::get(&pool, 123)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(guild.name, "test");
+        let settings = guild.get_settings(&pool).await.unwrap();
+
+        assert_eq!(settings.prefix, "new_prefix");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_get_write_settings(pool: PgPool) {
+        let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let guild_id = guild.id;
+
+        let welcome_settings = GuildEntity::get_welcome_settings(&pool, guild_id)
+            .await
+            .unwrap();
+        let log_settings = GuildEntity::get_log_settings(&pool, guild_id)
+            .await
+            .unwrap();
+
+        assert!(welcome_settings.is_none());
+        assert!(log_settings.is_none());
+
+        let welcome_settings_new = crate::guild::settings::WelcomeSettings {
+            auto_role: Some(123),
+            channel_id: Some(123),
+            message: Some("test".to_string()),
+            password: None,
+        };
+
+        let settings = settings.with_welcome_settings(Some(welcome_settings_new.clone()));
+
+        GuildEntity::write_settings(&pool, &settings).await.unwrap();
+
+        let welcome_settings = GuildEntity::get_welcome_settings(&pool, guild_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(welcome_settings, welcome_settings_new);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_write_banned_comains(pool: PgPool) {
+        let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let banned_domains = vec!["test".to_string(), "test2".to_string()];
+
+        guild
+            .write_banned_domains(&pool, banned_domains.clone())
+            .await
+            .unwrap();
+
+        let settings = guild.get_settings(&pool).await.unwrap();
+
+        assert_eq!(
+            settings.banned_domains.iter().collect::<HashSet<_>>(),
+            banned_domains.iter().collect::<HashSet<_>>()
+        );
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_write_allowed_domains(pool: PgPool) {
+        let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let allowed_domains = vec!["test".to_string(), "test2".to_string()];
+
+        guild
+            .write_allowed_domains(&pool, allowed_domains.clone())
+            .await
+            .unwrap();
+
+        let settings = guild.get_settings(&pool).await.unwrap();
+
+        assert_eq!(
+            settings.allowed_domains.iter().collect::<HashSet<_>>(),
+            allowed_domains.iter().collect::<HashSet<_>>()
+        );
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_write_log_settings(pool: PgPool) {
+        let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
+            &pool,
+            123,
+            "test".to_string(),
+            "test".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let guild_id = guild.id;
+
+        let log_settings = crate::guild::settings::LogSettings {
+            all_log_channel: Some(123),
+            raw_event_log_channel: Some(123),
+            server_log_channel: Some(123),
+            member_log_channel: Some(123),
+            join_leave_log_channel: Some(123),
+            voice_log_channel: Some(123),
+        };
+
+        GuildEntity::write_log_settings(&pool, guild_id, &log_settings)
+            .await
+            .unwrap();
+
+        let settings = guild.get_settings(&pool).await.unwrap();
+
+        assert_eq!(settings.log_settings, Some(log_settings));
     }
 }
