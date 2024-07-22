@@ -279,6 +279,7 @@ pub async fn queue_query_list_offset<'a>(
 
 /// Get the play mode and the message from the parameters to the play command.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
+#[tracing::instrument]
 pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
     let opt_mode = mode.clone();
     if is_prefix {
@@ -339,6 +340,7 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
 // TODO: Old and crufty. Clean up.
+#[tracing::instrument]
 pub fn get_msg(
     mode: Option<String>,
     query_or_url: Option<String>,
@@ -364,6 +366,7 @@ pub fn get_msg(
 
 /// Rotates the queue by `n` tracks to the right.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument]
 pub async fn _rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,
