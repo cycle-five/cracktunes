@@ -129,7 +129,7 @@ mod test {
                 source_url: Some(url.clone()),
                 ..Default::default()
             },
-            user_id: UserId::new(1),
+            user_id: UserId::new(100),
             username: "test".to_string(),
             guild_id: GuildId::new(1),
             channel_id: ChannelId::new(1),
@@ -141,7 +141,7 @@ mod test {
             .unwrap()
             .unwrap();
         // test data has id 1
-        assert_eq!(metadata.id, 2);
+        assert_eq!(metadata.id, 4);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]

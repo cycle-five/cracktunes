@@ -18,6 +18,26 @@ VALUES (
         NOW(),
         NOW(),
         NOW()
+    ),
+    (
+        2,
+        '🔧 Test 2',
+        0,
+        'https://example.com/avatar.jpg',
+        false,
+        NOW(),
+        NOW(),
+        NOW()
+    ),
+    (
+        3,
+        '🔧 Test 3',
+        0,
+        'https://example.com/avatar.jpg',
+        false,
+        NOW(),
+        NOW(),
+        NOW()
     );
 INSERT INTO guild (id, "name", created_at, updated_at)
 VALUES (1, '🔧 Test', NOW(), NOW());
@@ -74,6 +94,34 @@ VALUES (
         '2023-11-13',
         2,
         '🔧 Test',
+        0,
+        0,
+        0,
+        'https://example.com',
+        '🔧 Test',
+        'https://example.com/thumbnail.jpg'
+    ),
+    (
+        '🔧 Test2',
+        '🔧 Test2',
+        '🔧 Test2',
+        '2023-11-13',
+        2,
+        '🔧 Test2',
+        0,
+        0,
+        0,
+        'https://example.com',
+        '🔧 Test',
+        'https://example.com/thumbnail.jpg'
+    ),
+    (
+        '🔧 Test3',
+        '🔧 Test3',
+        '🔧 Test3',
+        '2023-11-13',
+        2,
+        '🔧 Test3',
         0,
         0,
         0,

@@ -288,4 +288,28 @@ mod tests {
         assert_eq!(play_log.metadata_id, metadata_id);
         Ok(())
     }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_playlog_get_last_played(pool: PgPool) -> Result<(), Error> {
+        let user_id = 2;
+        let guild_id = 1;
+        let metadata_id = 1;
+        PlayLog::create(&pool, user_id, guild_id, metadata_id).await?;
+        let last_played = PlayLog::get_last_played(&pool, None, Some(guild_id)).await?;
+        assert_eq!(last_played.len(), 1);
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_playlog_get_last_played_by_user(pool: PgPool) -> Result<(), Error> {
+        let user_id = 3;
+        let guild_id = 1;
+        let metadata_id = 1;
+        PlayLog::create(&pool, user_id, guild_id, metadata_id).await?;
+        PlayLog::create(&pool, user_id, guild_id, metadata_id + 1).await?;
+        PlayLog::create(&pool, user_id, guild_id, metadata_id + 2).await?;
+        let last_played = PlayLog::get_last_played(&pool, Some(user_id), None).await?;
+        assert_eq!(last_played.len(), 3);
+        Ok(())
+    }
 }
