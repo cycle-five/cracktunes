@@ -13,7 +13,7 @@ pub async fn video_info_to_source_and_metadata(
     url: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-    let video_info = rytdl.get_video_info(url.clone()).await?;
+    let video_info = RustyYoutubeClient::get_video_info(url.clone()).await?;
     let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
     let my_metadata = MyAuxMetadata::Data(metadata.clone());
 

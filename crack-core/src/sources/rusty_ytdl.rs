@@ -210,7 +210,7 @@ impl RustyYoutubeClient {
                 metadata.track = Some(video.title.clone());
                 metadata.artist = None;
                 metadata.album = None;
-                metadata.date = video.uploaded_at;
+                metadata.date = video.uploaded_at.clone();
 
                 metadata.channels = Some(2);
                 metadata.channel = Some(video.channel.name);
@@ -256,7 +256,7 @@ impl RustyYoutubeClient {
     }
 
     /// Get a video from a URL.
-    pub async fn get_video_info(&self, url: String) -> Result<VideoInfo, CrackedError> {
+    pub async fn get_video_info(url: String) -> Result<VideoInfo, CrackedError> {
         // let vid_options = VideoOptions {
         //     request_options: RequestOptions {
         //         client: Some(self.client.clone()),

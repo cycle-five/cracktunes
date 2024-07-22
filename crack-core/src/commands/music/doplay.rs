@@ -149,6 +149,7 @@ use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -325,6 +326,16 @@ async fn match_mode<'a>(
         },
     }
 }
+
+// async fn query_type_to_metadata<'a>(
+//     ctx: Context<'_>,
+//     call: Arc<Mutex<Call>>,
+//     mode: Mode,
+//     query_type: QueryType,
+//     search_msg: &'a mut Message,
+// ) -> CrackedResult<bool> {
+//     tracing::info!("mode: {:?}", mode);
+// }
 
 /// Check if the domain that we're playing from is banned.
 // FIXME: This is borked.
