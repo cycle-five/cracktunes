@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::commands::play_utils::QueryType;
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
+use crate::CrackedResult;
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, sources::rusty_ytdl::RustyYoutubeClient,
 };
@@ -14,7 +15,7 @@ use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 pub async fn get_rusty_search(
     client: reqwest::Client,
     url: String,
-) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+) -> CrackedResult<RustyYoutubeSearch> {
     let video_options = VideoOptions {
         request_options: RequestOptions {
             client: Some(client.clone()),
@@ -26,9 +27,7 @@ pub async fn get_rusty_search(
     let video_info = video.get_info().await?;
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
     let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
-    let my_metadata = MyAuxMetadata(metadata.clone());
 
-    // let ytdl = YoutubeDl::new(client, url);
     let rusty_search = RustyYoutubeSearch {
         rusty_ytdl: rytdl,
         metadata: Some(metadata.clone()),
@@ -36,7 +35,7 @@ pub async fn get_rusty_search(
         url: Some(url),
         video: Some(Arc::new(video)),
     };
-    Ok((rusty_search.into(), vec![my_metadata]))
+    Ok(rusty_search)
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -49,9 +48,11 @@ pub async fn search_query_to_source_and_metadata(
 
     let metadata = {
         let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-        // let rytdl = RustyYoutubeClient::new()?;
+
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
+
         let results = rytdl.one_shot(query.clone()).await?;
+
         tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
         // FIXME: Fallback to yt-dlp
         let result = match results {
@@ -70,7 +71,6 @@ pub async fn search_query_to_source_and_metadata(
     let my_metadata = MyAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
-    // Ok((ytdl.into(), vec![MyAuxMetadata(metadata)]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -207,7 +207,7 @@ mod test {
         let res = get_rusty_search(client, url).await;
 
         match res {
-            Ok((_input, metadata)) => assert!(metadata.first().is_some()),
+            Ok(search) => assert!(search.metadata.is_some()),
             Err(e) => {
                 let phrase = "Your IP is likely being blocked by Youtube";
                 assert!(e.to_string().contains(phrase));

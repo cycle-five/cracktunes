@@ -618,7 +618,14 @@ impl QueryType {
             },
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
-                get_rusty_search(client.clone(), query.clone()).await
+                let search = get_rusty_search(client.clone(), query.clone()).await?;
+                let metadata = search
+                    .clone()
+                    .metadata
+                    .into_iter()
+                    .map(MyAuxMetadata)
+                    .collect::<Vec<_>>();
+                Ok((search.into(), metadata))
                 // let mut ytdl = YoutubeDl::new(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
                 // let my_metadata = MyAuxMetadata(metadata);
