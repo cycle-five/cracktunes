@@ -90,16 +90,23 @@ impl Display for RustyYoutubeClient {
 pub struct RustyYoutubeSearch {
     pub rusty_ytdl: RustyYoutubeClient,
     pub metadata: Option<AuxMetadata>,
+    pub url: Option<String>,
+    pub video: Option<Arc<Video>>,
     pub query: QueryType,
 }
 
+type RustyYoutube = YouTube;
+type YtdlpYoutube = YoutubeDl;
+type YouTubeClient = either::Either<RustyYoutube, YtdlpYoutube>;
 /// More general struct to wrap the search instances. Name this better.
 #[derive(Clone, Debug)]
 pub struct FastYoutubeSearch {
     pub query: QueryType,
-    pub client: reqwest::Client,
-    pub ytdl: either::Either<RustyYoutubeClient, YoutubeDl>,
+    pub reqwest_client: reqwest::Client,
+    pub ytdl_client: YouTubeClient,
+    pub url: Option<String>,
     pub metadata: Option<AuxMetadata>,
+    pub video: Option<Arc<VideoInfo>>,
 }
 
 impl Display for FastYoutubeSearch {
@@ -109,7 +116,7 @@ impl Display for FastYoutubeSearch {
             r#"FastYT: Query: {:?}
             ytdl: {:?}"#,
             self.query.build_query(),
-            either::for_both!(&self.ytdl, ytdl => ytdl.as_string()),
+            either::for_both!(&self.ytdl_client, ytdl => ytdl.as_string()),
         )
     }
 }
@@ -291,6 +298,19 @@ impl RustyYoutubeClient {
             .search_one(&query, None)
             .await
             .map_err(|e| e.into())
+    }
+}
+
+impl RustyYoutubeSearch {
+    pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
+        let rusty_ytdl = RustyYoutubeClient::new_with_client(client)?;
+        Ok(Self {
+            rusty_ytdl,
+            metadata: None,
+            query,
+            url: None,
+            video: None,
+        })
     }
 }
 

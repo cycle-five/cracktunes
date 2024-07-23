@@ -57,7 +57,7 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
                 .ok_or(CrackedError::NothingPlaying)?;
 
             let lock = track_handle.typemap().read().await;
-            let MyAuxMetadata::Data(data) = lock.get::<MyAuxMetadata>().unwrap();
+            let MyAuxMetadata(data) = lock.get::<MyAuxMetadata>().unwrap();
             tracing::info!("data: {:?}", data);
             data.track
                 .clone()

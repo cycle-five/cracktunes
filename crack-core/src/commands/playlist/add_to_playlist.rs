@@ -26,7 +26,7 @@ pub async fn add_to_playlist(
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;
     let metadata = match typemap.get::<MyAuxMetadata>() {
-        Some(MyAuxMetadata::Data(meta)) => meta,
+        Some(MyAuxMetadata(meta)) => meta,
         None => {
             return Err(CrackedError::Other("Failed to get metadata for track.").into());
         },

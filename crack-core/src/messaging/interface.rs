@@ -213,7 +213,7 @@ pub fn create_now_playing_embed_metadata(
     cur_position: Option<Duration>,
     metadata: MyAuxMetadata,
 ) -> CreateEmbed {
-    let MyAuxMetadata::Data(metadata) = metadata;
+    let MyAuxMetadata(metadata) = metadata;
     tracing::warn!("metadata: {:?}", metadata);
 
     let title = metadata.title.clone().unwrap_or_default();
@@ -266,7 +266,7 @@ pub async fn track_handle_to_metadata(
     let metadata = get_track_metadata(track).await;
     let requesting_user = get_requesting_user(track).await.ok();
     let duration = Some(track.get_info().await.unwrap().position);
-    Ok((requesting_user, duration, MyAuxMetadata::Data(metadata)))
+    Ok((requesting_user, duration, MyAuxMetadata(metadata)))
 }
 
 /// Creates a now playing embed for the given track.

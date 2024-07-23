@@ -43,7 +43,7 @@ pub async fn get_playlist_(
     let aux_metadata = metadata
         .iter()
         .flat_map(|m| match aux_metadata_from_db(m) {
-            Ok(aux) => Some(MyAuxMetadata::Data(aux.clone())),
+            Ok(aux) => Some(MyAuxMetadata(aux.clone())),
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);
                 None

@@ -1,27 +1,40 @@
+use std::sync::Arc;
+
 use crate::commands::play_utils::QueryType;
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::{
     commands::MyAuxMetadata, errors::CrackedError, sources::rusty_ytdl::RustyYoutubeClient,
 };
+use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 
 /// Get the source and metadata from a video link. Return value is a vector due
 /// to this being used in a method that also handles the interactive search so
 /// it can return multiple metadatas.
-pub async fn video_info_to_source_and_metadata(
+pub async fn get_rusty_search(
     client: reqwest::Client,
     url: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+    let video_options = VideoOptions {
+        request_options: RequestOptions {
+            client: Some(client.clone()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let video = Video::new_with_options(url.clone(), video_options)?;
+    let video_info = video.get_info().await?;
     let rytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-    let video_info = RustyYoutubeClient::get_video_info(url.clone()).await?;
     let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&video_info);
-    let my_metadata = MyAuxMetadata::Data(metadata.clone());
+    let my_metadata = MyAuxMetadata(metadata.clone());
 
     // let ytdl = YoutubeDl::new(client, url);
     let rusty_search = RustyYoutubeSearch {
         rusty_ytdl: rytdl,
         metadata: Some(metadata.clone()),
-        query: QueryType::VideoLink(url),
+        query: QueryType::VideoLink(url.clone()),
+        url: Some(url),
+        video: Some(Arc::new(video)),
     };
     Ok((rusty_search.into(), vec![my_metadata]))
 }
@@ -54,10 +67,10 @@ pub async fn search_query_to_source_and_metadata(
         None => "".to_string(),
     };
     let ytdl = YoutubeDl::new(client, source_url);
-    let my_metadata = MyAuxMetadata::Data(metadata);
+    let my_metadata = MyAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
-    // Ok((ytdl.into(), vec![MyAuxMetadata::Data(metadata)]))
+    // Ok((ytdl.into(), vec![MyAuxMetadata(metadata)]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -93,9 +106,11 @@ pub async fn search_query_to_source_and_metadata_rusty(
         rusty_ytdl: rytdl,
         metadata: Some(metadata.clone()),
         query,
+        url: metadata.source_url.clone(),
+        video: None,
     };
 
-    Ok((rusty_search.into(), vec![MyAuxMetadata::Data(metadata)]))
+    Ok((rusty_search.into(), vec![MyAuxMetadata(metadata)]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -111,7 +126,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     };
     let mut ytdl = YoutubeDl::new(client, query);
     let metadata = ytdl.aux_metadata().await?;
-    let my_metadata = MyAuxMetadata::Data(metadata);
+    let my_metadata = MyAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
 }
@@ -186,10 +201,10 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_video_info_to_source_and_metadata() {
+    async fn test_get_rusty_search() {
         let client = reqwest::Client::new();
-        let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let res = video_info_to_source_and_metadata(client, url).await;
+        let url = "https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string();
+        let res = get_rusty_search(client, url).await;
 
         match res {
             Ok((_input, metadata)) => assert!(metadata.first().is_some()),

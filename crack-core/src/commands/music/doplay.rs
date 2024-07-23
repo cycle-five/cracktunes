@@ -427,9 +427,7 @@ impl Default for RequestingUser {
 
 /// AuxMetadata wrapper and utility functions.
 #[derive(Debug, Clone)]
-pub enum MyAuxMetadata {
-    Data(AuxMetadata),
-}
+pub struct MyAuxMetadata(pub AuxMetadata);
 
 /// Implement TypeMapKey for MyAuxMetadata.
 impl TypeMapKey for MyAuxMetadata {
@@ -439,7 +437,7 @@ impl TypeMapKey for MyAuxMetadata {
 /// Implement Default for MyAuxMetadata.
 impl Default for MyAuxMetadata {
     fn default() -> Self {
-        MyAuxMetadata::Data(AuxMetadata::default())
+        MyAuxMetadata(AuxMetadata::default())
     }
 }
 
@@ -447,19 +445,17 @@ impl Default for MyAuxMetadata {
 impl MyAuxMetadata {
     /// Create a new MyAuxMetadata from AuxMetadata.
     pub fn new(metadata: AuxMetadata) -> Self {
-        MyAuxMetadata::Data(metadata)
+        MyAuxMetadata(metadata)
     }
 
     /// Get the internal metadata.
     pub fn metadata(&self) -> &AuxMetadata {
-        match self {
-            MyAuxMetadata::Data(metadata) => metadata,
-        }
+        &self.0
     }
 
     /// Create new MyAuxMetadata from &SpotifyTrack.
     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
-        MyAuxMetadata::Data(AuxMetadata {
+        MyAuxMetadata(AuxMetadata {
             track: Some(track.name()),
             artist: Some(track.artists_str()),
             album: Some(track.album_name()),
@@ -477,7 +473,7 @@ impl MyAuxMetadata {
 
     /// Set the source_url.
     pub fn with_source_url(self, source_url: String) -> Self {
-        MyAuxMetadata::Data(AuxMetadata {
+        MyAuxMetadata(AuxMetadata {
             source_url: Some(source_url),
             ..self.metadata().clone()
         })
@@ -511,7 +507,7 @@ async fn build_queued_embed(
         let my_metadata = map.get::<MyAuxMetadata>().unwrap();
 
         match my_metadata {
-            MyAuxMetadata::Data(metadata) => metadata.clone(),
+            MyAuxMetadata(metadata) => metadata.clone(),
         }
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
@@ -579,7 +575,7 @@ pub async fn queue_aux_metadata(
             let res = res.ok_or(CrackedError::Other("No results found"))?;
             let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
-            MyAuxMetadata::Data(new_aux_metadata)
+            MyAuxMetadata(new_aux_metadata)
         } else {
             metadata.clone()
         };
