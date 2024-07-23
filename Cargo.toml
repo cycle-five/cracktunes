@@ -62,7 +62,7 @@ version = "0.5.4"
 features = ["all-formats", "all-codecs"]
 
 [workspace.dependencies.tokio]
-version = "1.38"
+version = "1.39"
 default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
