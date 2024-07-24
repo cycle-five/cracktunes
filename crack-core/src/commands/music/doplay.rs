@@ -158,6 +158,9 @@ async fn play_internal(
 ) -> Result<(), Error> {
     //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
+    // Get current time for timing purposes.
+    let _start = std::time::Instant::now();
+
     let is_prefix = ctx.prefix() != "/";
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
@@ -174,7 +177,11 @@ async fn play_internal(
         return Ok(());
     }
 
+    let _after_msg_parse = std::time::Instant::now();
+
     let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
+
+    let _after_get_mode = std::time::Instant::now();
 
     // TODO: Maybe put into it's own function?
     let url = match file.clone() {
@@ -186,6 +193,8 @@ async fn play_internal(
     tracing::warn!(target: "PLAY", "url: {}", url);
 
     let call = get_call_or_join_author(ctx).await?;
+
+    let _after_call = std::time::Instant::now();
 
     let mut search_msg = msg_int::send_search_message(&ctx).await?;
     tracing::debug!("search response msg: {:?}", search_msg);
@@ -202,9 +211,13 @@ async fn play_internal(
 
     tracing::warn!("query_type: {:?}", query_type);
 
+    let _after_query_type = std::time::Instant::now();
+
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
+
+    let _after_move_on = std::time::Instant::now();
 
     // FIXME: Yeah, this is terrible, fix this.
     if !move_on {
@@ -216,6 +229,8 @@ async fn play_internal(
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
     drop(handler);
+
+    let _after_refetch_queue = std::time::Instant::now();
 
     // This makes sense, we're getting the final response to the user based on whether
     // the song / playlist was queued first, last, or is now playing.
@@ -283,9 +298,39 @@ async fn play_internal(
         },
     };
 
-    edit_embed_response2(ctx, embed, search_msg.clone())
-        .await
-        .map(|_| ())
+    let _after_embed = std::time::Instant::now();
+
+    let _ = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+
+    let _after_edit_embed = std::time::Instant::now();
+
+    tracing::warn!(
+        r#"
+        after_msg_parse: {:?}
+        after_get_mode: {:?} (+{:?})
+        after_call: {:?} (+{:?})
+        after_query_type: {:?} (+{:?})
+        after_move_on: {:?} (+{:?})
+        after_refetch_queue: {:?} (+{:?})
+        after_embed: {:?} (+{:?})
+        after_edit_embed: {:?} (+{:?})"#,
+        _after_msg_parse.duration_since(_start),
+        _after_get_mode.duration_since(_start),
+        _after_get_mode.duration_since(_after_msg_parse),
+        _after_call.duration_since(_start),
+        _after_call.duration_since(_after_get_mode),
+        _after_query_type.duration_since(_start),
+        _after_query_type.duration_since(_after_call),
+        _after_move_on.duration_since(_start),
+        _after_move_on.duration_since(_after_query_type),
+        _after_refetch_queue.duration_since(_start),
+        _after_refetch_queue.duration_since(_after_move_on),
+        _after_embed.duration_since(_start),
+        _after_embed.duration_since(_after_refetch_queue),
+        _after_edit_embed.duration_since(_start),
+        _after_edit_embed.duration_since(_after_embed),
+    );
+    Ok(())
 }
 pub enum MessageOrInteraction {
     Message(Message),

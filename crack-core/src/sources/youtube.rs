@@ -143,7 +143,21 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
 #[cfg(test)]
 mod test {
 
+    use rusty_ytdl::search::YouTube;
+
     use super::*;
+
+    #[tokio::test]
+    async fn test_get_track_metadata_video_link() {
+        let client = YouTube::new().unwrap();
+        let query_type =
+            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
+        let res = query_type.get_track_metadata(client).await;
+        if let Err(ref e) = res {
+            tracing::warn!("Error: {:?}", e);
+        }
+        assert!(res.is_ok());
+    }
 
     #[tokio::test]
     async fn test_get_track_source_and_metadata() {
@@ -164,6 +178,9 @@ mod test {
         let query_type =
             QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
         let res = query_type.get_track_source_and_metadata().await;
+        if let Err(ref e) = res {
+            tracing::warn!("Error: {:?}", e);
+        }
         assert!(res.is_ok());
     }
 
@@ -173,6 +190,9 @@ mod test {
             "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
         );
         let res = query_type.get_track_source_and_metadata().await;
+        if let Err(ref e) = res {
+            tracing::warn!("Error: {:?}", e);
+        }
         assert!(res.is_ok());
     }
 
