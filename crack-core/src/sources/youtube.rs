@@ -145,14 +145,21 @@ mod test {
 
     use rusty_ytdl::search::YouTube;
 
+    use crate::http_utils;
+
     use super::*;
 
     #[tokio::test]
     async fn test_get_track_metadata_video_link() {
-        let client = YouTube::new().unwrap();
+        let opts = RequestOptions {
+            client: Some(http_utils::get_client().clone()),
+            ..Default::default()
+        };
+        let reqclient = http_utils::get_client().clone();
+        let ytclient = YouTube::new_with_options(&opts).unwrap();
         let query_type =
             QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
-        let res = query_type.get_track_metadata(client).await;
+        let res = query_type.get_track_metadata(ytclient, reqclient).await;
         if let Err(ref e) = res {
             tracing::warn!("Error: {:?}", e);
         }

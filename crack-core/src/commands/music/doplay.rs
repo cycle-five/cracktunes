@@ -21,7 +21,7 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
-    utils::{get_human_readable_timestamp, get_track_metadata},
+    utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
 };
 use ::serenity::{
@@ -422,7 +422,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         .await
         .map(|i| i.position)
         .unwrap_or(zero_duration);
-    let metadata = get_track_metadata(top_track).await;
+    let metadata = get_track_handle_metadata(top_track).await;
 
     let top_track_duration = match metadata.duration {
         Some(duration) => duration,

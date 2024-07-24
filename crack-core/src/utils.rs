@@ -416,20 +416,17 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 }
 
 /// Gets the metadata from a track.
-pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
-    let metadata = {
+pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
+    let MyAuxMetadata(metadata) = {
         let map = track.typemap().read().await;
-        let my_metadata = match map.get::<MyAuxMetadata>() {
+        let metadata = match map.get::<MyAuxMetadata>() {
             Some(my_metadata) => my_metadata,
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
                 return AuxMetadata::default();
             },
         };
-
-        match my_metadata {
-            MyAuxMetadata(metadata) => metadata.clone(),
-        }
+        metadata.clone()
     };
     metadata
 }

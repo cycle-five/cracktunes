@@ -12,7 +12,8 @@ use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed
 use crate::{
     messaging::message::CrackedMessage,
     utils::{
-        build_footer_info, get_human_readable_timestamp, get_requesting_user, get_track_metadata,
+        build_footer_info, get_human_readable_timestamp, get_requesting_user,
+        get_track_handle_metadata,
     },
     Context as CrackContext, Error,
 };
@@ -139,7 +140,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let metadata = get_track_metadata(t).await;
+        let metadata = get_track_handle_metadata(t).await;
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
@@ -162,7 +163,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
     let (description, thumbnail) = if !tracks.is_empty() {
-        let metadata = get_track_metadata(&tracks[0]).await;
+        let metadata = get_track_handle_metadata(&tracks[0]).await;
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
         let thumbnail = match url::Url::parse(&url) {
@@ -263,7 +264,7 @@ pub fn create_now_playing_embed_metadata(
 pub async fn track_handle_to_metadata(
     track: &TrackHandle,
 ) -> Result<(Option<UserId>, Option<Duration>, MyAuxMetadata), CrackedError> {
-    let metadata = get_track_metadata(track).await;
+    let metadata = get_track_handle_metadata(track).await;
     let requesting_user = get_requesting_user(track).await.ok();
     let duration = Some(track.get_info().await.unwrap().position);
     Ok((requesting_user, duration, MyAuxMetadata(metadata)))

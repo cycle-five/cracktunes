@@ -493,7 +493,11 @@ impl QueryType {
         Err(CrackedError::Other("Not implemented yet!"))
     }
 
-    pub async fn get_track_metadata(&self, client: YouTube) -> CrackedResult<Vec<MyAuxMetadata>> {
+    pub async fn get_track_metadata(
+        &self,
+        ytclient: YouTube,
+        reqclient: reqwest::Client,
+    ) -> CrackedResult<Vec<MyAuxMetadata>> {
         match self {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
@@ -503,7 +507,7 @@ impl QueryType {
                     ..Default::default()
                 };
 
-                let res = client.search(query, Some(&search_options)).await?;
+                let res = ytclient.search(query, Some(&search_options)).await?;
                 let mut metadata = Vec::with_capacity(res.len());
                 for r in res {
                     metadata.push(MyAuxMetadata(
@@ -521,16 +525,23 @@ impl QueryType {
                 // Ok(res)
             },
             QueryType::VideoLink(query) => {
-                tracing::warn!("In VideoLink");
-                let vid_info = RustyYoutubeClient::get_video_info(query.clone()).await?;
-                let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&vid_info);
-                Ok(vec![MyAuxMetadata(metadata)])
+                // tracing::warn!("In VideoLink");
+                // let vid_info = RustyYoutubeClient::get_video_info(query.clone()).await?;
+                // let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&vid_info);
+                let search = get_rusty_search(reqclient.clone(), query.clone()).await?;
+                let metadata = search
+                    .clone()
+                    .metadata
+                    .into_iter()
+                    .map(MyAuxMetadata)
+                    .collect::<Vec<_>>();
+                Ok(metadata)
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
                 // // get_rusty_search(client.clone(), query.clone()).await
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
-                let res = client.search_one(query.clone(), None).await?;
+                let res = ytclient.search_one(query.clone(), None).await?;
                 // let metadata = ytdl.aux_metadata().await?;
                 let res = res.unwrap();
                 let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
@@ -558,7 +569,7 @@ impl QueryType {
                     ..Default::default()
                 };
 
-                let res = client.search(url, Some(&search_options)).await?;
+                let res = ytclient.search(url, Some(&search_options)).await?;
                 let mut metadata = Vec::with_capacity(res.len());
                 for r in res {
                     metadata.push(MyAuxMetadata(
@@ -577,7 +588,7 @@ impl QueryType {
                     .collect::<Vec<String>>();
                 let mut metadatas = Vec::with_capacity(keywords_list.len());
                 for keyword in keywords_list {
-                    let res = client.search_one(keyword, None).await?.unwrap();
+                    let res = ytclient.search_one(keyword, None).await?.unwrap();
                     let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
                     let my_metadata = MyAuxMetadata(my_metadata);
                     metadatas.push(my_metadata);
@@ -587,7 +598,7 @@ impl QueryType {
             QueryType::KeywordList(keywords_list) => {
                 let mut metadatas = Vec::with_capacity(keywords_list.len());
                 for keyword in keywords_list {
-                    let res = client.search_one(keyword, None).await?.unwrap();
+                    let res = ytclient.search_one(keyword, None).await?.unwrap();
                     let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
                     let my_metadata = MyAuxMetadata(my_metadata);
                     metadatas.push(my_metadata);
