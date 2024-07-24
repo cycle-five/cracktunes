@@ -130,9 +130,26 @@ pub async fn queue_track_back(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let begin = std::time::Instant::now();
     let ready_track = ready_query(ctx, query_type.clone()).await?;
+    let after_ready = std::time::Instant::now();
     ctx.send_track_metadata_write_msg(&ready_track);
-    queue_track_ready_back(call, ready_track).await
+    let after_send = std::time::Instant::now();
+    let queue = queue_track_ready_back(call, ready_track).await;
+    let after_queue = std::time::Instant::now();
+    tracing::warn!(
+        r#"
+            after_ready: {:?}
+            after_send: {:?}
+            after_queue: {:?}
+            total: {:?}
+        "#,
+        after_ready.duration_since(begin),
+        after_send.duration_since(after_ready),
+        after_queue.duration_since(after_send),
+        after_queue.duration_since(begin)
+    );
+    queue
 }
 
 /// Queue a list of tracks to be played.
