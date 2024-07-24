@@ -292,8 +292,8 @@ impl RustyYoutubeClient {
         Ok(search_results)
     }
 
-    // Do a one-shot search
-    pub async fn one_shot(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
+    // Wraps rusty_ytdl search_one
+    pub async fn search_one(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
         self.rusty_ytdl
             .search_one(&query, None)
             .await
@@ -311,6 +311,13 @@ impl RustyYoutubeSearch {
             url: None,
             video: None,
         })
+    }
+
+    /// Reset the search.
+    pub fn reset_search(&mut self) {
+        self.metadata = None;
+        self.url = None;
+        self.video = None;
     }
 }
 
@@ -335,7 +342,7 @@ impl Compose for RustyYoutubeSearch {
             .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
         let search_res = self
             .rusty_ytdl
-            .one_shot(query_str)
+            .search_one(query_str)
             .await?
             .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
         let search_video = match search_res {
@@ -368,18 +375,26 @@ impl Compose for RustyYoutubeSearch {
         true
     }
 
+    /// Returns, and caches if isn't already, the metadata for the search.
     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
         if let Some(meta) = self.metadata.as_ref() {
             return Ok(meta.clone());
         }
 
-        self.rusty_ytdl
-            .one_shot(self.query.build_query().unwrap())
-            .await?;
+        let res: SearchResult = self
+            .rusty_ytdl
+            .search_one(self.query.build_query().unwrap())
+            .await?
+            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
+        let metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
-        self.metadata
-            .clone()
-            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
+        self.metadata = Some(metadata.clone());
+
+        Ok(metadata)
+
+        // self.metadata
+        //     .clone()
+        //     .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
     }
 }
 
@@ -575,7 +590,7 @@ mod test {
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         for search in searches {
-            let res = ytdl.one_shot(search.to_string()).await;
+            let res = ytdl.search_one(search.to_string()).await;
             assert!(
                 res.is_ok() || {
                     println!("{}", res.unwrap_err().to_string());

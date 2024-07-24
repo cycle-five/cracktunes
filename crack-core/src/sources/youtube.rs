@@ -51,7 +51,7 @@ pub async fn search_query_to_source_and_metadata(
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
-        let results = rytdl.one_shot(query.clone()).await?;
+        let results = rytdl.search_one(query.clone()).await?;
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
         // FIXME: Fallback to yt-dlp
@@ -86,7 +86,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
         // let rytdl = RustyYoutubeClient::new()?;
         tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", rytdl);
         let results = rytdl
-            .one_shot(
+            .search_one(
                 query
                     .build_query()
                     .ok_or(CrackedError::Other("No query given"))?,
