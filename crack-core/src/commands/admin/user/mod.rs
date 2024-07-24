@@ -5,7 +5,6 @@ pub use unban::*;
 pub use crate::poise_ext::ContextExt;
 pub use crate::utils;
 
-use crate::commands::sub_help as help;
 use crate::{Command, Context, Error};
 
 /// User admin commands.
@@ -13,8 +12,7 @@ use crate::{Command, Context, Error};
     category = "Admin",
     prefix_command,
     slash_command,
-    //subcommands("create", "delete", "delete_by_id", "assign", "assign_ids", "help"),
-    subcommands("help"),
+    //subcommands("unban"),
     ephemeral,
     hide_in_help = true
 )]

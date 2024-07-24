@@ -13,13 +13,18 @@ use crate::{
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
-    hide_in_help = true,
     ephemeral
 )]
 pub async fn delete(
     ctx: Context<'_>,
     #[description = "Role to delete."] mut role: Role,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     role.delete(&ctx).await.map_err(Into::into)
 }
 
