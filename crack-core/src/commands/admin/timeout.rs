@@ -13,6 +13,7 @@ use std::time::Duration;
 /// FIXME: THIS IS BROKEN FIX
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     guild_only,
@@ -23,7 +24,13 @@ pub async fn timeout(
     ctx: Context<'_>,
     #[description = "User to timout."] user: User,
     #[description = "Amount of time"] duration: String,
+    #[flag]
+    #[description = "Show the help menu."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     // Debugging print the params
     let id = user.id;
     let mention = user.mention();

@@ -8,6 +8,7 @@ use serenity::{CacheHttp, EditMember, GuildId, Mentionable};
 
 /// Mute a user.
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

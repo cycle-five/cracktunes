@@ -24,7 +24,13 @@ static mut TEMP_CHANNEL_NAMES: Vec<GuildChannel> = Vec::new();
 static N: u64 = 15;
 
 /// Defend the server.
-#[poise::command(prefix_command, subcommands("cancel"), owners_only, ephemeral)]
+#[poise::command(
+    category = "Admin",
+    prefix_command,
+    subcommands("cancel"),
+    owners_only,
+    ephemeral
+)]
 pub async fn defend(
     ctx: Context<'_>,
     #[description = "Role to defend against"] role: serenity::all::Role,

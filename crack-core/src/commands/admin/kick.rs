@@ -13,6 +13,7 @@ use std::time::Duration;
 /// Kick command to kick a user from the server based on their ID
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     ephemeral,

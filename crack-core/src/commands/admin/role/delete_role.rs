@@ -19,13 +19,7 @@ use crate::{
 pub async fn delete(
     ctx: Context<'_>,
     #[description = "Role to delete."] mut role: Role,
-    #[flag]
-    #[description = "Show help menu."]
-    help: bool,
 ) -> Result<(), Error> {
-    if help {
-        return crate::commands::help::wrapper(ctx).await;
-    }
     role.delete(&ctx).await.map_err(Into::into)
 }
 

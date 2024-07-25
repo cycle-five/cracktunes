@@ -1,7 +1,9 @@
 pub mod ban;
+pub mod deafen;
 pub mod unban;
 
 pub use ban::*;
+pub use deafen::*;
 pub use unban::*;
 
 pub use crate::poise_ext::ContextExt;
@@ -16,7 +18,7 @@ use crate::{Command, Context, Error};
     required_permissions = "BAN_MEMBERS",
     prefix_command,
     slash_command,
-    subcommands("ban", "unban"),
+    subcommands("ban", "unban", "deafen", "undeafen"),
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
@@ -26,9 +28,9 @@ pub async fn user(
     // #[description = "Show the help menu."]
     // help: bool,
 ) -> Result<(), Error> {
-    return crate::commands::help::wrapper(ctx).await;
+    crate::commands::help::wrapper(ctx).await
 }
 
-pub fn user_commands() -> [Command; 3] {
-    [ban(), unban(), unban_by_user_id()]
+pub fn user_commands() -> [Command; 4] {
+    [ban(), unban(), deafen(), undeafen()]
 }

@@ -9,6 +9,7 @@ use crate::Error;
 /// Create voice channel.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

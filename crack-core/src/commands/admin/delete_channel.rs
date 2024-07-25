@@ -6,6 +6,7 @@ use crate::Error;
 
 /// Delete channel.
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

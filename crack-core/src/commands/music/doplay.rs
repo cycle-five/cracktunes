@@ -1,7 +1,7 @@
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
-use crate::commands::{cmd_check_music, sub_help as help};
+use crate::commands::{cmd_check_music, help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
@@ -58,8 +58,7 @@ pub enum Mode {
     prefix_command,
     slash_command,
     guild_only,
-    check = "cmd_check_music",
-    subcommands("help")
+    check = "cmd_check_music"
 )]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let shard_id = ctx.serenity_context().shard_id;
@@ -135,12 +134,16 @@ pub async fn play(
 #[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
 pub async fn optplay(
     ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
-    #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
+    #[description = "song link or search query."] query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     play_internal(ctx, mode, file, query_or_url).await
 }
 

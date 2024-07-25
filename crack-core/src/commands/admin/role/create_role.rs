@@ -2,13 +2,14 @@ use poise::serenity_prelude::{Colour, Permissions};
 use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
 
-use crate::commands::{help, EmptyResult};
+use crate::commands::EmptyResult;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 
 /// Create role.
+#[allow(clippy::too_many_arguments)]
 #[poise::command(
     category = "Admin",
     required_permissions = "ADMINISTRATOR",
@@ -29,14 +30,7 @@ pub async fn create(
     #[description = "Optional emoji"] unicode_emoji: Option<String>,
     #[description = "Optional reason for the audit_log"] audit_log_reason: Option<String>,
     #[description = "Optional icon"] icon: Option<Attachment>,
-    #[flag]
-    #[description = "Show help menu"]
-    help: bool,
 ) -> EmptyResult {
-    if help {
-        return help::wrapper(ctx).await;
-    }
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let icon = match icon {
         Some(attachment) => {

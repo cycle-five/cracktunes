@@ -6,7 +6,7 @@ use crate::Error;
 
 /// Get the message cache.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(category = "Admin", prefix_command, owners_only, ephemeral)]
 pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let cache_str = {

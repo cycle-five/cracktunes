@@ -647,7 +647,7 @@ impl QueryType {
                 // get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =
                     search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
-                Ok((input.into(), metadata))
+                Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
                 // let my_metadata = MyAuxMetadata(metadata);

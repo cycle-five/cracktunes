@@ -7,7 +7,7 @@ use serenity::builder::CreateEmbed;
 use songbird::tracks::TrackQueue;
 
 /// Print some debug info.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(category = "Admin", prefix_command, owners_only, ephemeral)]
 pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
 

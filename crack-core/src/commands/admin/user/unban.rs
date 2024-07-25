@@ -1,4 +1,3 @@
-use crate::commands::help;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, CommandResult, Context};
@@ -18,14 +17,7 @@ use serenity::{Mentionable, User, UserId};
 pub async fn unban(
     ctx: Context<'_>,
     #[description = "User to unban."] user: User,
-    #[flag]
-    #[description = "Show help menu."]
-    help: bool,
 ) -> CommandResult {
-    if help {
-        return help::wrapper(ctx).await;
-    }
-
     let user_id = user.id;
     unban_internal(ctx, user_id).await
 }
@@ -43,13 +35,7 @@ pub async fn unban(
 pub async fn unban_by_user_id(
     ctx: Context<'_>,
     #[description = "UserId to unban"] user_id: UserId,
-    #[flag]
-    #[description = "Show help menu."]
-    help: bool,
 ) -> CommandResult {
-    if help {
-        return help::wrapper(ctx).await;
-    }
     unban_internal(ctx, user_id).await
 }
 

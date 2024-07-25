@@ -8,11 +8,11 @@ use poise::serenity_prelude::Mentionable;
 /// Deauthorize a user from using the bot.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    owners_only,
-    category = "admin"
+    owners_only
 )]
 pub async fn deauthorize(
     ctx: Context<'_>,

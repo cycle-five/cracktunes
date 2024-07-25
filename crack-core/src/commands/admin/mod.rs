@@ -3,7 +3,6 @@ pub mod authorize;
 pub mod broadcast_voice;
 pub mod create_text_channel;
 pub mod create_voice_channel;
-pub mod deafen;
 pub mod deauthorize;
 pub mod debug;
 pub mod defend;
@@ -27,7 +26,6 @@ pub use authorize::*;
 pub use broadcast_voice::*;
 pub use create_text_channel::*;
 pub use create_voice_channel::*;
-pub use deafen::*;
 pub use deauthorize::*;
 pub use debug::*;
 pub use defend::*;
@@ -89,16 +87,14 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 /// List of all the admin commands.
 pub fn commands() -> Vec<crate::Command> {
     vec![
-        admin(),
         user(),
         role(),
         kick(),
         mute(),
         unmute(),
-        deafen(),
-        undeafen(),
         timeout(),
         changenicks(),
+        set_vc_size(),
     ]
     .into_iter()
     .collect()

@@ -1,17 +1,18 @@
+use super::mute::mute_internal;
 use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
+use async_trait::async_trait;
 use rand::Rng;
 use serenity::all::{Context as SerenityContext, GuildId, User};
 use songbird::{Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
-use super::mute::mute_internal;
-use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 /// Randomly mute a user in the server.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

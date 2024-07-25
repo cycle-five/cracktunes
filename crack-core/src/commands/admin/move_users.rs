@@ -7,7 +7,7 @@ use serenity::builder::EditMember;
 
 /// Move usrers to a given channel.
 #[poise::command(
-    rename = "move_users_to",
+    rename = "moveusersto",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
@@ -17,7 +17,13 @@ pub async fn move_users_to(
     ctx: Context<'_>,
     #[description = "Users to move"] user_ids: Vec<UserId>,
     #[description = "Channel to move users to"] chan_id: ChannelId,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     // Check if the Channel's are voice channels
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channels = guild_id.channels(ctx).await?;
