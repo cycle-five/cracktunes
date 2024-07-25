@@ -800,12 +800,35 @@ pub async fn query_type_from_url(
             },
             Some("www.youtube.com") => {
                 // Handle youtube playlist
-                if url.contains("playlist") {
-                    tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
-                    Some(QueryType::PlaylistLink(url.to_string()))
-                } else {
-                    Some(QueryType::VideoLink(url.to_string()))
+                let opt_query = url_data
+                    .query_pairs()
+                    .map(|(key, value)| {
+                        if key == "list" || key == "playlist" {
+                            tracing::warn!(
+                                "{}: {}",
+                                "youtube playlist".blue(),
+                                url.underline().blue()
+                            );
+                            Some(QueryType::PlaylistLink(value.to_string()))
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten()
+                    .next();
+                match opt_query {
+                    Some(query) => Some(query),
+                    None => {
+                        tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                        Some(QueryType::VideoLink(url.to_string()))
+                    },
                 }
+                // if url.contains("playlist") || url.contains("list") {
+                //     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
+                //     Some(QueryType::PlaylistLink(url.to_string()))
+                // } else {
+                //     Some(QueryType::VideoLink(url.to_string()))
+                // }
             },
             // For all other domains fall back to yt-dlp.
             Some(other) => {

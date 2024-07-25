@@ -92,7 +92,7 @@ pub async fn handle_event(
 ) -> Result<(), Error> {
     // let event_log = Arc::new(&data_global.event_log);
 
-    use crate::db::GuildEntity;
+    use crate::{db::GuildEntity, guild::settings::DEFAULT_PREFIX};
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
@@ -348,28 +348,29 @@ pub async fn handle_event(
         FullEvent::GuildCreate { guild, is_new } => {
             if is_new.unwrap_or(false) {
                 tracing::warn!("New Guild!!! {}", guild.name);
-                let mut guild_settings: Option<GuildSettings> = None;
-                if data_global.database_pool.is_some() {
+            }
+            match data_global.database_pool.as_ref() {
+                Some(p) => {
+                    let prefix = data_global
+                        .bot_settings
+                        .prefix
+                        .clone()
+                        .unwrap_or(DEFAULT_PREFIX.to_string());
                     let (_, new_guild_settings) = GuildEntity::get_or_create(
-                        data_global.database_pool.as_ref().unwrap(),
+                        p,
                         guild.id.get() as i64,
                         guild.name.clone(),
-                        data_global
-                            .bot_settings
-                            .prefix
-                            .clone()
-                            .unwrap_or("r!".to_string()),
+                        prefix,
                     )
                     .await?;
-                    guild_settings = Some(new_guild_settings);
-                } else {
+                    data_global
+                        .insert_guild(guild.id, new_guild_settings)
+                        .await?;
+                },
+                None => {
                     tracing::error!("No database pool available");
-                };
-                if guild_settings.is_some() {
-                    let settings = guild_settings.unwrap();
-                    data_global.insert_guild(guild.id, settings).await?;
-                }
-            }
+                },
+            };
             log_event!(
                 log_guild_create,
                 guild_settings,
