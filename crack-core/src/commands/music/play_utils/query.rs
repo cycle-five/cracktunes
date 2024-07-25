@@ -118,7 +118,7 @@ impl From<Queries> for Vec<QueryType> {
         q.queries
     }
 }
-
+use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
@@ -645,10 +645,13 @@ impl QueryType {
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
                 // get_rusty_search(client.clone(), query.clone()).await
-                let mut ytdl = YoutubeDl::new_search(client, query.clone());
-                let metadata = ytdl.aux_metadata().await?;
-                let my_metadata = MyAuxMetadata(metadata);
-                Ok((ytdl.into(), vec![my_metadata]))
+                let (input, metadata) =
+                    search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
+                Ok((input.into(), metadata))
+                // let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                // let metadata = ytdl.aux_metadata().await?;
+                // let my_metadata = MyAuxMetadata(metadata);
+                // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");

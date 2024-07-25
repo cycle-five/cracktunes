@@ -324,6 +324,7 @@ pub async fn poise_framework(
                     },
                 }
             }
+            p.close().await;
         }
 
         shard_manager.clone().shutdown_all().await;

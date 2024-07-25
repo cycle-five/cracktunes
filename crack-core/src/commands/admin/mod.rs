@@ -48,9 +48,8 @@ pub use timeout::*;
 pub use unmute::*;
 pub use user::*;
 
-use crate::commands::help::sub_help as help;
-use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::PoiseContextExt;
+use crate::commands::help;
+
 /// Admin commands.
 #[poise::command(
     category = "Admin",
@@ -82,7 +81,6 @@ use crate::poise_ext::PoiseContextExt;
         "timeout",
         "user",
         "role",
-        "help",
     ),
     ephemeral,
     // owners_only
@@ -91,14 +89,15 @@ use crate::poise_ext::PoiseContextExt;
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("Admin command called");
 
-    let msg = CrackedMessage::CommandFound("admin".to_string());
-    ctx.send_reply(msg, true).await?;
+    // let msg = CrackedMessage::CommandFound("admin".to_string());
+    // ctx.send_reply(msg, true).await?;
+    help::wrapper(ctx).await
 
-    Ok(())
+    // Ok(())
 }
 
 /// List of all the admin commands.
-pub fn admin_commands() -> Vec<crate::Command> {
+pub fn commands() -> Vec<crate::Command> {
     vec![
         admin(),
         ban(),

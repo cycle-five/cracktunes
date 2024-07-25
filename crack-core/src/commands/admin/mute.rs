@@ -25,7 +25,7 @@ pub async fn mute(
         .map_err(Into::into)
 }
 
-/// Unmute a user.
+/// Mute a user, internal function.
 pub async fn mute_internal(
     cache_http: &impl CacheHttp,
     user: serenity::User,

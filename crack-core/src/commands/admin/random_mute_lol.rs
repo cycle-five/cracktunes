@@ -5,6 +5,8 @@ use rand::Rng;
 use serenity::all::{Context as SerenityContext, GuildId, User};
 use songbird::{Call, Event, EventContext, EventHandler};
 use std::{sync::Arc, time::Duration};
+use super::mute::mute_internal;
+use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 /// Randomly mute a user in the server.
@@ -52,8 +54,6 @@ pub struct RandomMuteHandler {
     pub guild_id: GuildId,
 }
 
-use crate::commands::mute_internal;
-use async_trait::async_trait;
 #[async_trait]
 impl EventHandler for RandomMuteHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
