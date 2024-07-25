@@ -1,6 +1,5 @@
 pub mod audit_logs;
 pub mod authorize;
-pub mod ban;
 pub mod broadcast_voice;
 pub mod create_text_channel;
 pub mod create_voice_channel;
@@ -25,7 +24,6 @@ pub mod user;
 use crate::{Context, Error};
 pub use audit_logs::*;
 pub use authorize::*;
-pub use ban::*;
 pub use broadcast_voice::*;
 pub use create_text_channel::*;
 pub use create_voice_channel::*;
@@ -60,7 +58,6 @@ use crate::commands::help;
     subcommands(
         "audit_logs",
         "authorize",
-        "ban",
         "broadcast_voice",
         "create_text_channel",
         "create_voice_channel",
@@ -82,25 +79,19 @@ use crate::commands::help;
         "user",
         "role",
     ),
-    ephemeral,
-    // owners_only
+    ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
-    tracing::warn!("Admin command called");
-
-    // let msg = CrackedMessage::CommandFound("admin".to_string());
-    // ctx.send_reply(msg, true).await?;
     help::wrapper(ctx).await
-
-    // Ok(())
 }
 
 /// List of all the admin commands.
 pub fn commands() -> Vec<crate::Command> {
     vec![
         admin(),
-        ban(),
+        user(),
+        role(),
         kick(),
         mute(),
         unmute(),
@@ -110,7 +101,5 @@ pub fn commands() -> Vec<crate::Command> {
         changenicks(),
     ]
     .into_iter()
-    .chain(role::role_commands())
-    .chain(user::user_commands())
     .collect()
 }

@@ -20,17 +20,22 @@ use serenity::all::User;
     category = "Admin",
     slash_command,
     prefix_command,
-    required_permissions = "ADMINISTRATOR",
+    required_permissions = "BAN_MEMBERS",
+    required_bot_permissions = "BAN_MEMBERS",
     ephemeral
 )]
 pub async fn ban(
     ctx: Context<'_>,
     #[description = "User to ban."] user: User,
     #[description = "Number of day to delete messages of the user."] dmd: Option<u8>,
-    #[rest]
-    #[description = "Reason for the ban."]
-    reason: Option<String>,
+    #[description = "Reason for the ban."] reason: Option<String>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
     let mention = user.mention();
     let id = user.id;
     let dmd = dmd.unwrap_or(0);

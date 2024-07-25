@@ -9,7 +9,6 @@ use serenity::all::{GuildId, Member, Role, RoleId, UserId};
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    hide_in_help = true,
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]

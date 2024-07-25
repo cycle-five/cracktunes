@@ -13,6 +13,7 @@ use crate::{
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
+    slash_command,
     ephemeral
 )]
 pub async fn delete(

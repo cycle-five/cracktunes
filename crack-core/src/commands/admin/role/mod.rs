@@ -20,7 +20,6 @@ use crate::{Context, Error};
     slash_command,
     subcommands("create", "delete", "delete_by_id", "assign", "assign_ids"),
     ephemeral,
-    hide_in_help = true
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn role(

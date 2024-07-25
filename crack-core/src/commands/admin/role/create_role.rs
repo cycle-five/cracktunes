@@ -15,13 +15,12 @@ use crate::Context;
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    hide_in_help = true,
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn create(
     ctx: Context<'_>,
-    #[description = "Name of the role to create. Required."] name: Option<String>,
+    #[description = "Name of the role to create. Required."] name: String,
     #[description = "Whether the role is hoisted."] hoist: Option<bool>,
     #[description = "Whether the role is mentionable."] mentionable: Option<bool>,
     #[description = "Optional initial perms"] permissions: Option<u64>,
@@ -34,10 +33,9 @@ pub async fn create(
     #[description = "Show help menu"]
     help: bool,
 ) -> EmptyResult {
-    if help || name.is_none() {
+    if help {
         return help::wrapper(ctx).await;
-    };
-    let name = name.unwrap();
+    }
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let icon = match icon {

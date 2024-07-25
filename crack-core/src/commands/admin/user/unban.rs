@@ -1,4 +1,4 @@
-use crate::commands::sub_help as help;
+use crate::commands::help;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, CommandResult, Context};
@@ -10,15 +10,22 @@ use serenity::{Mentionable, User, UserId};
     category = "Admin",
     slash_command,
     prefix_command,
-    subcommands("help"),
-    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "BAN_MEMBERS",
+    required_permissions = "BAN_MEMBERS",
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn unban(
     ctx: Context<'_>,
     #[description = "User to unban."] user: User,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
 ) -> CommandResult {
+    if help {
+        return help::wrapper(ctx).await;
+    }
+
     let user_id = user.id;
     unban_internal(ctx, user_id).await
 }
@@ -28,15 +35,21 @@ pub async fn unban(
     category = "Admin",
     prefix_command,
     slash_command,
-    subcommands("help"),
-    required_permissions = "ADMINISTRATOR",
+    required_bot_permissions = "BAN_MEMBERS",
+    required_permissions = "BAN_MEMBERS",
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn unban_by_user_id(
     ctx: Context<'_>,
     #[description = "UserId to unban"] user_id: UserId,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
 ) -> CommandResult {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     unban_internal(ctx, user_id).await
 }
 
