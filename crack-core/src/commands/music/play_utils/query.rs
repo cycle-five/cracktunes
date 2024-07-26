@@ -802,7 +802,7 @@ pub async fn query_type_from_url(
                 // Handle youtube playlist
                 let opt_query = url_data
                     .query_pairs()
-                    .map(|(key, value)| {
+                    .filter_map(|(key, value)| {
                         if key == "list" || key == "playlist" {
                             tracing::warn!(
                                 "{}: {}",
@@ -814,7 +814,6 @@ pub async fn query_type_from_url(
                             None
                         }
                     })
-                    .flatten()
                     .next();
                 match opt_query {
                     Some(query) => Some(query),
