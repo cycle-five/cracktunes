@@ -371,71 +371,49 @@ impl GuildEntity {
         name: String,
         prefix: String,
     ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
-        let guild_opt: Option<GuildEntity> = match sqlx::query_as!(
+        let guild_entity = sqlx::query_as!(
             GuildEntity,
             r#"
-            SELECT * FROM guild
-            WHERE id = $1
-            "#,
-            guild_id
-        )
-        .fetch_one(pool)
-        .await
-        {
-            Ok(guild) => Some(guild),
-            Err(sqlx::Error::RowNotFound) => None,
-            Err(e) => return Err(e.into()),
-        };
-
-        let (guild, settings) = match guild_opt {
-            Some(guild) => (
-                guild.clone(),
-                guild.clone().get_settings(pool).await.unwrap(),
-            ),
-            None => {
-                let guild_entity = sqlx::query_as!(
-                    GuildEntity,
-                    r#"
                 INSERT INTO guild (id, name)
                 VALUES ($1, $2)
                 ON CONFLICT (id)
                 DO UPDATE SET name = $2, updated_at = now()
                 RETURNING *
                 "#,
-                    guild_id,
-                    name
-                )
-                .fetch_one(pool)
-                .await?;
+            guild_id,
+            name
+        )
+        .fetch_one(pool)
+        .await?;
 
-                let guild_settings = sqlx::query_as!(
-                    GuildSettingsRead,
-                    r#"
+        let guild_settings = sqlx::query_as!(
+            GuildSettingsRead,
+            r#"
                     INSERT INTO guild_settings (guild_id, guild_name, prefix)
                     VALUES ($1, $2, $3)
                     ON CONFLICT (guild_id)
                     DO UPDATE SET guild_name = $2
                     RETURNING *
                     "#,
-                    guild_id,
-                    Some(name.clone()),
-                    prefix
-                )
-                .fetch_one(pool)
-                .await?;
+            guild_id,
+            Some(name.clone()),
+            prefix
+        )
+        .fetch_one(pool)
+        .await?;
 
-                let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
-                let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
-                let command_settings = GuildEntity::load_command_settings(guild_id, pool).await?;
-                let guild_settings = GuildSettings::from(guild_settings)
-                    .with_welcome_settings(welcome_settings)
-                    .with_log_settings(log_settings)
-                    .with_command_settings(command_settings);
-                (guild_entity, guild_settings)
-            },
-        };
+        let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
+        let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
+        let command_settings = GuildEntity::load_command_settings(guild_id, pool).await?;
+        let guild_settings = GuildSettings::from(guild_settings)
+            .with_welcome_settings(welcome_settings)
+            .with_log_settings(log_settings)
+            .with_command_settings(command_settings);
+        //(guild_entity, guild_settings)
+        // },
+        //};
 
-        Ok((guild, settings))
+        Ok((guild_entity, guild_settings))
     }
 
     /// Update the prefix for the guild.

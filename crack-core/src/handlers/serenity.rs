@@ -222,8 +222,6 @@ impl EventHandler for SerenityHandler {
 
             let mut x = 0;
             for (key, value) in guild_settings_map.clone().iter() {
-                tracing::info!("Guild {} settings: {:?}", key, value);
-
                 data_write.insert(*key, value.clone());
                 x += 1;
             }
@@ -372,7 +370,6 @@ impl SerenityHandler {
         guilds: &Vec<GuildId>,
     ) -> Result<(), SerenityError> {
         let prefix = self.data.bot_settings.get_prefix();
-        tracing::info!("Loading guilds' settings");
 
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
