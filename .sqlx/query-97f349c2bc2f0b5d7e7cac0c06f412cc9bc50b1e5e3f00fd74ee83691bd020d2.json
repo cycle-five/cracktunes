@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail\n            FROM \n                metadata\n            WHERE \n                metadata.source_url = $1\n            ",
+  "query": "\n            SELECT\n                metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail\n            FROM\n                metadata\n            WHERE\n                metadata.source_url = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -90,5 +90,5 @@
       true
     ]
   },
-  "hash": "218dd2a73bade44f75a7114b6e862bace731e72d782421fba20274255adf86a8"
+  "hash": "97f349c2bc2f0b5d7e7cac0c06f412cc9bc50b1e5e3f00fd74ee83691bd020d2"
 }
