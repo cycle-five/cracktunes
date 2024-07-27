@@ -74,8 +74,8 @@ use crate::commands::help;
         "get_active_vcs",
         "set_vc_size",
         "timeout",
-        "user",
-        "role",
+        //"user",
+        //"role",
     ),
     ephemeral
 )]
@@ -87,6 +87,7 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 /// List of all the admin commands.
 pub fn commands() -> Vec<crate::Command> {
     vec![
+        admin(),
         user(),
         role(),
         kick(),

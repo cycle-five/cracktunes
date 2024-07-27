@@ -405,8 +405,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         } else {
             let c = colored::Color::TrueColor {
                 r: params.color.r(),
-                g: params.color.r(),
-                b: params.color.r(),
+                g: params.color.g(),
+                b: params.color.b(),
             };
             CreateReply::default().content(text.color(c).to_string())
         };
