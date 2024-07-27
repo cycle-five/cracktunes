@@ -1,6 +1,6 @@
 services:
-  crack_postgres:
-    container_name: crack_postgres
+  crack-postgres:
+    container_name: crack-postgres
     image: postgres:latest
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -24,10 +24,10 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     environment:
-      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-asdfasdf}
     links:
-      - crack_postgres
+      - crack-postgres
     ports:
       - "127.0.0.1:3030:3030"
   cracktunes:
@@ -38,11 +38,11 @@ services:
       - ./.env:/home/cyclefive/app/.env:rw
       - ./cracktunes.toml:/home/cyclefive/app/cracktunes.toml:rw
     environment:
-      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack_postgres:5432/postgres
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
       #- PUID=1001
       #- PGID=1001
     links:
-      - crack_postgres
+      - crack-postgres
     ports:
       - "127.0.0.1:8833:8833"
   pgadmin:

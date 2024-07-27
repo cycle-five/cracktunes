@@ -264,4 +264,34 @@ mod test {
         let final_url = resolve_final_url(url).await.unwrap();
         assert_eq!(final_url, "https://example.com/");
     }
+
+    #[test]
+    fn test_build_send_message_params() {
+        use crate::http_utils::SendMessageParams;
+        use crate::messaging::message::CrackedMessage;
+        use serenity::all::{ChannelId, Colour};
+
+        let channel_id = ChannelId::new(1);
+        let msg = CrackedMessage::Other("Hello, world!".to_string());
+        let params = SendMessageParams::new(msg)
+            .with_as_embed(true)
+            .with_ephemeral(false)
+            .with_reply(true)
+            .with_color(Colour::BLUE)
+            .with_cache_msg(true)
+            .with_channel(channel_id)
+            .with_embed(None);
+
+        assert_eq!(params.channel, channel_id);
+        assert_eq!(params.as_embed, true);
+        assert_eq!(params.ephemeral, false);
+        assert_eq!(params.reply, true);
+        assert_eq!(params.color, Colour::BLUE);
+        assert_eq!(params.cache_msg, true);
+        assert_eq!(
+            params.msg,
+            CrackedMessage::Other("Hello, world!".to_string())
+        );
+        assert_eq!(params.embed, None);
+    }
 }
