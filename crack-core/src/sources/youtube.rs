@@ -145,7 +145,7 @@ mod test {
 
     use rusty_ytdl::search::YouTube;
 
-    use crate::http_utils;
+    use crate::http_utils::{self};
 
     use super::*;
 
@@ -168,8 +168,11 @@ mod test {
 
     #[tokio::test]
     async fn test_get_track_source_and_metadata() {
+        let reqclient = http_utils::get_client().clone();
         let query_type = QueryType::Keywords("hello".to_string());
-        let res = query_type.get_track_source_and_metadata().await;
+        let res = query_type
+            .get_track_source_and_metadata(Some(reqclient))
+            .await;
         if let Err(ref e) = res {
             tracing::warn!("Error: {:?}", e);
         }
@@ -187,7 +190,8 @@ mod test {
     async fn test_get_track_source_and_metadata_video_link() {
         let query_type =
             QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
-        let res = query_type.get_track_source_and_metadata().await;
+        let client = http_utils::build_client();
+        let res = query_type.get_track_source_and_metadata(Some(client)).await;
         if let Err(ref e) = res {
             tracing::warn!("Error: {:?}", e);
         }
@@ -199,7 +203,8 @@ mod test {
         let query_type = QueryType::PlaylistLink(
             "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
         );
-        let res = query_type.get_track_source_and_metadata().await;
+        let client = Some(http_utils::build_client());
+        let res = query_type.get_track_source_and_metadata(client).await;
         if let Err(ref e) = res {
             tracing::warn!("Error: {:?}", e);
         }
@@ -209,7 +214,8 @@ mod test {
     #[tokio::test]
     async fn test_get_track_source_and_metadata_keyword_list() {
         let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
-        let res = query_type.get_track_source_and_metadata().await;
+        let client = Some(http_utils::build_client());
+        let res = query_type.get_track_source_and_metadata(client).await;
         match res {
             Ok(_) => assert!(true),
             Err(e) => {

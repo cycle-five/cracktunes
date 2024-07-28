@@ -154,6 +154,14 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to build reqwest client")
 });
 
+/// Build a reqwest client with rustls.
+pub fn build_client() -> Client {
+    reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
 /// Get a reference to the lazy, static, global reqwest client.
 pub fn get_client() -> &'static Client {
     &CLIENT

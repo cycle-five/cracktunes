@@ -611,9 +611,10 @@ impl QueryType {
 
     pub async fn get_track_source_and_metadata(
         &self,
+        client: Option<reqwest::Client>,
     ) -> CrackedResult<(SongbirdInput, Vec<MyAuxMetadata>)> {
         use colored::Colorize;
-        let client = http_utils::get_client().clone();
+        let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         tracing::warn!("{}", format!("query_type: {:?}", self).red());
         match self {
             QueryType::YoutubeSearch(query) => {

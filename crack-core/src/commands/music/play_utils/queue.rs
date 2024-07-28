@@ -27,7 +27,7 @@ pub struct TrackReadyData {
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
+        query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {
@@ -51,7 +51,7 @@ pub async fn ready_query(
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = ctx.author().id;
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
+        query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {
