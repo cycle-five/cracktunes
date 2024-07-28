@@ -1,12 +1,18 @@
 use super::get_playlist::get_playlist_;
-use crate::commands::queue_aux_metadata;
+use crate::commands::{cmd_check_music, queue_aux_metadata};
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Queue a playlist on the bot.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "play")]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    rename = "play"
+)]
 pub async fn play_playlist(
     ctx: Context<'_>,
     #[rest]

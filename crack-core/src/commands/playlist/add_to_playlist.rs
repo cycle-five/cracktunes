@@ -1,5 +1,5 @@
 use crate::{
-    commands::MyAuxMetadata,
+    commands::{cmd_check_music, MyAuxMetadata},
     db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, MetadataAnd, Playlist},
     errors::CrackedError,
@@ -10,7 +10,14 @@ use sqlx::PgPool;
 
 /// Adds a song to a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, guild_only, rename = "addto")]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only,
+    rename = "addto"
+)]
 pub async fn add_to_playlist(
     ctx: Context<'_>,
     #[rest]

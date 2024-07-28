@@ -1,5 +1,5 @@
 use crate::{
-    commands::MyAuxMetadata,
+    commands::{cmd_check_music, MyAuxMetadata},
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
     Context, CrackedError, Error,
@@ -7,7 +7,13 @@ use crate::{
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command, rename = "get")]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    rename = "get"
+)]
 pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<(), Error> {
     let (aux_metadata, playlist_name): (Vec<MyAuxMetadata>, String) =
         get_playlist_(ctx, playlist).await?;
