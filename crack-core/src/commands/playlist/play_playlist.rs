@@ -11,7 +11,7 @@ use crate::{Context, Error};
     check = "cmd_check_music",
     prefix_command,
     slash_command,
-    rename = "play"
+    rename = "pplay"
 )]
 pub async fn play_playlist(
     ctx: Context<'_>,

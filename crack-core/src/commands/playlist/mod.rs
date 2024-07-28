@@ -12,7 +12,7 @@ pub use delete_playlist::delete_playlist as delete;
 pub use get_playlist::get_playlist as get;
 pub use list_playlists::list_playlists as list;
 pub use loadspotify::loadspotify;
-pub use play_playlist::play_playlist as play;
+pub use play_playlist::play_playlist as pplay;
 
 use crate::{
     commands::{cmd_check_music, sub_help as help},
@@ -32,7 +32,7 @@ use crate::{
         "delete",
         "get",
         "list",
-        "play",
+        "pplay",
         "loadspotify",
         "help"
     ),
@@ -59,7 +59,7 @@ pub fn commands() -> [crate::Command; 8] {
         delete(),
         get(),
         list(),
-        play(),
+        pplay(),
         loadspotify(),
     ]
 }
