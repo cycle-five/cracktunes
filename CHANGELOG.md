@@ -2,18 +2,20 @@
 
 ## TODO:
 
-## v0.3.10 (ETA: 2024/08/01)
-
-- [x] All milestones recorded as GitHub issues.
 - [ ] /changenicks command. Renames all users in the guild
       to a random nick name from a themed list of names. Use your
       own custom list, or choose from one of the many I've
       pre-curated and use in my own server.
 - [ ] Test Coverage > 23%.
 - [ ] Codebase architecture documentation.
-- [ ] Add help option to all commands.
 - [ ] Support discordbotlist.com (voting service).
-- [ ] Re-enable playlist support.
+
+## v0.3.10 (ETA: 2024/08/01)
+
+- [x] performance improvements.
+- [x] All milestones recorded as GitHub issues.
+- [x] Add help option to all commands.
+- [x] Re-enable playlist support.
 
 ## ~~v0.3.9~~ 
 - internal testing version, publicly skipped
