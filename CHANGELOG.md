@@ -15,7 +15,14 @@
 - [x] performance improvements.
 - [x] All milestones recorded as GitHub issues.
 - [x] Add help option to all commands.
-- [x] Re-enable playlist support.
+- [x] Added back in internal playlist support.
+      - [x] `/playlist create <playlistname>` Creates a playlist with the given name
+      - [x] `/playlist delete <playlistname>` Deletes a playlist with the given name
+      - [x] `/playlist addto <playlistname>` Adds the currently playing song to <playlistname>
+      - [x] `/playlist list` List your playlists
+      - [x] `/playlist get <playlistname>` displays the contents of <playlistname>
+      - [x] `/playlist pplay <playlistname>` queues the given playlist on the bot
+      - [x] `/playlist loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
 
 ## ~~v0.3.9~~ 
 - internal testing version, publicly skipped

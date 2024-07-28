@@ -186,7 +186,7 @@ mod test {
     #[tokio::test]
     async fn test_get_track_source_and_metadata_video_link() {
         let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
+            QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
         let res = query_type.get_track_source_and_metadata().await;
         if let Err(ref e) = res {
             tracing::warn!("Error: {:?}", e);
