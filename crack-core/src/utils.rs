@@ -162,7 +162,7 @@ pub async fn send_now_playing(
                 create_now_playing_embed_metadata(
                     requesting_user.ok(),
                     cur_position,
-                    MyAuxMetadata::Data(metadata2),
+                    MyAuxMetadata(metadata2),
                 )
             } else {
                 create_now_playing_embed(&track_handle).await
@@ -416,20 +416,17 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 }
 
 /// Gets the metadata from a track.
-pub async fn get_track_metadata(track: &TrackHandle) -> AuxMetadata {
-    let metadata = {
+pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
+    let MyAuxMetadata(metadata) = {
         let map = track.typemap().read().await;
-        let my_metadata = match map.get::<MyAuxMetadata>() {
+        let metadata = match map.get::<MyAuxMetadata>() {
             Some(my_metadata) => my_metadata,
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
                 return AuxMetadata::default();
             },
         };
-
-        match my_metadata {
-            MyAuxMetadata::Data(metadata) => metadata.clone(),
-        }
+        metadata.clone()
     };
     metadata
 }
@@ -450,7 +447,7 @@ async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> S
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let MyAuxMetadata::Data(t) = t;
+        let MyAuxMetadata(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);

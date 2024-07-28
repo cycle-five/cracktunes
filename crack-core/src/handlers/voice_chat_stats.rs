@@ -1,5 +1,5 @@
 use crate::{
-    commands::{deafen_internal, mute_internal},
+    commands::admin::{deafen::deafen_internal, mute::mute_internal},
     errors::CrackedError,
     messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,

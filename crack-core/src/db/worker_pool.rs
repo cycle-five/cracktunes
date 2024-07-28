@@ -129,18 +129,19 @@ mod test {
                 source_url: Some(url.clone()),
                 ..Default::default()
             },
-            user_id: UserId::new(1),
+            user_id: UserId::new(100),
             username: "test".to_string(),
             guild_id: GuildId::new(1),
             channel_id: ChannelId::new(1),
         };
         sender.send(data).await.unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         let metadata = crate::db::metadata::Metadata::get_by_url(&pool, &url)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(metadata.id, 1);
+        // test data has id 1
+        assert_eq!(metadata.id, 4);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]

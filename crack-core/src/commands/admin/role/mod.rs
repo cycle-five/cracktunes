@@ -9,20 +9,28 @@ pub use delete_role::*;
 pub use crate::poise_ext::ContextExt;
 pub use crate::utils;
 
-use crate::commands::sub_help as help;
+use crate::commands::help;
 use crate::{Context, Error};
 
 /// Role commands.
 #[poise::command(
+    category = "Admin",
+    required_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    subcommands("create", "delete", "delete_by_id", "assign", "assign_ids", "help"),
-    ephemeral,
-    hide_in_help = true
+    subcommands("create", "delete", "delete_by_id", "assign", "assign_ids"),
+    ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
-pub async fn role(ctx: Context<'_>) -> Result<(), Error> {
-    tracing::warn!("Role command called");
+pub async fn role(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
 
     ctx.send_found_command("admin role".to_string()).await?;
 

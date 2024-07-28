@@ -121,7 +121,7 @@ impl EventHandler for TrackEndHandler {
             },
         };
         let track_ready = ready_query2(query).await.ok()?;
-        let MyAuxMetadata::Data(metadata) = &track_ready.metadata;
+        let MyAuxMetadata(metadata) = &track_ready.metadata;
         let metadata = Some(metadata.clone());
 
         let track = queue_track_ready_front(&self.call, track_ready)

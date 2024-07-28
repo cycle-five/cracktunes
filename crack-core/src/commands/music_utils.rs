@@ -82,6 +82,7 @@ pub async fn set_global_handlers(
 
 /// Get the call handle for songbird.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument]
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
@@ -104,6 +105,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 }
 
 /// Join a voice channel.
+#[tracing::instrument]
 pub async fn do_join(
     ctx: Context<'_>,
     manager: &songbird::Songbird,

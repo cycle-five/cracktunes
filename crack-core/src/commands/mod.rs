@@ -10,10 +10,11 @@ pub mod music_utils;
 pub mod osint;
 pub mod permissions;
 pub mod playlist;
+pub mod register;
 pub mod settings;
 pub mod utility;
 
-pub use admin::*;
+pub use admin::commands;
 #[cfg(feature = "crack-bf")]
 pub use bf::*;
 #[cfg(feature = "crack-gpt")]
@@ -24,11 +25,9 @@ pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use permissions::*;
+pub use register::*;
 pub use settings::*;
 pub use utility::*;
-
-pub mod register;
-pub use register::*;
 
 pub use crate::errors::CrackedError;
 use serenity::all::Message;
@@ -64,8 +63,8 @@ pub fn all_commands() -> Vec<crate::Command> {
     .chain(music::music_commands())
     .chain(utility::utility_commands())
     .chain(settings::commands())
-    // .chain(playlist::commands())
-    // .chain(admin::admin_commands())
+    .chain(admin::commands())
+    .chain(playlist::commands())
     .collect()
 }
 

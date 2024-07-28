@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.8"
+version = "0.3.10"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -38,8 +38,8 @@ async-trait = "0.1"
 anyhow = "1.0"
 bytes = "1.6"
 colored = "2.1"
+const-random = "0.1"
 lazy_static = "1.5"
-lyric_finder = { git = "https://github.com/cycle-five/spotify-player", branch = "master", features = ["rustls-tls"], version = "0.1.7" }
 rand = "0.8"
 regex = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -69,6 +69,12 @@ songbird = { workspace = true }
 tokio = { workspace = true }
 poise = { workspace = true }
 symphonia = { workspace = true }
+
+[dependencies.lyric_finder]
+git = "https://github.com/cycle-five/spotify-player"
+branch = "master"
+features = ["rustls-tls"]
+version = "0.1.7"
 
 [dependencies.serenity-voice-model]
 version = "0.2"

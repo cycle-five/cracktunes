@@ -1,4 +1,4 @@
-use crate::commands::sub_help as help;
+use crate::commands::help;
 use crate::{Context, Error};
 use serenity::all::{GuildId, Member, Role, RoleId, UserId};
 
@@ -9,8 +9,6 @@ use serenity::all::{GuildId, Member, Role, RoleId, UserId};
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    subcommands("help"),
-    hide_in_help = true,
     ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
@@ -18,7 +16,13 @@ pub async fn assign(
     ctx: Context<'_>,
     #[description = "Role to assign"] role: Role,
     #[description = "Member to assign the role to"] member: Member,
+    #[flag]
+    #[description = "Show help menu"]
+    help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     member
         .add_role(&ctx, role)
         .await
@@ -33,7 +37,6 @@ pub async fn assign(
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    subcommands("help"),
     hide_in_help = true,
     ephemeral
 )]
@@ -43,7 +46,12 @@ pub async fn assign_ids(
     #[description = "GuildId related to"] guild_id: GuildId,
     #[description = "RoleId to assign"] role_id: RoleId,
     #[description = "UserId to assign role to"] user_id: UserId,
+    #[description = "Show help menu"] help: bool,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
+
     let member = guild_id.member(&ctx, user_id).await?;
     member
         .add_role(&ctx, role_id)

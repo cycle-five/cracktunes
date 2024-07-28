@@ -312,19 +312,26 @@ pub async fn poise_framework(
         tracing::warn!("Received Ctrl-C, shutting down...");
         let guilds = data2.guild_settings_map.read().await.clone();
         let pool = data2.clone().database_pool.clone();
+        let mut saved_guilds = Vec::with_capacity(guilds.len());
 
+        println!("Saving guilds...");
         if pool.is_some() {
             let p = pool.unwrap();
             for (k, v) in guilds {
-                tracing::warn!("Saving Guild: {}", k);
+                //tracing::warn!("Saving Guild: {}", k);
                 match v.save(&p).await {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        saved_guilds.push(k);
+                    },
                     Err(e) => {
                         tracing::error!("Error saving guild settings: {}", e);
                     },
                 }
             }
+            p.close().await;
         }
+        println!("Saved guilds: {:?}", saved_guilds);
+        tracing::trace!("Saved guilds: {:?}", saved_guilds);
 
         shard_manager.clone().shutdown_all().await;
 

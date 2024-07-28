@@ -1,7 +1,8 @@
 use self::serenity::builder::CreateEmbed;
-use crate::commands::{cmd_check_music, help, ContextExt};
+use crate::commands::{cmd_check_music, help};
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
+use crate::poise_ext::ContextExt;
 use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
 use colored::Colorize;

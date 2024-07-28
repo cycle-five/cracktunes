@@ -8,6 +8,7 @@ use serenity::{CacheHttp, EditMember, GuildId, Mentionable};
 
 /// Mute a user.
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
@@ -25,7 +26,7 @@ pub async fn mute(
         .map_err(Into::into)
 }
 
-/// Unmute a user.
+/// Mute a user, internal function.
 pub async fn mute_internal(
     cache_http: &impl CacheHttp,
     user: serenity::User,

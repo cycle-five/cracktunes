@@ -27,7 +27,7 @@ pub struct TrackReadyData {
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
+        query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {
@@ -51,7 +51,7 @@ pub async fn ready_query(
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = ctx.author().id;
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata().await?;
+        query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {
@@ -130,9 +130,26 @@ pub async fn queue_track_back(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let begin = std::time::Instant::now();
     let ready_track = ready_query(ctx, query_type.clone()).await?;
+    let after_ready = std::time::Instant::now();
     ctx.send_track_metadata_write_msg(&ready_track);
-    queue_track_ready_back(call, ready_track).await
+    let after_send = std::time::Instant::now();
+    let queue = queue_track_ready_back(call, ready_track).await;
+    let after_queue = std::time::Instant::now();
+    tracing::warn!(
+        r#"
+            after_ready: {:?}
+            after_send: {:?}
+            after_queue: {:?}
+            total: {:?}
+        "#,
+        after_ready.duration_since(begin),
+        after_send.duration_since(after_ready),
+        after_queue.duration_since(after_send),
+        after_queue.duration_since(begin)
+    );
+    queue
 }
 
 /// Queue a list of tracks to be played.
@@ -279,6 +296,7 @@ pub async fn queue_query_list_offset<'a>(
 
 /// Get the play mode and the message from the parameters to the play command.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
+#[tracing::instrument]
 pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
     let opt_mode = mode.clone();
     if is_prefix {
@@ -339,6 +357,7 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
 // TODO: Old and crufty. Clean up.
+#[tracing::instrument]
 pub fn get_msg(
     mode: Option<String>,
     query_or_url: Option<String>,
@@ -364,6 +383,7 @@ pub fn get_msg(
 
 /// Rotates the queue by `n` tracks to the right.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument]
 pub async fn _rotate_tracks(
     call: &Arc<Mutex<Call>>,
     n: usize,

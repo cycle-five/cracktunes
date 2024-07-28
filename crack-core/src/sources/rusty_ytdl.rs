@@ -2,6 +2,7 @@ use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
+use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{
     search::{Playlist, SearchOptions, SearchResult, YouTube},
     Video, VideoInfo,
@@ -89,16 +90,23 @@ impl Display for RustyYoutubeClient {
 pub struct RustyYoutubeSearch {
     pub rusty_ytdl: RustyYoutubeClient,
     pub metadata: Option<AuxMetadata>,
+    pub url: Option<String>,
+    pub video: Option<Arc<Video>>,
     pub query: QueryType,
 }
 
+type RustyYoutube = YouTube;
+type YtdlpYoutube = YoutubeDl;
+type YouTubeClient = either::Either<RustyYoutube, YtdlpYoutube>;
 /// More general struct to wrap the search instances. Name this better.
 #[derive(Clone, Debug)]
 pub struct FastYoutubeSearch {
     pub query: QueryType,
-    pub client: reqwest::Client,
-    pub ytdl: either::Either<RustyYoutubeClient, YoutubeDl>,
+    pub reqwest_client: reqwest::Client,
+    pub ytdl_client: YouTubeClient,
+    pub url: Option<String>,
     pub metadata: Option<AuxMetadata>,
+    pub video: Option<Arc<VideoInfo>>,
 }
 
 impl Display for FastYoutubeSearch {
@@ -108,7 +116,7 @@ impl Display for FastYoutubeSearch {
             r#"FastYT: Query: {:?}
             ytdl: {:?}"#,
             self.query.build_query(),
-            either::for_both!(&self.ytdl, ytdl => ytdl.as_string()),
+            either::for_both!(&self.ytdl_client, ytdl => ytdl.as_string()),
         )
     }
 }
@@ -123,7 +131,58 @@ impl Display for RustyYoutubeSearch {
     }
 }
 
-/// Implementation of the `RustyYoutubeClient` struct.
+/// Builder for the [`RequestOptions`] struct.
+pub struct RequestOptionsBuilder {
+    pub client: Option<reqwest::Client>,
+    pub ipv6_block: Option<String>,
+}
+
+/// Default for the [`RequestOptions`] struct.
+impl Default for RequestOptionsBuilder {
+    fn default() -> Self {
+        Self {
+            client: None,
+            ipv6_block: Some("2001:4::/48".to_string()),
+        }
+    }
+}
+
+/// Implementation of the builder for the [`RequestOptions`] struct.
+impl RequestOptionsBuilder {
+    /// Creates a default builder.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Sets the client for the builder, mutating.
+    pub fn set_client(mut self, client: reqwest::Client) -> Self {
+        self.client = Some(client);
+        self
+    }
+
+    /// Sets the ipv6 block for the builder, mutating.
+    pub fn set_ipv6_block(mut self, ipv6_block: String) -> Self {
+        self.ipv6_block = Some(ipv6_block);
+        self
+    }
+
+    /// Sets the client for the builder, mutating.
+    pub fn set_default_ipv6_block(mut self) -> Self {
+        self.ipv6_block = Some("2001:4::/48".to_string());
+        self
+    }
+
+    /// Builds the [`RequestOptions`] struct.
+    pub fn build(self) -> RequestOptions {
+        RequestOptions {
+            client: self.client,
+            ipv6_block: self.ipv6_block,
+            ..Default::default()
+        }
+    }
+}
+
+/// Implementation of the [`RustyYoutubeClient`] struct.
 impl RustyYoutubeClient {
     // Create a new `RustyYoutubeClient`.
     pub fn new() -> Result<Self, CrackedError> {
@@ -133,11 +192,14 @@ impl RustyYoutubeClient {
 
     /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
     pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
-        // let rusty_ytdl = YouTube::new_with_options(&RequestOptions {
-        //     client: Some(client.clone()),
-        //     ..Default::default()
-        // })?;
-        let rusty_ytdl = YouTube::new().unwrap();
+        // TODO: Is this the best, or even correct block to use?
+
+        let req = RequestOptionsBuilder::new()
+            .set_client(client.clone())
+            .build();
+
+        let rusty_ytdl = YouTube::new_with_options(&req)?;
+
         Ok(Self { rusty_ytdl, client })
     }
 
@@ -155,7 +217,7 @@ impl RustyYoutubeClient {
                 metadata.track = Some(video.title.clone());
                 metadata.artist = None;
                 metadata.album = None;
-                metadata.date = video.uploaded_at;
+                metadata.date = video.uploaded_at.clone();
 
                 metadata.channels = Some(2);
                 metadata.channel = Some(video.channel.name);
@@ -201,7 +263,7 @@ impl RustyYoutubeClient {
     }
 
     /// Get a video from a URL.
-    pub async fn get_video_info(&self, url: String) -> Result<VideoInfo, CrackedError> {
+    pub async fn get_video_info(url: String) -> Result<VideoInfo, CrackedError> {
         // let vid_options = VideoOptions {
         //     request_options: RequestOptions {
         //         client: Some(self.client.clone()),
@@ -230,12 +292,32 @@ impl RustyYoutubeClient {
         Ok(search_results)
     }
 
-    // Do a one-shot search
-    pub async fn one_shot(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
+    // Wraps rusty_ytdl search_one
+    pub async fn search_one(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
         self.rusty_ytdl
             .search_one(&query, None)
             .await
             .map_err(|e| e.into())
+    }
+}
+
+impl RustyYoutubeSearch {
+    pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
+        let rusty_ytdl = RustyYoutubeClient::new_with_client(client)?;
+        Ok(Self {
+            rusty_ytdl,
+            metadata: None,
+            query,
+            url: None,
+            video: None,
+        })
+    }
+
+    /// Reset the search.
+    pub fn reset_search(&mut self) {
+        self.metadata = None;
+        self.url = None;
+        self.video = None;
     }
 }
 
@@ -260,7 +342,7 @@ impl Compose for RustyYoutubeSearch {
             .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
         let search_res = self
             .rusty_ytdl
-            .one_shot(query_str)
+            .search_one(query_str)
             .await?
             .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
         let search_video = match search_res {
@@ -293,18 +375,26 @@ impl Compose for RustyYoutubeSearch {
         true
     }
 
+    /// Returns, and caches if isn't already, the metadata for the search.
     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
         if let Some(meta) = self.metadata.as_ref() {
             return Ok(meta.clone());
         }
 
-        self.rusty_ytdl
-            .one_shot(self.query.build_query().unwrap())
-            .await?;
+        let res: SearchResult = self
+            .rusty_ytdl
+            .search_one(self.query.build_query().unwrap())
+            .await?
+            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
+        let metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
-        self.metadata
-            .clone()
-            .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
+        self.metadata = Some(metadata.clone());
+
+        Ok(metadata)
+
+        // self.metadata
+        //     .clone()
+        //     .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
     }
 }
 
@@ -414,6 +504,8 @@ impl Seek for MediaSourceStream {
     }
 }
 
+/// Implementation of [`MediaSource`] for the [`MediaSourceStream`] struct.
+/// FIXME: Does this need to be seekable?
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
         //true
@@ -437,10 +529,13 @@ mod test {
     #[tokio::test]
     async fn test_ytdl() {
         // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let client = http_utils::get_client().clone();
-        let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
-        let ytdl = Arc::new(ytdl);
-        let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
+        // let client = http_utils::get_client().clone();
+        // let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
+        // let ytdl = Arc::new(ytdl);
+        // let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
+        let search = "The Night Chicago Died";
+        let rusty_ytdl = YouTube::new().unwrap();
+        let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
         match playlist {
             Ok(Some(playlist)) => {
                 let metadata =
@@ -453,6 +548,7 @@ mod test {
                 assert!(false)
             },
             Err(e) => {
+                println!("{:?}", e);
                 assert!(e.to_string().contains("Your IP is likely being blocked"))
             },
         }
@@ -494,7 +590,7 @@ mod test {
         let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
         let ytdl = Arc::new(ytdl);
         for search in searches {
-            let res = ytdl.one_shot(search.to_string()).await;
+            let res = ytdl.search_one(search.to_string()).await;
             assert!(
                 res.is_ok() || {
                     println!("{}", res.unwrap_err().to_string());
@@ -575,4 +671,19 @@ mod test {
     // async fn test_can_play_ytdl() {
     //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string();
     // }
+
+    // RequestOptionsBuilder tests
+    #[test]
+    fn test_request_options_builder() {
+        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new();
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/48".to_string()));
+
+        let client = reqwest::Client::new();
+        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new()
+            .set_client(client.clone())
+            .set_ipv6_block("2001:4::/64".to_string());
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
+    }
 }

@@ -1,7 +1,7 @@
 use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
-use crate::commands::{cmd_check_music, sub_help as help};
+use crate::commands::{cmd_check_music, help};
 use crate::sources::rusty_ytdl::RustyYoutubeClient;
 use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
@@ -21,7 +21,7 @@ use crate::{
     },
     sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
-    utils::{get_human_readable_timestamp, get_track_metadata},
+    utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
 };
 use ::serenity::{
@@ -58,8 +58,7 @@ pub enum Mode {
     prefix_command,
     slash_command,
     guild_only,
-    check = "cmd_check_music",
-    subcommands("help")
+    check = "cmd_check_music"
 )]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let shard_id = ctx.serenity_context().shard_id;
@@ -135,12 +134,16 @@ pub async fn play(
 #[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
 pub async fn optplay(
     ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
     #[description = "Play mode"] mode: Option<String>,
     #[description = "File to play."] file: Option<serenity::Attachment>,
-    #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
+    #[description = "song link or search query."] query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     play_internal(ctx, mode, file, query_or_url).await
 }
 
@@ -149,6 +152,7 @@ use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -157,6 +161,9 @@ async fn play_internal(
 ) -> Result<(), Error> {
     //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
+    // Get current time for timing purposes.
+    let _start = std::time::Instant::now();
+
     let is_prefix = ctx.prefix() != "/";
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
@@ -173,11 +180,15 @@ async fn play_internal(
         return Ok(());
     }
 
+    let _after_msg_parse = std::time::Instant::now();
+
     let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
+
+    let _after_get_mode = std::time::Instant::now();
 
     // TODO: Maybe put into it's own function?
     let url = match file.clone() {
-        Some(file) => file.url.as_str().to_owned().to_string(),
+        Some(file) => file.url.clone(),
         None => msg.clone(),
     };
     let url = url.as_str();
@@ -185,6 +196,8 @@ async fn play_internal(
     tracing::warn!(target: "PLAY", "url: {}", url);
 
     let call = get_call_or_join_author(ctx).await?;
+
+    let _after_call = std::time::Instant::now();
 
     let mut search_msg = msg_int::send_search_message(&ctx).await?;
     tracing::debug!("search response msg: {:?}", search_msg);
@@ -201,9 +214,13 @@ async fn play_internal(
 
     tracing::warn!("query_type: {:?}", query_type);
 
+    let _after_query_type = std::time::Instant::now();
+
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
     let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
+
+    let _after_move_on = std::time::Instant::now();
 
     // FIXME: Yeah, this is terrible, fix this.
     if !move_on {
@@ -215,6 +232,8 @@ async fn play_internal(
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
     drop(handler);
+
+    let _after_refetch_queue = std::time::Instant::now();
 
     // This makes sense, we're getting the final response to the user based on whether
     // the song / playlist was queued first, last, or is now playing.
@@ -282,9 +301,39 @@ async fn play_internal(
         },
     };
 
-    edit_embed_response2(ctx, embed, search_msg.clone())
-        .await
-        .map(|_| ())
+    let _after_embed = std::time::Instant::now();
+
+    let _ = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+
+    let _after_edit_embed = std::time::Instant::now();
+
+    tracing::warn!(
+        r#"
+        after_msg_parse: {:?}
+        after_get_mode: {:?} (+{:?})
+        after_call: {:?} (+{:?})
+        after_query_type: {:?} (+{:?})
+        after_move_on: {:?} (+{:?})
+        after_refetch_queue: {:?} (+{:?})
+        after_embed: {:?} (+{:?})
+        after_edit_embed: {:?} (+{:?})"#,
+        _after_msg_parse.duration_since(_start),
+        _after_get_mode.duration_since(_start),
+        _after_get_mode.duration_since(_after_msg_parse),
+        _after_call.duration_since(_start),
+        _after_call.duration_since(_after_get_mode),
+        _after_query_type.duration_since(_start),
+        _after_query_type.duration_since(_after_call),
+        _after_move_on.duration_since(_start),
+        _after_move_on.duration_since(_after_query_type),
+        _after_refetch_queue.duration_since(_start),
+        _after_refetch_queue.duration_since(_after_move_on),
+        _after_embed.duration_since(_start),
+        _after_embed.duration_since(_after_refetch_queue),
+        _after_edit_embed.duration_since(_start),
+        _after_edit_embed.duration_since(_after_embed),
+    );
+    Ok(())
 }
 pub enum MessageOrInteraction {
     Message(Message),
@@ -326,6 +375,16 @@ async fn match_mode<'a>(
     }
 }
 
+// async fn query_type_to_metadata<'a>(
+//     ctx: Context<'_>,
+//     call: Arc<Mutex<Call>>,
+//     mode: Mode,
+//     query_type: QueryType,
+//     search_msg: &'a mut Message,
+// ) -> CrackedResult<bool> {
+//     tracing::info!("mode: {:?}", mode);
+// }
+
 /// Check if the domain that we're playing from is banned.
 // FIXME: This is borked.
 pub fn check_banned_domains(
@@ -366,7 +425,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         .await
         .map(|i| i.position)
         .unwrap_or(zero_duration);
-    let metadata = get_track_metadata(top_track).await;
+    let metadata = get_track_handle_metadata(top_track).await;
 
     let top_track_duration = match metadata.duration {
         Some(duration) => duration,
@@ -416,9 +475,7 @@ impl Default for RequestingUser {
 
 /// AuxMetadata wrapper and utility functions.
 #[derive(Debug, Clone)]
-pub enum MyAuxMetadata {
-    Data(AuxMetadata),
-}
+pub struct MyAuxMetadata(pub AuxMetadata);
 
 /// Implement TypeMapKey for MyAuxMetadata.
 impl TypeMapKey for MyAuxMetadata {
@@ -428,7 +485,7 @@ impl TypeMapKey for MyAuxMetadata {
 /// Implement Default for MyAuxMetadata.
 impl Default for MyAuxMetadata {
     fn default() -> Self {
-        MyAuxMetadata::Data(AuxMetadata::default())
+        MyAuxMetadata(AuxMetadata::default())
     }
 }
 
@@ -436,19 +493,17 @@ impl Default for MyAuxMetadata {
 impl MyAuxMetadata {
     /// Create a new MyAuxMetadata from AuxMetadata.
     pub fn new(metadata: AuxMetadata) -> Self {
-        MyAuxMetadata::Data(metadata)
+        MyAuxMetadata(metadata)
     }
 
     /// Get the internal metadata.
     pub fn metadata(&self) -> &AuxMetadata {
-        match self {
-            MyAuxMetadata::Data(metadata) => metadata,
-        }
+        &self.0
     }
 
     /// Create new MyAuxMetadata from &SpotifyTrack.
     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
-        MyAuxMetadata::Data(AuxMetadata {
+        MyAuxMetadata(AuxMetadata {
             track: Some(track.name()),
             artist: Some(track.artists_str()),
             album: Some(track.album_name()),
@@ -466,7 +521,7 @@ impl MyAuxMetadata {
 
     /// Set the source_url.
     pub fn with_source_url(self, source_url: String) -> Self {
-        MyAuxMetadata::Data(AuxMetadata {
+        MyAuxMetadata(AuxMetadata {
             source_url: Some(source_url),
             ..self.metadata().clone()
         })
@@ -500,7 +555,7 @@ async fn build_queued_embed(
         let my_metadata = map.get::<MyAuxMetadata>().unwrap();
 
         match my_metadata {
-            MyAuxMetadata::Data(metadata) => metadata.clone(),
+            MyAuxMetadata(metadata) => metadata.clone(),
         }
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
@@ -530,6 +585,8 @@ async fn build_queued_embed(
         .footer(CreateEmbedFooter::new(footer_text))
 }
 
+use crate::sources::rusty_ytdl::RequestOptionsBuilder;
+use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
@@ -546,6 +603,10 @@ pub async fn queue_aux_metadata(
         .ok_or(CrackedError::NotConnected)?;
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
+    let req = RequestOptionsBuilder::new()
+        .set_client(client.clone())
+        .build();
+    let rusty_ytdl = YouTube::new_with_options(&req)?;
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
@@ -557,12 +618,12 @@ pub async fn queue_aux_metadata(
                 )
                 .await;
 
-            let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
-            let res = ytdl.one_shot(search_query).await?;
+            //let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
+            let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
             let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
 
-            MyAuxMetadata::Data(new_aux_metadata)
+            MyAuxMetadata(new_aux_metadata)
         } else {
             metadata.clone()
         };

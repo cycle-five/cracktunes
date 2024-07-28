@@ -1,5 +1,5 @@
 use crate::{
-    commands::MyAuxMetadata,
+    commands::{cmd_check_music, MyAuxMetadata},
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
     http_utils,
@@ -61,7 +61,7 @@ pub async fn loadspotify_(
     let playls = Playlist::create(db_pool, &name.clone(), ctx.author().id.get() as i64).await?;
     let guild_id_i64 = guild_id.get() as i64;
     let channel_id_i64 = channel_id.get() as i64;
-    for MyAuxMetadata::Data(m) in metadata {
+    for MyAuxMetadata(m) in metadata {
         metadata_vec.push(m.clone());
         let res = aux_metadata_to_db_structures(&m, guild_id_i64, channel_id_i64);
         match res {
@@ -87,7 +87,12 @@ pub async fn loadspotify_(
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command
+)]
 pub async fn loadspotify(
     ctx: Context<'_>,
     #[description = "Spotify.com url to the *public* playlist."] spotifyurl: String,

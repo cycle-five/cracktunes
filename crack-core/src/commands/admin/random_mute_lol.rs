@@ -1,6 +1,8 @@
+use super::mute::mute_internal;
 use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
+use async_trait::async_trait;
 use rand::Rng;
 use serenity::all::{Context as SerenityContext, GuildId, User};
 use songbird::{Call, Event, EventContext, EventHandler};
@@ -10,6 +12,7 @@ use tokio::sync::Mutex;
 /// Randomly mute a user in the server.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
@@ -52,8 +55,6 @@ pub struct RandomMuteHandler {
     pub guild_id: GuildId,
 }
 
-use crate::commands::mute_internal;
-use async_trait::async_trait;
 #[async_trait]
 impl EventHandler for RandomMuteHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {

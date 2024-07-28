@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
+    commands::{cmd_check_music, help},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
@@ -14,10 +14,17 @@ use crate::{
     prefix_command,
     slash_command,
     guild_only,
-    check = "cmd_check_music",
-    subcommands("help")
+    check = "cmd_check_music"
 )]
-pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn clear(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     clear_internal(ctx).await
 }
 

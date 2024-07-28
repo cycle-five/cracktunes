@@ -494,7 +494,6 @@ impl GuildSettings {
     }
 
     pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
-        tracing::warn!("Saving guild settings: {:?}", self);
         let guild_id = self.guild_id.get() as i64;
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
@@ -511,7 +510,6 @@ impl GuildSettings {
 
     /// Save the guild settings to a JSON file. Unused?
     pub fn save_json(&self) -> Result<(), CrackedError> {
-        tracing::warn!("Saving guild settings: {:?}", self);
         create_dir_all(SETTINGS_PATH.as_str())?;
         let path = format!(
             "{}/{}-{}.json",

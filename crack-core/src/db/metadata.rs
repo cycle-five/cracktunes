@@ -86,9 +86,9 @@ impl Metadata {
         let get_r: Result<MetadataRead, CrackedError> = sqlx::query_as!(MetadataRead, r#"
             SELECT
                 metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail
-            FROM 
+            FROM
                 metadata
-            WHERE 
+            WHERE
                 metadata.source_url = $1
             "#,
                 in_metadata.source_url,
@@ -143,23 +143,24 @@ impl Metadata {
 
     /// Get a metadata entry by id (url).
     pub async fn get_by_url(pool: &PgPool, url: &str) -> Result<Option<Metadata>, CrackedError> {
-        let r: Option<MetadataRead> = sqlx::query_as!(MetadataRead, r#"
-            SELECT
+        // let r: Option<MetadataRead> = sqlx::query_as!(MetadataRead,
+        sqlx::query_as!(MetadataRead,
+            r#"SELECT
                 metadata.id, metadata.track, metadata.artist, metadata.album, metadata.date, metadata.channels, metadata.channel, metadata.start_time, metadata.duration, metadata.sample_rate, metadata.source_url, metadata.title, metadata.thumbnail
-            FROM 
+            FROM
                 metadata
-            WHERE 
-                metadata.source_url = $1
-            "#,
+            WHERE
+                metadata.source_url = $1"#,
             url
         )
         .fetch_optional(pool)
         .await
-        .map_err(CrackedError::SQLX)?;
-        match r {
-            Some(r) => Ok(Some(r.into())),
-            None => Ok(None),
-        }
+        .map_err(CrackedError::SQLX)
+        .map(|r| r.map(|r| r.into()))
+        // match r {
+        //     Some(r) => Ok(Some(r.into())),
+        //     None => Ok(None),
+        // }
     }
 }
 
@@ -217,10 +218,10 @@ pub async fn playlist_track_to_metadata(
     })
 }
 
-use crate::db;
-
 use super::PlaylistTrack;
-
+use crate::db;
+/// This enum holds metadata and another type... which apprently there's going to be another use for?
+/// Or maybe this was better for ergonimics?
 pub enum MetadataAnd {
     Track(Metadata, PlaylistTrack),
 }
@@ -309,22 +310,6 @@ pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedE
         source_url,
         thumbnail,
     };
-
-    // let aux_metadata = Metadata {
-    //     id: 0,
-    //     track,
-    //     title,
-    //     artist,
-    //     album,
-    //     date,
-    //     channel,
-    //     channels,
-    //     start_time,
-    //     duration,
-    //     sample_rate,
-    //     source_url,
-    //     thumbnail,
-    // };
 
     Ok(aux_metadata)
 }

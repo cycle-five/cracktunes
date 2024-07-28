@@ -5,7 +5,7 @@ use crate::{
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
     utils::send_reply,
-    utils::{get_track_metadata, send_embed_response_poise},
+    utils::{get_track_handle_metadata, send_embed_response_poise},
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -92,7 +92,7 @@ pub async fn remove_internal(
 }
 
 async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
-    let metadata = get_track_metadata(track).await;
+    let metadata = get_track_handle_metadata(track).await;
     CreateEmbed::default()
         .field(
             REMOVED_QUEUE,

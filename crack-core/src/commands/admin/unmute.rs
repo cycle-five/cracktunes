@@ -9,6 +9,7 @@ use serenity::builder::EditMember;
 /// Unmute a user.
 /// TODO: Add a way to unmute a user by their ID.
 #[poise::command(
+    category = "Admin",
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",

@@ -2,7 +2,7 @@ use poise::serenity_prelude::{Colour, Permissions};
 use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
 
-use crate::commands::{sub_help as help, EmptyResult};
+use crate::commands::EmptyResult;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
@@ -16,13 +16,12 @@ use crate::Context;
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
     slash_command,
-    subcommands("help"),
-    hide_in_help = true,
     ephemeral
 )]
+#[cfg(not(tarpaulin_include))]
 pub async fn create(
     ctx: Context<'_>,
-    #[description = "Name of the role to create."] name: String,
+    #[description = "Name of the role to create. Required."] name: String,
     #[description = "Whether the role is hoisted."] hoist: Option<bool>,
     #[description = "Whether the role is mentionable."] mentionable: Option<bool>,
     #[description = "Optional initial perms"] permissions: Option<u64>,
@@ -70,6 +69,7 @@ pub async fn create(
 }
 
 /// Internal create role function.
+#[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_role_internal(
     ctx: Context<'_>,

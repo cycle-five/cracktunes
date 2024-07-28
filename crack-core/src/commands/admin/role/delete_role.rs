@@ -1,5 +1,6 @@
 use poise::ReplyHandle;
 use serenity::all::{Role, RoleId};
+use std::borrow::Cow;
 
 use crate::{
     errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
@@ -12,7 +13,7 @@ use crate::{
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "ADMINISTRATOR",
     prefix_command,
-    hide_in_help = true,
+    slash_command,
     ephemeral
 )]
 pub async fn delete(
@@ -42,7 +43,6 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
-use std::borrow::Cow;
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,

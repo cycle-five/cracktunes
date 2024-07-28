@@ -1,4 +1,4 @@
-use crate::commands::{cmd_check_music, sub_help as help};
+use crate::commands::{cmd_check_music, help};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, CrackedError, Error};
 
@@ -10,10 +10,17 @@ use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Crac
     slash_command,
     prefix_command,
     guild_only,
-    aliases("ap"),
-    subcommands("help")
+    aliases("ap")
 )]
-pub async fn autoplay(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn autoplay(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
     toggle_autoplay(ctx).await
 }
 

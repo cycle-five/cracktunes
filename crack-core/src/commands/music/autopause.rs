@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, sub_help as help},
+    commands::{cmd_check_music, help},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     http_utils::SendMessageParams,
@@ -14,11 +14,18 @@ use crate::{
     category = "Music",
     slash_command,
     prefix_command,
-    subcommands("help"),
     guild_only,
     check = "cmd_check_music"
 )]
-pub async fn autopause(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn autopause(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    flag: bool,
+) -> Result<(), Error> {
+    if flag {
+        return help::wrapper(ctx).await;
+    }
     autopause_internal(ctx).await
 }
 

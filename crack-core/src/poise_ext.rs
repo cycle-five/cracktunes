@@ -1,6 +1,7 @@
 use crate::commands::play_utils::TrackReadyData;
 use crate::commands::{has_voted_bot_id, MyAuxMetadata};
 use crate::db;
+use crate::db::write_metadata_pg;
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::GuildSettings;
@@ -103,6 +104,10 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
 pub trait ContextExt {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    fn async_send_track_metadata_write_msg(
+        &self,
+        ready_track: &TrackReadyData,
+    ) -> impl Future<Output = CrackedResult<()>>;
     /// The the user id for the author of the message that created this context.
     fn get_user_id(&self) -> serenity::UserId;
     /// Gets the log of last played songs on the bot by a specific user
@@ -189,9 +194,33 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
+    async fn async_send_track_metadata_write_msg(
+        &self,
+        ready_track: &TrackReadyData,
+    ) -> CrackedResult<()> {
+        let username = ready_track.username.clone();
+        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+
+        let write_data: MetadataMsg = MetadataMsg {
+            aux_metadata,
+            user_id,
+            username,
+            guild_id,
+            channel_id,
+        };
+
+        let pool = self.data().get_db_pool().unwrap();
+        write_metadata_pg(&pool, write_data).await?;
+        Ok(())
+    }
+
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
         let username = ready_track.username.clone();
-        let MyAuxMetadata::Data(aux_metadata) = ready_track.metadata.clone();
+        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
         let user_id = ready_track.user_id;
         let guild_id = self.guild_id().unwrap();
         let channel_id = self.channel_id();
@@ -376,8 +405,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         } else {
             let c = colored::Color::TrueColor {
                 r: params.color.r(),
-                g: params.color.r(),
-                b: params.color.r(),
+                g: params.color.g(),
+                b: params.color.b(),
             };
             CreateReply::default().content(text.color(c).to_string())
         };

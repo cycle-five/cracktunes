@@ -1,8 +1,10 @@
 use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
+// use crate::commands::kick;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
-use crate::sources::youtube::video_info_to_source_and_metadata;
+// use crate::sources::rusty_ytdl::RustyYoutubeSearch;
+use crate::sources::youtube::get_rusty_search;
 use crate::CrackedResult;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
@@ -23,6 +25,7 @@ use crate::{
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
+use rusty_ytdl::search::YouTube;
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType};
 use songbird::{
     input::{AuxMetadata, Compose as _, HttpRequest, Input as SongbirdInput, YoutubeDl},
@@ -115,7 +118,7 @@ impl From<Queries> for Vec<QueryType> {
         q.queries
     }
 }
-
+use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
@@ -488,98 +491,130 @@ impl QueryType {
         _call: Arc<Mutex<Call>>,
     ) -> Result<bool, CrackedError> {
         Err(CrackedError::Other("Not implemented yet!"))
-        // match self {
-        //     QueryType::YoutubeSearch(query) => {
-        //         return Err(CrackedError::Other("Not implemented yet!").into());
-        //     },
-        //     QueryType::Keywords(_)
-        //     | QueryType::VideoLink(_)
-        //     | QueryType::File(_)
-        //     | QueryType::NewYoutubeDl(_) => {
-        //         let mut queue = enqueue_track_pgwrite(ctx, &call, &query_type).await?;
+    }
 
-        //         if !queue_was_empty {
-        //             rotate_tracks(&call, 1).await.ok();
-        //             queue = force_skip_top_track(&call.lock().await).await?;
-        //         }
-        //     },
-        //     QueryType::PlaylistLink(url) => {
-        //         tracing::error!("Mode::Jump, QueryType::PlaylistLink");
-        //         // let urls = YouTubeRestartable::ytdl_playlist(&url, mode)
-        //         //     .await
-        //         //     .ok_or(CrackedError::PlayListFail)?;
-        //         // FIXME
-        //         let _src = YoutubeDl::new(Client::new(), url);
-        //         // .ok_or(CrackedError::Other("failed to fetch playlist"))?
-        //         // .into_iter()
-        //         // .for_each(|track| async {
-        //         //     let _ = enqueue_track(&call, &QueryType::File(track)).await;
-        //         // });
-        //         let urls = vec!["".to_string()];
-        //         let mut insert_idx = 1;
+    pub async fn get_track_metadata(
+        &self,
+        ytclient: YouTube,
+        reqclient: reqwest::Client,
+    ) -> CrackedResult<Vec<MyAuxMetadata>> {
+        match self {
+            QueryType::YoutubeSearch(query) => {
+                tracing::error!("In YoutubeSearch");
+                let search_options = SearchOptions {
+                    limit: 10,
+                    search_type: SearchType::All,
+                    ..Default::default()
+                };
 
-        //         for (i, url) in urls.into_iter().enumerate() {
-        //             let mut queue =
-        //                 insert_track(ctx, &call, &QueryType::VideoLink(url), insert_idx).await?;
+                let res = ytclient.search(query, Some(&search_options)).await?;
+                let mut metadata = Vec::with_capacity(res.len());
+                for r in res {
+                    metadata.push(MyAuxMetadata(
+                        RustyYoutubeClient::search_result_to_aux_metadata(&r),
+                    ));
+                }
+                Ok(metadata)
+                // let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                // let mut res = Vec::new();
+                // let asdf = ytdl.search(None).await?;
+                // for metadata in asdf {
+                //     let my_metadata = MyAuxMetadata(metadata);
+                //     res.push(my_metadata);
+                // }
+                // Ok(res)
+            },
+            QueryType::VideoLink(query) => {
+                // tracing::warn!("In VideoLink");
+                // let vid_info = RustyYoutubeClient::get_video_info(query.clone()).await?;
+                // let metadata = RustyYoutubeClient::video_info_to_aux_metadata(&vid_info);
+                let search = get_rusty_search(reqclient.clone(), query.clone()).await?;
+                let metadata = search
+                    .clone()
+                    .metadata
+                    .into_iter()
+                    .map(MyAuxMetadata)
+                    .collect::<Vec<_>>();
+                Ok(metadata)
+            },
+            QueryType::Keywords(query) => {
+                tracing::warn!("In Keywords");
+                // // get_rusty_search(client.clone(), query.clone()).await
+                // let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                let res = ytclient.search_one(query.clone(), None).await?;
+                // let metadata = ytdl.aux_metadata().await?;
+                let res = res.unwrap();
+                let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+                let my_metadata = MyAuxMetadata(my_metadata);
+                // Ok((ytdl.into(), vec![my_metadata]))
+                Ok(vec![my_metadata])
+            },
+            QueryType::File(_file) => {
+                Ok(vec![])
+                // tracing::warn!("In File");
+                // Ok((
+                //     HttpRequest::new(client, file.url.to_owned()).into(),
+                //     vec![MyAuxMetadata::default()],
+                // ))
+            },
+            QueryType::NewYoutubeDl(_data) => {
+                // let (ytdl, aux_metadata) = data.clone();
+                // Ok((ytdl.into(), vec![MyAuxMetadata(aux_metadata)]))
+                Ok(vec![])
+            },
+            QueryType::PlaylistLink(url) => {
+                let search_options = SearchOptions {
+                    limit: 100,
+                    search_type: SearchType::Playlist,
+                    ..Default::default()
+                };
 
-        //             if i == 0 && !queue_was_empty {
-        //                 queue = force_skip_top_track(&call.lock().await).await?;
-        //             } else {
-        //                 insert_idx += 1;
-        //             }
-        //         }
-        //     },
-        //     // FIXME
-        //     QueryType::SpotifyTracks(tracks) => {
-        //         let mut insert_idx = 1;
-        //         let keywords_list = tracks
-        //             .iter()
-        //             .map(|x| x.build_query())
-        //             .collect::<Vec<String>>();
-
-        //         for (i, keywords) in keywords_list.into_iter().enumerate() {
-        //             let mut queue =
-        //                 insert_track(ctx, &call, &QueryType::Keywords(keywords), insert_idx)
-        //                     .await?;
-
-        //             if i == 0 && !queue_was_empty {
-        //                 queue = force_skip_top_track(&call.lock().await).await?;
-        //             } else {
-        //                 insert_idx += 1;
-        //             }
-        //         }
-        //     },
-        //     // FIXME
-        //     QueryType::KeywordList(keywords_list) => {
-        //         let mut insert_idx = 1;
-
-        //         for (i, keywords) in keywords_list.into_iter().enumerate() {
-        //             let mut queue =
-        //                 insert_track(ctx, &call, &QueryType::Keywords(keywords), insert_idx)
-        //                     .await?;
-
-        //             if i == 0 && !queue_was_empty {
-        //                 queue = force_skip_top_track(&call.lock().await).await?;
-        //             } else {
-        //                 insert_idx += 1;
-        //             }
-        //         }
-        //     },
-        //     QueryType::None => {
-        //         let embed = CreateEmbed::default()
-        //             .description(format!("{}", CrackedError::Other("No query provided!")))
-        //             .footer(CreateEmbedFooter::new("No query provided!"));
-        //         send_embed_response_poise(ctx, embed).await?;
-        //         return Ok(false);
-        //     },
-        // }
+                let res = ytclient.search(url, Some(&search_options)).await?;
+                let mut metadata = Vec::with_capacity(res.len());
+                for r in res {
+                    metadata.push(MyAuxMetadata(
+                        RustyYoutubeClient::search_result_to_aux_metadata(&r),
+                    ));
+                }
+                Ok(metadata)
+                // let ytdl = YoutubeDl::new(client.clone(), url.clone());
+                // tracing::warn!("ytdl: {:?}", ytdl);
+                // Ok((ytdl.into(), metadata))
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let keywords_list = tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>();
+                let mut metadatas = Vec::with_capacity(keywords_list.len());
+                for keyword in keywords_list {
+                    let res = ytclient.search_one(keyword, None).await?.unwrap();
+                    let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+                    let my_metadata = MyAuxMetadata(my_metadata);
+                    metadatas.push(my_metadata);
+                }
+                Ok(metadatas)
+            },
+            QueryType::KeywordList(keywords_list) => {
+                let mut metadatas = Vec::with_capacity(keywords_list.len());
+                for keyword in keywords_list {
+                    let res = ytclient.search_one(keyword, None).await?.unwrap();
+                    let my_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+                    let my_metadata = MyAuxMetadata(my_metadata);
+                    metadatas.push(my_metadata);
+                }
+                Ok(metadatas)
+            },
+            QueryType::None => unimplemented!(),
+        }
     }
 
     pub async fn get_track_source_and_metadata(
         &self,
+        client: Option<reqwest::Client>,
     ) -> CrackedResult<(SongbirdInput, Vec<MyAuxMetadata>)> {
         use colored::Colorize;
-        let client = http_utils::get_client().clone();
+        let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         tracing::warn!("{}", format!("query_type: {:?}", self).red());
         match self {
             QueryType::YoutubeSearch(query) => {
@@ -588,26 +623,36 @@ impl QueryType {
                 let mut res = Vec::new();
                 let asdf = ytdl.search(None).await?;
                 for metadata in asdf {
-                    let my_metadata = MyAuxMetadata::Data(metadata);
+                    let my_metadata = MyAuxMetadata(metadata);
                     res.push(my_metadata);
                 }
                 Ok((ytdl.into(), res))
             },
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
-                video_info_to_source_and_metadata(client.clone(), query.clone()).await
+                let search = get_rusty_search(client.clone(), query.clone()).await?;
+                let metadata = search
+                    .clone()
+                    .metadata
+                    .into_iter()
+                    .map(MyAuxMetadata)
+                    .collect::<Vec<_>>();
+                Ok((search.into(), metadata))
                 // let mut ytdl = YoutubeDl::new(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
-                // let my_metadata = MyAuxMetadata::Data(metadata);
+                // let my_metadata = MyAuxMetadata(metadata);
                 // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                // video_info_to_source_and_metadata(client.clone(), query.clone()).await
-                let mut ytdl = YoutubeDl::new_search(client, query.clone());
-                let metadata = ytdl.aux_metadata().await?;
-                let my_metadata = MyAuxMetadata::Data(metadata);
-                Ok((ytdl.into(), vec![my_metadata]))
+                // get_rusty_search(client.clone(), query.clone()).await
+                let (input, metadata) =
+                    search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
+                Ok((input, metadata))
+                // let mut ytdl = YoutubeDl::new_search(client, query.clone());
+                // let metadata = ytdl.aux_metadata().await?;
+                // let my_metadata = MyAuxMetadata(metadata);
+                // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");
@@ -618,7 +663,7 @@ impl QueryType {
             },
             QueryType::NewYoutubeDl(data) => {
                 let (ytdl, aux_metadata) = data.clone();
-                Ok((ytdl.into(), vec![MyAuxMetadata::Data(aux_metadata)]))
+                Ok((ytdl.into(), vec![MyAuxMetadata(aux_metadata)]))
             },
             QueryType::PlaylistLink(url) => {
                 tracing::warn!("In PlaylistLink");
@@ -632,7 +677,7 @@ impl QueryType {
                 let res = rytdl.rusty_ytdl.search(url, Some(&search_options)).await?;
                 let mut metadata = Vec::with_capacity(res.len());
                 for r in res {
-                    metadata.push(MyAuxMetadata::Data(
+                    metadata.push(MyAuxMetadata(
                         RustyYoutubeClient::search_result_to_aux_metadata(&r),
                     ));
                 }
@@ -652,7 +697,7 @@ impl QueryType {
                 );
                 tracing::warn!("ytdl: {:?}", ytdl);
                 let metdata = ytdl.aux_metadata().await.unwrap();
-                let my_metadata = MyAuxMetadata::Data(metdata);
+                let my_metadata = MyAuxMetadata(metdata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::KeywordList(keywords_list) => {
@@ -667,7 +712,7 @@ impl QueryType {
                         return Err(CrackedError::AudioStream(e));
                     },
                 };
-                let my_metadata = MyAuxMetadata::Data(metdata);
+                let my_metadata = MyAuxMetadata(metdata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::None => unimplemented!(),
@@ -756,12 +801,34 @@ pub async fn query_type_from_url(
             },
             Some("www.youtube.com") => {
                 // Handle youtube playlist
-                if url.contains("playlist") {
-                    tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
-                    Some(QueryType::PlaylistLink(url.to_string()))
-                } else {
-                    Some(QueryType::VideoLink(url.to_string()))
+                let opt_query = url_data
+                    .query_pairs()
+                    .filter_map(|(key, value)| {
+                        if key == "list" || key == "playlist" {
+                            tracing::warn!(
+                                "{}: {}",
+                                "youtube playlist".blue(),
+                                url.underline().blue()
+                            );
+                            Some(QueryType::PlaylistLink(value.to_string()))
+                        } else {
+                            None
+                        }
+                    })
+                    .next();
+                match opt_query {
+                    Some(query) => Some(query),
+                    None => {
+                        tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                        Some(QueryType::VideoLink(url.to_string()))
+                    },
                 }
+                // if url.contains("playlist") || url.contains("list") {
+                //     tracing::warn!("{}: {}", "youtube playlist".blue(), url.underline().blue());
+                //     Some(QueryType::PlaylistLink(url.to_string()))
+                // } else {
+                //     Some(QueryType::VideoLink(url.to_string()))
+                // }
             },
             // For all other domains fall back to yt-dlp.
             Some(other) => {

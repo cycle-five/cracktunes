@@ -54,7 +54,7 @@ features = [
 # Broken? try self-hosted?
 git = "https://github.com/cycle-five/songbird"
 branch = "current"
-version = "0.4.2"
+version = "0.4.3"
 features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
 
 [workspace.dependencies.symphonia]

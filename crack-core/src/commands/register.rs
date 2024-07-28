@@ -1,3 +1,5 @@
+//! FIXME: This is mostly ripped from the poise repo.
+//! It would be nice to be able to not maintain these functions for ourselves.
 //! Utilities for registering application commands
 
 use poise::serenity_prelude as serenity;

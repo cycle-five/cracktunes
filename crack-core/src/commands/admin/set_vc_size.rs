@@ -12,6 +12,8 @@ use serenity::all::EditChannel;
 
 /// Set the size of a voice channel.
 #[poise::command(
+    category = "Admin",
+    rename = "setvcsize",
     prefix_command,
     slash_command,
     required_permissions = "ADMINISTRATOR",
@@ -21,9 +23,15 @@ pub async fn set_vc_size(
     ctx: Context<'_>,
     #[description = "VoiceChannel to edit"] channel: Channel,
     #[description = "New max size"] size: u32,
+    #[flag]
+    #[description = "Show the help menu."]
+    help: bool,
 ) -> Result<(), Error> {
-    let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let _res = channel
+    if help {
+        return crate::commands::help::wrapper(ctx).await;
+    }
+    // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let _ = channel
         .id()
         .edit(&ctx, EditChannel::new().user_limit(size))
         .await?;
@@ -56,7 +64,6 @@ pub async fn set_vc_size_internal(
             e.into(),
         ))
     } else {
-        // Send success message
         Ok(CrackedMessage::ChannelSizeSet { name, id, size })
     }
 }
