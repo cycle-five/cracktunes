@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.3.8"
+version = "0.3.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.8"
+version = "0.3.10"
 dependencies = [
  "config-file",
  "crack-core",
@@ -4549,8 +4549,8 @@ dependencies = [
 
 [[package]]
 name = "songbird"
-version = "0.4.2"
-source = "git+https://github.com/cycle-five/songbird?branch=current#7277997b348d78d319a05eee48f814598168f4a4"
+version = "0.4.3"
+source = "git+https://github.com/cycle-five/songbird?branch=current#a0b2901ba6089054e1fab29ffea26ed377662c43"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -4582,7 +4582,7 @@ dependencies = [
  "symphonia",
  "symphonia-core",
  "tokio",
- "tokio-tungstenite 0.23.1",
+ "tokio-tungstenite 0.21.0",
  "tokio-util",
  "tracing",
  "tracing-futures",
@@ -5535,8 +5535,12 @@ checksum = "c83b561d025642014097b66e6c1bb422783339e0909e4429cde4749d1990bc38"
 dependencies = [
  "futures-util",
  "log",
+ "rustls 0.22.4",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls 0.25.0",
  "tungstenite 0.21.0",
+ "webpki-roots 0.26.3",
 ]
 
 [[package]]
@@ -5848,6 +5852,8 @@ dependencies = [
  "httparse",
  "log",
  "rand",
+ "rustls 0.22.4",
+ "rustls-pki-types",
  "sha1",
  "thiserror",
  "url",
