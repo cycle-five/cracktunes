@@ -10,7 +10,7 @@
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
 
-## v0.3.10 (ETA: 2024/08/01)
+## v0.3.10 (2024/07/28)
 
 - [x] performance improvements.
 - [x] All milestones recorded as GitHub issues.
