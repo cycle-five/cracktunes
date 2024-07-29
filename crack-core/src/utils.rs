@@ -150,7 +150,6 @@ pub async fn send_now_playing(
 ) -> Result<Message, Error> {
     use crate::messaging::interface::create_now_playing_embed_metadata;
 
-    tracing::warn!("locking mutex");
     let mutex_guard = call.lock().await;
     tracing::warn!("mutex locked");
     let msg: CreateMessage = match mutex_guard.queue().current() {
