@@ -6,11 +6,11 @@ use crate::{
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
-        interface::{create_nav_btns, create_queue_embed},
+        interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
+    utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
     Data, //, Error,
 };

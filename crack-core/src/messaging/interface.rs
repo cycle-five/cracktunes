@@ -208,6 +208,48 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 // This is probably the message that the use sees //
 // the most from the bot.                         //
 
+use serenity::all::Http;
+use songbird::Call;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+/// Send the current track information as an ebmed to the given channel.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_now_playing(
+    channel: ChannelId,
+    http: Arc<Http>,
+    call: Arc<Mutex<Call>>,
+    cur_position: Option<Duration>,
+    metadata: Option<AuxMetadata>,
+) -> Result<Message, Error> {
+    let mutex_guard = call.lock().await;
+    let msg: CreateMessage = match mutex_guard.queue().current() {
+        Some(track_handle) => {
+            drop(mutex_guard);
+            let requesting_user = get_requesting_user(&track_handle).await;
+            let embed = if let Some(metadata2) = metadata {
+                create_now_playing_embed_metadata(
+                    requesting_user.ok(),
+                    cur_position,
+                    MyAuxMetadata(metadata2),
+                )
+            } else {
+                create_now_playing_embed(&track_handle).await
+            };
+            CreateMessage::new().embed(embed)
+        },
+        None => {
+            drop(mutex_guard);
+            CreateMessage::new().content("Nothing playing")
+        },
+    };
+    tracing::warn!("sending message: {:?}", msg);
+    channel
+        .send_message(Arc::clone(&http), msg)
+        .await
+        .map_err(|e| e.into())
+}
+
 /// Creates an embed from a CrackedMessage and sends it as an embed.
 pub fn create_now_playing_embed_metadata(
     requesting_user: Option<UserId>,

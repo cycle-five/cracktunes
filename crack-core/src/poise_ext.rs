@@ -22,6 +22,7 @@ use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
+use crate::messaging::interface;
 /// TODO: Separate all the messaging related functions from the other extensions and
 /// put them into this extension.
 #[allow(dead_code)]
@@ -89,7 +90,7 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
     ) -> Result<Message, Error> {
         let call = self.get_call().await?;
         // We don't add this message to the cache because we shouldn't delete it.
-        utils::send_now_playing(
+        interface::send_now_playing(
             chan_id,
             self.serenity_context().http.clone(),
             call,
