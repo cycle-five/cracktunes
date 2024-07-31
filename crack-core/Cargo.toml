@@ -56,6 +56,7 @@ strsim = "0.11"
 itertools = "0.13"
 dashmap = "6.0"
 indexmap = "2.2"
+futures = "0.3"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }

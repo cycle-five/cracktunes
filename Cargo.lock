@@ -830,6 +830,7 @@ dependencies = [
  "ctor",
  "dashmap 6.0.1",
  "either",
+ "futures",
  "indexmap",
  "itertools 0.13.0",
  "lazy_static",

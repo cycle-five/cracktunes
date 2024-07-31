@@ -543,6 +543,42 @@ impl From<&SpotifyTrack> for MyAuxMetadata {
     }
 }
 
+impl From<&SearchResult> for MyAuxMetadata {
+    fn from(search_result: &SearchResult) -> Self {
+        let mut metadata = AuxMetadata::default();
+        match search_result.clone() {
+            SearchResult::Video(video) => {
+                metadata.track = Some(video.title.clone());
+                metadata.artist = None;
+                metadata.album = None;
+                metadata.date = video.uploaded_at.clone();
+
+                metadata.channels = Some(2);
+                metadata.channel = Some(video.channel.name);
+                metadata.duration = Some(Duration::from_millis(video.duration));
+                metadata.sample_rate = Some(48000);
+                metadata.source_url = Some(video.url);
+                metadata.title = Some(video.title);
+                metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
+            },
+            SearchResult::Playlist(playlist) => {
+                metadata.title = Some(playlist.name);
+                metadata.source_url = Some(playlist.url);
+                metadata.duration = None;
+                metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
+            },
+            _ => {},
+        };
+        MyAuxMetadata(metadata)
+    }
+}
+
+impl From<SearchResult> for MyAuxMetadata {
+    fn from(search_result: SearchResult) -> Self {
+        MyAuxMetadata::from(&search_result)
+    }
+}
+
 /// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
@@ -586,7 +622,7 @@ async fn build_queued_embed(
 }
 
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;
-use rusty_ytdl::search::YouTube;
+use rusty_ytdl::search::{SearchResult, YouTube};
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
