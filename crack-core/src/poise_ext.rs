@@ -49,8 +49,8 @@ pub trait MessageInterfaceCtxExt {
     fn send_now_playing(
         &self,
         chan_id: ChannelId,
-        cur_pos: Option<Duration>,
-        metadata: Option<AuxMetadata>,
+        // cur_pos: Option<Duration>,
+        // metadata: Option<AuxMetadata>,
     ) -> impl Future<Output = Result<Message, Error>>;
 }
 
@@ -85,8 +85,8 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
     async fn send_now_playing(
         &self,
         chan_id: ChannelId,
-        cur_pos: Option<Duration>,
-        metadata: Option<AuxMetadata>,
+        // cur_pos: Option<Duration>,
+        // metadata: Option<AuxMetadata>,
     ) -> Result<Message, Error> {
         let call = self.get_call().await?;
         // We don't add this message to the cache because we shouldn't delete it.
@@ -94,8 +94,8 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
             chan_id,
             self.serenity_context().http.clone(),
             call,
-            cur_pos,
-            metadata,
+            //cur_pos,
+            //metadata,
         )
         .await
     }
@@ -195,9 +195,9 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
-    async fn async_send_track_metadata_write_msg(
+    async fn async_send_track_metadata_write_msg<'_>(
         &self,
-        ready_track: &TrackReadyData,
+        ready_track: &'ctx TrackReadyData,
     ) -> CrackedResult<()> {
         let username = ready_track.username.clone();
         let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();

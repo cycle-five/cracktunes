@@ -219,29 +219,16 @@ pub async fn send_now_playing(
     channel: ChannelId,
     http: Arc<Http>,
     call: Arc<Mutex<Call>>,
-    cur_position: Option<Duration>,
-    metadata: Option<AuxMetadata>,
+    //cur_position: Option<Duration>,
+    //metadata: Option<AuxMetadata>,
 ) -> Result<Message, Error> {
     let mutex_guard = call.lock().await;
     let msg: CreateMessage = match mutex_guard.queue().current() {
         Some(track_handle) => {
-            drop(mutex_guard);
-            let requesting_user = get_requesting_user(&track_handle).await;
-            let embed = if let Some(metadata2) = metadata {
-                create_now_playing_embed_metadata(
-                    requesting_user.ok(),
-                    cur_position,
-                    MyAuxMetadata(metadata2),
-                )
-            } else {
-                create_now_playing_embed(&track_handle).await
-            };
+            let embed = create_now_playing_embed(&track_handle).await;
             CreateMessage::new().embed(embed)
         },
-        None => {
-            drop(mutex_guard);
-            CreateMessage::new().content("Nothing playing")
-        },
+        None => CreateMessage::new().content("Nothing playing"),
     };
     tracing::warn!("sending message: {:?}", msg);
     channel
@@ -251,13 +238,13 @@ pub async fn send_now_playing(
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
-pub fn create_now_playing_embed_metadata(
+pub fn build_now_playing_embed_metadata(
     requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
     metadata: MyAuxMetadata,
 ) -> CreateEmbed {
     let MyAuxMetadata(metadata) = metadata;
-    tracing::warn!("metadata: {:?}", metadata);
+    //tracing::warn!("metadata: {:?}", metadata);
 
     let title = metadata.title.clone().unwrap_or_default();
 
@@ -275,7 +262,7 @@ pub fn create_now_playing_embed_metadata(
             true,
         ),
         None => {
-            tracing::warn!("No user id");
+            tracing::info!("No user id, we're autoplaying");
             (REQUESTED_BY, ">>> N/A".to_string(), true)
         },
     };
@@ -303,19 +290,19 @@ pub fn create_now_playing_embed_metadata(
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
-pub async fn track_handle_to_metadata(
-    track: &TrackHandle,
-) -> Result<(Option<UserId>, Option<Duration>, MyAuxMetadata), CrackedError> {
-    let metadata = get_track_handle_metadata(track).await;
-    let requesting_user = get_requesting_user(track).await.ok();
-    let duration = Some(track.get_info().await.unwrap().position);
-    Ok((requesting_user, duration, MyAuxMetadata(metadata)))
-}
+// pub async fn track_handle_to_metadata(
+//     track: &TrackHandle,
+// ) -> Result<(Option<UserId>, Option<Duration>, MyAuxMetadata), CrackedError> {
+//     Ok((requesting_user, duration, MyAuxMetadata(metadata)))
+// }
 
 /// Creates a now playing embed for the given track.
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
-    let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
-    create_now_playing_embed_metadata(requesting_user, duration, metadata)
+    // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
+    let metadata = get_track_handle_metadata(track).await;
+    let requesting_user = get_requesting_user(track).await.ok();
+    let duration = Some(track.get_info().await.unwrap().position);
+    build_now_playing_embed_metadata(requesting_user, duration, MyAuxMetadata(metadata))
 }
 
 // ---------------------- Lyricsd ---------------------------- //

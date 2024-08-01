@@ -459,6 +459,16 @@ pub enum RequestingUser {
     UserId(UserId),
 }
 
+/// Convert `[Option<UserId>]` to `[RequestingUser]`.
+impl From<Option<UserId>> for RequestingUser {
+    fn from(user_id: Option<UserId>) -> Self {
+        match user_id {
+            Some(user_id) => RequestingUser::UserId(user_id),
+            None => RequestingUser::default(),
+        }
+    }
+}
+
 /// We implement TypeMapKey for RequestingUser.
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
@@ -480,6 +490,14 @@ pub struct MyAuxMetadata(pub AuxMetadata);
 /// Implement TypeMapKey for MyAuxMetadata.
 impl TypeMapKey for MyAuxMetadata {
     type Value = MyAuxMetadata;
+}
+
+/// Implement From<AuxMetadata> for MyAuxMetadata.
+impl From<MyAuxMetadata> for AuxMetadata {
+    fn from(metadata: MyAuxMetadata) -> Self {
+        let MyAuxMetadata(metadata) = metadata;
+        metadata
+    }
 }
 
 /// Implement Default for MyAuxMetadata.
