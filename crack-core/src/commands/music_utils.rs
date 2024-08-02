@@ -2,7 +2,7 @@ use crate::connection::get_voice_channel_for_user;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
-use crate::utils::send_reply_embed;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::CrackedError;
 use crate::{Context, Error};
 use poise::serenity_prelude::Mentionable;
@@ -122,17 +122,15 @@ pub async fn do_join(
             let msg = CrackedMessage::Summon {
                 mention: channel_id.mention(),
             };
-            send_reply_embed(&ctx, msg).await?;
+            ctx.send_reply_embed(msg).await?;
             Ok(call)
         },
         Err(err) => {
             // FIXME: Do something smarter here also.
-            //let embed = CreateEmbed::default().description(format!("{}", err));
-            //send_embed_response_poise(&ctx, embed).await?;
             let str = err.to_string().clone();
             let my_err = CrackedError::JoinChannelError(err);
-            let message = CrackedMessage::CrackedRed(str.clone());
-            send_reply_embed(&ctx, message).await?;
+            let msg = CrackedMessage::CrackedRed(str.clone());
+            ctx.send_reply_embed(msg).await?;
             Err(Box::new(my_err))
         },
     }

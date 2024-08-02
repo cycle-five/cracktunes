@@ -124,13 +124,11 @@ impl EventHandler for TrackEndHandler {
         // let MyAuxMetadata(metadata) = &track_ready.metadata;
         // let metadata = Some(metadata.clone());
 
-        let track = queue_track_ready_front(&self.call, track_ready)
+        let _track = queue_track_ready_front(&self.call, track_ready)
             .await
             .ok()?;
 
         let chan_id = channel;
-        //let track_state = track.first().as_ref()?.get_info().await;
-        //let cur_position = track_state.map(|x| x.position).ok();
 
         match send_now_playing(
             chan_id,

@@ -194,12 +194,15 @@ impl EventHandler for SerenityHandler {
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
+        let mut guilds_from_cache = String::new();
         for guild_id in guilds.iter() {
             match guild_id.name(ctx.clone()) {
-                Some(name) => tracing::info!("Guild: {name}"),
-                None => tracing::info!("Guild: {guild_id}"),
+                Some(name) => guilds_from_cache.push_str(&name),
+                None => guilds_from_cache.push_str(&guild_id.to_string()),
             }
+            guilds_from_cache.push_str(", ");
         }
+        tracing::info!("Guilds from cache:\n{}", guilds_from_cache.purple());
 
         let config = self.data.bot_settings.clone();
         let video_status_poll_interval = config.get_video_status_poll_interval();
@@ -386,15 +389,7 @@ impl SerenityHandler {
                 guild_name.clone()
             );
 
-            // let default = GuildSettings::new(
-            //     *guild_id,
-            //     Some(&prefix),
-            //     Some(guild_name.clone()),
-            // );
-
-            // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.clone());
             let guild_id_int = guild_id.get() as i64;
-            //let guild_name = guild_name.to_ascii_lowercase().clone();
             let guild_name = guild_name.clone();
             let prefix = prefix.clone();
             let pool = self.data.database_pool.clone().unwrap();
@@ -402,17 +397,9 @@ impl SerenityHandler {
                 GuildEntity::get_or_create(&pool, guild_id_int, guild_name, prefix)
                     .await
                     .unwrap();
-            // .map_err(Into::into)?;
             let mut guild_settings_map = self.data.guild_settings_map.write().await;
 
-            // let _ = default..map_err(|err| {
-            //     tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
-            // });
-
-            tracing::warn!("GuildSettings: {:?}", settings);
-
             let _ = guild_settings_map.insert(*guild_id, settings);
-            // tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
 
             let guild_settings_opt = guild_settings_map.get_mut(guild_id);
 
@@ -427,6 +414,7 @@ impl SerenityHandler {
             }
         }
 
+        // TODO: Why was this here?
         // let pool = self.data.database_pool.clone().unwrap();
         // for guild in guild_settings_list.clone() {
         //     guild.save(&pool).await.expect("Guild saves correctly");

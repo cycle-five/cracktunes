@@ -9,12 +9,13 @@ use crate::{
 };
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
-use std::{pin::Pin, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Debug, Default)]
+//#[derive(Clone, Debug, Default)]
 pub struct TrackReadyData {
-    pub source: Box<SongbirdInput>,
+    //pub source: Box<SongbirdInput>,
+    pub source: SongbirdInput,
     pub metadata: MyAuxMetadata,
     pub user_id: Option<UserId>,
     pub username: Option<String>,
@@ -31,9 +32,10 @@ pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, Crack
         },
     };
     Ok(TrackReadyData {
-        source: Box::pin(source),
+        source,
         metadata,
-        ..Default::default()
+        user_id: None,
+        username: None,
     })
 }
 
@@ -55,7 +57,7 @@ pub async fn ready_query(
     let username = user_id.map(|x| ctx.user_id_to_username_or_default(x));
 
     Ok(TrackReadyData {
-        source: Box::pin(source),
+        source,
         metadata,
         user_id,
         username,
@@ -161,7 +163,7 @@ pub async fn queue_ready_track_list(
             user_id,
             ..
         } = ready_track;
-        let track_handle = handler.enqueue_input(*source).await;
+        let track_handle = handler.enqueue_input(source).await;
         let mut map = track_handle.typemap().write().await;
         map.insert::<MyAuxMetadata>(metadata);
         map.insert::<RequestingUser>(RequestingUser::from(user_id));
@@ -266,12 +268,12 @@ pub async fn queue_query_list_offset<'a>(
 
     let mut handler = call.lock().await;
     for (idx, ready_track) in tracks.into_iter().enumerate() {
-        let track = ready_track.source;
+        let input = ready_track.source;
         let metadata = ready_track.metadata;
         let user_id = ready_track.user_id;
 
         // let mut handler = call.lock().await;
-        let track_handle = handler.enqueue_input(*track).await;
+        let track_handle = handler.enqueue_input(input).await;
         let mut map = track_handle.typemap().write().await;
         map.insert::<MyAuxMetadata>(metadata);
         map.insert::<RequestingUser>(RequestingUser::from(user_id));

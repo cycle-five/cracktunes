@@ -80,14 +80,6 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
-/// Creates an embed from a CrackedMessage and sends it.
-pub async fn send_reply_embed<'ctx>(
-    ctx: &CrackContext<'ctx>,
-    message: CrackedMessage,
-) -> Result<ReplyHandle<'ctx>, Error> {
-    ctx.send_reply(message, true).await.map_err(Into::into)
-}
-
 /// Sends a reply response, possibly as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(

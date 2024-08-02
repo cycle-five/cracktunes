@@ -407,7 +407,7 @@ impl QueryType {
                     Ok(_) => (),
                     Err(e) => {
                         tracing::error!("queue_track_back error: {:?}", e);
-                        return Ok(false);
+                        return Err(e);
                     },
                 };
                 Ok(true)
