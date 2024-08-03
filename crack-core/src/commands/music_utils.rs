@@ -114,24 +114,24 @@ pub async fn do_join(
 ) -> Result<Arc<Mutex<Call>>, Error> {
     let call = manager.join(guild_id, channel_id).await?;
     //let call = tokio::time::timeout(Duration::from_secs(5), call).await?;
-    match call {
-        // If we successfully joined the channel, set the global handlers.
-        // TODO: This should probably be a separate function.
-        Ok(call) => {
-            set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
-            let msg = CrackedMessage::Summon {
-                mention: channel_id.mention(),
-            };
-            ctx.send_reply_embed(msg).await?;
-            Ok(call)
-        },
-        Err(err) => {
-            // FIXME: Do something smarter here also.
-            let str = err.to_string().clone();
-            let my_err = CrackedError::JoinChannelError(err);
-            let msg = CrackedMessage::CrackedRed(str.clone());
-            ctx.send_reply_embed(msg).await?;
-            Err(Box::new(my_err))
-        },
-    }
+    // match call {
+    //     // If we successfully joined the channel, set the global handlers.
+    //     // TODO: This should probably be a separate function.
+    //        Ok(call) => {
+    set_global_handlers(ctx, call.clone(), guild_id, channel_id).await?;
+    let msg = CrackedMessage::Summon {
+        mention: channel_id.mention(),
+    };
+    ctx.send_reply_embed(msg).await?;
+    Ok(call)
+    //     },
+    //     Err(err) => {
+    //         // FIXME: Do something smarter here also.
+    //         let str = err.to_string().clone();
+    //         let my_err = CrackedError::JoinChannelError(err);
+    //         let msg = CrackedMessage::CrackedRed(str.clone());
+    //         ctx.send_reply_embed(msg).await?;
+    //         Err(Box::new(my_err))
+    //     },
+    // }
 }
