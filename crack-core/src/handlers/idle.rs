@@ -50,7 +50,7 @@ impl EventHandler for IdleHandler {
 
         if !self.no_timeout.load(Ordering::Relaxed)
             && self.limit > 0
-            && self.count.fetch_add(1, Ordering::Relaxed) >= self.limit
+            && self.count.fetch_add(5, Ordering::Relaxed) >= self.limit
         {
             let guild_id = self.guild_id?;
 

@@ -22,7 +22,7 @@ pub async fn set_global_handlers(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<(), CrackedError> {
-    use crate::handlers::voice::register_voice_handlers;
+    // use crate::handlers::voice::register_voice_handlers;
 
     let data = ctx.data();
     let manager = songbird::get(ctx.serenity_context())
@@ -30,17 +30,17 @@ pub async fn set_global_handlers(
         .ok_or(CrackedError::NoSongbird)?;
 
     // This is the temp buffer to hold voice data for processing
-    let buffer = {
-        // // Open the data lock in write mode, so keys can be inserted to it.
-        // let mut data = ctx.data().write().await;
-        // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
-        let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
-        data.clone()
-    };
+    // let buffer = {
+    //     // // Open the data lock in write mode, so keys can be inserted to it.
+    //     // let mut data = ctx.data().write().await;
+    //     // data.insert::<Vec<u8>>(Arc::new(RwLock::new(Vec::new())));
+    //     let data = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    //     data.clone()
+    // };
 
     // unregister existing events and register idle notifier
     call.lock().await.remove_all_global_events();
-    register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await?;
+    //register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await?;
 
     let mut handler = call.lock().await;
 
@@ -53,7 +53,7 @@ pub async fn set_global_handlers(
     if timeout > 0 {
         let premium = guild_settings.premium;
         handler.add_global_event(
-            Event::Periodic(Duration::from_secs(1), None),
+            Event::Periodic(Duration::from_secs(5), None),
             IdleHandler {
                 http: ctx.serenity_context().http.clone(),
                 manager: manager.clone(),
