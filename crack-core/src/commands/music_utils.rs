@@ -25,9 +25,9 @@ pub async fn set_global_handlers(
     // use crate::handlers::voice::register_voice_handlers;
 
     let data = ctx.data();
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
+    // let manager = songbird::get(ctx.serenity_context())
+    //     .await
+    //     .ok_or(CrackedError::NoSongbird)?;
 
     // This is the temp buffer to hold voice data for processing
     // let buffer = {
@@ -56,7 +56,7 @@ pub async fn set_global_handlers(
             Event::Periodic(Duration::from_secs(5), None),
             IdleHandler {
                 http: ctx.serenity_context().http.clone(),
-                manager: manager.clone(),
+                serenity_ctx: Arc::new(ctx.serenity_context().clone()),
                 channel_id,
                 guild_id: Some(guild_id),
                 limit: timeout as usize,

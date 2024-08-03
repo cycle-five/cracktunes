@@ -1,6 +1,6 @@
 use self::serenity::{async_trait, http::Http};
 use poise::serenity_prelude as serenity;
-use songbird::{tracks::PlayMode, Event, EventContext, EventHandler, Songbird};
+use songbird::{tracks::PlayMode, Event, EventContext, EventHandler};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
@@ -11,7 +11,8 @@ use crate::messaging::messages::IDLE_ALERT;
 /// Handler for the idle event.
 pub struct IdleHandler {
     pub http: Arc<Http>,
-    pub manager: Arc<Songbird>,
+    //pub manager: Arc<Songbird>,
+    pub serenity_ctx: Arc<serenity::Context>,
     pub channel_id: serenity::ChannelId,
     pub guild_id: Option<serenity::GuildId>,
     pub limit: usize,
@@ -24,6 +25,7 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        let manager = songbird::get(&self.serenity_ctx).await?;
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
@@ -54,7 +56,7 @@ impl EventHandler for IdleHandler {
         {
             let guild_id = self.guild_id?;
 
-            if self.manager.remove(guild_id).await.is_ok() {
+            if manager.remove(guild_id).await.is_ok() {
                 self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
                 return Some(Event::Cancel);
             }
