@@ -112,8 +112,8 @@ pub async fn do_join(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<Arc<Mutex<Call>>, Error> {
-    let call = manager.join(guild_id, channel_id);
-    let call = tokio::time::timeout(Duration::from_secs(5), call).await?;
+    let call = manager.join(guild_id, channel_id).await?;
+    //let call = tokio::time::timeout(Duration::from_secs(5), call).await?;
     match call {
         // If we successfully joined the channel, set the global handlers.
         // TODO: This should probably be a separate function.
