@@ -76,13 +76,14 @@ pub async fn queue_track_ready_front(
     // First index: Current next track
     // Second index onward: Tracks to be played, we get in here most likely,
     // but if we're in one of the first two we don't want to do anything.
-    if new_q.len() < 3 {
-        return Ok(new_q);
+    if new_q.len() >= 3 {
+        //return Ok(new_q);
+        handler.queue().modify_queue(|queue| {
+            let back = queue.pop_back().unwrap();
+            queue.insert(1, back);
+        });
     }
-    handler.queue().modify_queue(|queue| {
-        let back = queue.pop_back().unwrap();
-        queue.insert(1, back);
-    });
+
     drop(handler);
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(ready_track.metadata.clone());

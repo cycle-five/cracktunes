@@ -109,6 +109,9 @@ impl EventHandler for TrackEndHandler {
         };
 
         if next_track.is_some() {
+            send_now_playing(channel, self.http.clone(), self.call.clone())
+                .await
+                .ok();
             return None;
         }
 

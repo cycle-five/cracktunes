@@ -108,8 +108,9 @@ pub async fn poise_framework(
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
-                            tracing::warn!("No guild id found");
-                            GuildId::new(1)
+                            // tracing::warn!("No guild id found");
+                            // GuildId::new(1)
+                            return Ok(None);
                         },
                     };
                     let guild_settings_map = data.guild_settings_map.read().await.clone();
@@ -242,12 +243,12 @@ pub async fn poise_framework(
         .discord_token;
     let data2 = data.clone();
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
-    let framework = poise::Framework::new(options, |ctx, ready, framework| {
+    let framework = poise::Framework::new(options, |ctx, ready, _framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
             crate::commands::register::register_globally_cracked(
                 &ctx,
-                &framework.options().commands,
+                &crate::commands::commands_to_register(),
             )
             .await?;
             ctx.data

@@ -68,6 +68,27 @@ pub fn all_commands() -> Vec<crate::Command> {
     .collect()
 }
 
+/// Return all the commands that are available in the bot.
+pub fn commands_to_register() -> Vec<crate::Command> {
+    vec![
+        // register(),
+        // #[cfg(feature = "crack-bf")]
+        // bf(),
+        // #[cfg(feature = "crack-osint")]
+        // osint(),
+        // #[cfg(feature = "crack-gpt")]
+        // chat(),
+    ]
+    .into_iter()
+    .chain(help::help_commands())
+    .chain(music::music_commands())
+    //.chain(utility::utility_commands())
+    .chain(settings::commands())
+    //.chain(admin::commands())
+    .chain(playlist::commands())
+    .collect()
+}
+
 pub fn all_command_names() -> Vec<String> {
     all_commands().into_iter().map(|c| c.name).collect()
 }

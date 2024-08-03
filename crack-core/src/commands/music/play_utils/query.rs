@@ -4,7 +4,7 @@ use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
 // use crate::sources::rusty_ytdl::RustyYoutubeSearch;
-use crate::sources::youtube::get_rusty_search;
+//use crate::sources::youtube::get_rusty_search;
 use crate::CrackedResult;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
@@ -613,18 +613,18 @@ impl QueryType {
             },
             QueryType::VideoLink(query) => {
                 tracing::warn!("In VideoLink");
-                let search = get_rusty_search(client.clone(), query.clone()).await?;
-                let metadata = search
-                    .clone()
-                    .metadata
-                    .into_iter()
-                    .map(MyAuxMetadata)
-                    .collect::<Vec<_>>();
-                Ok((search.into(), metadata))
-                // let mut ytdl = YoutubeDl::new(client, query.clone());
-                // let metadata = ytdl.aux_metadata().await?;
-                // let my_metadata = MyAuxMetadata(metadata);
-                // Ok((ytdl.into(), vec![my_metadata]))
+                // let search = get_rusty_search(client.clone(), query.clone()).await?;
+                // let metadata = search
+                //     .clone()
+                //     .metadata
+                //     .into_iter()
+                //     .map(MyAuxMetadata)
+                //     .collect::<Vec<_>>();
+                // Ok((search.into(), metadata))
+                let mut ytdl = YoutubeDl::new(client, query.clone());
+                let metadata = ytdl.aux_metadata().await?;
+                let my_metadata = MyAuxMetadata(metadata);
+                Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
