@@ -57,7 +57,7 @@ pub async fn search_query_to_source_and_metadata(
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
-            None => return Err(CrackedError::EmptySearchResult),
+            None => return search_query_to_source_and_metadata_ytdl(client, query).await, //Err(CrackedError::EmptySearchResult),
         };
         let metadata = &RustyYoutubeClient::search_result_to_aux_metadata(&result);
         metadata.clone()

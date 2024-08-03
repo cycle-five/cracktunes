@@ -28,6 +28,9 @@ impl EventHandler for IdleHandler {
             return None;
         };
 
+        tracing::warn!("IdleHandler: {:?}", track_list);
+        tracing::warn!("Guild ID: {:?}", self.guild_id);
+
         // looks like the track list isn't ordered here, so the first track in the list isn't
         // guaranteed to be the first track in the actual queue, so search the entire list
         let bot_is_playing = track_list
@@ -39,6 +42,11 @@ impl EventHandler for IdleHandler {
             self.count.store(0, Ordering::Relaxed);
             return None;
         }
+        tracing::warn!(
+            "is_playing: {:?}, time_not_playing: {:?}",
+            self.count,
+            self.count.load(Ordering::Relaxed)
+        );
 
         if !self.no_timeout.load(Ordering::Relaxed)
             && self.limit > 0
