@@ -33,6 +33,7 @@ rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-feature
     "blocking",
     "ffmpeg",
 ] }
+rustls = "0.23"
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1"
 anyhow = "1.0"
@@ -63,6 +64,7 @@ crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
 
 reqwest = { workspace = true }
+reqwest_old = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }

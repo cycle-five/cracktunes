@@ -5,7 +5,6 @@ use crate::{
     Context, Error,
 };
 use poise::ReplyHandle;
-use reqwest::Client;
 use serenity::builder::CreateEmbed;
 use songbird::input::YoutubeDl;
 
@@ -38,7 +37,9 @@ async fn do_yt_search_internal(
     ctx: Context<'_>,
     search_query: String,
 ) -> Result<ReplyHandle, CrackedError> {
-    let mut ytdl = YoutubeDl::new(Client::new(), search_query);
+    use crate::http_utils;
+
+    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), search_query);
     let results = ytdl.search(None).await?;
 
     let embeds = results

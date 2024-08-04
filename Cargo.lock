@@ -143,7 +143,7 @@ dependencies = [
  "eventsource-stream",
  "futures",
  "rand",
- "reqwest",
+ "reqwest 0.12.5",
  "reqwest-eventsource",
  "secrecy",
  "serde",
@@ -828,6 +828,17 @@ checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "cookie"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7efb37c3e1ccb1ff97164ad95ac1606e8ccd35b3fa0a7d99a304c7f4a428cc24"
+dependencies = [
+ "percent-encoding",
+ "time",
+ "version_check",
+]
+
+[[package]]
+name = "cookie"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
@@ -839,11 +850,28 @@ dependencies = [
 
 [[package]]
 name = "cookie_store"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "387461abbc748185c3a6e1673d826918b450b87ff22639429c694619a83b6cf6"
+dependencies = [
+ "cookie 0.17.0",
+ "idna 0.3.0",
+ "log",
+ "publicsuffix",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "time",
+ "url",
+]
+
+[[package]]
+name = "cookie_store"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4934e6b7e8419148b6ef56950d277af8561060b56afd59e2aadf98b59fce6baa"
 dependencies = [
- "cookie",
+ "cookie 0.18.1",
  "idna 0.5.0",
  "log",
  "publicsuffix",
@@ -914,8 +942,10 @@ dependencies = [
  "prometheus",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.11.27",
+ "reqwest 0.12.5",
  "rspotify",
+ "rustls 0.23.12",
  "rusty_ytdl",
  "serde",
  "serde_json",
@@ -949,7 +979,7 @@ name = "crack-osint"
 version = "0.1.4"
 dependencies = [
  "ipinfo",
- "reqwest",
+ "reqwest 0.12.5",
  "serde",
  "serde_json",
  "sha1",
@@ -1221,7 +1251,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19ef31459083b8ac95c1f31be8f88d124a0d23aa11de592895600ff4b0da2e90"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.5",
  "serde",
  "url",
 ]
@@ -1383,9 +1413,9 @@ dependencies = [
 
 [[package]]
 name = "dunce"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "educe"
@@ -2117,6 +2147,20 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec3efd23720e2049821a693cbc7e65ea87c72f1c58ff2f9522ff332b1491e590"
+dependencies = [
+ "futures-util",
+ "http 0.2.12",
+ "hyper 0.14.30",
+ "rustls 0.21.12",
+ "tokio",
+ "tokio-rustls 0.24.1",
+]
+
+[[package]]
+name = "hyper-rustls"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
@@ -2369,7 +2413,7 @@ dependencies = [
  "ipnetwork",
  "lazy_static",
  "lru",
- "reqwest",
+ "reqwest 0.12.5",
  "serde",
  "serde_json",
  "tokio",
@@ -2556,7 +2600,7 @@ dependencies = [
  "html5ever",
  "log",
  "markup5ever_rcdom",
- "reqwest",
+ "reqwest 0.12.5",
  "serde",
 ]
 
@@ -3243,7 +3287,7 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#b1c3ec1fd3fc8fcc8d77f3a87bb6b3bd75ab3cd7"
+source = "git+https://github.com/serenity-rs/poise?branch=current#575025909b063c3b998659abf9d241c8790404ee"
 dependencies = [
  "async-trait",
  "derivative",
@@ -3261,7 +3305,7 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/cycle-five/poise?branch=current#b1c3ec1fd3fc8fcc8d77f3a87bb6b3bd75ab3cd7"
+source = "git+https://github.com/serenity-rs/poise?branch=current#575025909b063c3b998659abf9d241c8790404ee"
 dependencies = [
  "darling 0.20.10",
  "proc-macro2",
@@ -3689,6 +3733,52 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
+version = "0.11.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
+dependencies = [
+ "base64 0.21.7",
+ "bytes",
+ "cookie 0.17.0",
+ "cookie_store 0.20.0",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2 0.3.26",
+ "http 0.2.12",
+ "http-body 0.4.6",
+ "hyper 0.14.30",
+ "hyper-rustls 0.24.2",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "mime_guess",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustls 0.21.12",
+ "rustls-pemfile 1.0.4",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper 0.1.2",
+ "system-configuration",
+ "tokio",
+ "tokio-rustls 0.24.1",
+ "tokio-util",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "webpki-roots 0.25.4",
+ "winreg 0.50.0",
+]
+
+[[package]]
+name = "reqwest"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7d6d2a27d57148378eb5e111173f4276ad26340ecc5c49a4a2152167a2d6a37"
@@ -3696,8 +3786,8 @@ dependencies = [
  "async-compression",
  "base64 0.22.1",
  "bytes",
- "cookie",
- "cookie_store",
+ "cookie 0.18.1",
+ "cookie_store 0.21.0",
  "encoding_rs",
  "futures-channel",
  "futures-core",
@@ -3707,7 +3797,7 @@ dependencies = [
  "http-body 1.0.1",
  "http-body-util",
  "hyper 1.4.1",
- "hyper-rustls",
+ "hyper-rustls 0.27.2",
  "hyper-util",
  "ipnet",
  "js-sys",
@@ -3725,7 +3815,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "sync_wrapper",
+ "sync_wrapper 1.0.1",
  "system-configuration",
  "tokio",
  "tokio-rustls 0.26.0",
@@ -3738,7 +3828,7 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "webpki-roots 0.26.3",
- "winreg",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -3753,7 +3843,7 @@ dependencies = [
  "mime",
  "nom",
  "pin-project-lite",
- "reqwest",
+ "reqwest 0.12.5",
  "thiserror",
 ]
 
@@ -3766,7 +3856,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "http 1.1.0",
- "reqwest",
+ "reqwest 0.12.5",
  "serde",
  "thiserror",
  "tower-service",
@@ -3786,7 +3876,7 @@ dependencies = [
  "http 1.1.0",
  "hyper 1.4.1",
  "parking_lot 0.11.2",
- "reqwest",
+ "reqwest 0.12.5",
  "reqwest-middleware",
  "retry-policies",
  "tokio",
@@ -3924,7 +4014,7 @@ dependencies = [
  "async-trait",
  "log",
  "maybe-async",
- "reqwest",
+ "reqwest 0.12.5",
  "serde_json",
  "thiserror",
 ]
@@ -4044,6 +4134,7 @@ version = "0.21.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
+ "log",
  "ring 0.17.8",
  "rustls-webpki 0.101.7",
  "sct",
@@ -4188,7 +4279,7 @@ dependencies = [
  "once_cell",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.12.5",
  "reqwest-middleware",
  "reqwest-retry",
  "scraper",
@@ -4444,7 +4535,8 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.2"
-source = "git+https://github.com/CycleFive/serenity?branch=current#09621998ce7fd69dd466002b69581ac47fb2c99e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "880a04106592d0a8f5bdacb1d935889bfbccb4a14f7074984d9cd857235d34ac"
 dependencies = [
  "arrayvec",
  "async-trait",
@@ -4460,14 +4552,14 @@ dependencies = [
  "mini-moka",
  "parking_lot 0.12.3",
  "percent-encoding",
- "reqwest",
+ "reqwest 0.11.27",
  "secrecy",
  "serde",
  "serde_cow",
  "serde_json",
  "time",
  "tokio",
- "tokio-tungstenite 0.22.0",
+ "tokio-tungstenite 0.21.0",
  "tracing",
  "typemap_rev",
  "typesize",
@@ -4619,7 +4711,8 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.4.3"
-source = "git+https://github.com/cycle-five/songbird?branch=current#a0b2901ba6089054e1fab29ffea26ed377662c43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "338dd182f9f084f583c4c0db38588e28a34778ecec288208cf0b61c378ac90d1"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -4636,7 +4729,7 @@ dependencies = [
  "parking_lot 0.12.3",
  "pin-project",
  "rand",
- "reqwest",
+ "reqwest 0.11.27",
  "ringbuf",
  "rubato",
  "rusty_pool",
@@ -4930,16 +5023,16 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stream_lib"
-version = "0.5.2"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e106dd009a0dfd2cf57777c39cad08f852debd366df6e841b250d956cec3277e"
+checksum = "fa3f10eb5a7054e17abf61d310e4e29108187a847591c63c4c79b6a74898a5a7"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
  "hls_m3u8",
  "patricia_tree",
- "reqwest",
+ "reqwest 0.11.27",
  "tokio",
  "tracing",
  "url",
@@ -5291,6 +5384,12 @@ dependencies = [
 
 [[package]]
 name = "sync_wrapper"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "sync_wrapper"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
@@ -5532,6 +5631,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28327cf380ac148141087fbfb9de9d7bd4e84ab5d2c28fbc911d753de8a7081"
+dependencies = [
+ "rustls 0.21.12",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-rustls"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "775e0c0f0adb3a2f22a00c4745d728b479985fc15ee7ca6a2608388c5569860f"
@@ -5603,22 +5712,6 @@ dependencies = [
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.25.0",
- "tungstenite 0.21.0",
- "webpki-roots 0.26.3",
-]
-
-[[package]]
-name = "tokio-tungstenite"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d46baf930138837d65e25e3b33be49c9228579a6135dbf756b5cb9e4283e7cef"
-dependencies = [
- "futures-util",
- "log",
- "rustls 0.23.12",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls 0.26.0",
  "tungstenite 0.21.0",
  "webpki-roots 0.26.3",
 ]
@@ -6660,6 +6753,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.50.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

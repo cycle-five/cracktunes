@@ -55,11 +55,19 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
+/// Installs the AWS LC provider for rustls.
+pub fn install_crypto_provider() {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install AWS LC provider");
+}
+
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
     config: BotConfig,
     event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
+    // install_crypto_provider();
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
 

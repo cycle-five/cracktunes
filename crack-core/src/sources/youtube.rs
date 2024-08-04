@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::commands::play_utils::QueryType;
+use crate::http_utils;
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::CrackedResult;
 use crate::{
@@ -67,7 +68,7 @@ pub async fn search_query_to_source_and_metadata(
         Some(url) => url.clone(),
         None => "".to_string(),
     };
-    let ytdl = YoutubeDl::new(client, source_url);
+    let ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), source_url);
     let my_metadata = MyAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
@@ -116,7 +117,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
 /// Search youtube for a query and return the source (playable)
 /// and metadata using the yt-dlp command line tool.
 pub async fn search_query_to_source_and_metadata_ytdl(
-    client: reqwest::Client,
+    _client: reqwest::Client,
     query: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
     let query = if query.starts_with("ytsearch:") {
@@ -124,7 +125,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     } else {
         format!("ytsearch:{}", query)
     };
-    let mut ytdl = YoutubeDl::new(client, query);
+    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
     let my_metadata = MyAuxMetadata(metadata);
 

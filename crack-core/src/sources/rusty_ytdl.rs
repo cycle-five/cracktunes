@@ -610,7 +610,7 @@ mod test {
             "Oh Shit I'm Feeling It",
         ];
         let mut res_all = Vec::with_capacity(searches.len());
-        let client = http_utils::get_client();
+        let client = http_utils::get_client_old();
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = ytdl.search(Some(1)).await;

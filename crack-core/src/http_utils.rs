@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use reqwest_old;
 use std::future::Future;
 
 use crate::errors::CrackedError;
@@ -154,6 +155,15 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to build reqwest client")
 });
 
+/// This is a hack to get around the fact that we can't use async in statics. Is it?
+static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
+    println!("Creating a new reqwest client...");
+    reqwest_old::ClientBuilder::new()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+});
+
 /// Build a reqwest client with rustls.
 pub fn build_client() -> Client {
     reqwest::ClientBuilder::new()
@@ -165,6 +175,11 @@ pub fn build_client() -> Client {
 /// Get a reference to the lazy, static, global reqwest client.
 pub fn get_client() -> &'static Client {
     &CLIENT
+}
+
+/// Get a reference to an old version client.
+pub fn get_client_old() -> &'static reqwest_old::Client {
+    &CLIENT_OLD
 }
 
 /// Initialize the static, global reqwest client.

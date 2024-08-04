@@ -8,6 +8,7 @@ use crack_core::EventLogAsync;
 pub use crack_core::PhoneCodeData;
 use std::collections::HashMap;
 use std::env;
+use tokio::runtime::Handle;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 #[cfg(feature = "crack-metrics")]
@@ -36,8 +37,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
 fn main() -> Result<(), Error> {
-    use tokio::runtime::Handle;
-
+    config::install_crypto_provider();
     // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();
 

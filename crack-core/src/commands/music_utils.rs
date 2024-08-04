@@ -39,26 +39,30 @@ pub async fn set_global_handlers(
     // };
 
     // unregister existing events and register idle notifier
-    call.lock().await.remove_all_global_events();
+    //call.lock().await.remove_all_global_events();
     //register_voice_handlers(buffer, call.clone(), ctx.serenity_context().clone()).await?;
 
     let mut handler = call.lock().await;
 
-    let guild_settings = data
-        .get_guild_settings(guild_id)
-        .await
-        .ok_or(CrackedError::NoGuildSettings)?;
+    handler.remove_all_global_events();
+
+    let guild_settings = match data.get_guild_settings(guild_id).await {
+        Some(settings) => settings,
+        None => {
+            drop(handler);
+            return Err(CrackedError::NoGuildSettings);
+        },
+    };
 
     let timeout = guild_settings.timeout;
     if timeout > 0 {
         let premium = guild_settings.premium;
         handler.add_global_event(
-            Event::Periodic(Duration::from_secs(5), None),
+            Event::Periodic(Duration::from_secs(60), None),
             IdleHandler {
-                http: ctx.serenity_context().http.clone(),
                 serenity_ctx: Arc::new(ctx.serenity_context().clone()),
+                guild_id,
                 channel_id,
-                guild_id: Some(guild_id),
                 limit: timeout as usize,
                 count: Default::default(),
                 no_timeout: Arc::new(AtomicBool::new(premium)),
@@ -76,6 +80,8 @@ pub async fn set_global_handlers(
             data: ctx.data().clone(),
         },
     );
+
+    drop(handler);
 
     Ok(())
 }

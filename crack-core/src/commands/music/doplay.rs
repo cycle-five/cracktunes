@@ -648,6 +648,8 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
+    use crate::http_utils;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
@@ -683,7 +685,7 @@ pub async fn queue_aux_metadata(
         };
 
         let ytdl = YoutubeDl::new(
-            client.clone(),
+            http_utils::get_client_old().clone(),
             metadata_final.metadata().source_url.clone().unwrap(),
         );
 

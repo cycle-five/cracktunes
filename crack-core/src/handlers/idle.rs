@@ -1,4 +1,4 @@
-use self::serenity::{async_trait, http::Http};
+use self::serenity::async_trait;
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::PlayMode, Event, EventContext, EventHandler};
 use std::sync::{
@@ -10,11 +10,9 @@ use crate::messaging::messages::IDLE_ALERT;
 
 /// Handler for the idle event.
 pub struct IdleHandler {
-    pub http: Arc<Http>,
-    //pub manager: Arc<Songbird>,
     pub serenity_ctx: Arc<serenity::Context>,
+    pub guild_id: serenity::GuildId,
     pub channel_id: serenity::ChannelId,
-    pub guild_id: Option<serenity::GuildId>,
     pub limit: usize,
     pub count: Arc<AtomicUsize>,
     pub no_timeout: Arc<AtomicBool>,
@@ -46,20 +44,26 @@ impl EventHandler for IdleHandler {
         }
         tracing::warn!(
             "is_playing: {:?}, time_not_playing: {:?}",
-            self.count,
+            bot_is_playing,
             self.count.load(Ordering::Relaxed)
         );
 
         if !self.no_timeout.load(Ordering::Relaxed)
             && self.limit > 0
-            && self.count.fetch_add(5, Ordering::Relaxed) >= self.limit
+            && self.count.fetch_add(60, Ordering::Relaxed) >= self.limit
         {
-            let guild_id = self.guild_id?;
-
-            if manager.remove(guild_id).await.is_ok() {
-                self.channel_id.say(&self.http, IDLE_ALERT).await.unwrap();
-                return Some(Event::Cancel);
-            }
+            match manager.remove(self.guild_id).await {
+                Ok(_) => {
+                    self.channel_id
+                        .say(&self.serenity_ctx, IDLE_ALERT)
+                        .await
+                        .unwrap();
+                    return Some(Event::Cancel);
+                },
+                Err(e) => {
+                    tracing::error!("Error removing bot from voice channel: {:?}", e);
+                },
+            };
         }
         None
     }
