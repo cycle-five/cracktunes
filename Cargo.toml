@@ -56,11 +56,22 @@ features = [
 #git = "https://github.com/cycle-five/songbird"
 #branch = "current"
 version = "0.4.3"
-features = ["driver", "serenity", "rustls", "receive", "builtin-queue"]
+features = [
+  "driver",
+  "gateway",
+  "serenity",
+  "rustls",
+  "receive",
+  "builtin-queue",
+  "simd-json",
+]
 
 [workspace.dependencies.symphonia]
 version = "0.5.4"
-features = ["all-formats", "all-codecs"]
+features = ["all-formats", "all-codecs", "opt-simd"]
+
+[workspace.dependencies.symphonia-metadata]
+version = "0.5.4"
 
 [workspace.dependencies.tokio]
 version = "1.38"

@@ -14,6 +14,7 @@ use crate::{
 };
 use colored::Colorize;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
+use songbird::driver::DecodeMode;
 use songbird::serenity::SerenityInit;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -271,6 +272,7 @@ pub async fn poise_framework(
         data: data2.clone(),
     };
 
+    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
     //     options: Default::default(),
@@ -279,7 +281,7 @@ pub async fn poise_framework(
     // });
     let client = Client::builder(token, intents)
         .framework(framework)
-        .register_songbird()
+        .register_songbird_from_config(songbird_config)
         .event_handler(serenity_handler)
         //.event_handler_arc(bot_test_handler.clone())
         .await
