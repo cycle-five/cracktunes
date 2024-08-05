@@ -1,10 +1,10 @@
 use crate::commands::CrackedError;
 use crate::db::GuildEntity;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
+use crate::poise_ext::ContextExt;
 use crate::utils::send_reply;
 use crate::{Context, Error};
-use crate::poise_ext::ContextExt;
-use crate::guild::operations::GuildSettingsOperations;
 
 /// Internal set premium function without #command macro.
 #[cfg(not(tarpaulin_include))]
