@@ -23,7 +23,7 @@ pub struct IdleHandler {
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        let manager = songbird::get(&self.serenity_ctx).await?;
+        let manager = songbird::get(&self.serenity_ctx.to_owned()).await?;
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
