@@ -4680,8 +4680,7 @@ dependencies = [
 [[package]]
 name = "serenity-voice-model"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "593682f6155d07c8b331b3d1060f5aab7e6796caca9f2f66bd9e6855c880e06b"
+source = "git+https://github.com/serenity-rs/serenity?branch=current#658b6a7261fbde7cf59f84613f870ef7a48735c6"
 dependencies = [
  "bitflags 2.6.0",
  "num-traits",

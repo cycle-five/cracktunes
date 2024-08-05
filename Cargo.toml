@@ -33,7 +33,7 @@ features = [
 # git = "https://github.com/CycleFive/serenity"
 #git = "https://github.com/serenity-rs/serenity"
 version = "0.12"
-#branch = "current"
+# branch = "current"
 default-features = false
 features = [
   "builder",
@@ -129,6 +129,10 @@ unix-archive = ".tar.gz"
 npm-scope = "@cracktunes"
 # The archive format to use for windows builds (defaults .zip)
 windows-archive = ".tar.gz"
+
+[patch.crates-io.serenity-voice-model]
+git = "https://github.com/serenity-rs/serenity"
+branch = "current"
 
 [profile.release]
 incremental = true
