@@ -36,3 +36,6 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

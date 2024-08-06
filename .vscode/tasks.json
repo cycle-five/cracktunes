@@ -38,7 +38,9 @@
 				"--profile=release",
 				"--",
 				"--exact",
-				"--show-output"
+				"--show-output",
+				"--threads",
+				"1"
 			],
 			"problemMatcher": [
 				"$rustc"

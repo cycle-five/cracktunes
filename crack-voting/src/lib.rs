@@ -1,9 +1,9 @@
 use dbl::types::Webhook;
 use lazy_static::lazy_static;
+use sqlx::PgPool;
 use std::env;
+use std::sync::Arc;
 use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
-// #[cfg(test)]
-// pub mod test;
 
 const WEBHOOK_SECRET_DEFAULT: &str = "my-secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -18,8 +18,8 @@ lazy_static! {
 /// Struct to hold the context for the voting server.
 #[derive(Debug, Clone)]
 pub struct VotingContext {
-    pool: sqlx::PgPool,
-    secret: String,
+    pool: Arc<PgPool>,
+    secret: &'static str,
 }
 
 /// Implement the `VotingContext`.
@@ -28,13 +28,19 @@ impl VotingContext {
         let pool = sqlx::PgPool::connect(&DATABASE_URL)
             .await
             .expect("failed to connect to database");
-        let secret = get_secret().to_string();
-        VotingContext { pool, secret }
+        let secret = get_secret();
+        VotingContext {
+            pool: Arc::new(pool),
+            secret,
+        }
     }
 
     pub async fn new_with_pool(pool: sqlx::PgPool) -> Self {
-        let secret = get_secret().to_string();
-        VotingContext { pool, secret }
+        let secret = get_secret();
+        VotingContext {
+            pool: Arc::new(pool),
+            secret,
+        }
     }
 }
 
@@ -78,11 +84,9 @@ fn get_secret() -> &'static str {
 }
 
 /// Write the received webhook to the database.
-async fn write_webhook_to_db(
-    ctx: &'static VotingContext,
-    webhook: Webhook,
-) -> Result<(), sqlx::Error> {
+async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
     println!("write_webhook_to_db");
+    //let executor = ctx.pool.clone();
     let res = sqlx::query!(
         r#"INSERT INTO vote_webhook
             (bot_id, user_id, kind, is_weekend, query, created_at)
@@ -95,7 +99,7 @@ async fn write_webhook_to_db(
         webhook.is_weekend,
         webhook.query,
     )
-    .execute(&ctx.pool)
+    .execute(ctx.pool.as_ref())
     .await;
     match res {
         Ok(_) => println!("Webhook written to database"),
@@ -119,47 +123,58 @@ fn header(secret: &str) -> impl Filter<Extract = (), Error = Rejection> + Clone 
         .untuple_one()
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ReplyBody {
+    body: String,
+}
+
 /// Async function to process the received webhook.
-async fn process_webhook(
-    ctx: &'static VotingContext,
-    hook: Webhook,
-) -> Result<impl Reply, Rejection> {
+async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply, Rejection> {
     println!("process_webhook");
     write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
-    Ok(warp::reply::html("Success."))
+    let body = ReplyBody {
+        body: "Success.".to_string(),
+    };
+    Ok(warp::reply::json(&body))
 }
+
 /// Create a filter that handles the webhook.
-async fn get_webhook(
-    ctx: &'static VotingContext,
+async fn get_app(
+    ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_webhook");
+    let secret = ctx.secret;
+    let context = warp::any().map(move || ctx.clone());
 
     warp::post()
         .and(path!("dbl" / "webhook"))
-        .and(header(&ctx.secret))
+        .and(header(&secret))
         .and(warp::body::json())
-        .and_then(move |hook: Webhook| async move { process_webhook(ctx, hook).await })
+        .and(context)
+        .and_then(
+            |hook: Webhook, ctx: VotingContext| async move { process_webhook(ctx, hook).await },
+        )
         .recover(custom_error)
 }
 
 /// Get the routes for the server.
 async fn get_routes(
-    ctx: &'static VotingContext,
+    ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_routes");
-    let webhook = get_webhook(ctx).await;
+    let webhook = get_app(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     webhook.or(health)
 }
 
 /// Run the server.
-pub async fn run() -> &'static VotingContext {
-    let ctx = Box::leak(Box::new(VotingContext::new().await));
-    warp::serve(get_routes(ctx).await)
-        //.run(([127, 0, 0, 1], 3030))
-        .run(([0, 0, 0, 0], 3030))
-        .await;
-    ctx
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
+    let routes = get_routes(ctx).await;
+
+    warp::serve(routes).run(([0, 0, 0, 0], 3030)).await;
+
+    Ok(())
 }
 
 /// Custom error handling for the server.
@@ -183,22 +198,61 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
 mod test {
     use sqlx::{Pool, Postgres};
 
-    use crate::{get_secret, get_webhook};
+    use crate::get_secret;
     use crate::{StatusCode, VotingContext, Webhook};
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
+    use super::*;
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_voting_context_creation(pool: PgPool) {
+        let secret = "test_secret";
+        std::env::set_var("WEBHOOK_SECRET", secret);
+
+        let context = VotingContext::new_with_pool(pool).await;
+
+        assert_eq!(context.secret, secret);
+        // We can't directly compare PgPools, but we can check if it's initialized
+        assert!(context.pool.acquire().await.is_ok());
+    }
+
+    // #[sqlx::test(migrator = "MIGRATOR")]
+    // async fn test_handle_vote(pool: PgPool) {
+    //     let secret = "test_secret";
+    //     let context = VotingContext {
+    //         pool: Arc::new(pool),
+    //         secret,
+    //     };
+
+    //     // Mock request data
+    //     let vote_data = VoteData {
+    //         candidate: "Candidate A".to_string(),
+    //         voter_id: "voter123".to_string(),
+    //     };
+
+    //     // Call your handler
+    //     let result = handle_vote(context, vote_data).await;
+
+    //     // Assert the result
+    //     assert!(result.is_ok());
+    //     // Add more specific assertions based on your expected behavior
+    // }
+
     #[sqlx::test(migrator = "MIGRATOR")]
     //#[sqlx::test]
     async fn test_bad_req(_pool: Pool<Postgres>) {
-        let ctx = Box::leak(Box::new(VotingContext::new().await));
+        let ctx = VotingContext::new().await;
         let secret = get_secret();
         println!("Secret {}", secret);
+        let app = get_app(ctx).await;
+
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")
             .header("authorization", secret)
-            .reply(&get_webhook(ctx).await)
+            .body("bad json")
+            .reply(&app)
             .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
@@ -220,7 +274,7 @@ mod test {
                 is_weekend: false,
                 query: Some("test".to_string()),
             })
-            .reply(&get_webhook(ctx).await)
+            .reply(&get_app(ctx.clone()).await)
             .await;
         assert_eq!(res.status(), StatusCode::OK);
     }
