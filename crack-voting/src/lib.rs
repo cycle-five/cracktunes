@@ -139,7 +139,7 @@ async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply
 }
 
 /// Create a filter that handles the webhook.
-async fn get_app(
+async fn get_webhook(
     ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_webhook");
@@ -158,11 +158,11 @@ async fn get_app(
 }
 
 /// Get the routes for the server.
-async fn get_routes(
+async fn get_app(
     ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("get_routes");
-    let webhook = get_app(ctx).await;
+    println!("get_app");
+    let webhook = get_webhook(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     webhook.or(health)
 }
@@ -170,9 +170,9 @@ async fn get_routes(
 /// Run the server.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
-    let routes = get_routes(ctx).await;
+    let app = get_app(ctx).await;
 
-    warp::serve(routes).run(([0, 0, 0, 0], 3030)).await;
+    warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
 
     Ok(())
 }
@@ -216,28 +216,6 @@ mod test {
         // We can't directly compare PgPools, but we can check if it's initialized
         assert!(context.pool.acquire().await.is_ok());
     }
-
-    // #[sqlx::test(migrator = "MIGRATOR")]
-    // async fn test_handle_vote(pool: PgPool) {
-    //     let secret = "test_secret";
-    //     let context = VotingContext {
-    //         pool: Arc::new(pool),
-    //         secret,
-    //     };
-
-    //     // Mock request data
-    //     let vote_data = VoteData {
-    //         candidate: "Candidate A".to_string(),
-    //         voter_id: "voter123".to_string(),
-    //     };
-
-    //     // Call your handler
-    //     let result = handle_vote(context, vote_data).await;
-
-    //     // Assert the result
-    //     assert!(result.is_ok());
-    //     // Add more specific assertions based on your expected behavior
-    // }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     //#[sqlx::test]
