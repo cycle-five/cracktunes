@@ -996,6 +996,7 @@ dependencies = [
  "dbl-rs",
  "lazy_static",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",

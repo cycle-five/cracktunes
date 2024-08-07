@@ -17,7 +17,9 @@ pub struct IdleHandler {
     pub count: Arc<AtomicUsize>,
     pub no_timeout: Arc<AtomicBool>,
 }
+use songbird::error::JoinError;
 
+/// TODO: Add metrics
 /// Implement handler for the idle event.
 #[cfg(not(tarpaulin_include))]
 #[async_trait]
@@ -28,8 +30,13 @@ impl EventHandler for IdleHandler {
             return None;
         };
 
-        tracing::warn!("IdleHandler: {:?}", track_list);
-        tracing::warn!("Guild ID: {:?}", self.guild_id);
+        // tracing::warn!("IdleHandler: {:?}", len(track_list));
+        // tracing::warn!("Guild ID: {:?}", self.guild_id);
+
+        // let handler = match manager.get(self.guild_id) {
+        //     Some(call) => call,
+        //     None => return Some(Event::Cancel),
+        // };
 
         // looks like the track list isn't ordered here, so the first track in the list isn't
         // guaranteed to be the first track in the actual queue, so search the entire list
@@ -42,11 +49,11 @@ impl EventHandler for IdleHandler {
             self.count.store(0, Ordering::Relaxed);
             return None;
         }
-        tracing::warn!(
-            "is_playing: {:?}, time_not_playing: {:?}",
-            bot_is_playing,
-            self.count.load(Ordering::Relaxed)
-        );
+        // tracing::warn!(
+        //     "is_playing: {:?}, time_not_playing: {:?}",
+        //     bot_is_playing,
+        //     self.count.load(Ordering::Relaxed)
+        // );
 
         if !self.no_timeout.load(Ordering::Relaxed)
             && self.limit > 0
@@ -58,6 +65,10 @@ impl EventHandler for IdleHandler {
                         .say(&self.serenity_ctx, IDLE_ALERT)
                         .await
                         .unwrap();
+                    return Some(Event::Cancel);
+                },
+                Err(JoinError::NoCall) => {
+                    tracing::warn!("No call found for guild: {:?}", self.guild_id);
                     return Some(Event::Cancel);
                 },
                 Err(e) => {

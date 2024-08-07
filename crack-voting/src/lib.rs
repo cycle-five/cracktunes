@@ -95,7 +95,8 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
         "#,
         webhook.bot.0 as i64,
         webhook.user.0 as i64,
-        webhook.kind as i16,
+        //webhook.kind.to_string() as _,
+        "test" as _,
         webhook.is_weekend,
         webhook.query,
     )
@@ -148,7 +149,7 @@ async fn get_webhook(
 
     warp::post()
         .and(path!("dbl" / "webhook"))
-        .and(header(&secret))
+        .and(header(secret))
         .and(warp::body::json())
         .and(context)
         .and_then(
@@ -196,6 +197,7 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
 
 #[cfg(test)]
 mod test {
+    use serde_json;
     use sqlx::{Pool, Postgres};
 
     use crate::get_secret;
@@ -240,7 +242,16 @@ mod test {
     async fn test_authorized(pool: Pool<Postgres>) {
         let ctx = Box::leak(Box::new(VotingContext::new_with_pool(pool).await));
         let secret = get_secret();
+        let webhook = &Webhook {
+            bot: dbl::types::BotId(11),
+            user: dbl::types::UserId(31),
+            kind: dbl::types::WebhookType::Test,
+            is_weekend: false,
+            query: Some("test".to_string()),
+        };
+        let json_str = serde_json::to_string(webhook).unwrap();
         println!("Secret {}", secret);
+        println!("Webhook {}", json_str);
         let res = warp::test::request()
             .method("POST")
             .path("/dbl/webhook")

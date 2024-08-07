@@ -772,7 +772,10 @@ pub async fn query_type_from_url(
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") | Some("spotify.link") => {
-                let final_url = http_utils::resolve_final_url(url).await?;
+                // We don't want to give up as long as we have a url.
+                let final_url = http_utils::resolve_final_url(url)
+                    .await
+                    .unwrap_or(url.to_string());
                 tracing::info!(
                     "spotify: {} -> {}",
                     url.underline().blue(),

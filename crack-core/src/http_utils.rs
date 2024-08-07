@@ -242,7 +242,7 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // Extract the final URL after following all redirects
     let final_url = response.url().clone();
 
-    Ok(final_url.as_str().to_string())
+    Ok(final_url.into())
 }
 
 /// Gets the guild_name for a channel_id.
