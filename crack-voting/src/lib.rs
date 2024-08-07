@@ -5,7 +5,7 @@ use std::env;
 use std::sync::Arc;
 use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
 
-const WEBHOOK_SECRET_DEFAULT: &str = "my-secret";
+const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
 
 lazy_static! {
@@ -83,6 +83,13 @@ fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
 }
 
+fn webhook_type_to_string(kind: dbl::types::WebhookType) -> String {
+    match kind {
+        dbl::types::WebhookType::Upvote => "upvote".to_string(),
+        dbl::types::WebhookType::Test => "test".to_string(),
+    }
+}
+
 /// Write the received webhook to the database.
 async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
     println!("write_webhook_to_db");
@@ -95,8 +102,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
         "#,
         webhook.bot.0 as i64,
         webhook.user.0 as i64,
-        //webhook.kind.to_string() as _,
-        "test" as _,
+        webhook_type_to_string(webhook.kind) as _,
         webhook.is_weekend,
         webhook.query,
     )

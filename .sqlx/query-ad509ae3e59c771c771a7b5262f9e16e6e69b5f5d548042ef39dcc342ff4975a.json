@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO vote_webhook\n            (bot_id, user_id, kind, is_weekend, query, created_at)\n        VALUES\n            ($1, $2, $3, $4, $5, now())\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        {
+          "Custom": {
+            "name": "webhook_kind",
+            "kind": {
+              "Enum": [
+                "upvote",
+                "test"
+              ]
+            }
+          }
+        },
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ad509ae3e59c771c771a7b5262f9e16e6e69b5f5d548042ef39dcc342ff4975a"
+}
