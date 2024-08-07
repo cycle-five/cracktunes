@@ -93,12 +93,29 @@ fn webhook_type_to_string(kind: dbl::types::WebhookType) -> String {
 /// Write the received webhook to the database.
 async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
     println!("write_webhook_to_db");
+    // Check for the user in the database, since we have a foreign key constraint.
+    // Create the user if they don't exist.
+    let res = sqlx::query!(
+        r#"INSERT INTO "user"
+            (id, username, discriminator, avatar_url, bot, created_at, updated_at, last_seen)
+        VALUES
+            ($1, 'NULL', 0, 'NULL', false, now(), now(), now())
+        ON CONFLICT (id)
+        DO UPDATE SET last_seen = now()
+        "#,
+        webhook.user.0 as i64,
+    )
+    .execute(ctx.pool.as_ref())
+    .await;
+    if let Err(e) = res {
+        eprintln!("Failed to insert / update user: {}", e);
+    }
     //let executor = ctx.pool.clone();
     let res = sqlx::query!(
         r#"INSERT INTO vote_webhook
             (bot_id, user_id, kind, is_weekend, query, created_at)
         VALUES
-            ($1, $2, $3, $4, $5, now())
+            ($1, $2, $3::WEBHOOK_KIND, $4, $5, now())
         "#,
         webhook.bot.0 as i64,
         webhook.user.0 as i64,
@@ -186,6 +203,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Custom error handling for the server.
 async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
+    eprintln!("Error: {:?}", err);
     if err.find::<BodyDeserializeError>().is_some() {
         Ok(warp::reply::with_status(
             warp::reply(),
@@ -264,7 +282,7 @@ mod test {
             .header("authorization", secret)
             .json(&Webhook {
                 bot: dbl::types::BotId(11),
-                user: dbl::types::UserId(31),
+                user: dbl::types::UserId(1),
                 kind: dbl::types::WebhookType::Test,
                 is_weekend: false,
                 query: Some("test".to_string()),
