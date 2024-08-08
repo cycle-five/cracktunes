@@ -2,7 +2,7 @@ use crate::{
     commands::sub_help as help,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    utils::send_reply_embed,
+    poise_ext::MessageInterfaceCtxExt,
     Context, Error,
 };
 use crack_osint::{check_password_pwned, VirusTotalClient};
@@ -140,7 +140,7 @@ pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> 
         CrackedMessage::PasswordSafe
     };
 
-    send_reply_embed(&ctx, message).await?;
+    ctx.send_reply_embed(message).await?;
 
     Ok(())
 }

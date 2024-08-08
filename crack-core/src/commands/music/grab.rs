@@ -28,7 +28,7 @@ pub async fn grab(
 async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
     let chan_id = ctx.author().create_dm_channel(&ctx).await?.id;
 
-    ctx.send_now_playing(chan_id, None, None).await?;
+    ctx.send_now_playing(chan_id).await?;
 
     ctx.send_grabbed_notice().await?;
 

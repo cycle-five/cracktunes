@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.10"
+version = "0.3.11"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -33,6 +33,7 @@ rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", default-feature
     "blocking",
     "ffmpeg",
 ] }
+rustls = "0.23"
 audiopus = "0.3.0-rc.0"
 async-trait = "0.1"
 anyhow = "1.0"
@@ -56,12 +57,14 @@ strsim = "0.11"
 itertools = "0.13"
 dashmap = "6.0"
 indexmap = "2.2"
+futures = "0.3"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
 
 reqwest = { workspace = true }
+reqwest_old = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 serenity = { workspace = true }
@@ -94,7 +97,6 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "0.2"
-mockall = "0.12"
 tungstenite = "0.23"
 async-tungstenite = "0.26"
 sqlx = { version = "0.7", features = [

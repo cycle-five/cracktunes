@@ -1,16 +1,14 @@
-use crate::commands::play_utils::queue_track_ready_front;
-use crate::commands::play_utils::ready_query2;
 use crate::{
-    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
+    commands::{forget_skip_votes, play_utils::QueryType},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
-        interface::{create_nav_btns, create_queue_embed},
+        interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
+    utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
     Data, //, Error,
 };
@@ -38,6 +36,8 @@ pub struct TrackEndHandler {
     pub call: Arc<Mutex<Call>>,
 }
 
+use crate::commands::play_utils::queue_track_ready_front;
+use crate::commands::play_utils::ready_query2;
 pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
@@ -109,6 +109,9 @@ impl EventHandler for TrackEndHandler {
         };
 
         if next_track.is_some() {
+            send_now_playing(channel, self.http.clone(), self.call.clone())
+                .await
+                .ok();
             return None;
         }
 
@@ -121,23 +124,20 @@ impl EventHandler for TrackEndHandler {
             },
         };
         let track_ready = ready_query2(query).await.ok()?;
-        let MyAuxMetadata(metadata) = &track_ready.metadata;
-        let metadata = Some(metadata.clone());
+        // let MyAuxMetadata(metadata) = &track_ready.metadata;
+        // let metadata = Some(metadata.clone());
 
-        let track = queue_track_ready_front(&self.call, track_ready)
+        let _track = queue_track_ready_front(&self.call, track_ready)
             .await
             .ok()?;
 
         let chan_id = channel;
-        let track_state = track.first().as_ref()?.get_info().await;
-        let cur_position = track_state.map(|x| x.position).ok();
 
         match send_now_playing(
             chan_id,
             self.http.clone(),
-            self.call.clone(),
-            cur_position,
-            metadata,
+            self.call.clone(), // cur_position,
+                               // metadata,
         )
         .await
         {

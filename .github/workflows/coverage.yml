@@ -56,6 +56,7 @@ jobs:
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
+          WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
@@ -67,6 +68,7 @@ jobs:
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
+          WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
         run: |
           cargo tarpaulin --verbose --all --timeout 120 --out xml
 

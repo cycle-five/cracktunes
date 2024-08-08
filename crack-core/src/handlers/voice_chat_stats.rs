@@ -271,7 +271,7 @@ pub async fn cam_status_loop(
             tracing::error!("Checking camera status for {} guilds", guilds.len());
             // Go through all the guilds we have cached and check the camera status
             // for all the users we can see in voice channels.
-            let mut output = String::new();
+            let mut output = String::from("\n");
             let mut new_cams = vec![];
             for guild_id in &guilds {
                 let (add_new_cams, add_output) =

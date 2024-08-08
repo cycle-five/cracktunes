@@ -8,20 +8,17 @@ use crate::{
     Context as CrackContext, Error,
 };
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
-use songbird::{
-    input::Input as SongbirdInput,
-    tracks::{Track, TrackHandle},
-    Call,
-};
+use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Data structure for a track that is ready to be played.
+//#[derive(Clone, Debug, Default)]
 pub struct TrackReadyData {
-    pub track: Track,
+    //pub source: Box<SongbirdInput>,
+    pub source: SongbirdInput,
     pub metadata: MyAuxMetadata,
-    pub user_id: UserId,
-    pub username: String,
+    pub user_id: Option<UserId>,
+    pub username: Option<String>,
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -34,13 +31,11 @@ pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, Crack
             return Err(CrackedError::Other("metadata.first() failed"));
         },
     };
-    let track: Track = source.into();
-
     Ok(TrackReadyData {
-        track,
+        source,
         metadata,
-        user_id: UserId::new(1),
-        username: "auto".to_string(),
+        user_id: None,
+        username: None,
     })
 }
 
@@ -49,7 +44,7 @@ pub async fn ready_query(
     ctx: CrackContext<'_>,
     query_type: QueryType,
 ) -> Result<TrackReadyData, CrackedError> {
-    let user_id = ctx.author().id;
+    let user_id = Some(ctx.author().id);
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
         query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
@@ -58,12 +53,11 @@ pub async fn ready_query(
             return Err(CrackedError::Other("metadata.first() failed"));
         },
     };
-    let track: Track = source.into();
 
-    let username = ctx.user_id_to_username_or_default(user_id);
+    let username = user_id.map(|x| ctx.user_id_to_username_or_default(x));
 
     Ok(TrackReadyData {
-        track,
+        source,
         metadata,
         user_id,
         username,
@@ -76,23 +70,26 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let track_handle = handler.enqueue(ready_track.track).await;
+    let track_handle = handler.enqueue_input(ready_track.source).await;
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
     // Second index onward: Tracks to be played, we get in here most likely,
     // but if we're in one of the first two we don't want to do anything.
-    if new_q.len() < 3 {
-        return Ok(new_q);
+    if new_q.len() >= 3 {
+        //return Ok(new_q);
+        handler.queue().modify_queue(|queue| {
+            let back = queue.pop_back().unwrap();
+            queue.insert(1, back);
+        });
     }
-    handler.queue().modify_queue(|queue| {
-        let back = queue.pop_back().unwrap();
-        queue.insert(1, back);
-    });
+
     drop(handler);
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    map.insert::<RequestingUser>(RequestingUser::UserId(
+        ready_track.user_id.unwrap_or(UserId::new(1)),
+    ));
     drop(map);
     Ok(new_q)
 }
@@ -103,12 +100,12 @@ pub async fn queue_track_ready_back(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let track_handle = handler.enqueue(ready_track.track).await;
+    let track_handle = handler.enqueue_input(ready_track.source).await;
     let new_q = handler.queue().current_queue();
     drop(handler);
     let mut map = track_handle.typemap().write().await;
     map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(ready_track.user_id));
+    map.insert::<RequestingUser>(RequestingUser::from(ready_track.user_id));
     Ok(new_q)
 }
 
@@ -162,15 +159,15 @@ pub async fn queue_ready_track_list(
     let mut handler = call.lock().await;
     for (idx, ready_track) in tracks.into_iter().enumerate() {
         let TrackReadyData {
-            track,
+            source,
             metadata,
             user_id,
             ..
         } = ready_track;
-        let track_handle = handler.enqueue(track).await;
+        let track_handle = handler.enqueue_input(source).await;
         let mut map = track_handle.typemap().write().await;
         map.insert::<MyAuxMetadata>(metadata);
-        map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+        map.insert::<RequestingUser>(RequestingUser::from(user_id));
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
                 let back = queue.pop_back().unwrap();
@@ -272,15 +269,15 @@ pub async fn queue_query_list_offset<'a>(
 
     let mut handler = call.lock().await;
     for (idx, ready_track) in tracks.into_iter().enumerate() {
-        let track = ready_track.track;
+        let input = ready_track.source;
         let metadata = ready_track.metadata;
         let user_id = ready_track.user_id;
 
         // let mut handler = call.lock().await;
-        let track_handle = handler.enqueue(track).await;
+        let track_handle = handler.enqueue_input(input).await;
         let mut map = track_handle.typemap().write().await;
         map.insert::<MyAuxMetadata>(metadata);
-        map.insert::<RequestingUser>(RequestingUser::UserId(user_id));
+        map.insert::<RequestingUser>(RequestingUser::from(user_id));
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();
             q.insert(idx + offset, back);

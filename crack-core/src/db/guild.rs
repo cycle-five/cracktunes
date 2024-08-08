@@ -409,9 +409,6 @@ impl GuildEntity {
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
             .with_command_settings(command_settings);
-        //(guild_entity, guild_settings)
-        // },
-        //};
 
         Ok((guild_entity, guild_settings))
     }
@@ -450,6 +447,7 @@ impl GuildEntity {
         .map_err(|e| e.into())
     }
 
+    /// Load the command settings for a guild.
     pub async fn load_command_settings(
         guild_id: i64,
         pool: &PgPool,

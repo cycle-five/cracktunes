@@ -53,7 +53,7 @@ fn read_lines(filename: &str) -> Vec<String> {
     result
 }
 
-/// Kick command to kick all users from the server
+/// Changes all nicknames in the server to a random name from a file.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, ephemeral, owners_only)]
 pub async fn changenicks(
