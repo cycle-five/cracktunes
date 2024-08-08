@@ -992,7 +992,6 @@ dependencies = [
 name = "crack-voting"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "chrono",
  "dbl-rs",
  "lazy_static",

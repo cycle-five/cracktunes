@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use dbl::types::Webhook;
 use lazy_static::lazy_static;
 use sqlx::PgPool;
