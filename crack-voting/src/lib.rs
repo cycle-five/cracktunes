@@ -92,7 +92,6 @@ fn webhook_type_to_string(kind: dbl::types::WebhookType) -> String {
 
 /// Write the received webhook to the database.
 async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
-    println!("write_webhook_to_db");
     // Check for the user in the database, since we have a foreign key constraint.
     // Create the user if they don't exist.
     let res = sqlx::query!(
@@ -109,6 +108,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
     .await;
     if let Err(e) = res {
         eprintln!("Failed to insert / update user: {}", e);
+        return Err(e);
     }
     //let executor = ctx.pool.clone();
     let res = sqlx::query!(
@@ -127,7 +127,10 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
     .await;
     match res {
         Ok(_) => println!("Webhook written to database"),
-        Err(e) => eprintln!("Failed to write webhook to database: {}", e),
+        Err(e) => {
+            eprintln!("Failed to write webhook to database: {}", e);
+            return Err(e);
+        },
     }
     Ok(())
 }
@@ -154,19 +157,16 @@ struct ReplyBody {
 
 /// Async function to process the received webhook.
 async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply, Rejection> {
-    println!("process_webhook");
     write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
-    let body = ReplyBody {
+    Ok(warp::reply::json(&ReplyBody {
         body: "Success.".to_string(),
-    };
-    Ok(warp::reply::json(&body))
+    }))
 }
 
 /// Create a filter that handles the webhook.
 async fn get_webhook(
     ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("get_webhook");
     let secret = ctx.secret;
     let context = warp::any().map(move || ctx.clone());
 
