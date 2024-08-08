@@ -195,10 +195,9 @@ async fn get_app(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_app");
     let webhook = get_webhook(ctx).await;
-    let health = warp::path!("health")
-        .and(log_body())
-        .map(|| "Hello, world!");
-    webhook.or(health)
+    let health = warp::path!("health").map(|| "Hello, world!");
+    let log = warp::log("crack-voting");
+    webhook.or(health).with(log)
 }
 
 /// Run the server.
@@ -244,18 +243,6 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
         .untuple_one()
 }
 
-fn log_body() -> impl Filter<Extract = (), Error = Rejection> + Copy {
-    warp::body::bytes()
-        .map(|b: Bytes| {
-            let v = b.to_vec();
-            let c = &*v;
-            println!(
-                "Request body: {}",
-                std::str::from_utf8(c).expect("error converting bytes to &str")
-            );
-        })
-        .untuple_one()
-}
 
 #[cfg(test)]
 mod test {
@@ -333,19 +320,6 @@ mod test {
     #[sqlx::test]
     async fn test_log_headers() {
         let app = warp::post().and(log_headers()).map(|| warp::reply());
-        let secret = "asdf";
-        let _res = warp::test::request()
-            .method("POST")
-            .path("/dbl/webhook")
-            .header("authorization", secret)
-            .body("test body")
-            .reply(&app)
-            .await;
-    }
-
-    #[sqlx::test]
-    async fn test_log_body() {
-        let app = warp::post().and(log_body()).map(|| warp::reply());
         let secret = "asdf";
         let _res = warp::test::request()
             .method("POST")
