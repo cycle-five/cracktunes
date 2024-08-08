@@ -24,6 +24,7 @@ eula = false
 dist = false
 
 [dependencies]
+bytes = "1.7"
 lazy_static = "1.5"
 dbl-rs = "0.4"
 warp = "0.3"

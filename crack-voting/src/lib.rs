@@ -1,9 +1,14 @@
+use bytes::Bytes;
 use dbl::types::Webhook;
 use lazy_static::lazy_static;
 use sqlx::PgPool;
-use std::env;
 use std::sync::Arc;
-use warp::{body::BodyDeserializeError, http::StatusCode, path, reject, Filter, Rejection, Reply};
+use std::{convert::Infallible, env};
+use warp::{
+    body::BodyDeserializeError,
+    http::{HeaderMap, StatusCode},
+    path, reject, Filter, Rejection, Reply,
+};
 
 const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -168,7 +173,10 @@ async fn get_webhook(
     ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let secret = ctx.secret;
-    let context = warp::any().map(move || ctx.clone());
+    let context = warp::any()
+        .and(log_headers())
+        //.and(log_body())
+        .map(move || ctx.clone());
 
     warp::post()
         .and(path!("dbl" / "webhook"))
@@ -187,7 +195,9 @@ async fn get_app(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_app");
     let webhook = get_webhook(ctx).await;
-    let health = warp::path!("health").map(|| "Hello, world!");
+    let health = warp::path!("health")
+        .and(log_body())
+        .map(|| "Hello, world!");
     webhook.or(health)
 }
 
@@ -217,6 +227,34 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
     } else {
         Err(err)
     }
+}
+
+fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
+    warp::header::headers_cloned()
+        .map(|headers: HeaderMap| {
+            for (k, v) in headers.iter() {
+                // Error from `to_str` should be handled properly
+                println!(
+                    "{}: {}",
+                    k,
+                    v.to_str().expect("Failed to print header value")
+                )
+            }
+        })
+        .untuple_one()
+}
+
+fn log_body() -> impl Filter<Extract = (), Error = Rejection> + Copy {
+    warp::body::bytes()
+        .map(|b: Bytes| {
+            let v = b.to_vec();
+            let c = &*v;
+            println!(
+                "Request body: {}",
+                std::str::from_utf8(c).expect("error converting bytes to &str")
+            );
+        })
+        .untuple_one()
 }
 
 #[cfg(test)]
@@ -290,5 +328,31 @@ mod test {
             .reply(&get_app(ctx.clone()).await)
             .await;
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[sqlx::test]
+    async fn test_log_headers() {
+        let app = warp::post().and(log_headers()).map(|| warp::reply());
+        let secret = "asdf";
+        let _res = warp::test::request()
+            .method("POST")
+            .path("/dbl/webhook")
+            .header("authorization", secret)
+            .body("test body")
+            .reply(&app)
+            .await;
+    }
+
+    #[sqlx::test]
+    async fn test_log_body() {
+        let app = warp::post().and(log_body()).map(|| warp::reply());
+        let secret = "asdf";
+        let _res = warp::test::request()
+            .method("POST")
+            .path("/dbl/webhook")
+            .header("authorization", secret)
+            .body("test body")
+            .reply(&app)
+            .await;
     }
 }
