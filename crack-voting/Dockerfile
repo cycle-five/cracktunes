@@ -1,6 +1,8 @@
 # STAGE1: Build the binary
 FROM rust:alpine AS builder
 
+ARG WEBHOOK_SECRET=test_secret
+
 # Install build dependencies
 RUN apk add --no-cache build-base musl-dev openssl-dev openssl
 
@@ -47,5 +49,6 @@ COPY --from=builder /app/.env /app/.env
 RUN . "/app/.env"
 ENV APP_ENVIRONMENT=production
 ENV DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
+ENV WEBHOOK_SECRET=${WEBHOOK_SECRET}
 
 CMD ["/app/app"]

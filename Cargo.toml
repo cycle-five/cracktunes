@@ -81,6 +81,7 @@ default-features = false
 features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
 [workspace.dependencies]
+# crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
 crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }

@@ -288,6 +288,7 @@ impl PhoneCodeData {
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()?;
+        //let client = crate::http_utils::get_client();
         let response = client.get(url).send().map_err(CrackedError::Reqwest)?;
         let content = response.text().map_err(CrackedError::Reqwest)?;
 

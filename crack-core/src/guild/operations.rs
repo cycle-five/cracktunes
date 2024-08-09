@@ -277,8 +277,9 @@ impl GuildSettingsOperations for Data {
             .lock()
             .await
             .entry(guild_id)
-            .or_default()
-            .autoplay = autoplay;
+            .and_modify(|e| {
+                e.autoplay = autoplay;
+            });
     }
 
     /// Get the current autoplay settings.

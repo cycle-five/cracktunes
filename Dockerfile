@@ -1,79 +1,66 @@
-# Build image
-# Necessary dependencies to build CrackTunes
-FROM debian:bookworm-slim AS build
-ARG SQLX_OFFLINE=true
+# STAGE1: Build the binary
+FROM rust:alpine AS builder
 
-RUN apt-get update && apt-get install -y \
-  autoconf \
-  automake \
-  cmake \
-  libtool \
-  libssl-dev \
-  pkg-config \
-  libopus-dev \
-  curl \
-  git
+# Install build dependencies
+RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
 
-# Get Rust
-RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
-  && . "$HOME/.cargo/env" \
-  && rustup default nightly
+# Create a new empty shell project
+WORKDIR /app
 
-WORKDIR "/app"
 
+# RUN mkdir -p /app/scripts
+# COPY ./scripts/start.sh /app/scripts/start.sh
+
+# COPY ./Cargo.toml ./
+# RUN mkdir -p /app/crack-{voting,bf,core,gpt,osint}
+# RUN mkdir -p /app/cracktunes
+# COPY ./crack-voting/Cargo.toml ./crack-voting/
+# COPY ./crack-bf/Cargo.toml ./crack-bf/
+# COPY ./crack-core/Cargo.toml ./crack-core/
+# COPY ./crack-gpt/Cargo.toml ./crack-gpt/
+# COPY ./crack-osint/Cargo.toml ./crack-osint/
+# COPY ./cracktunes/Cargo.toml ./cracktunes/
+
+# # # Build and cache the dependencies
+# RUN mkdir -p crack-voting/src && echo "fn main() {}" > crack-voting/src/main.rs
+# RUN mkdir -p cracktunes/src && echo "fn main() {}" > cracktunes/src/main.rs
+# RUN echo "fn main() {}" > cracktunes/build.rs
+# RUN mkdir -p crack-bf/src && echo "" > crack-bf/src/lib.rs
+# RUN mkdir -p crack-core/src && echo "" > crack-core/src/lib.rs
+# RUN mkdir -p crack-gpt/src && echo "" > crack-gpt/src/lib.rs
+# RUN mkdir -p crack-osint/src && echo "" > crack-osint/src/lib.rs
+# RUN cargo fetch
+# # RUN cargo build --profile=release-with-performance --locked --features crack-bf,crack-gpt,crack-osint
+# RUN cargo build
+# RUN rm crack-voting/src/main.rs
+# RUN rm cracktunes/src/main.rs
 COPY . .
-COPY names.txt /app/names.txt
-RUN . "$HOME/.cargo/env" && cargo build --release --locked --features crack-bf,crack-gpt,crack-osint
 
-# Release image
-# Necessary dependencies to run CrackTunes
-FROM debian:bookworm-slim AS runtime
+# Copy the actual code files and build the application
+# COPY ./crack-voting/src ./crack-voting/
+# # Update the file date
+# #RUN touch ./crack-voting/src/main.rs
+# RUN touch ./cracktunes/src/main.rs
+# # RUN cargo build -p crack-voting --release
+RUN cargo build
 
-ARG USERNAME=cyclefive
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
-ENV HOME=/home/${USERNAME}
+# STAGE2: create a slim image with the compiled binary
+FROM alpine AS runner
+# Copy the binary from the builder stage
+WORKDIR /app
 
-VOLUME [ "/data" ]
-RUN mkdir -p /data && chown -R ${USER_UID}:${USER_GID} /data
-# VOLUME [ "/var/lib/postgresql/data" ]
+# RUN apk add --no-cache ffmpeg curl
+RUN apk update && apk add --no-cache ffmpeg curl
 
-# Update the package list, install sudo, create a non-root user, and grant password-less sudo permissions
-RUN groupadd --gid $USER_GID $USERNAME \
-  && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-  #
-  # [Optional] Add sudo support. Omit if you don't need to install software after connecting.
-  && apt-get update \
-  && apt-get install -y sudo \
-  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-  && chmod 0440 /etc/sudoers.d/$USERNAME
+ADD ./data /data
+RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.08.06/yt-dlp_linux \
+    && chmod +x /usr/local/bin/yt-dlp
+COPY --from=builder /app/target/debug/cracktunes /app/app
+COPY --from=builder /app/.env /app/.env
+COPY --from=builder /app/scripts/start.sh /app/start.sh
 
-
-RUN apt-get update \
-  &&  apt-get upgrade -y \
-  &&  apt-get install -y ffmpeg curl \
-  &&  apt-get autoremove -y \
-  &&  apt-get clean -y \
-  &&  rm -rf /var/lib/apt/lists/*
-
-RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.09/yt-dlp_linux \
-  && chmod +x /usr/local/bin/yt-dlp
-
-USER $USERNAME
-
-RUN yt-dlp -v -h
-
-# USER 1000
-WORKDIR "${HOME}/app"
-
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/target/release/cracktunes $HOME/app/cracktunes
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/data  $HOME/app/data
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/.env.example $HOME/app/.env
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app/cracktunes.toml
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/names.txt $HOME/app/names.txt
-# RUN ls -al / && ls -al /data
-
-RUN . "$HOME/app/.env"
+# RUN . "/app/.env"
 ENV APP_ENVIRONMENT=production
 ENV DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
-CMD ["/home/cyclefive/app/cracktunes"]
+
+CMD ["/app/start.sh"]

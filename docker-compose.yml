@@ -35,12 +35,11 @@ services:
     image: cyclefive/cracktunes:dev
     volumes:
       - crack_data:/data:rw
-      - ./.env:/home/cyclefive/app/.env:rw
-      - ./cracktunes.toml:/home/cyclefive/app/cracktunes.toml:rw
+      - ./.env:/app/.env:rw
+      - ./cracktunes.toml:/app/cracktunes.toml:rw
     environment:
       - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
-      #- PUID=1001
-      #- PGID=1001
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-test_key}
     links:
       - crack-postgres
     ports:

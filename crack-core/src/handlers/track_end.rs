@@ -118,12 +118,20 @@ impl EventHandler for TrackEndHandler {
         let query = match get_recommended_track_query(pool, self.guild_id).await {
             Ok(query) => query,
             Err(e) => {
+                self.data.set_autoplay(self.guild_id, false).await;
                 let msg = format!("Error: {}", e);
                 tracing::warn!("{}", msg);
                 return None;
             },
         };
-        let track_ready = ready_query2(query).await.ok()?;
+        let track_ready = match ready_query2(query).await {
+            Ok(track) => track,
+            Err(e) => {
+                let msg = format!("Error: {}", e);
+                tracing::warn!("{}", msg);
+                return None;
+            },
+        };
         // let MyAuxMetadata(metadata) = &track_ready.metadata;
         // let metadata = Some(metadata.clone());
 

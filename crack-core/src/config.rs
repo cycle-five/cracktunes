@@ -215,7 +215,7 @@ pub async fn poise_framework(
     // let handle = rt.handle();
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
-        phone_data: PhoneCodeData::load().unwrap(),
+        phone_data: PhoneCodeData::default(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log_async,
