@@ -151,6 +151,7 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
+        .cookie_store(true)
         .build()
         .expect("Failed to build reqwest client")
 });
@@ -160,6 +161,7 @@ static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
     reqwest_old::ClientBuilder::new()
         .use_rustls_tls()
+        .cookie_store(true)
         .build()
         .expect("Failed to build reqwest client")
 });

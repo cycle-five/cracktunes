@@ -1,4 +1,4 @@
-#![feature(const_format_args)]
+//#![feature(const_format_args)]
 use async_openai::{
     config::AzureConfig,
     error::OpenAIError,

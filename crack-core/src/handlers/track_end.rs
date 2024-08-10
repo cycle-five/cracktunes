@@ -32,7 +32,6 @@ pub struct TrackEndHandler {
     pub data: Data,
     pub cache: Arc<Cache>,
     pub http: Arc<Http>,
-    // pub cache_http: impl CacheHttp,
     pub call: Arc<Mutex<Call>>,
 }
 
@@ -45,11 +44,79 @@ pub struct ModifyQueueHandler {
     pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
+
+use songbird::tracks::PlayMode;
+use songbird::tracks::TrackState;
+type TrackStates<'a> = &'a [(&'a TrackState, &'a TrackHandle)];
+
+pub struct TrackStatesUnion {
+    pub playing: bool,
+    pub paused: bool,
+    pub stopped: bool,
+    pub errored: bool,
+    pub end: bool,
+}
+
+fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
+    let mut union = TrackStatesUnion {
+        playing: false,
+        paused: false,
+        stopped: false,
+        errored: false,
+        end: false,
+    };
+
+    for (state, _) in track_states.iter() {
+        match state.playing {
+            PlayMode::Play => union.playing = true,
+            PlayMode::Pause => union.paused = true,
+            PlayMode::Stop => union.stopped = true,
+            PlayMode::End => union.end = true,
+            PlayMode::Errored(_) => union.errored = true,
+            _ => (),
+        }
+    }
+
+    union
+}
+
+// fn is_playing(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Play)
+// }
+
+// fn is_paused(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Pause)
+// }
+
+// fn is_stopped(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Stop)
+// }
+
+// fn is_end(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::End)
+// }
+
+// fn is_errored(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| matches!(state.playing, PlayMode::Errored(_)))
+// }
+
 /// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+    async fn act(&self, event_ctx: &EventContext<'_>) -> Option<Event> {
         tracing::error!("TrackEndHandler");
+        // Handle track error
+
         let autoplay = self.data.get_autoplay(self.guild_id).await;
 
         tracing::error!("Autoplay: {}", autoplay);
@@ -87,6 +154,16 @@ impl EventHandler for TrackEndHandler {
 
         if !autoplay {
             return None;
+        }
+
+        if let EventContext::Track(x) = event_ctx {
+            tracing::error!("TrackEvent: {:?}", x);
+            let states = get_track_states_union(x);
+            //if is_stopped(x) || is_errored(x) {
+            if states.stopped || states.errored {
+                self.data.set_autoplay(self.guild_id, false).await;
+                return None;
+            }
         }
 
         let pool = if let Some(pool) = &self.data.database_pool {
@@ -127,6 +204,7 @@ impl EventHandler for TrackEndHandler {
         let track_ready = match ready_query2(query).await {
             Ok(track) => track,
             Err(e) => {
+                self.data.set_autoplay(self.guild_id, false).await;
                 let msg = format!("Error: {}", e);
                 tracing::warn!("{}", msg);
                 return None;
@@ -141,14 +219,7 @@ impl EventHandler for TrackEndHandler {
 
         let chan_id = channel;
 
-        match send_now_playing(
-            chan_id,
-            self.http.clone(),
-            self.call.clone(), // cur_position,
-                               // metadata,
-        )
-        .await
-        {
+        match send_now_playing(chan_id, self.http.clone(), self.call.clone()).await {
             Ok(_) => tracing::trace!("Sent now playing message"),
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         };

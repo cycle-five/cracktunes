@@ -1,4 +1,4 @@
-#![feature(linked_list_cursors)]
+//#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
