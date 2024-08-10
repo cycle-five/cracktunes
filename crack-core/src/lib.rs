@@ -287,6 +287,7 @@ impl PhoneCodeData {
     ) -> Result<HashMap<String, String>, CrackedError> {
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
+            .cookie_store(true)
             .build()?;
         //let client = crate::http_utils::get_client();
         let response = client.get(url).send().map_err(CrackedError::Reqwest)?;

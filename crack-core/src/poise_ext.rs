@@ -242,20 +242,17 @@ impl ContextExt for crate::Context<'_> {
         let user_id = ready_track.user_id;
         let guild_id = self.guild_id().unwrap();
         let channel_id = self.channel_id();
-        match &self.data().db_channel {
-            Some(channel) => {
-                let write_data: MetadataMsg = MetadataMsg {
-                    aux_metadata,
-                    user_id,
-                    username,
-                    guild_id,
-                    channel_id,
-                };
-                if let Err(e) = channel.try_send(write_data) {
-                    tracing::error!("Error sending metadata to db_channel: {}", e);
-                }
-            },
-            None => {},
+        if let Some(channel) = &self.data().db_channel {
+            let write_data: MetadataMsg = MetadataMsg {
+                aux_metadata,
+                user_id,
+                username,
+                guild_id,
+                channel_id,
+            };
+            if let Err(e) = channel.try_send(write_data) {
+                tracing::error!("Error sending metadata to db_channel: {}", e);
+            }
         }
     }
 
