@@ -3,6 +3,7 @@ use super::{queue_keyword_list_back, queue_query_list_offset};
 // use crate::commands::kick;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
+use crate::sources::rusty_ytdl::NewSearchSource;
 // use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 //use crate::sources::youtube::get_rusty_search;
 use crate::CrackedResult;
@@ -500,6 +501,10 @@ impl QueryType {
         Err(CrackedError::Other("Not implemented yet!"))
     }
 
+    pub fn get_query_source(&self, client: reqwest::Client) -> songbird::input::Input {
+        NewSearchSource(self.clone(), client).into()
+    }
+
     pub async fn get_track_metadata(
         &self,
         ytclient: YouTube,
@@ -633,7 +638,7 @@ impl QueryType {
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                // get_rusty_search(client.clone(), query.clone()).await
+                //get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =
                     search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
                 Ok((input, metadata))

@@ -32,7 +32,7 @@ services:
       - "3030:3030"
   cracktunes:
     container_name: cracktunes
-    image: cyclefive/cracktunes:dev
+    image: cyclefive/cracktunes:dev-debian
     volumes:
       - crack_data:/data:rw
       - ./.env:/app/.env:rw

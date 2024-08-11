@@ -109,6 +109,29 @@ pub struct FastYoutubeSearch {
     pub video: Option<Arc<VideoInfo>>,
 }
 
+impl FastYoutubeSearch {
+    pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
+        let req_opts = RequestOptionsBuilder::new()
+            .set_client(client.clone())
+            .build();
+        let ytdl_client = YouTube::new_with_options(&req_opts)?;
+        Ok(Self {
+            query,
+            reqwest_client: client,
+            ytdl_client: either::Left(ytdl_client),
+            url: None,
+            metadata: None,
+            video: None,
+        })
+    }
+
+    pub fn reset_search(&mut self) {
+        self.metadata = None;
+        self.url = None;
+        self.video = None;
+    }
+}
+
 impl Display for FastYoutubeSearch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -519,12 +542,59 @@ impl MediaSource for MediaSourceStream {
     }
 }
 
+pub struct NewSearchSource(pub QueryType, pub reqwest::Client);
+
+impl Into<Input> for NewSearchSource {
+    fn into(self) -> Input {
+        let search = RustyYoutubeSearch::new(self.0, self.1).unwrap();
+        search.into()
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{http_utils, sources::youtube::search_query_to_source_and_metadata_rusty};
+    use crate::{
+        commands::play_utils::QueryType,
+        http_utils,
+        sources::{
+            rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
+            youtube::search_query_to_source_and_metadata_rusty,
+        },
+    };
     use rusty_ytdl::search::YouTube;
-    use songbird::input::YoutubeDl;
+    use songbird::input::{Input, YoutubeDl};
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_rusty_youtube_search() {
+        let search_term = "The Night Chicago Died";
+        let query = QueryType::Keywords(search_term.to_string());
+        let reqwest_client = http_utils::get_client().clone();
+        let rusty_search = RustyYoutubeSearch::new(query, reqwest_client).unwrap();
+        // let rusty_search = FastYoutubeSearch {
+        //     reqwest_client,
+        //     ytdl_client: either::Left(rusty_ytdl),
+        //     metadata: None,
+        //     url: None,
+        //     video: None,
+        // };
+
+        let mut media_source: Input = rusty_search.into();
+        let metadata = media_source.aux_metadata().await.unwrap();
+        println!("{:?}", metadata);
+        assert!(metadata.title.is_some());
+    }
+
+    #[test]
+    fn test_new_search_source() {
+        let search_term = "The Night Chicago Died";
+        let query = QueryType::Keywords(search_term.to_string());
+        let reqwest_client = http_utils::get_client().clone();
+        let new_search = NewSearchSource(query, reqwest_client);
+        let input: Input = new_search.into();
+        println!("{:?}", input.live().is_none());
+        assert!(!input.is_playable());
+    }
 
     #[tokio::test]
     async fn test_ytdl() {

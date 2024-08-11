@@ -1,5 +1,5 @@
 use crate::{
-    commands::{forget_skip_votes, play_utils::QueryType},
+    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -19,7 +19,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
-use serenity::all::CacheHttp;
+use serenity::all::{CacheHttp, UserId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,8 +35,8 @@ pub struct TrackEndHandler {
     pub call: Arc<Mutex<Call>>,
 }
 
-use crate::commands::play_utils::queue_track_ready_front;
-use crate::commands::play_utils::ready_query2;
+// use crate::commands::play_utils::queue_track_ready_front;
+// use crate::commands::play_utils::ready_query2;
 pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
@@ -160,8 +160,9 @@ impl EventHandler for TrackEndHandler {
             tracing::error!("TrackEvent: {:?}", x);
             let states = get_track_states_union(x);
             //if is_stopped(x) || is_errored(x) {
-            if states.stopped || states.errored {
+            if states.errored {
                 self.data.set_autoplay(self.guild_id, false).await;
+                // FIXME: Send error message
                 return None;
             }
         }
@@ -201,21 +202,28 @@ impl EventHandler for TrackEndHandler {
                 return None;
             },
         };
-        let track_ready = match ready_query2(query).await {
-            Ok(track) => track,
-            Err(e) => {
-                self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
-                tracing::warn!("{}", msg);
-                return None;
-            },
-        };
-        // let MyAuxMetadata(metadata) = &track_ready.metadata;
-        // let metadata = Some(metadata.clone());
 
-        let _track = queue_track_ready_front(&self.call, track_ready)
-            .await
-            .ok()?;
+        let client = crate::http_utils::get_client();
+        let mut input = query.get_query_source(client.clone());
+        // let track_ready = match ready_query2(query).await {
+        //     Ok(track) => track,
+        //     Err(e) => {
+        //         self.data.set_autoplay(self.guild_id, false).await;
+        //         let msg = format!("Error: {}", e);
+        //         tracing::warn!("{}", msg);
+        //         return None;
+        //     },
+        // };
+        // // let MyAuxMetadata(metadata) = &track_ready.metadata;
+        // // let metadata = Some(metadata.clone());
+
+        // let _track = queue_track_ready_front(&self.call, track_ready)
+        //     .await
+        //     .ok()?;
+        let metadata = input.aux_metadata().await.ok()?;
+        tracing::error!("Metadata: {:?}", metadata);
+        let track = self.call.as_ref().lock().await.enqueue_input(input).await;
+        add_metadata_to_track(&track, metadata).await;
 
         let chan_id = channel;
 
@@ -247,6 +255,14 @@ impl EventHandler for ModifyQueueHandler {
 
         None
     }
+}
+use crate::commands::RequestingUser;
+use songbird::input::AuxMetadata;
+pub async fn add_metadata_to_track(track: &TrackHandle, metadata: AuxMetadata) {
+    let mut map = track.typemap().write().await;
+    map.insert::<MyAuxMetadata>(MyAuxMetadata(metadata));
+    map.insert::<RequestingUser>(RequestingUser::UserId(UserId::new(1)));
+    drop(map);
 }
 
 /// This function goes through all the active "queue" messages that are still

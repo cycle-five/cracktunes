@@ -22,6 +22,8 @@ pub struct TrackReadyData {
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
+/// FIXME:
+#[allow(dead_code)]
 pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
     let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
         query_type.get_track_source_and_metadata(None).await?;

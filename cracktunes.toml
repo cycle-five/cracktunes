@@ -5,5 +5,6 @@
 # volume = 0.1
 # prefix = "r!"
 # owners = [ ]
-database_url = "postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres"
+# database_url = "postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres"
+database_url = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
 prefix = "t!"
