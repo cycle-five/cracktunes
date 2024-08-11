@@ -42,12 +42,16 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     verify(queue.len() > 1, CrackedError::QueueEmpty)?;
 
     handler.queue().modify_queue(|v| {
-        v.drain(1..);
+        v.drain(1..).for_each(|x| {
+            let _ = x.stop();
+            drop(x);
+        });
     });
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
     drop(handler);
+    assert!(queue.len() == 1);
 
     send_reply(&ctx, CrackedMessage::Clear, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
