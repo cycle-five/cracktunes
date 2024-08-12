@@ -2,12 +2,10 @@ use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, help};
-use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
+use crate::utils::edit_embed_response2;
 use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
-use ::serenity::all::CommandInteraction;
-//FIXME
-use crate::utils::edit_embed_response2;
 use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
@@ -24,6 +22,7 @@ use crate::{
     utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
 };
+use ::serenity::all::CommandInteraction;
 use ::serenity::{
     all::{Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
@@ -674,10 +673,9 @@ pub async fn queue_aux_metadata(
                 )
                 .await;
 
-            //let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
             let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
-            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+            let new_aux_metadata = search_result_to_aux_metadata(&res);
 
             MyAuxMetadata(new_aux_metadata)
         } else {

@@ -1,10 +1,10 @@
-use crate::{commands::play_utils::QueryType, errors::CrackedError, http_utils};
+use crate::{commands::play_utils::QueryType, errors::CrackedError};
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{
-    search::{Playlist, SearchOptions, SearchResult, YouTube},
+    search::{Playlist, SearchResult, YouTube},
     Video, VideoInfo,
 };
 use serenity::async_trait;
@@ -61,34 +61,9 @@ impl AsString for YoutubeDl {
     }
 }
 
-/// Implement the `AsString` trait for the `RustyYoutubeClient` struct.
-impl AsString for RustyYoutubeClient {
-    fn as_string(&self) -> String {
-        self.to_string()
-    }
-}
-
-#[derive(Clone, Debug)]
-/// Our strucut to wrap the rusty-ytdl search instance
-//TODO expand to go beyond search
-pub struct RustyYoutubeClient {
-    pub rusty_ytdl: YouTube,
-    pub client: reqwest::Client,
-}
-
-impl Display for RustyYoutubeClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "RustyYoutubeClient({:?}, {:?})",
-            self.rusty_ytdl, self.client
-        )
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeSearch {
-    pub rusty_ytdl: RustyYoutubeClient,
+    pub rusty_ytdl: YouTube,
     pub metadata: Option<AuxMetadata>,
     pub url: Option<String>,
     pub video: Option<Arc<Video>>,
@@ -205,128 +180,80 @@ impl RequestOptionsBuilder {
     }
 }
 
-/// Implementation of the [`RustyYoutubeClient`] struct.
-impl RustyYoutubeClient {
-    // Create a new `RustyYoutubeClient`.
-    pub fn new() -> Result<Self, CrackedError> {
-        let client = http_utils::get_client();
-        RustyYoutubeClient::new_with_client(client.clone())
-    }
+/// Convert a `SearchResult` to `AuxMetadata`.
+pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
+    let mut metadata = AuxMetadata::default();
+    match res.clone() {
+        SearchResult::Video(video) => {
+            metadata.track = Some(video.title.clone());
+            metadata.artist = None;
+            metadata.album = None;
+            metadata.date = video.uploaded_at.clone();
 
-    /// Creates a new instance of `RustyYoutubeClient`. Requires a `reqwest::Client` instance, preferably reused.
-    pub fn new_with_client(client: reqwest::Client) -> Result<Self, CrackedError> {
-        // TODO: Is this the best, or even correct block to use?
+            metadata.channels = Some(2);
+            metadata.channel = Some(video.channel.name);
+            metadata.duration = Some(Duration::from_millis(video.duration));
+            metadata.sample_rate = Some(48000);
+            metadata.source_url = Some(video.url);
+            metadata.title = Some(video.title);
+            metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
+        },
+        SearchResult::Playlist(playlist) => {
+            metadata.title = Some(playlist.name);
+            metadata.source_url = Some(playlist.url);
+            metadata.duration = None;
+            metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
+        },
+        _ => {},
+    };
+    metadata
+}
 
-        let req = RequestOptionsBuilder::new()
-            .set_client(client.clone())
-            .build();
+pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
+    let mut metadata = AuxMetadata::default();
+    tracing::info!(
+        "video_info_to_aux_metadata: {:?}",
+        video.video_details.title
+    );
+    let details = &video.video_details;
+    metadata.artist = None;
+    metadata.album = None;
+    metadata.date = Some(details.publish_date.clone());
 
-        let rusty_ytdl = YouTube::new_with_options(&req)?;
+    metadata.channels = Some(2);
+    metadata.channel = Some(details.owner_channel_name.clone());
+    metadata.duration = Some(Duration::from_secs(
+        details.length_seconds.parse::<u64>().unwrap_or_default(),
+    ));
+    metadata.sample_rate = Some(48000);
+    metadata.source_url = Some(details.video_url.clone());
+    metadata.title = Some(details.title.clone());
+    metadata.thumbnail = Some(details.thumbnails.first().unwrap().url.clone());
 
-        Ok(Self { rusty_ytdl, client })
-    }
+    metadata
+}
 
-    /// Get a Playlist from a URL.
-    pub async fn get_playlist(&self, url: String) -> Result<Playlist, CrackedError> {
-        let playlist = Playlist::get(&url, None).await?;
-        Ok(playlist)
-    }
-
-    /// Convert a `SearchResult` to `AuxMetadata`.
-    pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
-        let mut metadata = AuxMetadata::default();
-        match res.clone() {
-            SearchResult::Video(video) => {
-                metadata.track = Some(video.title.clone());
-                metadata.artist = None;
-                metadata.album = None;
-                metadata.date = video.uploaded_at.clone();
-
-                metadata.channels = Some(2);
-                metadata.channel = Some(video.channel.name);
-                metadata.duration = Some(Duration::from_millis(video.duration));
-                metadata.sample_rate = Some(48000);
-                metadata.source_url = Some(video.url);
-                metadata.title = Some(video.title);
-                metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
-            },
-            SearchResult::Playlist(playlist) => {
-                metadata.title = Some(playlist.name);
-                metadata.source_url = Some(playlist.url);
-                metadata.duration = None;
-                metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
-            },
-            _ => {},
-        };
-        metadata
-    }
-
-    pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
-        let mut metadata = AuxMetadata::default();
-        tracing::info!(
-            "video_info_to_aux_metadata: {:?}",
-            video.video_details.title
-        );
-        let details = &video.video_details;
-        metadata.artist = None;
-        metadata.album = None;
-        metadata.date = Some(details.publish_date.clone());
-
-        metadata.channels = Some(2);
-        metadata.channel = Some(details.owner_channel_name.clone());
-        metadata.duration = Some(Duration::from_secs(
-            details.length_seconds.parse::<u64>().unwrap_or_default(),
-        ));
-        metadata.sample_rate = Some(48000);
-        metadata.source_url = Some(details.video_url.clone());
-        metadata.title = Some(details.title.clone());
-        metadata.thumbnail = Some(details.thumbnails.first().unwrap().url.clone());
-
-        metadata
-    }
-
-    /// Get a video from a URL.
-    pub async fn get_video_info(url: String) -> Result<VideoInfo, CrackedError> {
-        // let vid_options = VideoOptions {
-        //     request_options: RequestOptions {
-        //         client: Some(self.client.clone()),
-        //         ..Default::default()
-        //     },
-        //     ..Default::default()
-        // };
-        // let video = Video::new_with_options(&url, vid_options)?;
-        let video = Video::new(&url)?;
-        video.get_basic_info().await.map_err(|e| e.into())
-    }
-
-    // Search youtube
-    pub async fn search(
-        &self,
-        query: String,
-        limit: u64,
-    ) -> Result<Vec<SearchResult>, CrackedError> {
-        let opts = SearchOptions {
-            limit,
-            ..Default::default()
-        };
-        tracing::warn!("{:?}", query);
-        let search_results = self.rusty_ytdl.search(&query, Some(&opts)).await?;
-        println!("{:?}", search_results);
-        Ok(search_results)
-    }
-
-    // Wraps rusty_ytdl search_one
-    pub async fn search_one(&self, query: String) -> Result<Option<SearchResult>, CrackedError> {
-        self.rusty_ytdl
-            .search_one(&query, None)
-            .await
-            .map_err(|e| e.into())
-    }
+/// Get a video from a URL.
+pub async fn get_video_info(url: String) -> Result<VideoInfo, CrackedError> {
+    // let vid_options = VideoOptions {
+    //     request_options: RequestOptions {
+    //         client: Some(self.client.clone()),
+    //         ..Default::default()
+    //     },
+    //     ..Default::default()
+    // };
+    // let video = Video::new_with_options(&url, vid_options)?;
+    let video = Video::new(&url)?;
+    video.get_basic_info().await.map_err(|e| e.into())
 }
 
 impl RustyYoutubeSearch {
     pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
-        let rusty_ytdl = RustyYoutubeClient::new_with_client(client)?;
+        let request_options = RequestOptions {
+            client: Some(client.clone()),
+            ..Default::default()
+        };
+        let rusty_ytdl = rusty_ytdl::search::YouTube::new_with_options(&request_options)?;
         Ok(Self {
             rusty_ytdl,
             metadata: None,
@@ -350,6 +277,8 @@ impl From<RustyYoutubeSearch> for Input {
     }
 }
 
+use rusty_ytdl::VideoError;
+
 #[async_trait]
 impl Compose for RustyYoutubeSearch {
     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
@@ -365,8 +294,13 @@ impl Compose for RustyYoutubeSearch {
             .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
         let search_res = self
             .rusty_ytdl
-            .search_one(query_str)
-            .await?
+            .search_one(query_str, None)
+            .await
+            .map_err(|e| {
+                <CrackedError as Into<AudioStreamError>>::into(
+                    <VideoError as Into<CrackedError>>::into(e),
+                )
+            })?
             .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
         let search_video = match search_res {
             SearchResult::Video(video) => video,
@@ -406,10 +340,15 @@ impl Compose for RustyYoutubeSearch {
 
         let res: SearchResult = self
             .rusty_ytdl
-            .search_one(self.query.build_query().unwrap())
-            .await?
+            .search_one(self.query.build_query().unwrap(), None)
+            .await
+            .map_err(|e| {
+                <CrackedError as Into<AudioStreamError>>::into(
+                    <VideoError as Into<CrackedError>>::into(e),
+                )
+            })?
             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
-        let metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+        let metadata = search_result_to_aux_metadata(&res);
 
         self.metadata = Some(metadata.clone());
 
@@ -544,9 +483,9 @@ impl MediaSource for MediaSourceStream {
 
 pub struct NewSearchSource(pub QueryType, pub reqwest::Client);
 
-impl Into<Input> for NewSearchSource {
-    fn into(self) -> Input {
-        let search = RustyYoutubeSearch::new(self.0, self.1).unwrap();
+impl From<NewSearchSource> for Input {
+    fn from(val: NewSearchSource) -> Self {
+        let search = RustyYoutubeSearch::new(val.0, val.1).unwrap();
         search.into()
     }
 }
@@ -562,8 +501,8 @@ mod test {
         },
     };
     use rusty_ytdl::search::YouTube;
+    use rusty_ytdl::RequestOptions;
     use songbird::input::{Input, YoutubeDl};
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_rusty_youtube_search() {
@@ -598,20 +537,12 @@ mod test {
 
     #[tokio::test]
     async fn test_ytdl() {
-        // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        // let client = http_utils::get_client().clone();
-        // let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
-        // let ytdl = Arc::new(ytdl);
-        // let playlist = ytdl.one_shot("The Night Chicago Died".to_string()).await;
         let search = "The Night Chicago Died";
         let rusty_ytdl = YouTube::new().unwrap();
         let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
         match playlist {
             Ok(Some(playlist)) => {
-                let metadata =
-                    crate::sources::rusty_ytdl::RustyYoutubeClient::search_result_to_aux_metadata(
-                        &playlist,
-                    );
+                let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
                 println!("{:?}", metadata);
             },
             Ok(None) => {
@@ -655,12 +586,16 @@ mod test {
 
         let client = reqwest::ClientBuilder::new()
             .use_rustls_tls()
+            .cookie_store(true)
             .build()
             .unwrap();
-        let ytdl = crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client).unwrap();
-        let ytdl = Arc::new(ytdl);
+        let req_opts = RequestOptions {
+            client: Some(client),
+            ..Default::default()
+        };
+        let rusty_yt = rusty_ytdl::search::YouTube::new_with_options(&req_opts).unwrap();
         for search in searches {
-            let res = ytdl.search_one(search.to_string()).await;
+            let res = rusty_yt.search_one(search.to_string(), None).await;
             assert!(
                 res.is_ok() || {
                     println!("{}", res.unwrap_err().to_string());
@@ -712,16 +647,6 @@ mod test {
 
         println!("{:?}", metadata);
         println!("{:?}", input.is_playable());
-
-        // let rusty_search = crate::sources::rusty_ytdl::RustyYoutubeSearch {
-        //     rusty_ytdl: crate::sources::rusty_ytdl::RustyYoutubeClient::new_with_client(client)
-        //         .unwrap(),
-        //     metadata: None,
-        //     query: QueryType::Keywords("The Night Chicago Died".to_string()),
-        // };
-
-        // let live_input = LiveInput::Wrapped(rusty_search.into_media_source());
-        // assert!(live_input.is_playable());
 
         let mut driver = songbird::driver::Driver::default();
 
