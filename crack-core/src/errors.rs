@@ -18,6 +18,7 @@ use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
 use songbird::input::AudioStreamError;
+use songbird::input::AuxMetadataError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
 use std::process::ExitStatus;
@@ -29,6 +30,7 @@ pub enum CrackedError {
     AlreadyConnected(Mention),
     AudioStream(AudioStreamError),
     AudioStreamRustyYtdlMetadata,
+    AuxMetadataError(AuxMetadataError),
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
@@ -110,6 +112,7 @@ impl Display for CrackedError {
             Self::AudioStreamRustyYtdlMetadata => {
                 f.write_str(FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA)
             },
+            Self::AuxMetadataError(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             },
@@ -338,6 +341,20 @@ impl From<RSpotifyClientError> for CrackedError {
 impl From<Elapsed> for CrackedError {
     fn from(_err: Elapsed) -> Self {
         CrackedError::Other("Timeout")
+    }
+}
+
+/// Provides an implementation to convert a [`JsonError`] to a [`CrackedError`].
+impl From<JoinError> for CrackedError {
+    fn from(err: JoinError) -> Self {
+        CrackedError::JoinChannelError(err)
+    }
+}
+
+/// Provides an implementation to convert a [`AuxMetadataError`] to a [`CrackedError`].
+impl From<AuxMetadataError> for CrackedError {
+    fn from(err: AuxMetadataError) -> Self {
+        CrackedError::AuxMetadataError(err)
     }
 }
 

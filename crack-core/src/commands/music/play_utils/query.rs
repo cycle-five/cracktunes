@@ -609,20 +609,19 @@ impl QueryType {
                 }
                 Ok((ytdl.into(), res))
             },
-            QueryType::VideoLink(query) => {
+            QueryType::VideoLink(_query) => {
                 tracing::warn!("In VideoLink");
-                // let search = get_rusty_search(client.clone(), query.clone()).await?;
-                // let metadata = search
-                //     .clone()
-                //     .metadata
-                //     .into_iter()
-                //     .map(MyAuxMetadata)
-                //     .collect::<Vec<_>>();
-                // Ok((search.into(), metadata))
-                let mut ytdl = YoutubeDl::new(client_old, query.clone());
-                let metadata = ytdl.aux_metadata().await?;
+                // let mut ytdl = YoutubeDl::new(client_old, query.clone());
+                // let metadata = ytdl.aux_metadata().await?;
+                let client = crate::http_utils::get_client();
+                // This call, this is what does all the work
+                let mut input = self.get_query_source(client.clone());
+                let metadata = input
+                    .aux_metadata()
+                    .await
+                    .map_err(CrackedError::AuxMetadataError)?;
                 let my_metadata = MyAuxMetadata(metadata);
-                Ok((ytdl.into(), vec![my_metadata]))
+                Ok((input, vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
