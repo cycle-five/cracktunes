@@ -203,27 +203,8 @@ impl EventHandler for TrackEndHandler {
             },
         };
 
-        let client = crate::http_utils::get_client();
-        let mut input = query.get_query_source(client.clone());
-        // let track_ready = match ready_query2(query).await {
-        //     Ok(track) => track,
-        //     Err(e) => {
-        //         self.data.set_autoplay(self.guild_id, false).await;
-        //         let msg = format!("Error: {}", e);
-        //         tracing::warn!("{}", msg);
-        //         return None;
-        //     },
-        // };
-        // // let MyAuxMetadata(metadata) = &track_ready.metadata;
-        // // let metadata = Some(metadata.clone());
-
-        // let _track = queue_track_ready_front(&self.call, track_ready)
-        //     .await
-        //     .ok()?;
-        let metadata = input.aux_metadata().await.ok()?;
-        tracing::error!("Metadata: {:?}", metadata);
-        let track = self.call.as_ref().lock().await.enqueue_input(input).await;
-        add_metadata_to_track(&track, metadata).await;
+        let call = self.call.clone();
+        queue_query(query, call).await;
 
         let chan_id = channel;
 
@@ -233,6 +214,18 @@ impl EventHandler for TrackEndHandler {
         };
         None
     }
+}
+
+/// Queues a query and returns the track handle.
+pub async fn queue_query(query: QueryType, call: Arc<Mutex<Call>>) -> Option<TrackHandle> {
+    // This is a singleton that holds a reqwest client for the music player.
+    let client = crate::http_utils::get_client();
+    // This call, this is what does all the work
+    let mut input = query.get_query_source(client.clone());
+    let metadata = input.aux_metadata().await.ok()?;
+    let track = call.as_ref().lock().await.enqueue_input(input).await;
+    add_metadata_to_track(&track, metadata).await;
+    Some(track)
 }
 
 /// Event handler to set the volume of the playing track to the volume
