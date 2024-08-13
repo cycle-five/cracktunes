@@ -30,6 +30,7 @@ pub use settings::*;
 pub use utility::*;
 
 pub use crate::errors::CrackedError;
+use dashmap;
 use serenity::all::Message;
 
 pub type MessageResult = Result<Message, CrackedError>;
@@ -82,7 +83,7 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     .into_iter()
     .chain(help::help_commands())
     .chain(music::music_commands())
-    //.chain(utility::utility_commands())
+    .chain(utility::utility_commands())
     .chain(settings::commands())
     //.chain(admin::commands())
     .chain(playlist::commands())

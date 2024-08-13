@@ -931,6 +931,7 @@ dependencies = [
  "async-tungstenite",
  "audiopus",
  "bytes",
+ "cfg-if",
  "chrono",
  "colored",
  "const-random",

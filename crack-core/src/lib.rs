@@ -320,7 +320,10 @@ pub struct DataInner {
     // user priviledges, etc
     #[cfg(feature = "crack-activity")]
     #[serde(skip)]
-    pub activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
+    pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
+    #[cfg(feature = "crack-activity")]
+    #[serde(skip)]
+    pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
     #[serde(skip)]
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
@@ -526,7 +529,9 @@ impl Default for DataInner {
             bot_settings: Default::default(),
             start_time: SystemTime::now(),
             #[cfg(feature = "crack-activity")]
-            activity_map: Arc::new(dashmap::DashMap::new()),
+            user_activity_map: Arc::new(dashmap::DashMap::new()),
+            #[cfg(feature = "crack-activity")]
+            activity_user_map: Arc::new(dashmap::DashMap::new()),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
