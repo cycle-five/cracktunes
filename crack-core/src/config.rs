@@ -226,13 +226,14 @@ pub async fn poise_framework(
 
     //| GatewayIntents::GUILD_PRESENCES
     let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::MESSAGE_CONTENT;
         | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MODERATION
-        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
-        | GatewayIntents::GUILD_INTEGRATIONS
-        | GatewayIntents::GUILD_WEBHOOKS
-        | GatewayIntents::GUILD_INVITES
+        // | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
+        // | GatewayIntents::GUILD_INTEGRATIONS
+        // | GatewayIntents::GUILD_WEBHOOKS
+        // | GatewayIntents::GUILD_INVITES
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_TYPING
@@ -240,10 +241,9 @@ pub async fn poise_framework(
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::DIRECT_MESSAGE_TYPING
         | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-        | GatewayIntents::GUILD_SCHEDULED_EVENTS
-        | GatewayIntents::AUTO_MODERATION_CONFIGURATION
-        | GatewayIntents::AUTO_MODERATION_EXECUTION
-        | GatewayIntents::MESSAGE_CONTENT;
+        // | GatewayIntents::GUILD_SCHEDULED_EVENTS
+        // | GatewayIntents::AUTO_MODERATION_CONFIGURATION
+        // | GatewayIntents::AUTO_MODERATION_EXECUTION
 
     let token = config
         .credentials

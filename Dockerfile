@@ -15,7 +15,7 @@ WORKDIR /app
 # Copy all the files
 COPY . .
 
-RUN cargo build --no-default-features --features crack-tracing -p cracktunes --release
+RUN cargo build --no-default-features --features crack-tracing -p cracktunes
 
 # STAGE2: create a slim image with the compiled binary
 FROM alpine AS runner
@@ -30,7 +30,7 @@ ADD ./data /data
 RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
     && chmod +x /usr/local/bin/yt-dlp
 # Copy the binary from the builder stage
-COPY --from=builder /app/target/release/cracktunes /app/app
+COPY --from=builder /app/target/debug/cracktunes /app/app
 # Copy the start script from the builder stage
 COPY --from=builder /app/scripts/start.sh /app/start.sh
 
