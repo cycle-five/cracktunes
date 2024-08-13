@@ -43,6 +43,7 @@ fn main() -> Result<(), Error> {
 
     dotenvy::dotenv().ok();
     let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(5)
         .enable_all()
         .build()
         .unwrap();

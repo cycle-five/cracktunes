@@ -93,7 +93,7 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
-            prefix: Some(config.get_prefix()),
+            prefix: None,       //Some(config.get_prefix()),
             ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
@@ -224,8 +224,8 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
+    //| GatewayIntents::GUILD_PRESENCES
     let intents = GatewayIntents::non_privileged()
-        | GatewayIntents::privileged()
         | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_MODERATION
@@ -234,7 +234,6 @@ pub async fn poise_framework(
         | GatewayIntents::GUILD_WEBHOOKS
         | GatewayIntents::GUILD_INVITES
         | GatewayIntents::GUILD_VOICE_STATES
-        | GatewayIntents::GUILD_PRESENCES
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_TYPING
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
