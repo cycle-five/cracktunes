@@ -663,9 +663,8 @@ impl QueryType {
                 for r in res {
                     metadata.push(MyAuxMetadata(search_result_to_aux_metadata(&r)));
                 }
-                let ytdl = YoutubeDl::new(client_old.clone(), url.clone());
-                tracing::warn!("ytdl: {:?}", ytdl);
-                Ok((ytdl.into(), metadata))
+                let mut input = self.get_query_source(client.clone());
+                Ok((input, metadata))
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::error!("In SpotifyTracks, this is broken");
