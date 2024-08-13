@@ -225,11 +225,10 @@ pub async fn poise_framework(
     }));
 
     //| GatewayIntents::GUILD_PRESENCES
+    //| GatewayIntents::GUILDS
     //| GatewayIntents::MESSAGE_CONTENT
     let intents = GatewayIntents::non_privileged()
-        | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
-        | GatewayIntents::GUILD_MODERATION
         | GatewayIntents::GUILD_VOICE_STATES;
     // | GatewayIntents::GUILD_MESSAGES
     // | GatewayIntents::GUILD_MESSAGE_TYPING
