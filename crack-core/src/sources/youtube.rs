@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::commands::play_utils::QueryType;
 use crate::http_utils;
 use crate::sources::rusty_ytdl::{
@@ -35,7 +33,7 @@ pub async fn get_rusty_search(
         metadata: Some(metadata.clone()),
         query: QueryType::VideoLink(url.clone()),
         url: Some(url),
-        video: Some(Arc::new(video)),
+        video: Some(video),
     };
     Ok(rusty_search)
 }

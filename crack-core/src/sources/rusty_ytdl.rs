@@ -1,8 +1,10 @@
+use crate::http_utils;
 use crate::{commands::play_utils::QueryType, errors::CrackedError};
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
+use rusty_ytdl::VideoOptions;
 use rusty_ytdl::{
     search::{Playlist, SearchResult, YouTube},
     Video, VideoInfo,
@@ -66,7 +68,7 @@ pub struct RustyYoutubeSearch {
     pub rusty_ytdl: YouTube,
     pub metadata: Option<AuxMetadata>,
     pub url: Option<String>,
-    pub video: Option<Arc<Video>>,
+    pub video: Option<Video>,
     pub query: QueryType,
 }
 
@@ -288,31 +290,38 @@ impl Compose for RustyYoutubeSearch {
     async fn create_async(
         &mut self,
     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-        let query_str = self
-            .query
-            .build_query()
-            .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
-        let search_res = self
-            .rusty_ytdl
-            .search_one(query_str, None)
-            .await
-            .map_err(|e| {
-                <CrackedError as Into<AudioStreamError>>::into(
-                    <VideoError as Into<CrackedError>>::into(e),
-                )
-            })?
-            .ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
-        let search_video = match search_res {
-            SearchResult::Video(video) => video,
-            SearchResult::Playlist(playlist) => {
-                let video = playlist.videos.first().unwrap();
-                video.clone()
+        // let query_str = self
+        //     .query
+        //     .build_query()
+        //     .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
+        // let search_res = self
+        //     .rusty_ytdl
+        //     .search_one(query_str, None)
+        //     .await
+        //     .unwrap_or_default();
+        // let search_res = search_res.ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
+        // let search_video = match search_res {
+        //     SearchResult::Video(video) => video,
+        //     SearchResult::Playlist(playlist) => {
+        //         let video = playlist.videos.first().unwrap();
+        //         video.clone()
+        //     },
+        //     _ => {
+        //         return Err(Into::into(CrackedError::AudioStreamRustyYtdlMetadata));
+        //     },
+        // };
+        if self.metadata.is_none() {
+            self.aux_metadata().await?;
+        }
+        let vid_options = VideoOptions {
+            request_options: RequestOptions {
+                client: Some(http_utils::get_client().clone()),
+                ..Default::default()
             },
-            _ => {
-                return Err(Into::into(CrackedError::AudioStreamRustyYtdlMetadata));
-            },
+            ..Default::default()
         };
-        Video::new(&search_video.url)
+        let url = self.url.as_ref().unwrap();
+        Video::new_with_options(url.clone(), vid_options)
             .map_err(CrackedError::from)?
             .stream()
             .await
@@ -351,6 +360,7 @@ impl Compose for RustyYoutubeSearch {
         let metadata = search_result_to_aux_metadata(&res);
 
         self.metadata = Some(metadata.clone());
+        self.url = Some(metadata.source_url.clone().unwrap());
 
         Ok(metadata)
 
@@ -470,13 +480,13 @@ impl Seek for MediaSourceStream {
 /// FIXME: Does this need to be seekable?
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        //true
-        false
+        true
+        //false
     }
 
     fn byte_len(&self) -> Option<u64> {
-        None
-        // Some(self.stream.content_length() as u64)
+        // None
+        Some(self.stream.content_length() as u64)
         // Some(0)
     }
 }
