@@ -24,6 +24,7 @@ crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
+crack-activity = []
 
 [dependencies]
 rustls = "0.23"

@@ -1,5 +1,6 @@
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
+use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
@@ -317,6 +318,9 @@ pub struct DataInner {
     pub start_time: SystemTime,
     // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
+    #[cfg(feature = "crack-activity")]
+    #[serde(skip)]
+    pub activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     pub authorized_users: HashSet<u64>,
     #[serde(skip)]
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
@@ -521,6 +525,8 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             start_time: SystemTime::now(),
+            #[cfg(feature = "crack-activity")]
+            activity_map: Arc::new(dashmap::DashMap::new()),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),

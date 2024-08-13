@@ -81,6 +81,22 @@ pub async fn get_channel_id(
     }
 }
 
+#[cfg(feature = "crack-activity")]
+/// Updates the activity map with the latest presence.
+pub async fn update_activity_map(data: Data, presence: serenity::Presence) {
+    let id = presence.user.id;
+    let activity = presence.activities.first();
+    if let Some(activity) = activity {
+        data.activity_map.insert(id, activity);
+    } else {
+        if let Some(old_activity) = data.activity_map.get(&id) {
+            if old_activity.is_some() {
+                let _ = data.activity_map.remove(&id);
+            }
+        }
+    }
+}
+
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
 #[cfg(not(tarpaulin_include))]
@@ -98,8 +114,13 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
 
     match event_in {
-        #[cfg(not(feature = "ignore-presence-log"))]
         FullEvent::PresenceUpdate { new_data } => {
+            let _ = new_data;
+            #[cfg(feature = "crack-activity")]
+            update_activity_map(data_global.clone(), new_data.clone()).await;
+            #[cfg(feature = "ignore-presence-log")]
+            Ok(())
+            #[cfg(not(feature = "ignore-presence-log"))]
             log_event!(
                 log_presence_update,
                 guild_settings,
@@ -110,11 +131,6 @@ pub async fn handle_event(
                 event_log,
                 event_name
             )
-        },
-        #[cfg(feature = "ignore-presence-log")]
-        FullEvent::PresenceUpdate { new_data } => {
-            let _ = new_data;
-            Ok(())
         },
         FullEvent::GuildMemberAddition { new_member } => {
             log_event!(

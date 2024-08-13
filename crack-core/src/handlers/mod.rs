@@ -1,3 +1,5 @@
+#[cfg(feature = "crack-activity")]
+pub mod activity;
 pub mod event_log;
 pub mod event_log_impl;
 pub mod idle;
