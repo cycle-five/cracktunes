@@ -663,7 +663,7 @@ impl QueryType {
                 for r in res {
                     metadata.push(MyAuxMetadata(search_result_to_aux_metadata(&r)));
                 }
-                let mut input = self.get_query_source(client.clone());
+                let input = self.get_query_source(client.clone());
                 Ok((input, metadata))
             },
             QueryType::SpotifyTracks(tracks) => {
