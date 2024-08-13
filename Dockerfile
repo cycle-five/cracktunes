@@ -15,7 +15,7 @@ WORKDIR /app
 # Copy all the files
 COPY . .
 
-RUN cargo build --no-default-features --features crack-tracing -p cracktunes
+RUN cargo build --no-default-features --features crack-tracing
 
 # STAGE2: create a slim image with the compiled binary
 FROM alpine AS runner
