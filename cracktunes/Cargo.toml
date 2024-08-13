@@ -82,4 +82,10 @@ tracing = { workspace = true }
 sqlx = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8", features = ["git", "cargo", "si", "build", "gitcl"] }
+# All features enabled
+vergen-git2 = { version = "1.0.0", features = [
+    "build",
+    "cargo",
+    "rustc",
+    "si",
+] }

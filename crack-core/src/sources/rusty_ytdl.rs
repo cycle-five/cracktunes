@@ -290,26 +290,6 @@ impl Compose for RustyYoutubeSearch {
     async fn create_async(
         &mut self,
     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-        // let query_str = self
-        //     .query
-        //     .build_query()
-        //     .unwrap_or("Rick Astley Never Gonna Give You Up".to_string());
-        // let search_res = self
-        //     .rusty_ytdl
-        //     .search_one(query_str, None)
-        //     .await
-        //     .unwrap_or_default();
-        // let search_res = search_res.ok_or_else(|| CrackedError::AudioStreamRustyYtdlMetadata)?;
-        // let search_video = match search_res {
-        //     SearchResult::Video(video) => video,
-        //     SearchResult::Playlist(playlist) => {
-        //         let video = playlist.videos.first().unwrap();
-        //         video.clone()
-        //     },
-        //     _ => {
-        //         return Err(Into::into(CrackedError::AudioStreamRustyYtdlMetadata));
-        //     },
-        // };
         if self.metadata.is_none() {
             self.aux_metadata().await?;
         }
@@ -480,14 +460,13 @@ impl Seek for MediaSourceStream {
 /// FIXME: Does this need to be seekable?
 impl MediaSource for MediaSourceStream {
     fn is_seekable(&self) -> bool {
-        true
-        //false
+        // true
+        false
     }
 
     fn byte_len(&self) -> Option<u64> {
-        // None
-        Some(self.stream.content_length() as u64)
-        // Some(0)
+        None
+        // Some(self.stream.content_length() as u64)
     }
 }
 

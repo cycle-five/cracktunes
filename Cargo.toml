@@ -76,9 +76,10 @@ features = ["all-formats", "all-codecs", "opt-simd"]
 version = "0.5.4"
 
 [workspace.dependencies.tokio]
-version = "1.38"
-default-features = false
-features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
+version = "1.39"
+features = ["full"]
+# default-features = false
+# features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
 [workspace.dependencies]
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
