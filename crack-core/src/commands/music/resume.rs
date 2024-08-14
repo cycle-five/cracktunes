@@ -9,6 +9,11 @@ use crate::{
 #[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Music", slash_command, prefix_command, guild_only)]
 pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
+    resume_internal(ctx).await
+}
+
+/// Internal function to resume the current track.
+pub async fn resume_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
@@ -19,9 +24,9 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     let queue = handler.queue();
 
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
-    verify(queue.resume(), CrackedError::Other("Failed resuming track"))?;
+    verify(queue.resume(), CrackedError::FailedResume)?;
 
-    send_reply(&ctx, CrackedMessage::Resume, false).await?;
+    send_reply(&ctx, CrackedMessage::Resume, true).await?;
 
     Ok(())
 }

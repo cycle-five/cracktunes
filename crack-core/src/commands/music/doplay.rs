@@ -147,6 +147,7 @@ pub async fn optplay(
 }
 
 use crate::messaging::interface as msg_int;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
@@ -158,9 +159,10 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
+
+    use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
     let is_prefix = ctx.prefix() != "/";
@@ -168,8 +170,9 @@ async fn play_internal(
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 
     if msg.is_none() && file.is_none() {
-        // let embed = CreateEmbed::default().description(CrackedError::NoQuery.to_string());
-        // send_embed_response_poise(&ctx, embed).await?;
+        if ctx.is_paused().await.unwrap_or_default() {
+            return resume_internal(ctx).await;
+        }
         let msg_params = SendMessageParams::default()
             .with_channel(ctx.channel_id())
             .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))

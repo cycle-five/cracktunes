@@ -14,7 +14,7 @@ use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
-use songbird::tracks::TrackQueue;
+use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
@@ -22,7 +22,6 @@ use tokio::sync::Mutex;
 use crate::messaging::interface;
 /// TODO: Separate all the messaging related functions from the other extensions and
 /// put them into this extension.
-#[allow(dead_code)]
 pub trait MessageInterfaceCtxExt {
     /// Send a message notifying the user they found a command.
     fn send_found_command(
@@ -33,6 +32,7 @@ pub trait MessageInterfaceCtxExt {
     /// Send a message to the user with the invite link for the bot.
     fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 
+    /// Creates a reply from a CrackedMessage and sends its, optionally as an embed.
     fn send_reply(
         &self,
         message: CrackedMessage,
@@ -49,12 +49,10 @@ pub trait MessageInterfaceCtxExt {
     fn send_grabbed_notice(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 
     /// Send a now playing message
-    fn send_now_playing(
-        &self,
-        chan_id: ChannelId,
-        // cur_pos: Option<Duration>,
-        // metadata: Option<AuxMetadata>,
-    ) -> impl Future<Output = Result<Message, Error>>;
+    fn send_now_playing(&self, chan_id: ChannelId) -> impl Future<Output = Result<Message, Error>>;
+
+    /// Return whether the queue is paused or not.
+    fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 impl MessageInterfaceCtxExt for crate::Context<'_> {
@@ -73,12 +71,6 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
         message: CrackedMessage,
         as_embed: bool,
     ) -> Result<ReplyHandle, CrackedError> {
-        // let color = serenity::Colour::from(&message);
-        // let params = SendMessageParams::new(message)
-        //     .with_color(color)
-        //     .with_as_embed(as_embed);
-        // let handle = self.send_message(params).await?;
-        // Ok(handle)
         PoiseContextExt::send_reply(self, message, as_embed).await
     }
 
@@ -95,8 +87,6 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
     async fn send_now_playing(
         &self,
         chan_id: ChannelId,
-        // cur_pos: Option<Duration>,
-        // metadata: Option<AuxMetadata>,
     ) -> Result<Message, Error> {
         let call = self.get_call().await?;
         // We don't add this message to the cache because we shouldn't delete it.
@@ -108,6 +98,17 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
             //metadata,
         )
         .await
+    }
+
+    async fn is_paused(&self) -> CrackedResult<bool> {
+        let call = self.get_call().await?;
+        let handler = call.lock().await;
+        let topt = handler.queue().current().map(|t| t.clone());
+        if let Some(t) = topt {
+            Ok(t.get_info().await?.playing == PlayMode::Pause)
+        } else {
+            Ok(false)
+        }
     }
 }
 
