@@ -661,20 +661,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo_metadata"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d886547e41f740c616ae73108f6eb70afe6d940c7bc697cb30f13daec073037"
-dependencies = [
- "camino",
- "cargo-platform",
- "semver",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -971,7 +957,7 @@ dependencies = [
  "tungstenite 0.23.0",
  "typemap_rev",
  "url",
- "vergen-git2",
+ "vergen-gitcl",
 ]
 
 [[package]]
@@ -1029,7 +1015,7 @@ dependencies = [
  "tracing",
  "tracing-bunyan-formatter",
  "tracing-subscriber",
- "vergen-git2",
+ "vergen-gitcl",
  "warp",
 ]
 
@@ -1802,7 +1788,7 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows 0.48.0",
+ "windows",
 ]
 
 [[package]]
@@ -1865,19 +1851,6 @@ name = "gimli"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
-
-[[package]]
-name = "git2"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b903b73e45dc0c6c596f2d37eccece7c1c8bb6e4407b001096387c63d0d93724"
-dependencies = [
- "bitflags 2.6.0",
- "libc",
- "libgit2-sys",
- "log",
- "url",
-]
 
 [[package]]
 name = "glob"
@@ -2628,18 +2601,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
-name = "libgit2-sys"
-version = "0.17.0+1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10472326a8a6477c3c20a64547b0059e4b0d086869eee31e6d7da728a8eb7224"
-dependencies = [
- "cc",
- "libc",
- "libz-sys",
- "pkg-config",
-]
-
-[[package]]
 name = "libloading"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2662,18 +2623,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf4e226dcd58b4be396f7bd3c20da8fdee2911400705297ba7d2d7cc2c30f716"
 dependencies = [
  "cc",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
-name = "libz-sys"
-version = "1.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdc53a7799a7496ebc9fd29f31f7df80e83c9bda5299768af5f9e59eeea74647"
-dependencies = [
- "cc",
- "libc",
  "pkg-config",
  "vcpkg",
 ]
@@ -2968,15 +2917,6 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
-]
-
-[[package]]
-name = "ntapi"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
@@ -4848,7 +4788,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16d23b015676c90a0f01c197bfdc786c20342c73a0afdda9025adb0bc42940a8"
 dependencies = [
  "bytecount",
- "cargo_metadata 0.14.2",
+ "cargo_metadata",
  "error-chain",
  "glob",
  "pulldown-cmark",
@@ -5587,20 +5527,6 @@ checksum = "0b3a0d0aba8bf96a0e1ddfdc352fc53b3df7f39318c71854910c3c4b024ae52c"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.30.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
-dependencies = [
- "cfg-if",
- "core-foundation-sys",
- "libc",
- "ntapi",
- "once_cell",
- "windows 0.52.0",
 ]
 
 [[package]]
@@ -6475,26 +6401,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c32e7318e93a9ac53693b6caccfb05ff22e04a44c7cf8a279051f24c09da286f"
 dependencies = [
  "anyhow",
- "cargo_metadata 0.18.1",
  "derive_builder 0.20.0",
- "getset",
- "regex",
- "rustc_version",
  "rustversion",
- "sysinfo",
  "time",
  "vergen-lib",
 ]
 
 [[package]]
-name = "vergen-git2"
+name = "vergen-gitcl"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62c52cd2b2b8b7ec75fc20111b3022ac3ff83e4fc14b9497cfcfd39c54f9c67"
+checksum = "3bbdc9746577cb4767f218d320ee0b623d415e8130332f8f562b910b61cc2c4e"
 dependencies = [
  "anyhow",
  "derive_builder 0.20.0",
- "git2",
  "rustversion",
  "time",
  "vergen",
@@ -6784,16 +6704,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
 dependencies = [
  "windows-targets 0.48.5",
-]
-
-[[package]]
-name = "windows"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
-dependencies = [
- "windows-core",
- "windows-targets 0.52.6",
 ]
 
 [[package]]
