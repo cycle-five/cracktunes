@@ -242,7 +242,6 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
         .untuple_one()
 }
 
-
 #[cfg(test)]
 mod test {
     use serde_json;
