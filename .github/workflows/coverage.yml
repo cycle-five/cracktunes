@@ -26,7 +26,7 @@ jobs:
 
       - name: "Install yt-dlp"
         run: |
-          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/latest/yt-dlp_linux
           chmod +x /usr/local/bin/yt-dlp
         shell: bash
 
@@ -70,7 +70,7 @@ jobs:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
           WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
         run: |
-          cargo tarpaulin --verbose --all --timeout 120 --out xml
+          cargo tarpaulin --ignore-tests --verbose --all --timeout 120 --out xml
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v4
