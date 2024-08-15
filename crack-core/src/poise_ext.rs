@@ -84,10 +84,7 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
         self.send_reply_embed(CrackedMessage::GrabbedNotice).await
     }
 
-    async fn send_now_playing(
-        &self,
-        chan_id: ChannelId,
-    ) -> Result<Message, Error> {
+    async fn send_now_playing(&self, chan_id: ChannelId) -> Result<Message, Error> {
         let call = self.get_call().await?;
         // We don't add this message to the cache because we shouldn't delete it.
         interface::send_now_playing(
@@ -103,7 +100,7 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
     async fn is_paused(&self) -> CrackedResult<bool> {
         let call = self.get_call().await?;
         let handler = call.lock().await;
-        let topt = handler.queue().current().map(|t| t.clone());
+        let topt = handler.queue().current();
         if let Some(t) = topt {
             Ok(t.get_info().await?.playing == PlayMode::Pause)
         } else {
