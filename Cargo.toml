@@ -97,7 +97,7 @@ reqwest_old = { version = "=0.11", default-features = false, package = "reqwest"
 ] }
 
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
-vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
+#vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
