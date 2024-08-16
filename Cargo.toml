@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "cracktunes",
+  "crack-cli",
   "crack-core",
   "crack-osint",
   "crack-gpt",
@@ -117,9 +117,9 @@ cargo-dist-version = "0.21.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell", "npm"]
+installers = ["shell"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
+targets = ["x86_64-unknown-linux-gnu"]
 # Which actions to run on pull requests
 pr-run-mode = "upload"
 # Whether to install an updater program
