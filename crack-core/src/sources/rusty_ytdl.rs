@@ -604,7 +604,7 @@ mod test {
             //println!("{:?}", res);
             if let Err(err) = res {
                 let expected_err = err.to_string().contains(phrase);
-                println!("{:?}\n{}\n", res, expected_err);
+                println!("{:?}\n{}\n", err, expected_err);
             }
         }
     }

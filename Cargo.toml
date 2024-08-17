@@ -104,7 +104,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
-
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.21.0"
 # CI backends to support
@@ -132,9 +131,13 @@ default-features = false
 # Features to pass to cargo build
 features = ["crack-tracing"]
 custom-success-message = "Be of Mæth and malinger not with Commies!"
-
+# Run on latest ubuntu please
 [workspace.metadata.dist.github-custom-runners]
 x86_64-unknown-linux-gnu = "ubuntu-latest"
+
+[[workspace.metadata.dist.extra-artifacts]]
+artifacts = ["data"]
+build = ["tar", "-cf", "data.tar", "data"]
 
 [patch.crates-io.serenity-voice-model]
 git = "https://github.com/serenity-rs/serenity"
