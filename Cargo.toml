@@ -30,10 +30,7 @@ features = [
 
 [workspace.dependencies.serenity]
 # Broken? try self-host.
-# git = "https://github.com/CycleFive/serenity"
-#git = "https://github.com/serenity-rs/serenity"
 version = "0.12"
-# branch = "current"
 default-features = false
 features = [
   "builder",
@@ -53,11 +50,9 @@ features = [
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-# git = "https://github.com/cycle-five/songbird"
 git = "https://github.com/serenity-rs/songbird"
 branch = "current"
 version = "0.4.3"
-# commit = "2d7dc29"
 features = [
   "driver",
   "gateway",
@@ -78,8 +73,6 @@ version = "0.5.4"
 [workspace.dependencies.tokio]
 version = "1.39"
 features = ["full"]
-# default-features = false
-# features = ["macros", "rt", "rt-multi-thread", "signal", "sync", "io-util"]
 
 [workspace.dependencies]
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
@@ -97,7 +90,6 @@ reqwest_old = { version = "=0.11", default-features = false, package = "reqwest"
 ] }
 
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
-#vergen = { version = "9", features = ["git", "cargo", "si", "build", "gitcl"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
