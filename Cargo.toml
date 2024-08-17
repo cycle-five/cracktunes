@@ -56,8 +56,8 @@ features = [
 # git = "https://github.com/cycle-five/songbird"
 git = "https://github.com/serenity-rs/songbird"
 branch = "current"
-version = "0.4.2"
-# path = "/home/lothrop/src/songbird"
+version = "0.4.3"
+# commit = "2d7dc29"
 features = [
   "driver",
   "gateway",
@@ -65,8 +65,8 @@ features = [
   "rustls",
   "receive",
   "builtin-queue",
-  "simd-json",
 ]
+# "simd-json",
 
 [workspace.dependencies.symphonia]
 version = "0.5.4"
@@ -83,10 +83,10 @@ features = ["full"]
 
 [workspace.dependencies]
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
-crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
-crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
-crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
-crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
+# crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
+# crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
+# crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
+# crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
 # poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
 reqwest_old = { version = "=0.11", default-features = false, package = "reqwest", features = [
   "blocking",
@@ -112,6 +112,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
+
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.21.0"
 # CI backends to support
@@ -139,6 +140,9 @@ default-features = false
 # Features to pass to cargo build
 features = ["crack-tracing"]
 custom-success-message = "Be of Mæth and malinger not with Commies!"
+
+[workspace.metadata.dist.github-custom-runners]
+x86_64-unknown-linux-gnu = "ubuntu-latest"
 
 [patch.crates-io.serenity-voice-model]
 git = "https://github.com/serenity-rs/serenity"

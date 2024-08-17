@@ -51,6 +51,7 @@ crack-metrics = ["prometheus", "warp"]
 # crack-osint = { path = "../crack-osint/", optional = true }
 # crack-gpt = { path = "../crack-gpt/", optional = true }
 # crack-bf = { path = "../crack-bf/", optional = true }
+crack-core = { path = "../crack-core/" }
 
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"
@@ -68,7 +69,7 @@ opentelemetry = { version = "0.24", optional = true }
 opentelemetry_sdk = { version = "0.24", optional = true }
 tracing-bunyan-formatter = { version = "0.3", optional = true }
 
-crack-core = { workspace = true }
+# crack-core = { workspace = true }
 # Core's dependencies
 poise = { workspace = true }
 tokio = { workspace = true }

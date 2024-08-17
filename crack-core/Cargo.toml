@@ -25,6 +25,7 @@ crack-metrics = ["prometheus"]
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
+crack-voting = ["dep:crack-voting"]
 
 [dependencies]
 cfg-if = "1"
@@ -57,6 +58,7 @@ futures = "0.3"
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
+crack-voting = { path = "../crack-voting", optional = true }
 
 reqwest = { workspace = true }
 reqwest_old = { workspace = true }
