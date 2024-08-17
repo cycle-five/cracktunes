@@ -134,6 +134,11 @@ npm-scope = "@cracktunes"
 windows-archive = ".tar.gz"
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
+# Whether default-features should be enabled with cargo build
+default-features = false
+# Features to pass to cargo build
+features = ["crack-tracing"]
+custom-success-message = "Be of Mæth and malinger not with Commies!"
 
 [patch.crates-io.serenity-voice-model]
 git = "https://github.com/serenity-rs/serenity"

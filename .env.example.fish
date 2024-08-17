@@ -1,41 +1,41 @@
 #
 # [REQUIRED] To authenticate with Discord, you must create a Discord app.
 # See more: https://discord.com/developers/applications
-export DISCORD_TOKEN=XXXXXX
-export DISCORD_APP_ID=XXXXXX
+set -x DISCORD_TOKEN XXXXXX
+set -x DISCORD_APP_ID XXXXXX
 
 #
 # [REQUIRED] Postgres database URL for the bot to use.
 #
-export DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
-export PG_USER=postgres
-export PG_PASSWORD=mysecretpassword
+set -x DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5432/postgres
+set -x PG_USER postgres
+set -x PG_PASSWORD mysecretpassword
 
 #
 # [Optional] To support Spotify links, you must create a Spotify app.
 # See more: https://developer.spotify.com/dashboard/applications
-export SPOTIFY_CLIENT_ID=XXXXXX
-export SPOTIFY_CLIENT_SECRET=XXXXXX
+set -x SPOTIFY_CLIENT_ID XXXXXX
+set -x SPOTIFY_CLIENT_SECRET XXXXXX
 
 #
 # [Optional] OpenAI API key for the chatgpt feature.
 #
-export OPENAI_API_KEY=XXXXXX
+set -x OPENAI_API_KEY XXXXXX
 
 #
 # [Optional] pgadmin support
 #
-export PGADMIN_MAIL=XXXXXX
-export PGADMIN_PW=XXXXXX
+set -x PGADMIN_MAIL XXXXXX
+set -x PGADMIN_PW XXXXXX
 
 #
 # [Optional] VirusTotal API key for the url scanning.
 #
-export VIRUSTOTAL_API_KEY=XXXXXX
+set -x VIRUSTOTAL_API_KEY XXXXXX
 
 #
 # [Optional] top.gg and discordbotlist.com integration.
 #
-export TOPGG_TOKEN=XXXXXX
-export DBL_TOKEN=XXXXXX
-export WEBHOOK_SECRET=XXXXXX
+set -x TOPGG_TOKEN XXXXXX
+set -x DBL_TOKEN XXXXXX
+set -x WEBHOOK_SECRET XXXXXX
