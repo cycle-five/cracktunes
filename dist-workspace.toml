@@ -1,43 +1,6 @@
 [workspace]
 members = ["cargo:crack-cli"]
 
-[workspace.dist]
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.21.0"
-# CI backends to support
-ci = "github"
-# The installers to generate for each app
-installers = ["shell"]
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-unknown-linux-gnu"]
-# Which actions to run on pull requests
-pr-run-mode = "upload"
-# Whether to install an updater program
-install-updater = false
-# Where to host releases
-hosting = "github"
-# The archive format to use for non-windows builds (defaults .tar.xz)
-unix-archive = ".tar.gz"
-# A namespace to use when publishing this package to the npm registry
-npm-scope = "@cracktunes"
-# The archive format to use for windows builds (defaults .zip)
-windows-archive = ".tar.gz"
-# Path that installers should place binaries in
-install-path = "CARGO_HOME"
-# Whether default-features should be enabled with cargo build
-default-features = false
-# Features to pass to cargo build
-features = ["crack-tracing"]
-custom-success-message = "Be of Mæth and malinger not with Commies!"
-
-# Run on latest ubuntu please
-[workspace.dist.github-custom-runners]
-x86_64-unknown-linux-gnu = "ubuntu-latest"
-
-[[workspace.dist.extra-artifacts]]
-artifacts = ["data.tar"]
-build = ["tar", "-cf", "data.tar", "data"]
-
 # Config for 'cargo dist'
 [dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
@@ -52,15 +15,13 @@ targets = ["x86_64-unknown-linux-gnu"]
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
+# Where to host releases
+hosting = "github"
+custom-success-message = "Be of Mæth and malinger not with Commies!"
+# Run on latest ubuntu
+[package.metadata.dist.github-custom-runners]
+x86_64-unknown-linux-gnu = "ubuntu-latest"
 
-# [package]
-# build-command = [
-#   "cargo",
-#   "build",
-#   "--profile=release-with-performance",
-#   "--no-default-features",
-#   "--features",
-#   "crack-tracing",
-#   "-p",
-#   "cracktunes",
-# ]
+[[package.metadata.dist.extra-artifacts]]
+artifacts = ["data.tar"]
+build = ["tar", "-cf", "data.tar", "data"]
