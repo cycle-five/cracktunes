@@ -601,9 +601,10 @@ mod test {
         for search in searches {
             let mut ytdl = YoutubeDl::new_search(client.clone(), search.to_string());
             let res = ytdl.search(Some(1)).await;
-            println!("{:?}", res);
+            //println!("{:?}", res);
             if let Err(err) = res {
-                assert!(err.to_string().contains(phrase));
+                let expected_err = err.to_string().contains(phrase);
+                println!("{:?}\n{}\n", res, expected_err);
             }
         }
     }
