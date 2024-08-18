@@ -121,11 +121,18 @@ pub async fn do_join(
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
         Err(err) => {
-            let str = err.to_string().clone();
-            let my_err = CrackedError::JoinChannelError(err);
-            let msg = CrackedMessage::CrackedRed(str.clone());
-            ctx.send_reply_embed(msg).await?;
-            return Err(Box::new(my_err));
+            let call = match manager.get(guild_id) {
+                Some(call) => call,
+                None => {
+                    tracing::warn!("Error joining channel: {:?}", err);
+                    let str = err.to_string().clone();
+                    let my_err = CrackedError::JoinChannelError(err);
+                    let msg = CrackedMessage::CrackedRed(str.clone());
+                    ctx.send_reply_embed(msg).await?;
+                    return Err(Box::new(my_err));
+                },
+            };
+            call
         },
     };
     //let call = tokio::time::timeout(Duration::from_secs(5), call).await?;

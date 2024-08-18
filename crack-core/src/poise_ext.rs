@@ -400,7 +400,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed)
-            .with_embed(embed);
+            .with_embed(embed)
+            .with_reply(true);
         let handle = self.send_message(params).await?;
         Ok(handle)
     }
