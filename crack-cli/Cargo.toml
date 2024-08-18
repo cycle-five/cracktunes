@@ -21,20 +21,8 @@ path-guid = "9E215C2B-01F0-419D-BA4F-0E8C9FAC57AB"
 license = true
 eula = false
 
-# [package.metadata.dist]
-# features = [
-#     "crack-gpt",
-#     "crack-osint",
-#     "crack-bf",
-#     "crack-tracing",
-#     "ignore-presence-log",
-# ]
-
 [features]
 default = ["crack-tracing", "ignore-presence-log"]
-# crack-gpt = ["dep:crack-gpt"]
-# crack-osint = ["dep:crack-osint"]
-# crack-bf = ["dep:crack-bf"]
 ignore-presence-log = []
 
 crack-telemetry = [
@@ -47,15 +35,10 @@ crack-tracing = ["tracing-subscriber"]
 crack-metrics = ["prometheus", "warp"]
 
 [dependencies]
-# # modules, each should be optional
-# crack-osint = { path = "../crack-osint/", optional = true }
-# crack-gpt = { path = "../crack-gpt/", optional = true }
-# crack-bf = { path = "../crack-bf/", optional = true }
 crack-core = { path = "../crack-core/" }
 
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"
-# tracing-appender = { version = "0.2", optional = true }
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
 ], optional = true }

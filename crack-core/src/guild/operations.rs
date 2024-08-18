@@ -47,6 +47,8 @@ pub trait GuildSettingsOperations {
     fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn get_autoplay_setting(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
     fn set_volume(&self, guild_id: GuildId, volume: u64) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
@@ -268,6 +270,25 @@ impl GuildSettingsOperations for Data {
             .await
             .get(&guild_id)
             .map(|settings| settings.autoplay)
+            .unwrap_or(true)
+    }
+
+    async fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.autoplay = autoplay;
+            });
+    }
+
+    async fn get_autoplay_setting(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|e| e.autoplay)
             .unwrap_or(true)
     }
 

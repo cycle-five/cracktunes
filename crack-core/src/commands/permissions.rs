@@ -29,6 +29,8 @@ pub async fn cmd_check_music_internal(
         },
     };
 
+    return Ok(true);
+
     let guild_settings = match ctx.data().get_guild_settings(guild_id).await {
         Some(guild_settings) => {
             //let command_channel = guild_settings.command_channels.music_channel;
