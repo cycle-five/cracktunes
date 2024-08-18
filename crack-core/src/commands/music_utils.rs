@@ -111,14 +111,23 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 }
 
 /// Join a voice channel.
-#[tracing::instrument]
 pub async fn do_join(
     ctx: Context<'_>,
     manager: &songbird::Songbird,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<Arc<Mutex<Call>>, Error> {
-    let call = manager.join(guild_id, channel_id).await?;
+    tracing::warn!("Joining channel: {:?}", channel_id);
+    let call = match manager.join(guild_id, channel_id).await {
+        Ok(call) => call,
+        Err(err) => {
+            let str = err.to_string().clone();
+            let my_err = CrackedError::JoinChannelError(err);
+            let msg = CrackedMessage::CrackedRed(str.clone());
+            ctx.send_reply_embed(msg).await?;
+            return Err(Box::new(my_err));
+        },
+    };
     //let call = tokio::time::timeout(Duration::from_secs(5), call).await?;
     // match call {
     //     // If we successfully joined the channel, set the global handlers.
