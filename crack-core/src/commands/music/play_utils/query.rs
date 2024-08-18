@@ -141,6 +141,16 @@ impl QueryType {
         }
     }
 
+    /// Build a query string for a lyric video from the query type.
+    pub fn build_query_lyric(&self) -> Option<String> {
+        self.build_query().map(|x| format!("{} lyric video", x))
+    }
+
+    /// Build a query string for a lyric video from the query type.
+    pub fn build_query_explicit(&self, query: Option<String>) -> Option<String> {
+        query.map(|x| format!("{} explicit", x))
+    }
+
     // FIXME: Do you want to have a reqwest client we keep around and pass into
     // this instead of creating a new one every time?
     // FIXME: This is super expensive, literally we need to do this a lot better.

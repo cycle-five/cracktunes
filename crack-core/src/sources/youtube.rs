@@ -142,7 +142,16 @@ pub async fn search_query_to_source_and_metadata_ytdl(
 /// Build a query from AuxMetadata.
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        "{} - {}",
+        "{} {}",
+        aux_metadata.track.clone().unwrap_or_default(),
+        aux_metadata.artist.clone().unwrap_or_default(),
+    )
+}
+
+/// Build a query from AuxMetadata for lyric videos.
+pub fn build_query_lyric_video_aux_metadata(aux_metadata: &AuxMetadata) -> String {
+    format!(
+        "{} {} lyric video",
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
     )

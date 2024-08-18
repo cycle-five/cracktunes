@@ -102,8 +102,9 @@ impl GuildSettingsOperations for Data {
     async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
         let mut guard = self.guild_settings_map.write().await;
         let _ = guard
-            .get_mut(&guild_id)
-            .map(|x| x.set_music_channel(channel_id.get()));
+            .entry(guild_id)
+            .and_modify(|x| x.set_music_channel(channel_id.get()))
+            .or_insert_with(|| GuildSettings::new(guild_id, None, None));
     }
 
     /// Save the guild settings to the database.

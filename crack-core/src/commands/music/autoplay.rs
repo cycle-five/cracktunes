@@ -23,9 +23,9 @@ pub async fn autoplay(
 pub async fn toggle_autoplay(ctx: Context<'_>, value: Option<bool>) -> Result<(), Error> {
     fn autoplay_msg(autoplay: bool) -> CrackedMessage {
         if autoplay {
-            CrackedMessage::AutoplayOff
-        } else {
             CrackedMessage::AutoplayOn
+        } else {
+            CrackedMessage::AutoplayOff
         }
     }
 
