@@ -12,33 +12,12 @@ use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-//#[derive(Clone, Debug, Default)]
+/// Data needed to queue a track.
 pub struct TrackReadyData {
-    //pub source: Box<SongbirdInput>,
     pub source: SongbirdInput,
     pub metadata: MyAuxMetadata,
     pub user_id: Option<UserId>,
     pub username: Option<String>,
-}
-
-/// Takes a query and returns a track that is ready to be played, along with relevant metadata.
-/// FIXME:
-#[allow(dead_code)]
-pub async fn ready_query2(query_type: QueryType) -> Result<TrackReadyData, CrackedError> {
-    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
-        query_type.get_track_source_and_metadata(None).await?;
-    let metadata = match metadata_vec.first() {
-        Some(x) => x.clone(),
-        None => {
-            return Err(CrackedError::Other("metadata.first() failed"));
-        },
-    };
-    Ok(TrackReadyData {
-        source,
-        metadata,
-        user_id: None,
-        username: None,
-    })
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -378,29 +357,6 @@ pub fn get_msg(
     } else {
         step1
     }
-}
-
-/// Rotates the queue by `n` tracks to the right.
-#[cfg(not(tarpaulin_include))]
-#[tracing::instrument]
-pub async fn _rotate_tracks(
-    call: &Arc<Mutex<Call>>,
-    n: usize,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let handler = call.lock().await;
-
-    verify(
-        handler.queue().len() > 2,
-        CrackedError::Other("cannot rotate queues smaller than 3 tracks"),
-    )?;
-
-    handler.queue().modify_queue(|queue| {
-        let mut not_playing = queue.split_off(1);
-        not_playing.rotate_right(n);
-        queue.append(&mut not_playing);
-    });
-
-    Ok(handler.queue().current_queue())
 }
 
 #[cfg(test)]
