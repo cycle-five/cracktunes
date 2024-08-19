@@ -31,8 +31,8 @@ pub async fn toggle_autoplay(ctx: Context<'_>, value: Option<bool>) -> Result<()
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
-    let autoplay = if value.is_some() {
-        value.unwrap()
+    let autoplay = if let Some(value_unwrap) = value {
+        value_unwrap
     } else {
         !ctx.data().get_autoplay(guild_id).await
     };

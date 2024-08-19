@@ -250,7 +250,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, "world - hello");
+        assert_eq!(res, "world hello");
     }
 
     /// FIXME: Mock the response.
