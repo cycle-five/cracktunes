@@ -5,6 +5,7 @@ use ::serenity::builder::CreateEmbed;
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude as serenity;
 use serenity::{Mention, Mentionable, UserId};
+use songbird::error::ControlError;
 use std::time::Duration;
 
 use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
@@ -96,6 +97,10 @@ pub enum CrackedMessage {
     Search,
     Seek {
         timestamp: String,
+    },
+    SeekFail {
+        timestamp: Cow<'static, String>,
+        error: ControlError,
     },
     Shuffle,
     Skip,
@@ -313,6 +318,9 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
             },
             Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
+            Self::SeekFail { timestamp, error } => {
+                f.write_str(&format!("{} **{}**!\n{}", SEEK_FAIL, timestamp, error))
+            },
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
             Self::SkipTo { title, url } => {

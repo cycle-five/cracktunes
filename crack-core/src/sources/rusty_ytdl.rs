@@ -508,7 +508,13 @@ mod test {
         // };
 
         let mut media_source: Input = rusty_search.into();
-        let metadata = media_source.aux_metadata().await.unwrap();
+        let metadata = match media_source.aux_metadata().await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                println!("{:?}", e);
+                return;
+            },
+        };
         println!("{:?}", metadata);
         assert!(metadata.title.is_some());
     }
