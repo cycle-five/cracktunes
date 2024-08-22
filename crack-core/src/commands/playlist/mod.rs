@@ -54,12 +54,12 @@ pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
 pub fn commands() -> [crate::Command; 8] {
     [
         playlist(),
-        addto(),
-        create(),
-        delete(),
-        get(),
-        list(),
-        pplay(),
-        loadspotify(),
+        // addto(),
+        // create(),
+        // delete(),
+        // get(),
+        // list(),
+        // pplay(),
+        // loadspotify(),
     ]
 }
