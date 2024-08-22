@@ -1,5 +1,4 @@
 use config_file::FromConfigFile;
-use crack_core::guild::settings::get_log_prefix;
 use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
 use crack_core::sources::ytdl::HANDLE;
 use crack_core::BotConfig;
@@ -9,6 +8,9 @@ pub use crack_core::PhoneCodeData;
 use std::collections::HashMap;
 use std::env;
 use tokio::runtime::Handle;
+
+#[cfg(feature = "crack-tracing")]
+use crack_core::guild::settings::get_log_prefix;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 #[cfg(feature = "crack-metrics")]
@@ -49,6 +51,7 @@ fn main() -> Result<(), Error> {
         .unwrap();
     rt.block_on(async {
         *HANDLE.lock().unwrap() = Some(Handle::current());
+        #[cfg(feature = "crack-tracing")]
         init_telemetry("").await;
         match main_async(event_log_async).await {
             Ok(_) => (),
@@ -179,10 +182,8 @@ async fn load_bot_config() -> Result<BotConfig, Error> {
     Ok(config_with_creds.clone())
 }
 
-// fn combine_log_layers(
-//     stdout_log: Box<impl tracing_subscriber::Layer<Registry>>,
-//     debug_log: Box<impl tracing_subscriber::Layer<Registry>>,
-// ) -> Box<impl tracing_subscriber::Layer<Registry>> {
+/// Combine the stdout and debug log layers
+#[cfg(feature = "crack-tracing")]
 fn combine_log_layers(
     stdout_log: impl tracing_subscriber::Layer<Registry>,
     debug_log: impl tracing_subscriber::Layer<Registry>,
@@ -205,7 +206,8 @@ fn combine_log_layers(
         }))
 }
 
-//fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
+/// Get the debug log layer
+#[cfg(feature = "crack-tracing")]
 fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
@@ -250,7 +252,8 @@ fn get_bunyan_writer() -> Arc<std::fs::File> {
     Arc::new(debug_file)
 }
 
-// fn get_current_log_layer() -> Box<dyn tracing_subscriber::Layer<Registry>> {
+/// Get the current log layer
+#[cfg(feature = "crack-tracing")]
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     let stdout_log = tracing_subscriber::fmt::layer().pretty();
 
@@ -278,8 +281,11 @@ fn init_metrics() {
 #[tracing::instrument]
 /// Initialize logging and tracing.
 fn init_logging() {
-    let final_log = get_current_log_layer();
-    tracing_subscriber::registry().with(final_log).init();
+    #[cfg(feature = "crack-tracing")]
+    {
+        let final_log = get_current_log_layer();
+        tracing_subscriber::registry().with(final_log).init();
+    }
 
     // init_telemetry("");
 
@@ -291,6 +297,7 @@ const SERVICE_NAME: &str = "crack-tunes";
 
 // #[tracing::instrument]
 /// Initialize logging and tracing.
+#[cfg(feature = "crack-tracing")]
 pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Create a gRPC exporter
     // let exporter = opentelemetry_otlp::new_exporter()
@@ -324,6 +331,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
         BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
 
     // Layer for printing to stdout.
+    #[cfg(feature = "crack-tracing")]
     let stdout_formatting_layer = get_current_log_layer();
 
     // global::set_text_map_propagator(TraceContextPropagator::new());
