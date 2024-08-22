@@ -7,6 +7,24 @@ pub const CLEARED: &str = "🗑️ Cleared!";
 pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_SIZE_SET: &str = "🗑️ Channel size set!";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
+pub const COINFLIP: &str = "You flipped a coin and it landed on";
+#[macro_export]
+macro_rules! DICE_ROLL {
+    ($number_of_dice:expr, $sides_per_die:expr, $res:expr) => {
+        &format!(
+            "You rolled {} dice with {} sides. Here are the results:\n{}",
+            $number_of_dice,
+            $sides_per_die,
+            $res.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    };
+}
+
+// pub const COMMAND_DISABLED: &str = "⚠️ Command is disabled!";
+// pub const COMMAND_ENABLED: &str = "✅ Command is enabled!";
 
 pub const AUTHORIZED: &str = "✅ User has been authorized.";
 pub const AUTO_ROLE: &str = "Auto Role";

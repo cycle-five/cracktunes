@@ -27,6 +27,7 @@ pub enum CrackedMessage {
         channel_name: String,
     },
     CountryName(String),
+    Coinflip(bool),
     ChannelSizeSet {
         id: serenity::ChannelId,
         name: String,
@@ -42,6 +43,11 @@ pub enum CrackedMessage {
     CrackedRed(String),
     CreateEmbed(Box<CreateEmbed>),
     CommandFound(String),
+    DiceRoll {
+        dice: u32,
+        sides: u32,
+        results: Vec<u32>,
+    },
     DomainInfo(String),
     Error,
     ErrorHttp(serenity::http::HttpError),
@@ -237,6 +243,7 @@ impl Display for CrackedMessage {
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
             Self::CountryName(name) => f.write_str(name),
+            Self::Coinflip(heads) => f.write_str(&format!("{} {}", COINFLIP, heads)),
             Self::Clear => f.write_str(CLEARED),
             Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
             Self::ChannelSizeSet { id, name, size } => {
@@ -254,6 +261,11 @@ impl Display for CrackedMessage {
             Self::CreateEmbed(embed) => f.write_str(&format!("{:#?}", embed)),
             Self::CommandFound(s) => f.write_str(s),
             Self::DomainInfo(info) => f.write_str(info),
+            Self::DiceRoll {
+                dice,
+                sides,
+                results,
+            } => f.write_str(crate::DICE_ROLL!(dice, sides, results)),
             Self::Error => f.write_str(ERROR),
             Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),
             Self::GrabbedNotice => f.write_str(GRABBED_NOTICE),
@@ -535,7 +547,7 @@ mod test {
         assert_eq!(message.discriminant(), 3);
 
         let message = CrackedMessage::Clear;
-        assert_eq!(message.discriminant(), 10);
+        assert_eq!(message.discriminant(), 11);
     }
 
     #[test]

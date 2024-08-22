@@ -80,3 +80,8 @@ pub fn music_commands() -> [crate::Command; 24] {
         voteskip(),
     ]
 }
+
+/// Get the game commands.
+pub fn game_commands() -> [crate::Command; 2] {
+    [coinflip(), rolldice()]
+}

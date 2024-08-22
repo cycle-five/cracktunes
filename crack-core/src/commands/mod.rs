@@ -84,8 +84,9 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     .chain(help::help_commands())
     .chain(music::music_commands())
     .chain(utility::utility_commands())
+    .chain(music::game_commands())
     .chain(settings::commands())
-    //.chain(admin::commands())
+    .chain(admin::commands())
     .chain(playlist::commands())
     .collect()
 }

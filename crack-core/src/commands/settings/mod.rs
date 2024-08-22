@@ -17,6 +17,7 @@ pub use toggle::*;
 /// Settings commands
 #[poise::command(
     prefix_command,
+    slash_command,
     subcommands(
         "set",
         "get",
@@ -49,8 +50,8 @@ pub async fn settings(
 pub fn commands() -> Vec<crate::Command> {
     vec![settings()]
         .into_iter()
-        //.chain(set::commands())
-        //.chain(get::commands())
+        .chain(set::commands())
+        .chain(get::commands())
         .collect()
 }
 
