@@ -3,6 +3,8 @@
 /*/target/
 
 # data generated during runtime
+data/
+crack-core/data/
 /logs/
 scratch
 
