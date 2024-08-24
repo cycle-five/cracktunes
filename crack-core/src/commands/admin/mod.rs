@@ -93,6 +93,7 @@ pub fn commands() -> Vec<crate::Command> {
         role(),
         kick(),
         mute(),
+        mute_others(),
         unmute(),
         timeout(),
         changenicks(),
