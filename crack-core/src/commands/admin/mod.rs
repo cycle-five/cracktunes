@@ -68,6 +68,7 @@ use crate::commands::help;
         "mute",
         "message_cache",
         "move_users_to",
+        "mute_others",
         "undeafen",
         "unmute",
         "random_mute",
