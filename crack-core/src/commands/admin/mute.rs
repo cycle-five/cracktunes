@@ -36,7 +36,12 @@ pub async fn mute(
     required_permissions = "ADMINISTRATOR",
     ephemeral
 )]
-pub async fn mute_others(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn mute_others(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Unmute ratrher than mute."]
+    unmute: bool,
+) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // Get the voice channel of the user
     let author = ctx.author();
@@ -51,10 +56,17 @@ pub async fn mute_others(ctx: Context<'_>) -> Result<(), Error> {
             voice_states,
         )
     };
-    mute_others_internal(&ctx, guild_id, voice_states, author.id, voice_channel, true)
-        .await
-        .map(|_| ())
-        .map_err(Into::into)
+    mute_others_internal(
+        &ctx,
+        guild_id,
+        voice_states,
+        author.id,
+        voice_channel,
+        !unmute,
+    )
+    .await
+    .map(|_| ())
+    .map_err(Into::into)
     // match mute_others_internal(&ctx, guild_id, &guild, author.id, voice_channel, true).await {
     //     Ok(crack_msg) => send_reply(&ctx, crack_msg, true)
     //         .await
