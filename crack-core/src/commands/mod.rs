@@ -72,7 +72,7 @@ pub fn all_commands() -> Vec<crate::Command> {
 /// Return all the commands that are available in the bot.
 pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
-        // register(),
+        register(),
         // #[cfg(feature = "crack-bf")]
         // bf(),
         // #[cfg(feature = "crack-osint")]
