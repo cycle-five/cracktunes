@@ -3,6 +3,7 @@ members = ["cargo:crack-cli"]
 
 # Config for 'cargo dist'
 [dist]
+allow-dirty = ["ci"]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.21.0"
 # CI backends to support
@@ -19,9 +20,9 @@ install-updater = false
 hosting = "github"
 custom-success-message = "Be of Mæth and malinger not with Commies!"
 # Run on latest ubuntu
-[package.metadata.dist.github-custom-runners]
+[dist.github-custom-runners]
 x86_64-unknown-linux-gnu = "ubuntu-latest"
 
-[[package.metadata.dist.extra-artifacts]]
+[[dist.extra-artifacts]]
 artifacts = ["data.tar"]
 build = ["tar", "-cf", "data.tar", "data"]
