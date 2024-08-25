@@ -16,6 +16,7 @@
         "crack-osint",
         "crack-bf",
         "crack-activity",
+        "crack-music"
     ],
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
@@ -25,7 +26,7 @@
         "./crack-voting/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
-    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.checkOnSave": false,
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
     "keyboard.dispatch": "keyCode",

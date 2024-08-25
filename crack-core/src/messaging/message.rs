@@ -123,6 +123,10 @@ pub enum CrackedMessage {
     SocialMediaResponse {
         response: String,
     },
+    SongMoved {
+        at: usize,
+        to: usize,
+    },
     SongQueued {
         title: String,
         url: String,
@@ -326,6 +330,10 @@ impl Display for CrackedMessage {
                 SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
+            Self::SongMoved { at, to } => f.write_str(&format!(
+                "{} {} {} {} {}.",
+                SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, at, to
+            )),
             Self::SongQueued { title, url } => {
                 f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
             },
@@ -521,9 +529,9 @@ impl From<&CrackedMessage> for Option<CreateEmbed> {
     }
 }
 
-impl From<CrackedMessage> for crate::CrackedResult2<CrackedMessage> {
-    fn from(msg: CrackedMessage) -> crate::CrackedResult2<CrackedMessage> {
-        crate::CrackedResult2::Ok(msg)
+impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
+    fn from(msg: CrackedMessage) -> crate::CrackedHowResult<CrackedMessage> {
+        crate::CrackedHowResult::Ok(msg)
     }
 }
 

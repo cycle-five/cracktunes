@@ -41,6 +41,8 @@ pub mod http_utils;
 pub mod macros;
 pub mod messaging;
 pub mod metrics;
+#[cfg(feature = "crack-music")]
+pub mod music;
 pub mod poise_ext;
 pub mod sources;
 #[cfg(test)]
@@ -58,7 +60,7 @@ pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
-pub type CrackedResult2<T> = anyhow::Result<T, CrackedError>;
+pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;
@@ -222,10 +224,7 @@ impl BotConfig {
     }
 
     pub fn get_prefix(&self) -> String {
-        self.prefix
-            .as_ref()
-            .cloned()
-            .unwrap_or(DEFAULT_PREFIX.to_string())
+        self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
     pub fn get_video_status_poll_interval(&self) -> u64 {
@@ -312,46 +311,25 @@ impl PhoneCodeData {
 }
 
 /// User data, which is stored and accessible in all command invocations
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct DataInner {
     pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
     pub start_time: SystemTime,
-    // TODO?: Make this a HashMap, pointing to a settings struct containing
-    // user priviledges, etc
     #[cfg(feature = "crack-activity")]
-    #[serde(skip)]
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
-    #[serde(skip)]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
-    #[serde(skip)]
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
-    //
-    // Non-serializable below here. What did I even decide to make this Serializable for?
-    // I doubt it's doing anything, most fields aren't.
-    //
-    #[serde(skip)]
     pub phone_data: PhoneCodeData,
-    // #[serde(skip)]
-    // pub event_log: EventLog,
-    #[serde(skip)]
     pub event_log_async: EventLogAsync,
-    #[serde(skip)]
     pub db_channel: Option<Sender<MetadataMsg>>,
-    #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
-    #[serde(skip)]
     pub http_client: reqwest::Client,
-    // Async access fields, will switch entirely to these
-    #[serde(skip)]
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }

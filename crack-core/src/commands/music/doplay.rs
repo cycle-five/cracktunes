@@ -165,7 +165,7 @@ async fn play_internal(
     use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
-    let is_prefix = ctx.prefix() != "/";
+    let is_prefix = ctx.is_prefix();
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 

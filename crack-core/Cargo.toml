@@ -15,13 +15,14 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [features]
-default = ["cache", "playlist", "ignore-presence-log"]
+default = ["cache", "playlist", "ignore-presence-log", "crack-music"]
 playlist = []
 shuttle = []
 ignore-presence-log = []
 cache = ["serenity/cache", "poise/cache"]
 crack-activity = []
 crack-metrics = ["prometheus"]
+crack-music = []
 crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
