@@ -290,18 +290,12 @@ pub fn build_now_playing_embed_metadata(
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
 }
 
-// pub async fn track_handle_to_metadata(
-//     track: &TrackHandle,
-// ) -> Result<(Option<UserId>, Option<Duration>, MyAuxMetadata), CrackedError> {
-//     Ok((requesting_user, duration, MyAuxMetadata(metadata)))
-// }
-
 /// Creates a now playing embed for the given track.
 pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
     let metadata = get_track_handle_metadata(track).await;
     let requesting_user = get_requesting_user(track).await.ok();
-    let duration = Some(track.get_info().await.unwrap().position);
+    let duration = Some(track.get_info().await.unwrap_or_default().position);
     build_now_playing_embed_metadata(requesting_user, duration, MyAuxMetadata(metadata))
 }
 
