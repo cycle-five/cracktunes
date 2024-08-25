@@ -107,6 +107,7 @@ pub async fn send_nonembed_reply(
     Ok(handle.into_message().await?)
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Edit an embed response with a CrackedMessage.
 pub async fn edit_response_poise(
     ctx: &CrackContext<'_>,
@@ -120,6 +121,7 @@ pub async fn edit_response_poise(
     }
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Edit an embed response from a CommandOrMessageInteraction with a str.
 pub async fn edit_response_text(
     http: &impl CacheHttp,

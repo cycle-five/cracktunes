@@ -61,3 +61,11 @@ pub fn commands() -> [crate::Command; 1] {
     // pplay(),
     // loadspotify(),
 }
+
+mod tests {
+    #[test]
+    fn test_commands() {
+        let commands = crate::commands::playlist::commands();
+        assert!(commands.len() > 0);
+    }
+}
