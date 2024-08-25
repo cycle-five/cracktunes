@@ -1,3 +1,5 @@
+use crate::poise_ext::PoiseContextExt;
+use crate::CrackedMessage;
 use crate::{
     guild::settings::GuildSettingsMapParam,
     guild::settings::{GuildSettings, DEFAULT_PREFIX},
@@ -23,16 +25,17 @@ pub async fn set_volume(
     (guild_settings.volume, guild_settings.old_volume)
 }
 
-/// Set the volume for this guild.
+/// Sets default volume for the bot. If the bot is in user, this will *not*
+/// take effect immediately.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
-    prefix_command,
+    slash_command,
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn volume(
     ctx: Context<'_>,
-    #[description = "Volume to set the bot settings to"] volume: f32,
+    #[description = "Default volume for the bot."] volume: f32,
     #[flag]
     #[description = "Show the help menu for this command."]
     help: bool,
@@ -49,12 +52,15 @@ pub async fn volume(
         set_volume(guild_settings_map, guild_id, volume).await
     };
 
-    let msg = ctx
-        .say(format!("vol: {}, old_vol: {}", vol, old_vol))
-        .await?
-        .into_message()
-        .await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _msg = ctx
+        .send_reply(CrackedMessage::Volume { vol, old_vol }, true)
+        .await;
+    // let msg = ctx
+    //     .say(format!("vol: {}, old_vol: {}", vol, old_vol))
+    //     .await?
+    //     .into_message()
+    //     .await?;
+    //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 

@@ -194,12 +194,15 @@ impl EventHandler for SerenityHandler {
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
 
+        let mut guilds_from_cache = String::new();
         for guild_id in guilds.iter() {
             match guild_id.name(ctx.clone()) {
-                Some(name) => tracing::info!("Guild: {name}"),
-                None => tracing::info!("Guild: {guild_id}"),
+                Some(name) => guilds_from_cache.push_str(&name),
+                None => guilds_from_cache.push_str(&guild_id.to_string()),
             }
+            guilds_from_cache.push_str(", ");
         }
+        tracing::info!("Guilds from cache:\n{}", guilds_from_cache.purple());
 
         let config = self.data.bot_settings.clone();
         let video_status_poll_interval = config.get_video_status_poll_interval();
@@ -386,15 +389,7 @@ impl SerenityHandler {
                 guild_name.clone()
             );
 
-            // let default = GuildSettings::new(
-            //     *guild_id,
-            //     Some(&prefix),
-            //     Some(guild_name.clone()),
-            // );
-
-            // let guild_entity = GuildEntity::new_guild(guild_id.get() as i64, guild_name.clone());
             let guild_id_int = guild_id.get() as i64;
-            //let guild_name = guild_name.to_ascii_lowercase().clone();
             let guild_name = guild_name.clone();
             let prefix = prefix.clone();
             let pool = self.data.database_pool.clone().unwrap();
@@ -402,17 +397,9 @@ impl SerenityHandler {
                 GuildEntity::get_or_create(&pool, guild_id_int, guild_name, prefix)
                     .await
                     .unwrap();
-            // .map_err(Into::into)?;
             let mut guild_settings_map = self.data.guild_settings_map.write().await;
 
-            // let _ = default..map_err(|err| {
-            //     tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
-            // });
-
-            tracing::warn!("GuildSettings: {:?}", settings);
-
             let _ = guild_settings_map.insert(*guild_id, settings);
-            // tracing::warn!("guild_settings_map: {:?}", guild_settings_map);
 
             let guild_settings_opt = guild_settings_map.get_mut(guild_id);
 
@@ -427,6 +414,7 @@ impl SerenityHandler {
             }
         }
 
+        // TODO: Why was this here?
         // let pool = self.data.database_pool.clone().unwrap();
         // for guild in guild_settings_list.clone() {
         //     guild.save(&pool).await.expect("Guild saves correctly");
@@ -687,95 +675,3 @@ pub async fn voice_state_diff_str(
     }
     Ok(result)
 }
-
-// /// `ForwardBotTestCommandsHandler` is a handler to check for bot test commands
-// /// for cracktunes and forward them to the bot despite being from another bot.
-// pub struct ForwardBotTestCommandsHandler<'a> {
-//     pub poise_ctx: crate::Context<'a>,
-//     pub options: poise::FrameworkOptions<(), Error>,
-//     pub cmd_lookup: dashmap::DashMap<String, crate::Command>,
-//     pub shard_manager: std::sync::Mutex<Option<std::sync::Arc<serenity::ShardManager>>>,
-// }
-
-// // use serenity::model::channel::Message;
-
-// #[serenity::async_trait]
-// impl serenity::EventHandler for ForwardBotTestCommandsHandler<'_> {
-//     async fn message(&self, _ctx: SerenityContext, new_message: Message) {
-//         let allowed_bot_ids = vec![
-//             serenity::UserId::new(1111844110597374042),
-//             serenity::UserId::new(1124707756750934159),
-//             serenity::UserId::new(1115229568006103122),
-//         ];
-//         if !new_message.author.bot {
-//             return;
-//         }
-//         if !allowed_bot_ids.contains(&new_message.author.id) {
-//             tracing::error!("Not an allowed bot id");
-//             return;
-//         }
-//         let id = new_message.author.id;
-//         // let guard = ctx.data.read().await;
-//         // let prefix = match guard.get::<crate::guild::settings::GuildSettingsMap>() {
-//         //     Some(map) => map
-//         //         .get(&new_message.guild_id.unwrap())
-//         //         .map(|x| x.prefix.clone()),
-//         //     _ => None,
-//         // };
-//         tracing::error!("Allowing bot id {:} to run command...", id);
-//         let opt_cmd = parse_command(new_message.content.clone());
-//         tracing::error!("opt_cmd: {:?}", opt_cmd);
-//         if !opt_cmd.is_some() {
-//             tracing::error!("BYE");
-//             return;
-//         }
-//         tracing::error!("HERE");
-//         let cmd = opt_cmd.unwrap();
-//         let _ = execute_command_or_err(self.poise_ctx, cmd).await;
-//     }
-// }
-
-// fn parse_command(content: String) -> Option<String> {
-//     content
-//         .clone()
-//         .split_whitespace()
-//         .next()
-//         .map(|cmd| cmd[1..].to_string())
-// }
-
-// async fn execute_command_or_err(ctx: crate::Context<'_>, command: String) -> CommandResult {
-//     poise::extract_command_and_run_checks(framework, ctx, interaction, interaction_type, has_sent_initial_response, invocation_data, options, parent_commands)
-//     match command.as_str() {
-//         "ping" => crate::commands::ping_internal(ctx).await,
-//         _ => return Err(Box::new(CrackedError::CommandNotFound(command))),
-//     }
-//     // cmd.create_as_slash_command()
-//     //     .unwrap()
-//     //     .execute(cache_http, ctx)
-//     //     .await
-//     //     .map_err(|err| err.into())
-//     //     .map(|_| ())
-// }
-
-// #[cfg(test)]
-// mod test {
-//     use super::parse_command;
-
-//     #[test]
-//     fn test_parse_command() {
-//         let command_str = "~ping".to_string();
-//         let want = "ping".to_string();
-//         let got = parse_command(command_str).unwrap();
-
-//         assert_eq!(want, got);
-//     }
-
-//     #[test]
-//     fn test_parse_command_two() {
-//         let command_str = "!play lalalalal alla".to_string();
-//         let want = "play".to_string();
-//         let got = parse_command(command_str).unwrap();
-
-//         assert_eq!(want, got);
-//     }
-// }

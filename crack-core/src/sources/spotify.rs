@@ -495,7 +495,12 @@ impl SpotifyTrack {
 
     /// Build a query for searching, from the artist names and the track name.
     pub fn build_query(&self) -> String {
-        format!("{} - {}", &self.join_artist_names(), &self.name())
+        format!("{} {}", &self.name(), &self.join_artist_names())
+    }
+
+    /// Build a query for searching, from the artist names and the track name.
+    pub fn build_query_lyric(&self) -> String {
+        format!("{} {} lyric video", &self.name(), &self.join_artist_names())
     }
 }
 

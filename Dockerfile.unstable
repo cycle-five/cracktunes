@@ -57,23 +57,19 @@ RUN sudo apt-get update \
        && sudo apt-get clean -y \
        && sudo rm -rf /var/lib/apt/lists/*
 
-RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux \
+RUN sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/latest/yt-dlp_linux \
        && sudo chmod +x /usr/local/bin/yt-dlp
 
-
-
-RUN yt-dlp -v -h
-
+#RUN yt-dlp -v -h
 # USER 1000
 WORKDIR "${HOME}/app"
 
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/target/release/cracktunes $HOME/app/cracktunes
 COPY --chown=${USER_UID}:${USER_GID} --from=build /app/data  $HOME/app/data
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/.env.example $HOME/app/.env
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app/cracktunes.toml
+#COPY --chown=${USER_UID}:${USER_GID} --from=build /app/.env.example $HOME/app/.env
+#COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app/cracktunes.toml
 # RUN ls -al / && ls -al /data
 
 ENV APP_ENVIRONMENT production
-RUN . "$HOME/app/.env"
-ENV DATABASE_URL postgresql://postgres:mysecretpassword@localhost:5433/postgres
+ENV DATABASE_URL "postgresql://FIXME:FIXME@localhost/postgres" 
 CMD ["/home/cyclefive/app/cracktunes"]

@@ -37,6 +37,14 @@ pub async fn role(
     Ok(())
 }
 
-pub fn role_commands() -> [crate::Command; 5] {
+pub fn commands() -> [crate::Command; 5] {
     [assign(), assign_ids(), create(), delete(), delete_by_id()]
+}
+
+mod tests {
+    #[test]
+    fn test_role_commands() {
+        let commands = crate::commands::admin::role::commands();
+        assert_eq!(commands.len(), 5);
+    }
 }

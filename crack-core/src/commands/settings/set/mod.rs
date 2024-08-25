@@ -53,15 +53,15 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn commands() -> [crate::Command; 8] {
+pub fn commands() -> [crate::Command; 4] {
     [
-        all_log_channel(),
-        auto_role(),
-        idle_timeout(),
-        join_leave_log_channel(),
+        //all_log_channel(),
+        //auto_role(),
+        //join_leave_log_channel(),
         music_channel(),
         premium(),
         volume(),
-        welcome_settings(),
+        idle_timeout(),
+        //welcome_settings(),
     ]
 }

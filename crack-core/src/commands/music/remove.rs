@@ -72,7 +72,12 @@ pub async fn remove_internal(
     let track = queue.get(remove_index).unwrap();
 
     handler.queue().modify_queue(|v| {
-        v.drain(remove_index..=remove_until);
+        // This is what songbird does internally when it stops the queue
+        // so it should be the right thing to do here.
+        v.drain(remove_index..=remove_until).for_each(|x| {
+            let _ = x.stop();
+            drop(x);
+        });
     });
 
     // refetch the queue after modification

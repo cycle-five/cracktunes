@@ -3,6 +3,7 @@ use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
+use cfg_if;
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
 use poise::{
@@ -81,6 +82,24 @@ pub async fn get_channel_id(
     }
 }
 
+#[cfg(feature = "crack-activity")]
+/// Updates the activity map with the latest presence.
+pub async fn update_activity_map(data: Data, presence: serenity::Presence) {
+    let id = presence.user.id;
+    let activity = presence.activities.first();
+    if let Some(activity) = activity {
+        data.user_activity_map.insert(id, activity.clone());
+    } else {
+        if let Some(old_activity) = data.user_activity_map.remove(&id) {
+            data.activity_user_map.alter(&old_activity.1.name, |_, v| {
+                v.remove(&id);
+                v
+            });
+            tracing::trace!("Removed Activity {:?}", old_activity);
+        }
+    }
+}
+
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
 #[cfg(not(tarpaulin_include))]
@@ -98,23 +117,26 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
 
     match event_in {
-        #[cfg(not(feature = "ignore-presence-log"))]
-        FullEvent::PresenceUpdate { new_data } => {
-            log_event!(
-                log_presence_update,
-                guild_settings,
-                event_in,
-                new_data,
-                &new_data.guild_id.unwrap(),
-                &ctx,
-                event_log,
-                event_name
-            )
-        },
-        #[cfg(feature = "ignore-presence-log")]
         FullEvent::PresenceUpdate { new_data } => {
             let _ = new_data;
-            Ok(())
+            #[cfg(feature = "crack-activity")]
+            update_activity_map(data_global.clone(), new_data.clone()).await;
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "ignore-presence-log")] {
+                    Ok(())
+                } else {
+                    log_event!(
+                        log_presence_update,
+                        guild_settings,
+                        event_in,
+                        new_data,
+                        &new_data.guild_id.unwrap(),
+                        &ctx,
+                        event_log,
+                        event_name
+                    )
+                }
+            }
         },
         FullEvent::GuildMemberAddition { new_member } => {
             log_event!(

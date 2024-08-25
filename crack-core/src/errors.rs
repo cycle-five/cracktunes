@@ -3,10 +3,10 @@ use crate::messaging::messages::{
     FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT,
     FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
     FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
-    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
-    NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
-    NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED,
-    UNAUTHORIZED_USER,
+    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL,
+    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
+    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use crate::Error;
 use audiopus::error::Error as AudiopusError;
@@ -18,6 +18,8 @@ use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
 use songbird::input::AudioStreamError;
+use songbird::input::AuxMetadataError;
+use songbird::tracks::ControlError;
 use std::fmt::{self};
 use std::fmt::{Debug, Display};
 use std::process::ExitStatus;
@@ -29,6 +31,7 @@ pub enum CrackedError {
     AlreadyConnected(Mention),
     AudioStream(AudioStreamError),
     AudioStreamRustyYtdlMetadata,
+    AuxMetadataError(AuxMetadataError),
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
@@ -36,9 +39,11 @@ pub enum CrackedError {
     CrackGPT(Error),
     CommandFailed(String, ExitStatus, String),
     CommandNotFound(String),
+    Control(ControlError),
     DurationParseError(String, String),
     EmptySearchResult,
     EmptyVector(&'static str),
+    FailedResume,
     FailedToInsert,
     FailedToSetChannelSize(String, ChannelId, u32, Error),
     GuildOnly,
@@ -110,6 +115,7 @@ impl Display for CrackedError {
             Self::AudioStreamRustyYtdlMetadata => {
                 f.write_str(FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA)
             },
+            Self::AuxMetadataError(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             },
@@ -126,11 +132,13 @@ impl Display for CrackedError {
             Self::CommandNotFound(command) => {
                 f.write_fmt(format_args!("Command does not exist: {}", command))
             },
+            Self::Control(err) => f.write_str(&format!("{err}")),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
             Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
             Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
+            Self::FailedResume => f.write_str(FAIL_RESUME),
             Self::FailedToInsert => f.write_str(FAIL_INSERT),
             Self::FailedToSetChannelSize(name, id, size, err) => f.write_str(&format!(
                 "{FAIL_TO_SET_CHANNEL_SIZE} {name}, {id}, {size}\n{err}"
@@ -220,6 +228,13 @@ impl PartialEq for CrackedError {
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+/// Provides an implementation to convert a [`ControlError`] to a [`CrackedError`].
+impl From<ControlError> for CrackedError {
+    fn from(err: ControlError) -> Self {
+        Self::Control(err)
     }
 }
 
@@ -338,6 +353,20 @@ impl From<RSpotifyClientError> for CrackedError {
 impl From<Elapsed> for CrackedError {
     fn from(_err: Elapsed) -> Self {
         CrackedError::Other("Timeout")
+    }
+}
+
+/// Provides an implementation to convert a [`JsonError`] to a [`CrackedError`].
+impl From<JoinError> for CrackedError {
+    fn from(err: JoinError) -> Self {
+        CrackedError::JoinChannelError(err)
+    }
+}
+
+/// Provides an implementation to convert a [`AuxMetadataError`] to a [`CrackedError`].
+impl From<AuxMetadataError> for CrackedError {
+    fn from(err: AuxMetadataError) -> Self {
+        CrackedError::AuxMetadataError(err)
     }
 }
 

@@ -1,5 +1,7 @@
-#![feature(linked_list_cursors)]
+//#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
+#[cfg(feature = "crack-activity")]
+use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
@@ -287,7 +289,9 @@ impl PhoneCodeData {
     ) -> Result<HashMap<String, String>, CrackedError> {
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
+            .cookie_store(true)
             .build()?;
+        //let client = crate::http_utils::get_client();
         let response = client.get(url).send().map_err(CrackedError::Reqwest)?;
         let content = response.text().map_err(CrackedError::Reqwest)?;
 
@@ -315,6 +319,12 @@ pub struct DataInner {
     pub start_time: SystemTime,
     // TODO?: Make this a HashMap, pointing to a settings struct containing
     // user priviledges, etc
+    #[cfg(feature = "crack-activity")]
+    #[serde(skip)]
+    pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
+    #[cfg(feature = "crack-activity")]
+    #[serde(skip)]
+    pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
     #[serde(skip)]
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
@@ -519,6 +529,10 @@ impl Default for DataInner {
             up_prefix: "R",
             bot_settings: Default::default(),
             start_time: SystemTime::now(),
+            #[cfg(feature = "crack-activity")]
+            user_activity_map: Arc::new(dashmap::DashMap::new()),
+            #[cfg(feature = "crack-activity")]
+            activity_user_map: Arc::new(dashmap::DashMap::new()),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),

@@ -1,79 +1,37 @@
-# Build image
-# Necessary dependencies to build CrackTunes
-FROM debian:bookworm-slim AS build
-ARG SQLX_OFFLINE=true
+# STAGE1: Build the binary
+FROM rust:1.80.1-alpine AS builder
 
-RUN apt-get update && apt-get install -y \
-  autoconf \
-  automake \
-  cmake \
-  libtool \
-  libssl-dev \
-  pkg-config \
-  libopus-dev \
-  curl \
-  git
+# Install build dependencies
+# RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
+RUN apk add --no-cache build-base musl-dev cmake
 
-# Get Rust
-RUN curl -proto '=https' -tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
-  && . "$HOME/.cargo/env" \
-  && rustup default nightly
+# Default directory
+WORKDIR /app
 
-WORKDIR "/app"
+#
+# Create a new empty shell project
+# Build and cache the dependencies
 
+# Copy all the files
 COPY . .
-COPY names.txt /app/names.txt
-RUN . "$HOME/.cargo/env" && cargo build --release --locked --features crack-bf,crack-gpt,crack-osint
 
-# Release image
-# Necessary dependencies to run CrackTunes
-FROM debian:bookworm-slim AS runtime
+RUN cargo build --no-default-features --features crack-tracing -p cracktunes --profile=dist
 
-ARG USERNAME=cyclefive
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
-ENV HOME=/home/${USERNAME}
+# STAGE2: create a slim image with the compiled binary
+FROM alpine AS runner
 
-VOLUME [ "/data" ]
-RUN mkdir -p /data && chown -R ${USER_UID}:${USER_GID} /data
-# VOLUME [ "/var/lib/postgresql/data" ]
+# Default directory
+WORKDIR /app
 
-# Update the package list, install sudo, create a non-root user, and grant password-less sudo permissions
-RUN groupadd --gid $USER_GID $USERNAME \
-  && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-  #
-  # [Optional] Add sudo support. Omit if you don't need to install software after connecting.
-  && apt-get update \
-  && apt-get install -y sudo \
-  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-  && chmod 0440 /etc/sudoers.d/$USERNAME
+# RUN apk add --no-cache ffmpeg curl
+RUN apk add --no-cache ffmpeg curl
 
+ADD ./data /data
+RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+    && chmod +x /usr/local/bin/yt-dlp
+# Copy the binary from the builder stage
+COPY --from=builder /app/target/dist/cracktunes /app/app
+# Copy the start script from the builder stage
+COPY --from=builder /app/scripts/start.sh /app/start.sh
 
-RUN apt-get update \
-  &&  apt-get upgrade -y \
-  &&  apt-get install -y ffmpeg curl \
-  &&  apt-get autoremove -y \
-  &&  apt-get clean -y \
-  &&  rm -rf /var/lib/apt/lists/*
-
-RUN curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.09/yt-dlp_linux \
-  && chmod +x /usr/local/bin/yt-dlp
-
-USER $USERNAME
-
-RUN yt-dlp -v -h
-
-# USER 1000
-WORKDIR "${HOME}/app"
-
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/target/release/cracktunes $HOME/app/cracktunes
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/data  $HOME/app/data
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/.env.example $HOME/app/.env
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/cracktunes.toml $HOME/app/cracktunes.toml
-COPY --chown=${USER_UID}:${USER_GID} --from=build /app/names.txt $HOME/app/names.txt
-# RUN ls -al / && ls -al /data
-
-RUN . "$HOME/app/.env"
-ENV APP_ENVIRONMENT=production
-ENV DATABASE_URL=postgresql://postgres:mysecretpassword@localhost:5432/postgres
-CMD ["/home/cyclefive/app/cracktunes"]
+CMD ["/app/start.sh"]

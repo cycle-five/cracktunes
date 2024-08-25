@@ -1,7 +1,6 @@
 use crate::commands::play_utils::TrackReadyData;
 use crate::commands::{has_voted_bot_id, MyAuxMetadata};
 use crate::db;
-use crate::db::write_metadata_pg;
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::GuildSettings;
@@ -9,22 +8,20 @@ use crate::http_utils;
 use crate::Error;
 use crate::{
     commands::CrackedError, http_utils::SendMessageParams, messaging::message::CrackedMessage,
-    utils, utils::OptionTryUnwrap, CrackedResult, Data,
+    utils::OptionTryUnwrap, CrackedResult, Data,
 };
 use colored::Colorize;
-use core::time::Duration;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
-use songbird::input::AuxMetadata;
-use songbird::tracks::TrackQueue;
+use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
+use crate::messaging::interface;
 /// TODO: Separate all the messaging related functions from the other extensions and
 /// put them into this extension.
-#[allow(dead_code)]
 pub trait MessageInterfaceCtxExt {
     /// Send a message notifying the user they found a command.
     fn send_found_command(
@@ -35,32 +32,38 @@ pub trait MessageInterfaceCtxExt {
     /// Send a message to the user with the invite link for the bot.
     fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 
+    /// Creates a reply from a CrackedMessage and sends its, optionally as an embed.
     fn send_reply(
         &self,
         message: CrackedMessage,
         as_embed: bool,
     ) -> impl Future<Output = Result<ReplyHandle<'_>, CrackedError>>;
 
+    /// Creates an embed from a CrackedMessage and sends it.
+    fn send_reply_embed(
+        &self,
+        message: CrackedMessage,
+    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+
     /// Sends a message ecknowledging that the user has grabbed the current track.
     fn send_grabbed_notice(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
 
     /// Send a now playing message
-    fn send_now_playing(
-        &self,
-        chan_id: ChannelId,
-        cur_pos: Option<Duration>,
-        metadata: Option<AuxMetadata>,
-    ) -> impl Future<Output = Result<Message, Error>>;
+    fn send_now_playing(&self, chan_id: ChannelId) -> impl Future<Output = Result<Message, Error>>;
+
+    /// Return whether the queue is paused or not.
+    fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 impl MessageInterfaceCtxExt for crate::Context<'_> {
     /// Sends a message notifying the use they found a command.
     async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
-        utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
+        self.send_reply_embed(CrackedMessage::CommandFound(command))
+            .await
     }
 
     async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
-        utils::send_reply_embed(self, CrackedMessage::InviteLink).await
+        self.send_reply_embed(CrackedMessage::InviteLink).await
     }
 
     async fn send_reply(
@@ -68,35 +71,41 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
         message: CrackedMessage,
         as_embed: bool,
     ) -> Result<ReplyHandle, CrackedError> {
-        let color = serenity::Colour::from(&message);
-        let params = SendMessageParams::new(message)
-            .with_color(color)
-            .with_as_embed(as_embed);
-        let handle = self.send_message(params).await?;
-        //Ok(handle.into_message().await?)
-        Ok(handle)
+        PoiseContextExt::send_reply(self, message, as_embed).await
+    }
+
+    async fn send_reply_embed(&self, message: CrackedMessage) -> Result<ReplyHandle, Error> {
+        PoiseContextExt::send_reply(self, message, true)
+            .await
+            .map_err(Into::into)
     }
 
     async fn send_grabbed_notice(&self) -> Result<ReplyHandle, Error> {
-        utils::send_reply_embed(self, CrackedMessage::GrabbedNotice).await
+        self.send_reply_embed(CrackedMessage::GrabbedNotice).await
     }
 
-    async fn send_now_playing(
-        &self,
-        chan_id: ChannelId,
-        cur_pos: Option<Duration>,
-        metadata: Option<AuxMetadata>,
-    ) -> Result<Message, Error> {
+    async fn send_now_playing(&self, chan_id: ChannelId) -> Result<Message, Error> {
         let call = self.get_call().await?;
         // We don't add this message to the cache because we shouldn't delete it.
-        utils::send_now_playing(
+        interface::send_now_playing(
             chan_id,
             self.serenity_context().http.clone(),
             call,
-            cur_pos,
-            metadata,
+            //cur_pos,
+            //metadata,
         )
         .await
+    }
+
+    async fn is_paused(&self) -> CrackedResult<bool> {
+        let call = self.get_call().await?;
+        let handler = call.lock().await;
+        let topt = handler.queue().current();
+        if let Some(t) = topt {
+            Ok(t.get_info().await?.playing == PlayMode::Pause)
+        } else {
+            Ok(false)
+        }
     }
 }
 
@@ -193,29 +202,36 @@ impl ContextExt for crate::Context<'_> {
         .map_err(|e| e.into())
     }
 
-    /// Send a message to tell the worker pool to do a db write when it feels like it.
     async fn async_send_track_metadata_write_msg(
         &self,
-        ready_track: &TrackReadyData,
+        _ready_track: &TrackReadyData,
     ) -> CrackedResult<()> {
-        let username = ready_track.username.clone();
-        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
-        let user_id = ready_track.user_id;
-        let guild_id = self.guild_id().unwrap();
-        let channel_id = self.channel_id();
-
-        let write_data: MetadataMsg = MetadataMsg {
-            aux_metadata,
-            user_id,
-            username,
-            guild_id,
-            channel_id,
-        };
-
-        let pool = self.data().get_db_pool().unwrap();
-        write_metadata_pg(&pool, write_data).await?;
-        Ok(())
+        todo!()
     }
+
+    // /// Send a message to tell the worker pool to do a db write when it feels like it.
+    // async fn async_send_track_metadata_write_msg(
+    //     &self,
+    //     ready_track: TrackReadyData,
+    // ) -> CrackedResult<()> {
+    //     let username = ready_track.username.clone();
+    //     let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
+    //     let user_id = ready_track.user_id.clone();
+    //     let guild_id = self.guild_id().unwrap();
+    //     let channel_id = self.channel_id();
+
+    //     let write_data: MetadataMsg = MetadataMsg {
+    //         aux_metadata,
+    //         user_id,
+    //         username,
+    //         guild_id,
+    //         channel_id,
+    //     };
+
+    //     let pool = self.data().get_db_pool().unwrap();
+    //     write_metadata_pg(&pool, write_data).await?;
+    //     Ok(())
+    // }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
@@ -224,20 +240,17 @@ impl ContextExt for crate::Context<'_> {
         let user_id = ready_track.user_id;
         let guild_id = self.guild_id().unwrap();
         let channel_id = self.channel_id();
-        match &self.data().db_channel {
-            Some(channel) => {
-                let write_data: MetadataMsg = MetadataMsg {
-                    aux_metadata,
-                    user_id,
-                    username,
-                    guild_id,
-                    channel_id,
-                };
-                if let Err(e) = channel.try_send(write_data) {
-                    tracing::error!("Error sending metadata to db_channel: {}", e);
-                }
-            },
-            None => {},
+        if let Some(channel) = &self.data().db_channel {
+            let write_data: MetadataMsg = MetadataMsg {
+                aux_metadata,
+                user_id,
+                username,
+                guild_id,
+                channel_id,
+            };
+            if let Err(e) = channel.try_send(write_data) {
+                tracing::error!("Error sending metadata to db_channel: {}", e);
+            }
         }
     }
 
@@ -299,11 +312,12 @@ impl ContextExt for crate::Context<'_> {
 
     /// Sends a message notifying the use they found a command.
     async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
-        utils::send_reply_embed(self, CrackedMessage::CommandFound(command)).await
+        self.send_reply_embed(CrackedMessage::CommandFound(command))
+            .await
     }
 
     async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
-        utils::send_reply_embed(self, CrackedMessage::InviteLink).await
+        self.send_reply_embed(CrackedMessage::InviteLink).await
     }
 
     // ----------- DB Write functions ----------- //
@@ -354,6 +368,10 @@ pub trait PoiseContextExt<'ctx> {
         &self,
         params: SendMessageParams,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
+    fn send_embed_response(
+        &self,
+        embed: CreateEmbed,
+    ) -> impl Future<Output = CrackedResult<ReplyHandle<'ctx>>>;
 }
 
 /// Implementation of the extension trait for the poise::Context.
@@ -382,7 +400,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed)
-            .with_embed(embed);
+            .with_embed(embed)
+            .with_reply(true);
         let handle = self.send_message(params).await?;
         Ok(handle)
     }
@@ -419,6 +438,17 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
                 .await;
         }
         Ok(handle)
+    }
+
+    async fn send_embed_response(&self, embed: CreateEmbed) -> CrackedResult<ReplyHandle<'ctx>> {
+        let is_ephemeral = false;
+        let is_reply = true;
+        let params = SendMessageParams::default()
+            .with_ephemeral(is_ephemeral)
+            .with_embed(Some(embed))
+            .with_reply(is_reply);
+
+        self.send_message(params).await
     }
 
     //     // async fn neutral_colour(&self) -> u32 {

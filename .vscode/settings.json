@@ -15,6 +15,7 @@
         "crack-gpt",
         "crack-osint",
         "crack-bf",
+        "crack-activity",
     ],
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",

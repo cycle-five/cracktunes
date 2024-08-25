@@ -1,9 +1,8 @@
-use crate::poise_ext::ContextExt;
+use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
     messaging::interface::create_now_playing_embed,
-    utils::send_embed_response_poise,
     Context, Error,
 };
 
@@ -40,6 +39,6 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
 
     let embed = create_now_playing_embed(&track).await;
-    let _ = send_embed_response_poise(&ctx, embed).await?;
+    let _ = ctx.send_embed_response(embed).await?;
     Ok(())
 }

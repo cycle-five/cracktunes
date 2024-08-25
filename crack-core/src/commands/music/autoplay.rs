@@ -1,4 +1,4 @@
-use crate::commands::{cmd_check_music, help};
+use crate::commands::cmd_check_music;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, CrackedError, Error};
 
@@ -14,30 +14,30 @@ use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Crac
 )]
 pub async fn autoplay(
     ctx: Context<'_>,
-    #[flag]
-    #[description = "Show help menu."]
-    help: bool,
+    #[description = "Optional value to set autoplay to."] value: Option<bool>,
 ) -> Result<(), Error> {
-    if help {
-        return help::wrapper(ctx).await;
-    }
-    toggle_autoplay(ctx).await
+    toggle_autoplay(ctx, value).await
 }
 
 /// Toggle music autoplay.
-pub async fn toggle_autoplay(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn toggle_autoplay(ctx: Context<'_>, value: Option<bool>) -> Result<(), Error> {
     fn autoplay_msg(autoplay: bool) -> CrackedMessage {
         if autoplay {
-            CrackedMessage::AutoplayOff
-        } else {
             CrackedMessage::AutoplayOn
+        } else {
+            CrackedMessage::AutoplayOff
         }
     }
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
-    let autoplay = ctx.data().get_autoplay(guild_id).await;
-    ctx.data().set_autoplay(guild_id, !autoplay).await;
+    let autoplay = if let Some(value_unwrap) = value {
+        value_unwrap
+    } else {
+        !ctx.data().get_autoplay(guild_id).await
+    };
+    let _ = ctx.data().set_autoplay(guild_id, autoplay).await;
+    let _ = ctx.data().set_autoplay_setting(guild_id, autoplay).await;
 
     send_reply(&ctx, autoplay_msg(autoplay), true).await?;
     Ok(())

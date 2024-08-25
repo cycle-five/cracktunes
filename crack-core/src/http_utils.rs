@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use reqwest_old;
 use std::future::Future;
 
 use crate::errors::CrackedError;
@@ -150,6 +151,17 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build reqwest client")
+});
+
+/// This is a hack to get around the fact that we can't use async in statics. Is it?
+static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
+    println!("Creating a new (old) reqwest client...");
+    reqwest_old::ClientBuilder::new()
+        .use_rustls_tls()
+        .cookie_store(true)
         .build()
         .expect("Failed to build reqwest client")
 });
@@ -158,6 +170,7 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
 pub fn build_client() -> Client {
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
+        .cookie_store(true)
         .build()
         .expect("Failed to build reqwest client")
 }
@@ -165,6 +178,11 @@ pub fn build_client() -> Client {
 /// Get a reference to the lazy, static, global reqwest client.
 pub fn get_client() -> &'static Client {
     &CLIENT
+}
+
+/// Get a reference to an old version client.
+pub fn get_client_old() -> &'static reqwest_old::Client {
+    &CLIENT_OLD
 }
 
 /// Initialize the static, global reqwest client.
@@ -227,7 +245,7 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     // Extract the final URL after following all redirects
     let final_url = response.url().clone();
 
-    Ok(final_url.as_str().to_string())
+    Ok(final_url.into())
 }
 
 /// Gets the guild_name for a channel_id.

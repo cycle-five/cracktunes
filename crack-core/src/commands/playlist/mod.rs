@@ -51,15 +51,21 @@ pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn commands() -> [crate::Command; 8] {
-    [
-        playlist(),
-        addto(),
-        create(),
-        delete(),
-        get(),
-        list(),
-        pplay(),
-        loadspotify(),
-    ]
+pub fn commands() -> [crate::Command; 1] {
+    [playlist()]
+    // addto(),
+    // create(),
+    // delete(),
+    // get(),
+    // list(),
+    // pplay(),
+    // loadspotify(),
+}
+
+mod tests {
+    #[test]
+    fn test_commands() {
+        let commands = crate::commands::playlist::commands();
+        assert!(commands.len() > 0);
+    }
 }

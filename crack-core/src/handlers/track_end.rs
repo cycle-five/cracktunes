@@ -1,16 +1,14 @@
-use crate::commands::play_utils::queue_track_ready_front;
-use crate::commands::play_utils::ready_query2;
 use crate::{
     commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
-        interface::{create_nav_btns, create_queue_embed},
+        interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message, send_now_playing},
+    utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
     Data, //, Error,
 };
@@ -21,7 +19,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
-use serenity::all::CacheHttp;
+use serenity::all::{CacheHttp, UserId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -34,10 +32,11 @@ pub struct TrackEndHandler {
     pub data: Data,
     pub cache: Arc<Cache>,
     pub http: Arc<Http>,
-    // pub cache_http: impl CacheHttp,
     pub call: Arc<Mutex<Call>>,
 }
 
+// use crate::commands::play_utils::queue_track_ready_front;
+// use crate::commands::play_utils::ready_query2;
 pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
     pub data: Data,
@@ -45,11 +44,79 @@ pub struct ModifyQueueHandler {
     pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
 }
+
+use songbird::tracks::PlayMode;
+use songbird::tracks::TrackState;
+type TrackStates<'a> = &'a [(&'a TrackState, &'a TrackHandle)];
+
+pub struct TrackStatesUnion {
+    pub playing: bool,
+    pub paused: bool,
+    pub stopped: bool,
+    pub errored: bool,
+    pub end: bool,
+}
+
+fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
+    let mut union = TrackStatesUnion {
+        playing: false,
+        paused: false,
+        stopped: false,
+        errored: false,
+        end: false,
+    };
+
+    for (state, _) in track_states.iter() {
+        match state.playing {
+            PlayMode::Play => union.playing = true,
+            PlayMode::Pause => union.paused = true,
+            PlayMode::Stop => union.stopped = true,
+            PlayMode::End => union.end = true,
+            PlayMode::Errored(_) => union.errored = true,
+            _ => (),
+        }
+    }
+
+    union
+}
+
+// fn is_playing(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Play)
+// }
+
+// fn is_paused(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Pause)
+// }
+
+// fn is_stopped(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::Stop)
+// }
+
+// fn is_end(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| state.playing == PlayMode::End)
+// }
+
+// fn is_errored(track_states: TrackStates) -> bool {
+//     track_states
+//         .iter()
+//         .any(|(state, _)| matches!(state.playing, PlayMode::Errored(_)))
+// }
+
 /// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+    async fn act(&self, event_ctx: &EventContext<'_>) -> Option<Event> {
         tracing::error!("TrackEndHandler");
+        // Handle track error
+
         let autoplay = self.data.get_autoplay(self.guild_id).await;
 
         tracing::error!("Autoplay: {}", autoplay);
@@ -89,6 +156,17 @@ impl EventHandler for TrackEndHandler {
             return None;
         }
 
+        if let EventContext::Track(x) = event_ctx {
+            tracing::error!("TrackEvent: {:?}", x);
+            let states = get_track_states_union(x);
+            //if is_stopped(x) || is_errored(x) {
+            if states.errored {
+                self.data.set_autoplay(self.guild_id, false).await;
+                // FIXME: Send error message
+                return None;
+            }
+        }
+
         let pool = if let Some(pool) = &self.data.database_pool {
             pool
         } else {
@@ -109,43 +187,45 @@ impl EventHandler for TrackEndHandler {
         };
 
         if next_track.is_some() {
+            send_now_playing(channel, self.http.clone(), self.call.clone())
+                .await
+                .ok();
             return None;
         }
 
         let query = match get_recommended_track_query(pool, self.guild_id).await {
             Ok(query) => query,
             Err(e) => {
+                self.data.set_autoplay(self.guild_id, false).await;
                 let msg = format!("Error: {}", e);
                 tracing::warn!("{}", msg);
                 return None;
             },
         };
-        let track_ready = ready_query2(query).await.ok()?;
-        let MyAuxMetadata(metadata) = &track_ready.metadata;
-        let metadata = Some(metadata.clone());
 
-        let track = queue_track_ready_front(&self.call, track_ready)
-            .await
-            .ok()?;
+        let call = self.call.clone();
+        queue_query(query, call).await;
 
         let chan_id = channel;
-        let track_state = track.first().as_ref()?.get_info().await;
-        let cur_position = track_state.map(|x| x.position).ok();
 
-        match send_now_playing(
-            chan_id,
-            self.http.clone(),
-            self.call.clone(),
-            cur_position,
-            metadata,
-        )
-        .await
-        {
+        match send_now_playing(chan_id, self.http.clone(), self.call.clone()).await {
             Ok(_) => tracing::trace!("Sent now playing message"),
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         };
         None
     }
+}
+
+/// Queues a query and returns the track handle.
+pub async fn queue_query(query: QueryType, call: Arc<Mutex<Call>>) -> Option<TrackHandle> {
+    // This is a singleton that holds a reqwest client for the music player.
+    let client = crate::http_utils::get_client();
+    // This call, this is what does all the work
+    let mut input = query.get_query_source(client.clone());
+    let metadata = input.aux_metadata().await.ok()?;
+    let track = call.as_ref().lock().await.enqueue_input(input).await;
+    add_metadata_to_track(&track, metadata).await;
+    Some(track)
 }
 
 /// Event handler to set the volume of the playing track to the volume
@@ -168,6 +248,14 @@ impl EventHandler for ModifyQueueHandler {
 
         None
     }
+}
+use crate::commands::RequestingUser;
+use songbird::input::AuxMetadata;
+pub async fn add_metadata_to_track(track: &TrackHandle, metadata: AuxMetadata) {
+    let mut map = track.typemap().write().await;
+    map.insert::<MyAuxMetadata>(MyAuxMetadata(metadata));
+    map.insert::<RequestingUser>(RequestingUser::UserId(UserId::new(1)));
+    drop(map);
 }
 
 /// This function goes through all the active "queue" messages that are still

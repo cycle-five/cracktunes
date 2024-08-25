@@ -7,6 +7,24 @@ pub const CLEARED: &str = "🗑️ Cleared!";
 pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_SIZE_SET: &str = "🗑️ Channel size set!";
 pub const CHANNEL_DELETED: &str = "🗑️ Deleted channel!";
+pub const COINFLIP: &str = "You flipped a coin and it landed on";
+#[macro_export]
+macro_rules! DICE_ROLL {
+    ($number_of_dice:expr, $sides_per_die:expr, $res:expr) => {
+        &format!(
+            "You rolled {} dice with {} sides. Here are the results:\n{}",
+            $number_of_dice,
+            $sides_per_die,
+            $res.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    };
+}
+
+// pub const COMMAND_DISABLED: &str = "⚠️ Command is disabled!";
+// pub const COMMAND_ENABLED: &str = "✅ Command is enabled!";
 
 pub const AUTHORIZED: &str = "✅ User has been authorized.";
 pub const AUTO_ROLE: &str = "Auto Role";
@@ -60,6 +78,7 @@ pub const FAIL_NO_QUERY_PROVIDED: &str = "⚠️ No query provided!";
 pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
 pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
+pub const FAIL_RESUME: &str = "⚠️ Failed to Resume Queue!";
 pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
 pub const FAIL_TO_SET_CHANNEL_SIZE: &str = "⚠️ Failed to set channel size!";
 pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";
@@ -123,7 +142,7 @@ pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
 pub const REMOVED_QUEUE_MULTIPLE: &str = "❌ Removed multiple tracks from queue!";
 pub const REMOVED_QUEUE: &str = "❌ Removed from queue";
-pub const RESUMED: &str = "▶️ Resumed!";
+pub const RESUMED: &str = "▶ Resumed!";
 pub const REQUESTED_BY: &str = "Requested by";
 pub const ROLE_CREATED: &str = "📝 Created role!";
 pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
@@ -131,6 +150,7 @@ pub const ROLE_NOT_FOUND: &str = "⚠️ Role not found!";
 pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
 pub const SEEKED: &str = "⏩ Seeked current track to";
+pub const SEEK_FAIL: &str = "❌⏩ Failed to seek to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";
 pub const SKIP_VOTE_EMOJI: &str = "🗳";
 pub const SKIP_VOTE_MISSING: &str = "more vote(s) needed to skip!";

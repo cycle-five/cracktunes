@@ -14,6 +14,7 @@ use crate::{
 };
 use colored::Colorize;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
+use songbird::driver::DecodeMode;
 use songbird::serenity::SerenityInit;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -55,11 +56,19 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     }
 }
 
+/// Installs the AWS LC provider for rustls.
+pub fn install_crypto_provider() {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install AWS LC provider");
+}
+
 /// Create the poise framework from the bot config.
 pub async fn poise_framework(
     config: BotConfig,
     event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
+    // install_crypto_provider();
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
 
@@ -84,7 +93,7 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
-            prefix: Some(config.get_prefix()),
+            prefix: None,       //Some(config.get_prefix()),
             ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
@@ -108,8 +117,9 @@ pub async fn poise_framework(
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
-                            tracing::warn!("No guild id found");
-                            GuildId::new(1)
+                            // tracing::warn!("No guild id found");
+                            // GuildId::new(1)
+                            return Ok(None);
                         },
                     };
                     let guild_settings_map = data.guild_settings_map.read().await.clone();
@@ -205,7 +215,7 @@ pub async fn poise_framework(
     // let handle = rt.handle();
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
-        phone_data: PhoneCodeData::load().unwrap(),
+        phone_data: PhoneCodeData::default(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         event_log_async,
@@ -214,27 +224,25 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
+    //| GatewayIntents::GUILD_PRESENCES
+    //| GatewayIntents::GUILDS
+    //| GatewayIntents::MESSAGE_CONTENT
     let intents = GatewayIntents::non_privileged()
-        | GatewayIntents::privileged()
-        | GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
-        | GatewayIntents::GUILD_MODERATION
-        | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
-        | GatewayIntents::GUILD_INTEGRATIONS
-        | GatewayIntents::GUILD_WEBHOOKS
-        | GatewayIntents::GUILD_INVITES
         | GatewayIntents::GUILD_VOICE_STATES
-        | GatewayIntents::GUILD_PRESENCES
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_TYPING
-        | GatewayIntents::GUILD_MESSAGE_REACTIONS
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGE_TYPING
-        | GatewayIntents::DIRECT_MESSAGE_REACTIONS
-        | GatewayIntents::GUILD_SCHEDULED_EVENTS
-        | GatewayIntents::AUTO_MODERATION_CONFIGURATION
-        | GatewayIntents::AUTO_MODERATION_EXECUTION
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS;
+    // | GatewayIntents::DIRECT_MESSAGES
+    // | GatewayIntents::DIRECT_MESSAGE_TYPING
+    // | GatewayIntents::DIRECT_MESSAGE_REACTIONS;
+    // | GatewayIntents::GUILD_SCHEDULED_EVENTS
+    // | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
+    // | GatewayIntents::GUILD_INTEGRATIONS
+    // | GatewayIntents::GUILD_WEBHOOKS
+    // | GatewayIntents::GUILD_INVITES
+    // | GatewayIntents::AUTO_MODERATION_CONFIGURATION
+    // | GatewayIntents::AUTO_MODERATION_EXECUTION
 
     let token = config
         .credentials
@@ -242,12 +250,12 @@ pub async fn poise_framework(
         .discord_token;
     let data2 = data.clone();
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
-    let framework = poise::Framework::new(options, |ctx, ready, framework| {
+    let framework = poise::Framework::new(options, |ctx, ready, _framework| {
         Box::pin(async move {
             tracing::info!("Logged in as {}", ready.user.name);
             crate::commands::register::register_globally_cracked(
                 &ctx,
-                &framework.options().commands,
+                &crate::commands::commands_to_register(),
             )
             .await?;
             ctx.data
@@ -262,6 +270,7 @@ pub async fn poise_framework(
         data: data2.clone(),
     };
 
+    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
     //     options: Default::default(),
@@ -270,7 +279,7 @@ pub async fn poise_framework(
     // });
     let client = Client::builder(token, intents)
         .framework(framework)
-        .register_songbird()
+        .register_songbird_from_config(songbird_config)
         .event_handler(serenity_handler)
         //.event_handler_arc(bot_test_handler.clone())
         .await

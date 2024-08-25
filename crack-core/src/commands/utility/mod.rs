@@ -1,5 +1,6 @@
 pub mod clean;
 mod debug;
+pub mod get_letter_league_players;
 pub mod invite;
 pub mod ping;
 mod say;
@@ -8,6 +9,7 @@ pub mod version;
 
 pub use clean::*;
 pub use debug::*;
+pub use get_letter_league_players::*;
 pub use invite::*;
 pub use ping::*;
 pub use say::*;
@@ -62,16 +64,16 @@ pub async fn uptime_internal(ctx: Context<'_>) -> CrackedMessage {
 }
 
 /// Get all the utility commands.
-pub fn utility_commands() -> [crate::Command; 10] {
+pub fn utility_commands() -> [crate::Command; 6] {
     [
         clean(),
         debug(),
         invite(),
         ping(),
-        servers(),
-        saychan(),
-        saychanid(),
-        smoketest(),
+        // servers(),
+        // saychan(),
+        // saychanid(),
+        // smoketest(),
         uptime(),
         version(),
     ]

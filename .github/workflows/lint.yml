@@ -57,7 +57,7 @@ jobs:
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-        run: cargo +nightly fmt --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
         env:

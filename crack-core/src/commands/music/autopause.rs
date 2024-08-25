@@ -8,7 +8,7 @@ use crate::{
     Context, Error,
 };
 
-/// Toggle autopause.
+/// Toggle whether the bot pauses after each song in the queue.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",

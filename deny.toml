@@ -3,28 +3,15 @@ all-features = true
 
 [bans]
 multiple-versions = "deny"
-deny = [
-    { name = "hyper-tls" },
-    # color-backtrace is nice but brings in too many dependencies and that are often outdated, so not worth it for us.
-    { name = "color-backtrace" },
-
-    # dirs crate has a lot of dependencies and there are better alternatives
-    { name = "dirs" },
-    { name = "dirs-sys" },
-
-    # deprecated
-    { name = "quickersort" },
-
-    # term is not fully maintained, and termcolor is replacing it
-    { name = "term" },
-]
+deny = [{ name = "hyper-tls" }, { name = "openssl" }]
 skip-tree = [
+    { name = "windows_x86_64_gnullvm" },
     { name = "windows-sys" },
-    { name = "hermit-abi" },
-    { name = "syn" },
-    { name = "bitflags" },
-    { name = "indexmap" },
-    { name = "examples" },
+    # { name = "hermit-abi" },
+    # { name = "syn" },
+    # { name = "bitflags" },
+    # { name = "indexmap" },
+    # { name = "examples" },
 ]
 
 [licenses]
@@ -42,6 +29,7 @@ allow = [
     "Unicode-3.0",
     "MPL-2.0",
     "BSD-3-Clause",
+    "CC0-1.0",
 ]
 
 [[licenses.clarify]]

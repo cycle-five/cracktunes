@@ -47,6 +47,8 @@ pub trait GuildSettingsOperations {
     fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
     fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
+    fn get_autoplay_setting(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
     fn set_volume(&self, guild_id: GuildId, volume: u64) -> impl Future<Output = ()>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
@@ -100,8 +102,9 @@ impl GuildSettingsOperations for Data {
     async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
         let mut guard = self.guild_settings_map.write().await;
         let _ = guard
-            .get_mut(&guild_id)
-            .map(|x| x.set_music_channel(channel_id.get()));
+            .entry(guild_id)
+            .and_modify(|x| x.set_music_channel(channel_id.get()))
+            .or_insert_with(|| GuildSettings::new(guild_id, None, None));
     }
 
     /// Save the guild settings to the database.
@@ -271,14 +274,34 @@ impl GuildSettingsOperations for Data {
             .unwrap_or(true)
     }
 
+    async fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) {
+        self.guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|e| {
+                e.autoplay = autoplay;
+            });
+    }
+
+    async fn get_autoplay_setting(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|e| e.autoplay)
+            .unwrap_or(true)
+    }
+
     /// Set the autoplay setting
     async fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
         self.guild_cache_map
             .lock()
             .await
             .entry(guild_id)
-            .or_default()
-            .autoplay = autoplay;
+            .and_modify(|e| {
+                e.autoplay = autoplay;
+            });
     }
 
     /// Get the current autoplay settings.

@@ -9,8 +9,7 @@ use serenity::all::User;
 use serenity::builder::EditMember;
 use std::time::Duration;
 
-/// Timeout a user from the server.
-/// FIXME: THIS IS BROKEN FIX
+/// Timeout a user from the server. Broken.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",

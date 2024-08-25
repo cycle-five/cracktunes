@@ -7,7 +7,7 @@ use crate::{
     commands::{music::doplay::RequestingUser, music::play_utils::QueryType, music::MyAuxMetadata},
     db::Playlist,
     messaging::{
-        interface::{create_nav_btns, create_now_playing_embed},
+        interface::create_nav_btns,
         message::CrackedMessage,
         messages::{
             INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY,
@@ -26,7 +26,6 @@ use ::serenity::{
         CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
     },
     futures::StreamExt,
-    http::Http,
     model::channel::Message,
 };
 use poise::{
@@ -37,7 +36,6 @@ use poise::{
 };
 #[allow(deprecated)]
 use serenity::MessageInteraction;
-use songbird::Call;
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
@@ -47,7 +45,6 @@ use std::{
     ops::Add,
     time::Duration,
 };
-use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use url::Url;
 
@@ -83,14 +80,6 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
-/// Creates an embed from a CrackedMessage and sends it.
-pub async fn send_reply_embed<'ctx>(
-    ctx: &CrackContext<'ctx>,
-    message: CrackedMessage,
-) -> Result<ReplyHandle<'ctx>, Error> {
-    ctx.send_reply(message, true).await.map_err(Into::into)
-}
-
 /// Sends a reply response, possibly as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
@@ -118,6 +107,8 @@ pub async fn send_nonembed_reply(
     Ok(handle.into_message().await?)
 }
 
+#[cfg(not(tarpaulin_include))]
+/// Edit an embed response with a CrackedMessage.
 pub async fn edit_response_poise(
     ctx: &CrackContext<'_>,
     message: CrackedMessage,
@@ -130,6 +121,8 @@ pub async fn edit_response_poise(
     }
 }
 
+#[cfg(not(tarpaulin_include))]
+/// Edit an embed response from a CommandOrMessageInteraction with a str.
 pub async fn edit_response_text(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
@@ -137,49 +130,6 @@ pub async fn edit_response_text(
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
-}
-
-/// Send the current track information as an ebmed to the given channel.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_now_playing(
-    channel: ChannelId,
-    http: Arc<Http>,
-    call: Arc<Mutex<Call>>,
-    cur_position: Option<Duration>,
-    metadata: Option<AuxMetadata>,
-) -> Result<Message, Error> {
-    use crate::messaging::interface::create_now_playing_embed_metadata;
-
-    tracing::warn!("locking mutex");
-    let mutex_guard = call.lock().await;
-    tracing::warn!("mutex locked");
-    let msg: CreateMessage = match mutex_guard.queue().current() {
-        Some(track_handle) => {
-            tracing::warn!("track handle found, dropping mutex guard");
-            drop(mutex_guard);
-            let requesting_user = get_requesting_user(&track_handle).await;
-            let embed = if let Some(metadata2) = metadata {
-                create_now_playing_embed_metadata(
-                    requesting_user.ok(),
-                    cur_position,
-                    MyAuxMetadata(metadata2),
-                )
-            } else {
-                create_now_playing_embed(&track_handle).await
-            };
-            CreateMessage::new().embed(embed)
-        },
-        None => {
-            tracing::warn!("track handle not found, dropping mutex guard");
-            drop(mutex_guard);
-            CreateMessage::new().content("Nothing playing")
-        },
-    };
-    tracing::warn!("sending message: {:?}", msg);
-    channel
-        .send_message(Arc::clone(&http), msg)
-        .await
-        .map_err(|e| e.into())
 }
 
 #[cfg(not(tarpaulin_include))]

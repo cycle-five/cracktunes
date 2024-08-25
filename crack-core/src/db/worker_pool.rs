@@ -16,8 +16,8 @@ const CHANNEL_BUF_SIZE: usize = 1024;
 #[derive(Debug, Clone)]
 pub struct MetadataMsg {
     pub aux_metadata: AuxMetadata,
-    pub user_id: UserId,
-    pub username: String,
+    pub user_id: Option<UserId>,
+    pub username: Option<String>,
     pub guild_id: GuildId,
     pub channel_id: ChannelId,
 }
@@ -65,7 +65,13 @@ pub async fn write_metadata_pg(
                 },
             };
 
-        match User::insert_or_update_user(database_pool, user_id.get() as i64, username).await {
+        match User::insert_or_update_user(
+            database_pool,
+            user_id.map(|x| x.get() as i64).unwrap_or(1),
+            username.unwrap_or_default(),
+        )
+        .await
+        {
             Ok(_) => {
                 tracing::info!("Users::insert_or_update");
             },
@@ -75,7 +81,7 @@ pub async fn write_metadata_pg(
         };
         match PlayLog::create(
             database_pool,
-            user_id.get() as i64,
+            user_id.map(|x| x.get() as i64).unwrap_or(1),
             guild_id.get() as i64,
             updated_metadata.id as i64,
         )
@@ -129,8 +135,8 @@ mod test {
                 source_url: Some(url.clone()),
                 ..Default::default()
             },
-            user_id: UserId::new(100),
-            username: "test".to_string(),
+            user_id: Some(UserId::new(100)),
+            username: Some("test".to_string()),
             guild_id: GuildId::new(1),
             channel_id: ChannelId::new(1),
         };

@@ -7,8 +7,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
-    poise_ext::ContextExt,
-    utils::send_reply_embed,
+    poise_ext::{ContextExt, MessageInterfaceCtxExt},
     Context, Data, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -92,13 +91,10 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         force_skip_top_track(&handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
-        send_reply_embed(
-            &ctx,
-            CrackedMessage::VoteSkip {
-                mention: ctx.get_user_id().mention(),
-                missing: skip_threshold - cache.current_skip_votes.len(),
-            },
-        )
+        ctx.send_reply_embed(CrackedMessage::VoteSkip {
+            mention: ctx.get_user_id().mention(),
+            missing: skip_threshold - cache.current_skip_votes.len(),
+        })
         .await?
         .into_message()
         .await

@@ -30,6 +30,7 @@ pub use settings::*;
 pub use utility::*;
 
 pub use crate::errors::CrackedError;
+use dashmap;
 use serenity::all::Message;
 
 pub type MessageResult = Result<Message, CrackedError>;
@@ -62,6 +63,28 @@ pub fn all_commands() -> Vec<crate::Command> {
     .chain(help::help_commands())
     .chain(music::music_commands())
     .chain(utility::utility_commands())
+    .chain(settings::commands())
+    .chain(admin::commands())
+    .chain(playlist::commands())
+    .collect()
+}
+
+/// Return all the commands that are available in the bot.
+pub fn commands_to_register() -> Vec<crate::Command> {
+    vec![
+        register(),
+        // #[cfg(feature = "crack-bf")]
+        // bf(),
+        // #[cfg(feature = "crack-osint")]
+        // osint(),
+        // #[cfg(feature = "crack-gpt")]
+        // chat(),
+    ]
+    .into_iter()
+    .chain(help::help_commands())
+    .chain(music::music_commands())
+    .chain(utility::utility_commands())
+    .chain(music::game_commands())
     .chain(settings::commands())
     .chain(admin::commands())
     .chain(playlist::commands())

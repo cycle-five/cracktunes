@@ -2,12 +2,10 @@ use super::play_utils::query::QueryType;
 use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
 use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, help};
-use crate::sources::rusty_ytdl::RustyYoutubeClient;
+use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
+use crate::utils::edit_embed_response2;
 use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
-use ::serenity::all::CommandInteraction;
-//FIXME
-use crate::utils::edit_embed_response2;
 use crate::{
     errors::{verify, CrackedError},
     guild::settings::GuildSettings,
@@ -24,6 +22,7 @@ use crate::{
     utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
 };
+use ::serenity::all::CommandInteraction;
 use ::serenity::{
     all::{Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
@@ -148,6 +147,7 @@ pub async fn optplay(
 }
 
 use crate::messaging::interface as msg_int;
+use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
@@ -159,9 +159,10 @@ async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    //let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
+
+    use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
     let is_prefix = ctx.prefix() != "/";
@@ -169,8 +170,9 @@ async fn play_internal(
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 
     if msg.is_none() && file.is_none() {
-        // let embed = CreateEmbed::default().description(CrackedError::NoQuery.to_string());
-        // send_embed_response_poise(&ctx, embed).await?;
+        if ctx.is_paused().await.unwrap_or_default() {
+            return resume_internal(ctx).await;
+        }
         let msg_params = SendMessageParams::default()
             .with_channel(ctx.channel_id())
             .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))
@@ -459,6 +461,16 @@ pub enum RequestingUser {
     UserId(UserId),
 }
 
+/// Convert `[Option<UserId>]` to `[RequestingUser]`.
+impl From<Option<UserId>> for RequestingUser {
+    fn from(user_id: Option<UserId>) -> Self {
+        match user_id {
+            Some(user_id) => RequestingUser::UserId(user_id),
+            None => RequestingUser::default(),
+        }
+    }
+}
+
 /// We implement TypeMapKey for RequestingUser.
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
@@ -480,6 +492,14 @@ pub struct MyAuxMetadata(pub AuxMetadata);
 /// Implement TypeMapKey for MyAuxMetadata.
 impl TypeMapKey for MyAuxMetadata {
     type Value = MyAuxMetadata;
+}
+
+/// Implement From<AuxMetadata> for MyAuxMetadata.
+impl From<MyAuxMetadata> for AuxMetadata {
+    fn from(metadata: MyAuxMetadata) -> Self {
+        let MyAuxMetadata(metadata) = metadata;
+        metadata
+    }
 }
 
 /// Implement Default for MyAuxMetadata.
@@ -543,6 +563,42 @@ impl From<&SpotifyTrack> for MyAuxMetadata {
     }
 }
 
+impl From<&SearchResult> for MyAuxMetadata {
+    fn from(search_result: &SearchResult) -> Self {
+        let mut metadata = AuxMetadata::default();
+        match search_result.clone() {
+            SearchResult::Video(video) => {
+                metadata.track = Some(video.title.clone());
+                metadata.artist = None;
+                metadata.album = None;
+                metadata.date = video.uploaded_at.clone();
+
+                metadata.channels = Some(2);
+                metadata.channel = Some(video.channel.name);
+                metadata.duration = Some(Duration::from_millis(video.duration));
+                metadata.sample_rate = Some(48000);
+                metadata.source_url = Some(video.url);
+                metadata.title = Some(video.title);
+                metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
+            },
+            SearchResult::Playlist(playlist) => {
+                metadata.title = Some(playlist.name);
+                metadata.source_url = Some(playlist.url);
+                metadata.duration = None;
+                metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
+            },
+            _ => {},
+        };
+        MyAuxMetadata(metadata)
+    }
+}
+
+impl From<SearchResult> for MyAuxMetadata {
+    fn from(search_result: SearchResult) -> Self {
+        MyAuxMetadata::from(&search_result)
+    }
+}
+
 /// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
@@ -586,7 +642,7 @@ async fn build_queued_embed(
 }
 
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;
-use rusty_ytdl::search::YouTube;
+use rusty_ytdl::search::{SearchResult, YouTube};
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
@@ -594,6 +650,8 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[MyAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
+    use crate::http_utils;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
@@ -618,10 +676,9 @@ pub async fn queue_aux_metadata(
                 )
                 .await;
 
-            //let ytdl = RustyYoutubeClient::new_with_client(client.clone())?;
             let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
-            let new_aux_metadata = RustyYoutubeClient::search_result_to_aux_metadata(&res);
+            let new_aux_metadata = search_result_to_aux_metadata(&res);
 
             MyAuxMetadata(new_aux_metadata)
         } else {
@@ -629,7 +686,7 @@ pub async fn queue_aux_metadata(
         };
 
         let ytdl = YoutubeDl::new(
-            client.clone(),
+            http_utils::get_client_old().clone(),
             metadata_final.metadata().source_url.clone().unwrap(),
         );
 
