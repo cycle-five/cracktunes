@@ -73,21 +73,21 @@ pub fn all_commands() -> Vec<crate::Command> {
 pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
         register(),
-        // #[cfg(feature = "crack-bf")]
-        // bf(),
-        // #[cfg(feature = "crack-osint")]
-        // osint(),
-        // #[cfg(feature = "crack-gpt")]
-        // chat(),
+        #[cfg(feature = "crack-bf")]
+        bf(),
+        #[cfg(feature = "crack-osint")]
+        osint(),
+        #[cfg(feature = "crack-gpt")]
+        chat(),
     ]
     .into_iter()
     .chain(help::help_commands())
     .chain(music::music_commands())
+    .chain(playlist::commands())
     .chain(utility::utility_commands())
     .chain(music::game_commands())
     .chain(settings::commands())
     .chain(admin::commands())
-    .chain(playlist::commands())
     .collect()
 }
 

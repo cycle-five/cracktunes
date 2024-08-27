@@ -22,8 +22,7 @@ license = true
 eula = false
 
 [features]
-default = ["crack-tracing", "ignore-presence-log"]
-ignore-presence-log = []
+default = ["crack-tracing"]
 
 crack-telemetry = [
     "crack-metrics",

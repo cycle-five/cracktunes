@@ -468,6 +468,9 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 
 #[cfg(test)]
 mod test {
+    use std::fmt::Debug;
+    use std::fmt::Formatter;
+
     #[test]
     fn test_requesting_user_to_string() {
         use super::requesting_user_to_string;
@@ -475,5 +478,23 @@ mod test {
 
         assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
         assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+    }
+
+    #[tokio::test]
+    async fn test_build_log_embed() {
+        let title = "title";
+        let description = "description";
+        let avatar_url = "avatar_url";
+        let embed = super::build_log_embed(title, description, avatar_url).await;
+        assert!(embed.is_ok());
+        let embed = embed.unwrap();
+        let mut output = String::new();
+
+        let mut formatter = Formatter::new(&mut output);
+        // let writer = StringWriter::new();
+        // let fmt = std::fmt::Formatter::new(writer);
+        embed.fmt(&mut formatter).unwrap();
+        let formatted_output = output;
+        println!("{:?}", formatted_output);
     }
 }

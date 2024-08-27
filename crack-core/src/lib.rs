@@ -1,3 +1,5 @@
+#![allow(internal_features)]
+#![feature(fmt_internals)]
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]

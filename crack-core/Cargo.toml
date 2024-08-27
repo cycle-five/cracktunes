@@ -15,18 +15,24 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [features]
-default = ["cache", "playlist", "ignore-presence-log", "crack-music"]
-playlist = []
-shuttle = []
-ignore-presence-log = []
+default = [
+    "crack-playlist",
+    "crack-music",
+    "crack-tracing",
+    "ignore-presence-log",
+    "cache",
+]
 cache = ["serenity/cache", "poise/cache"]
 crack-activity = []
+crack-bf = ["dep:crack-bf"]
+crack-gpt = ["dep:crack-gpt"]
 crack-metrics = ["prometheus"]
 crack-music = []
-crack-gpt = ["dep:crack-gpt"]
 crack-osint = ["dep:crack-osint"]
-crack-bf = ["dep:crack-bf"]
+crack-playlist = []
+crack-tracing = []
 crack-voting = ["dep:crack-voting"]
+ignore-presence-log = []
 
 [dependencies]
 cfg-if = "1"

@@ -61,7 +61,7 @@ pub async fn search_query_to_source_and_metadata(
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
-            None => return search_query_to_source_and_metadata_ytdl(client, query).await, //Err(CrackedError::EmptySearchResult),
+            None => return search_query_to_source_and_metadata_ytdl(client, query).await,
         };
         let metadata = &search_result_to_aux_metadata(&result);
         metadata.clone()
@@ -166,6 +166,28 @@ mod test {
 
     use super::*;
 
+    #[test]
+    fn test_build_query_aux_metadata() {
+        let aux_metadata = AuxMetadata {
+            artist: Some("hello".to_string()),
+            track: Some("world".to_string()),
+            ..Default::default()
+        };
+        let res = build_query_aux_metadata(&aux_metadata);
+        assert_eq!(res, "world hello");
+    }
+
+    #[test]
+    fn test_build_query_lyric_video_aux_metadata() {
+        let aux_metadata = AuxMetadata {
+            artist: Some("hello".to_string()),
+            track: Some("world".to_string()),
+            ..Default::default()
+        };
+        let res = build_query_lyric_video_aux_metadata(&aux_metadata);
+        assert_eq!(res, "world hello lyric video");
+    }
+
     #[tokio::test]
     async fn test_get_track_metadata_video_link() {
         let opts = RequestOptions {
@@ -242,17 +264,6 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_build_query_aux_metadata() {
-        let aux_metadata = AuxMetadata {
-            artist: Some("hello".to_string()),
-            track: Some("world".to_string()),
-            ..Default::default()
-        };
-        let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, "world hello");
-    }
-
     /// FIXME: Mock the response.
     #[tokio::test]
     async fn test_get_rusty_search() {
@@ -265,6 +276,24 @@ mod test {
             Err(e) => {
                 //let phrase = "Sign in to confirm you’re not a bot";
                 //assert!(e.to_string().contains(phrase));
+                println!("{}", e.to_string());
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_query_to_source_and_metadata() {
+        let client = reqwest::Client::new();
+        let query = "hello".to_string();
+        let res = search_query_to_source_and_metadata(client, query).await;
+        match res {
+            Ok((source, metadata)) => {
+                assert!(!source.is_playable());
+                assert_eq!(metadata.len(), 1);
+            },
+            Err(e) => {
+                // let phrase = "Sign in to confirm you’re not a bot";
+                // assert!(e.to_string().contains(phrase));
                 println!("{}", e.to_string());
             },
         }

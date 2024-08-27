@@ -52,36 +52,45 @@ pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
 
-pub fn music_commands() -> [crate::Command; 24] {
-    [
-        autopause(),
-        autoplay(),
-        clear(),
-        grab(),
-        leave(),
-        lyrics(),
-        nowplaying(),
-        pause(),
-        play(),
-        playlog(),
-        playnext(),
-        queue(),
-        remove(),
-        repeat(),
-        resume(),
-        seek(),
-        shuffle(),
-        skip(),
-        stop(),
-        summon::summon(),
-        summonchannel(),
-        volume(),
-        vote(),
-        voteskip(),
-    ]
+pub fn music_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![
+            autopause(),
+            autoplay(),
+            clear(),
+            grab(),
+            leave(),
+            lyrics(),
+            nowplaying(),
+            pause(),
+            play(),
+            playlog(),
+            playnext(),
+            queue(),
+            remove(),
+            repeat(),
+            resume(),
+            seek(),
+            shuffle(),
+            movesong(),
+            skip(),
+            stop(),
+            summon::summon(),
+            summonchannel(),
+            volume(),
+            vote(),
+            voteskip(),
+        ]
+    } else {
+        vec![]
+    }
 }
 
 /// Get the game commands.
-pub fn game_commands() -> [crate::Command; 2] {
-    [coinflip(), rolldice()]
+pub fn game_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![coinflip(), rolldice()]
+    } else {
+        vec![]
+    }
 }

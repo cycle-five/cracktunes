@@ -5,7 +5,7 @@ use crate::{
 };
 use rand::Rng;
 
-/// Shuffle the current queue.
+/// Move a song in the queue to a different position.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
@@ -19,6 +19,12 @@ pub async fn movesong(
     #[description = "Index song is currently at"] at: usize,
     #[description = "Index song will be moved to"] to: usize,
 ) -> Result<(), Error> {
+    movesong_internal(ctx, at, to).await
+}
+
+/// Move a song in the queue to a different position, internal function.
+#[cfg(not(tarpaulin_include))]
+pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let call = ctx.get_call().await?;
 
