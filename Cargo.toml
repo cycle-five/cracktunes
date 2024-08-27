@@ -13,10 +13,9 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
-allow-dirty = true
 
 [workspace.dependencies.sqlx]
-version = "0.7.4"
+version = "0.8.1"
 default-features = false
 features = [
   "runtime-tokio",
@@ -24,7 +23,6 @@ features = [
   "macros",
   "postgres",
   "chrono",
-  "time",
   "migrate",
   "json",
 ]

@@ -94,24 +94,18 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 ctor = "0.2"
 tungstenite = "0.23"
 async-tungstenite = "0.27.0"
-sqlx = { version = "0.7", features = [
+sqlx = { version = "0.8.1", features = [
     "runtime-tokio",
     "tls-rustls",
     "macros",
     "postgres",
     "chrono",
-    "time",
     "migrate",
     "json",
 ] }
 
 [build-dependencies]
 vergen-gitcl = { version = "1.0.0", features = ["build"] }
-# vergen-git2 = { version = "1.0.0", features = [
-#     "build",
-#     "cargo",
-#     "rustc",
-#     "si",
-# ] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
