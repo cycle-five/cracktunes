@@ -38,6 +38,7 @@ features = [
   "collector",
   "client",
   "framework",
+  "standard_framework",
   "http",
   "gateway",
   "model",

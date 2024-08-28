@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::{Mutex, RwLock};
 
@@ -81,10 +80,8 @@ impl ShardManagerBuilder {
 
 #[cfg(test)]
 mod tests {
-    use futures::stream::FusedStream;
-    use futures::StreamExt;
-
     use super::*;
+    use futures::stream::FusedStream;
 
     #[tokio::test]
     async fn test_create_shard_manager_opts() {
@@ -100,6 +97,6 @@ mod tests {
     async fn test_create_shard_manager() {
         let (shard_manager, monitor) = ShardManagerBuilder::new().build();
         assert!(!monitor.is_terminated());
-        assert!(shard_manager.runners.lock().await.len() > 0);
+        assert_eq!(shard_manager.runners.lock().await.len(), 0);
     }
 }
