@@ -245,7 +245,7 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
 #[cfg(test)]
 mod test {
     use serde_json;
-    use sqlx::{Pool, Postgres};
+    use sqlx::PgPool;
 
     use crate::get_secret;
     use crate::{StatusCode, VotingContext, Webhook};
@@ -255,7 +255,7 @@ mod test {
     use super::*;
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_voting_context_creation(pool: PgPool) {
+    async fn test_voting_context_creation(pool: PgPool) -> sqlx::Result<()> {
         let secret = "test_secret";
         std::env::set_var("WEBHOOK_SECRET", secret);
 
@@ -264,11 +264,11 @@ mod test {
         assert_eq!(context.secret, secret);
         // We can't directly compare PgPools, but we can check if it's initialized
         assert!(context.pool.acquire().await.is_ok());
+        Ok(())
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    //#[sqlx::test]
-    async fn test_bad_req(_pool: Pool<Postgres>) {
+    async fn test_bad_req(_pool: PgPool) -> sqlx::Result<()> {
         let ctx = VotingContext::new().await;
         let secret = get_secret();
         println!("Secret {}", secret);
@@ -282,12 +282,13 @@ mod test {
             .reply(&app)
             .await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        Ok(())
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     //#[sqlx::test]
-    async fn test_authorized(pool: Pool<Postgres>) {
-        let ctx = Box::leak(Box::new(VotingContext::new_with_pool(pool).await));
+    async fn test_authorized(pool: sqlx::PgPool) -> sqlx::Result<()> {
+        let ctx = VotingContext::new_with_pool(pool).await;
         let secret = get_secret();
         let webhook = &Webhook {
             bot: dbl::types::BotId(11),
@@ -313,6 +314,7 @@ mod test {
             .reply(&get_app(ctx.clone()).await)
             .await;
         assert_eq!(res.status(), StatusCode::OK);
+        Ok(())
     }
 
     #[sqlx::test]

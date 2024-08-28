@@ -142,16 +142,16 @@ pub async fn search_query_to_source_and_metadata_ytdl(
 /// Build a query from AuxMetadata.
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        "{} {}",
+        r#"{} {} \"topic\""#,
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
     )
 }
 
-/// Build a query from AuxMetadata for lyric videos.
+/// Build a query from AuxMetadata for.
 pub fn build_query_lyric_video_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        "{} {} lyric video",
+        r#"{} {} \"topic\""#,
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
     )
@@ -174,7 +174,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, "world hello");
+        assert_eq!(res, r#"world hello \"topic\""#);
     }
 
     #[test]
@@ -185,7 +185,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_lyric_video_aux_metadata(&aux_metadata);
-        assert_eq!(res, "world hello lyric video");
+        assert_eq!(res, r#"world hello \"topic\""#);
     }
 
     #[tokio::test]
