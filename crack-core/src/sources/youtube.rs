@@ -3,6 +3,7 @@ use crate::http_utils;
 use crate::sources::rusty_ytdl::{
     search_result_to_aux_metadata, video_info_to_aux_metadata, RustyYoutubeSearch,
 };
+use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
 use crate::{commands::MyAuxMetadata, errors::CrackedError};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
@@ -55,6 +56,8 @@ pub async fn search_query_to_source_and_metadata(
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
+        let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
+        tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
         let results = rytdl.search_one(query.clone(), None).await?;
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
@@ -130,7 +133,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     let query = if query.starts_with("ytsearch:") {
         query
     } else {
-        format!("ytsearch:{}", query)
+        format!("ytsearch:{} {}", query, MUSIC_SEARCH_SUFFIX)
     };
     let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
@@ -142,18 +145,20 @@ pub async fn search_query_to_source_and_metadata_ytdl(
 /// Build a query from AuxMetadata.
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        r#"{} {} \"topic\""#,
+        "{} {} {}",
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
+        MUSIC_SEARCH_SUFFIX,
     )
 }
 
 /// Build a query from AuxMetadata for.
 pub fn build_query_lyric_video_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        r#"{} {} \"topic\""#,
+        "{} {} {}",
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
+        MUSIC_SEARCH_SUFFIX,
     )
 }
 
@@ -174,7 +179,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, r#"world hello \"topic\""#);
+        assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
     }
 
     #[test]
@@ -185,7 +190,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_lyric_video_aux_metadata(&aux_metadata);
-        assert_eq!(res, r#"world hello \"topic\""#);
+        assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
     }
 
     #[tokio::test]

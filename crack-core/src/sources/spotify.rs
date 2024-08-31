@@ -2,10 +2,11 @@ use crate::{
     commands::play_utils::QueryType,
     errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
+    utils::MUSIC_SEARCH_SUFFIX,
 };
 use lazy_static::lazy_static;
 use regex::Regex;
-use rspotify::model::FullPlaylist;
+use rspotify::model::{FullPlaylist, FullTrack, SimplifiedAlbum};
 use rspotify::{
     clients::BaseClient,
     model::{
@@ -14,7 +15,7 @@ use rspotify::{
     },
     ClientCredsSpotify, ClientResult, Config, Credentials,
 };
-use std::{env, str::FromStr, time::Duration};
+use std::{collections::HashMap, env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -411,7 +412,7 @@ impl Spotify {
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(artists: &str, track_name: &str) -> String {
-        format!(r#"{} {} \"topic\""#, artists, track_name)
+        format!("{} {} {}", artists, track_name, MUSIC_SEARCH_SUFFIX)
     }
 
     /// Join the artist names into a single string.
@@ -495,7 +496,12 @@ impl SpotifyTrack {
 
     /// Build a query for searching, from the artist names and the track name.
     pub fn build_query(&self) -> String {
-        format!(r#"{} {} \"topic\""#, &self.name(), &self.join_artist_names())
+        format!(
+            "{} {} {}",
+            &self.name(),
+            &self.join_artist_names(),
+            MUSIC_SEARCH_SUFFIX
+        )
     }
 
     /// Build a query for searching, from the artist names and the track name.
@@ -511,13 +517,55 @@ impl From<rspotify::model::FullTrack> for SpotifyTrack {
     }
 }
 
+/// Implementation of From for SpotifyTrack.
+pub fn build_fake_spotify_track() -> SpotifyTrack {
+    SpotifyTrack::new(FullTrack {
+        id: None,
+        name: "asdf".to_string(),
+        artists: vec![SimplifiedArtist {
+            external_urls: HashMap::new(),
+            href: None,
+            id: None,
+            name: "qwer".to_string(),
+        }],
+        album: SimplifiedAlbum {
+            album_type: None,
+            album_group: None,
+            artists: vec![],
+            available_markets: vec![],
+            external_urls: HashMap::new(),
+            href: None,
+            id: None,
+            images: vec![],
+            name: "zxcv".to_string(),
+            release_date: Some("2012".to_string()),
+            release_date_precision: None,
+            restrictions: None,
+        },
+        track_number: 0,
+        disc_number: 0,
+        explicit: false,
+        external_urls: HashMap::new(),
+        href: None,
+        preview_url: None,
+        popularity: 0,
+        is_playable: None,
+        linked_from: None,
+        restrictions: None,
+        external_ids: HashMap::new(),
+        is_local: false,
+        available_markets: vec![],
+        duration: chrono::TimeDelta::new(60, 0).unwrap(),
+    })
+}
+
 #[cfg(test)]
 mod test {
     use crate::commands::MyAuxMetadata;
 
     use super::*;
-    use rspotify::model::{FullTrack, SimplifiedAlbum};
-    use std::collections::HashMap;
+    // use rspotify::model::{FullTrack, SimplifiedAlbum};
+    // use std::collections::HashMap;
 
     // // Mock ClientCredsSpotify
     // struct MockClientCredsSpotify {}
@@ -593,44 +641,19 @@ mod test {
     // }
     #[test]
     fn test_from_spotify_track() {
-        let track = SpotifyTrack::new(FullTrack {
-            id: None,
-            name: "asdf".to_string(),
-            artists: vec![],
-            album: SimplifiedAlbum {
-                album_type: None,
-                album_group: None,
-                artists: vec![],
-                available_markets: vec![],
-                external_urls: HashMap::new(),
-                href: None,
-                id: None,
-                images: vec![],
-                name: "zxcv".to_string(),
-                release_date: Some("2012".to_string()),
-                release_date_precision: None,
-                restrictions: None,
-            },
-            track_number: 0,
-            disc_number: 0,
-            explicit: false,
-            external_urls: HashMap::new(),
-            href: None,
-            preview_url: None,
-            popularity: 0,
-            is_playable: None,
-            linked_from: None,
-            restrictions: None,
-            external_ids: HashMap::new(),
-            is_local: false,
-            available_markets: vec![],
-            duration: chrono::TimeDelta::new(60, 0).unwrap(),
-        });
+        let track = build_fake_spotify_track();
         let res = MyAuxMetadata::from_spotify_track(&track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
-        assert_eq!(metadata.artist, Some("".to_string()));
+        assert_eq!(metadata.artist, Some("qwer".to_string()));
         assert_eq!(metadata.album, Some("zxcv".to_string()));
         assert_eq!(metadata.duration.unwrap().as_secs(), 60);
+    }
+
+    #[test]
+    fn test_track_build_query() {
+        let track = build_fake_spotify_track();
+        let query = track.build_query();
+        assert_eq!(query, "asdf qwer album version");
     }
 }

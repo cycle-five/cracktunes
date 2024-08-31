@@ -5,6 +5,7 @@ use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::{
     search_result_to_aux_metadata, video_info_to_aux_metadata, NewSearchSource,
 };
+use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -139,7 +140,7 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
         };
-        base.map(|x| format!(r#"{} \"topic\""#, x))
+        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
     }
 
     /// Build a query string for a explicit result from the query type.

@@ -49,6 +49,9 @@ use tokio::sync::RwLock;
 use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
+// This term gets appended to search queries in the default mode to try to find the album version of a song.
+// pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
+pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
 use anyhow::Result;
 

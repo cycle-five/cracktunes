@@ -11,10 +11,11 @@ use rusty_ytdl::{
 };
 use serenity::async_trait;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use std::fmt::Display;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::{fmt::Display, time::Duration};
+use std::time::Duration;
 use symphonia::core::io::MediaSource;
 use tokio::sync::RwLock;
 

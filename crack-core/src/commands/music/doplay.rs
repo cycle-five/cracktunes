@@ -153,7 +153,7 @@ use crate::poise_ext::PoiseContextExt;
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
-async fn play_internal(
+pub async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
     file: Option<serenity::Attachment>,
