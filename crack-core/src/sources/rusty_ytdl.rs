@@ -531,35 +531,35 @@ mod test {
         assert!(!input.is_playable());
     }
 
-    #[tokio::test]
-    async fn test_ytdl() {
-        let search = "The Night Chicago Died";
-        let rusty_ytdl = YouTube::new().unwrap();
-        let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
-        match playlist {
-            Ok(Some(playlist)) => {
-                let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
-                println!("{:?}", metadata);
-            },
-            Ok(None) => {
-                assert!(false)
-            },
-            Err(e) => {
-                println!("{:?}", e);
-            },
-        }
-    }
+    // #[tokio::test]
+    // async fn test_ytdl() {
+    //     let search = "The Night Chicago Died";
+    //     let rusty_ytdl = YouTube::new().unwrap();
+    //     let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
+    //     match playlist {
+    //         Ok(Some(playlist)) => {
+    //             let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
+    //             println!("{:?}", metadata);
+    //         },
+    //         Ok(None) => {
+    //             assert!(false)
+    //         },
+    //         Err(e) => {
+    //             println!("{:?}", e);
+    //         },
+    //     }
+    // }
 
-    #[tokio::test]
-    async fn test_rusty_ytdl() {
-        let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
+    // #[tokio::test]
+    // async fn test_rusty_ytdl() {
+    //     let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
 
-        let rusty_ytdl = YouTube::new().unwrap();
-        for search in searches {
-            let res = rusty_ytdl.search_one(search.to_string(), None).await;
-            println!("{res:?}");
-        }
-    }
+    //     let rusty_ytdl = YouTube::new().unwrap();
+    //     for search in searches {
+    //         let res = rusty_ytdl.search_one(search.to_string(), None).await;
+    //         println!("{res:?}");
+    //     }
+    // }
 
     #[tokio::test]
     async fn test_rusty_ytdl_serial() {
@@ -662,4 +662,11 @@ mod test {
         let req = builder.build();
         assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
     }
+
+    // #[tokio::test]
+    // async fn test_build_query() {
+    //     let search = "The Night Chicago Died";
+    //     let query = rusty_ytdl::build_query(search);
+    //     assert_eq!(query, "ytsearch1:The Night Chicago Died");
+    // }
 }

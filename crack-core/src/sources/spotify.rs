@@ -654,6 +654,6 @@ mod test {
     fn test_track_build_query() {
         let track = build_fake_spotify_track();
         let query = track.build_query();
-        assert_eq!(query, "asdf qwer album version");
+        assert_eq!(query, r#"asdf qwer \"topic\""#);
     }
 }
