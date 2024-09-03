@@ -1,2 +1,7 @@
-# devs
-lothrop cycle.five@proton.me github.com/cycle-five
+/* TEAM */
+Author: lothrop
+Email: cycle.five@proton.me
+Github: github.com/cycle-five
+X: x.com/Cycle_Five
+/* SITE */
+Updated: 2024-09-02

@@ -628,6 +628,9 @@ impl QueryType {
                     .await
                     .map_err(CrackedError::AuxMetadataError)?;
                 let my_metadata = MyAuxMetadata(metadata);
+
+                // let (input, metadata) =
+                //     search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
                 Ok((input, vec![my_metadata]))
             },
             QueryType::Keywords(query) => {

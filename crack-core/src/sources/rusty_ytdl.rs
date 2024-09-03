@@ -257,11 +257,15 @@ impl RustyYoutubeSearch {
             ..Default::default()
         };
         let rusty_ytdl = rusty_ytdl::search::YouTube::new_with_options(&request_options)?;
+        let url = match query.clone() {
+            QueryType::VideoLink(url) => Some(url.clone()),
+            _ => None,
+        };
         Ok(Self {
             rusty_ytdl,
             metadata: None,
             query,
-            url: None,
+            url,
             video: None,
         })
     }
@@ -328,17 +332,25 @@ impl Compose for RustyYoutubeSearch {
             return Ok(meta.clone());
         }
 
-        let res: SearchResult = self
+        let metadata = if let Some(url) = &self.url {
+            let video = get_video_info(url.clone()).await?;
+            let metadata = video_info_to_aux_metadata(&video);
+            metadata
+        } else {
+            let res: SearchResult = self
             .rusty_ytdl
             .search_one(self.query.build_query().unwrap(), None)
             .await
+            // .map_err(|e| AudioStreamError::from(CrackedError::from(e)))?
             .map_err(|e| {
                 <CrackedError as Into<AudioStreamError>>::into(
                     <VideoError as Into<CrackedError>>::into(e),
                 )
             })?
             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
-        let metadata = search_result_to_aux_metadata(&res);
+            let metadata = search_result_to_aux_metadata(&res);
+            metadata
+        };
 
         self.metadata = Some(metadata.clone());
         self.url = Some(metadata.source_url.clone().unwrap());
