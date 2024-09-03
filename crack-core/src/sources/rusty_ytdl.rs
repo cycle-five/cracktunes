@@ -334,8 +334,7 @@ impl Compose for RustyYoutubeSearch {
 
         let metadata = if let Some(url) = &self.url {
             let video = get_video_info(url.clone()).await?;
-            let metadata = video_info_to_aux_metadata(&video);
-            metadata
+            video_info_to_aux_metadata(&video)
         } else {
             let res: SearchResult = self
             .rusty_ytdl
@@ -348,18 +347,13 @@ impl Compose for RustyYoutubeSearch {
                 )
             })?
             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
-            let metadata = search_result_to_aux_metadata(&res);
-            metadata
+            search_result_to_aux_metadata(&res)
         };
 
         self.metadata = Some(metadata.clone());
         self.url = Some(metadata.source_url.clone().unwrap());
 
         Ok(metadata)
-
-        // self.metadata
-        //     .clone()
-        //     .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
     }
 }
 
