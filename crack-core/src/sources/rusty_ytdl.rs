@@ -1,5 +1,6 @@
+use crate::errors::CrackedError;
 use crate::http_utils;
-use crate::{commands::play_utils::QueryType, errors::CrackedError};
+use crate::music::QueryType;
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;

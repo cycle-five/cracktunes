@@ -1,4 +1,5 @@
-use crate::commands::{play_utils::QueryType, Mode};
+use crate::commands::Mode;
+use crate::music::QueryType;
 use crate::Context as CrackContext;
 use poise::serenity_prelude as serenity;
 use serenity::all::Message;

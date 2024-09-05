@@ -1,10 +1,10 @@
-use crate::commands::play_utils::TrackReadyData;
 use crate::commands::{has_voted_bot_id, MyAuxMetadata};
 use crate::db;
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::GuildSettings;
 use crate::http_utils;
+use crate::music::TrackReadyData;
 use crate::Error;
 use crate::{
     commands::CrackedError, http_utils::SendMessageParams, messaging::message::CrackedMessage,

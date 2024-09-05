@@ -1,5 +1,5 @@
 use crate::{
-    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
+    commands::{forget_skip_votes, MyAuxMetadata},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -7,6 +7,7 @@ use crate::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
+    music::query::QueryType,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
