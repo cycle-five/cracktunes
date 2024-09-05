@@ -1,5 +1,5 @@
-use crate::commands::play_utils::QueryType;
 use crate::http_utils;
+use crate::music::query::QueryType;
 use crate::sources::rusty_ytdl::{
     search_result_to_aux_metadata, video_info_to_aux_metadata, RustyYoutubeSearch,
 };

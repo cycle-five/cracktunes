@@ -1,7 +1,7 @@
-use super::play_utils::query::QueryType;
-use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
-use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, help};
+use crate::music::query::query_type_from_url;
+use crate::music::query::QueryType;
+use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
 use crate::utils::edit_embed_response2;
 use crate::CrackedResult;

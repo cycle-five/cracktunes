@@ -1,7 +1,7 @@
 use crate::{
-    commands::play_utils::QueryType,
     errors::CrackedError,
     messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
+    music::QueryType,
     utils::MUSIC_SEARCH_SUFFIX,
 };
 use lazy_static::lazy_static;

@@ -4,7 +4,7 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::{music::doplay::RequestingUser, music::play_utils::QueryType, music::MyAuxMetadata},
+    commands::{music::doplay::RequestingUser, music::MyAuxMetadata},
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -14,6 +14,7 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
+    music::query::QueryType,
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::{

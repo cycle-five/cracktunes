@@ -11,7 +11,6 @@ pub mod lyrics;
 pub mod manage_sources;
 pub mod nowplaying;
 pub mod pause;
-pub mod play_utils;
 pub mod playlog;
 pub mod queue;
 pub mod remove;
