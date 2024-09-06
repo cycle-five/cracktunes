@@ -56,7 +56,7 @@ pub async fn search_query_to_source_and_metadata(
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
-        let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
+        // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
         tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
         let results = rytdl.search_one(query.clone(), None).await?;
 
@@ -130,11 +130,11 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     _client: reqwest::Client,
     query: String,
 ) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
-    let query = if query.starts_with("ytsearch:") {
-        query
-    } else {
-        format!("ytsearch:{} {}", query, MUSIC_SEARCH_SUFFIX)
-    };
+    // let query = if query.starts_with("ytsearch:") {
+    //     query
+    // } else {
+    //     format!("ytsearch:{} {}", query, MUSIC_SEARCH_SUFFIX)
+    // };
     let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
     let my_metadata = MyAuxMetadata(metadata);
