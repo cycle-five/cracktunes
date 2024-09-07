@@ -5,6 +5,7 @@ pub mod collector;
 pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
+pub mod get_metadata;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;
@@ -31,6 +32,7 @@ pub use clear::*;
 pub use collector::*;
 pub use doplay::*;
 pub use gambling::*;
+pub use get_metadata::*;
 pub use grab::*;
 pub use leave::*;
 pub use lyrics::*;
@@ -79,6 +81,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             volume(),
             vote(),
             voteskip(),
+            get_metadata(),
         ]
     } else {
         vec![]
