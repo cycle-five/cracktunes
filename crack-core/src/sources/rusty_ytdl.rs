@@ -484,8 +484,8 @@ impl From<NewSearchSource> for Input {
 #[cfg(test)]
 mod test {
     use crate::{
-        commands::play_utils::QueryType,
         http_utils,
+        music::QueryType,
         sources::{
             rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
             youtube::search_query_to_source_and_metadata_rusty,
