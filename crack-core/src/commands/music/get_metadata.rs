@@ -2,7 +2,6 @@ use crate::commands::cmd_check_music;
 use crate::http_utils;
 use crate::messaging::interface as msg_int;
 use crate::music::query::query_type_from_url;
-use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::CrackedMessage;
 use crate::{
     errors::{verify, CrackedError},
@@ -12,10 +11,10 @@ use rusty_ytdl::{search::YouTube, RequestOptions};
 
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
+    category = "Music",
     slash_command,
     guild_only,
-    check = "cmd_check_music",
-    category = "Music"
+    check = "cmd_check_music"
 )]
 pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), Error> {
     let search_msg = msg_int::send_search_message(&ctx).await?;
@@ -44,9 +43,13 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
         .collect::<Vec<_>>()
         .join("\n");
 
-    let message = CrackedMessage::Other(str);
-
-    ctx.send_reply(message, true).await?;
+    let crack_msg = CrackedMessage::Other(str);
+    match crate::utils::edit_embed_response2(ctx, crack_msg.into(), search_msg.clone()).await {
+        Ok(_) => {},
+        Err(e) => {
+            tracing::error!("Error editing embed: {:?}", e);
+        },
+    };
 
     Ok(())
 }
