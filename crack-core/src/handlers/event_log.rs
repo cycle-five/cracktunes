@@ -386,9 +386,7 @@ pub async fn handle_event(
                         prefix,
                     )
                     .await?;
-                    data_global
-                        .insert_guild(guild.id, new_guild_settings)
-                        .await?;
+                    let _ = data_global.insert_guild(guild.id, new_guild_settings).await;
                 },
                 None => {
                     tracing::error!("No database pool available");

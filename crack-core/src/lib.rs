@@ -332,6 +332,7 @@ pub struct DataInner {
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<serenity::Message>>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
@@ -505,25 +506,26 @@ impl EventLogAsync {
 impl Default for DataInner {
     fn default() -> Self {
         Self {
-            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
-            up_prefix: "R",
-            bot_settings: Default::default(),
             start_time: SystemTime::now(),
             #[cfg(feature = "crack-activity")]
             user_activity_map: Arc::new(dashmap::DashMap::new()),
             #[cfg(feature = "crack-activity")]
             activity_user_map: Arc::new(dashmap::DashMap::new()),
+            #[cfg(feature = "crack-gpt")]
+            gpt_ctx: Arc::new(RwLock::new(None)),
+            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
+            up_prefix: "R",
+            bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            guild_command_msg_queue: Default::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             db_channel: None,
-            #[cfg(feature = "crack-gpt")]
-            gpt_ctx: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -588,12 +590,11 @@ impl Data {
         &self,
         guild_id: GuildId,
         guild_settings: GuildSettings,
-    ) -> Result<GuildSettings, CrackedError> {
+    ) -> Option<GuildSettings> {
         self.guild_settings_map
             .write()
             .await
             .insert(guild_id, guild_settings)
-            .ok_or(CrackedError::FailedToInsert)
     }
 
     /// Create a new Data, calls default
