@@ -130,7 +130,14 @@ pub async fn play(
 
 /// Play a song with more options
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
+#[poise::command(
+    category = "Music",
+    slash_command,
+    prefix_command,
+    guild_only,
+    aliases("opt"),
+    check = "cmd_check_music"
+)]
 pub async fn optplay(
     ctx: Context<'_>,
     #[flag]
@@ -144,6 +151,22 @@ pub async fn optplay(
         return help::wrapper(ctx).await;
     }
     play_internal(ctx, mode, file, query_or_url).await
+}
+
+/// Play a local file.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn playfile(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
+    #[description = "File to play."] file: serenity::Attachment,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
+    play_internal(ctx, None, Some(file), None).await
 }
 
 use crate::messaging::interface as msg_int;

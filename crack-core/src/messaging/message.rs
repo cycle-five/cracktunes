@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
 
-const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
-const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
+pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
+pub const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
 
 #[repr(u8)]
 #[derive(Debug)]

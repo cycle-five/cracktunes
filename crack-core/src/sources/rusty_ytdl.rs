@@ -292,6 +292,7 @@ impl Compose for RustyYoutubeSearch {
     async fn create_async(
         &mut self,
     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        // We may or may not have the metadata, so we need to check.
         if self.metadata.is_none() {
             self.aux_metadata().await?;
         }
@@ -327,6 +328,29 @@ impl Compose for RustyYoutubeSearch {
     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
         if let Some(meta) = self.metadata.as_ref() {
             return Ok(meta.clone());
+        }
+
+        // If we have a url, we can get the metadata from that directory so no need to search.
+        if let Some(url) = self.url.as_ref() {
+            let video =
+                Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+            // let video = Video::new(url.clone()).map_err(|e| {
+            //     <CrackedError as Into<AudioStreamError>>::into(
+            //         <VideoError as Into<CrackedError>>::into(e),
+            //     )
+            // })?;
+            let video_info = video
+                .get_basic_info()
+                .await
+                .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+            // let video_info = video.get_basic_info().await.map_err(|e| {
+            //     <CrackedError as Into<AudioStreamError>>::into(
+            //         <VideoError as Into<CrackedError>>::into(e),
+            //     )
+            // })?;
+            let metadata = video_info_to_aux_metadata(&video_info);
+            self.metadata = Some(metadata.clone());
+            return Ok(metadata);
         }
 
         let res: SearchResult = self

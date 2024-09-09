@@ -6,6 +6,8 @@ members = [
   "crack-gpt",
   "crack-bf",
   "crack-voting",
+  "crack-testing",
+  "crack-types",
 ]
 resolver = "2"
 

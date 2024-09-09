@@ -53,6 +53,10 @@ pub trait MessageInterfaceCtxExt {
 
     /// Return whether the queue is paused or not.
     fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
+
+    /// Add a message to the stack of messages the bot is still interacting with.
+    fn push_latest_msg(&self, msg: MessageOrReplyHandle)
+        -> impl Future<Output = Result<(), Error>>;
 }
 
 impl MessageInterfaceCtxExt for crate::Context<'_> {
@@ -106,6 +110,11 @@ impl MessageInterfaceCtxExt for crate::Context<'_> {
         } else {
             Ok(false)
         }
+    }
+
+    async fn push_latest_msg(&self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        self.data().push_latest_msg(guild_id, mor).await
     }
 }
 

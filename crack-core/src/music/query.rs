@@ -619,8 +619,12 @@ impl QueryType {
             QueryType::VideoLink(_query) => {
                 tracing::warn!("In VideoLink");
                 // let mut ytdl = YoutubeDl::new(client_old, query.clone());
-                // let metadata = ytdl.aux_metadata().await?;
-                let client = crate::http_utils::get_client();
+                // // let metadata = ytdl.aux_metadata().await?;
+                // let client = crate::http_utils::get_client();
+                // let search =
+                //     crate::sources::youtube::get_rusty_search(client.clone(), query.clone())
+                //         .await?;
+                // search.
                 // This call, this is what does all the work
                 let mut input = self.get_query_source(client.clone());
                 let metadata = input

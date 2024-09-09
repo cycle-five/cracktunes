@@ -3,8 +3,8 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::poise_ext::MessageInterfaceCtxExt;
-use crate::CrackedError;
 use crate::{Context, Error};
+use crate::{CrackedError, MessageOrReplyHandle};
 use poise::serenity_prelude::Mentionable;
 use serenity::all::{ChannelId, GuildId};
 use songbird::{Call, Event, TrackEvent};
@@ -101,8 +101,12 @@ pub async fn do_join(
                 tracing::warn!("Error joining channel: {:?}", err);
                 let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
-                let msg = CrackedMessage::CrackedRed(str.clone());
-                ctx.send_reply_embed(msg).await?;
+                let crack_msg = CrackedMessage::CrackedRed(str.clone());
+                let msg = ctx.send_reply_embed(crack_msg).await?;
+                //ctx.defer().await;
+                //msg.delete_after(ctx, Duration::from_secs(10)).await;
+                let msg_or_reply = MessageOrReplyHandle::ReplyHandle(msg);
+                ctx.push_latest_msg(msg_or_reply).await;
                 return Err(Box::new(my_err));
             },
         },

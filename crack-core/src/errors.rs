@@ -8,7 +8,9 @@ use crate::messaging::messages::{
     NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
-use crate::Error;
+use std::error::Error as StdError;
+pub type Error = Box<dyn StdError + Send + Sync>;
+
 use audiopus::error::Error as AudiopusError;
 use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
