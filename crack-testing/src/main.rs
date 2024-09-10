@@ -1,10 +1,10 @@
 use crack_testing::run;
 
 /// Main function
-//#[tokio::main]
+#[tokio::main]
 #[cfg(not(tarpaulin_include))]
-fn main() {
+async fn main() {
     println!("Starting server");
-    //let _ = run();
-    run();
+    let _ = run().await;
+    // run();
 }

@@ -17,7 +17,7 @@ workspace = ".."
 [dependencies]
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
 serenity = { workspace = true }
-tokio = "1.39"
+tokio = { version = "1.40", features = ["rt-multi-thread"] }
 crack-types = { path = "../crack-types" }
 
 [lints.rust]

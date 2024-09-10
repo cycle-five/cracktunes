@@ -20,10 +20,9 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
-# anyhow = "1.0"
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
 serenity = { workspace = true }
-tokio = "1.39"
+tokio = "1.40"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

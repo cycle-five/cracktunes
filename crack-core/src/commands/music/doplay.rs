@@ -332,14 +332,14 @@ pub async fn play_internal(
 
     // [Manage Messages]: Permissions::MANAGE_MESSAGES
     // I think this does different things based on prefix or not?
-    if !is_prefix {
-        match search_msg.delete(&ctx).await {
-            Ok(_) => {},
-            Err(e) => {
-                tracing::error!("Error deleting search message: {:?}", e);
-            },
-        }
-    }
+    // if !is_prefix {
+    //     match search_msg.delete(&ctx).await {
+    //         Ok(_) => {},
+    //         Err(e) => {
+    //             tracing::error!("Error deleting search message: {:?}", e);
+    //         },
+    //     }
+    // }
 
     let _after_edit_embed = std::time::Instant::now();
 

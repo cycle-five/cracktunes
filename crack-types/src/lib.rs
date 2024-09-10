@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::sync::Arc;
-use std::result::Result;
 use tokio::sync::{Mutex, RwLock};
 
 pub type Error = Box<dyn StdError + Send + Sync>;
