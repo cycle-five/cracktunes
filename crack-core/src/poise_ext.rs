@@ -2,14 +2,13 @@ use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::music::TrackReadyData;
 use crate::{
-    db,http_utils,
+    commands::CrackedError,
     commands::{has_voted_bot_id, MyAuxMetadata},
-    commands::CrackedError, http_utils::SendMessageParams, messaging::message::CrackedMessage,
+    db, http_utils,
+    http_utils::SendMessageParams,
+    messaging::message::CrackedMessage,
     utils::OptionTryUnwrap,
-    CrackedResult,
-    Data,
-    Error,
-    MessageOrReplyHandle
+    CrackedResult, Data, Error, MessageOrReplyHandle,
 };
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
@@ -20,163 +19,71 @@ use songbird::Call;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
-use crate::messaging::interface;
-/// TODO: Separate all the messaging related functions from the other extensions and
-/// put them into this extension.
-pub trait MessageInterfaceCtxExt {
-    /// Send a message notifying the user they found a command.
-    fn send_found_command(
-        &self,
-        command: String,
-    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
-
-    /// Send a message to the user with the invite link for the bot.
-    fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
-
-    /// Creates a reply from a CrackedMessage and sends its, optionally as an embed.
-    fn send_reply(
-        &self,
-        message: CrackedMessage,
-        as_embed: bool,
-    ) -> impl Future<Output = Result<ReplyHandle<'_>, CrackedError>>;
-
-    /// Creates an embed from a CrackedMessage and sends it.
-    fn send_reply_embed(
-        &self,
-        message: CrackedMessage,
-    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
-
-    /// Sends a message ecknowledging that the user has grabbed the current track.
-    fn send_grabbed_notice(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
-
-    /// Send a now playing message
-    fn send_now_playing(&self, chan_id: ChannelId) -> impl Future<Output = Result<Message, Error>>;
-
-    /// Return whether the queue is paused or not.
-    fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
-
-    /// Add a message to the stack of messages the bot is still interacting with.
-    fn push_latest_msg(&self, msg: MessageOrReplyHandle)
-        -> impl Future<Output = Result<(), Error>>;
-}
-
-impl MessageInterfaceCtxExt for crate::Context<'_> {
-    /// Sends a message notifying the use they found a command.
-    async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
-        self.send_reply_embed(CrackedMessage::CommandFound(command))
-            .await
-    }
-
-    async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
-        self.send_reply_embed(CrackedMessage::InviteLink).await
-    }
-
-    async fn send_reply(
-        &self,
-        message: CrackedMessage,
-        as_embed: bool,
-    ) -> Result<ReplyHandle, CrackedError> {
-        PoiseContextExt::send_reply(self, message, as_embed).await
-    }
-
-    async fn send_reply_embed(&self, message: CrackedMessage) -> Result<ReplyHandle, Error> {
-        PoiseContextExt::send_reply(self, message, true)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn send_grabbed_notice(&self) -> Result<ReplyHandle, Error> {
-        self.send_reply_embed(CrackedMessage::GrabbedNotice).await
-    }
-
-    async fn send_now_playing(&self, chan_id: ChannelId) -> Result<Message, Error> {
-        let call = self.get_call().await?;
-        // We don't add this message to the cache because we shouldn't delete it.
-        interface::send_now_playing(
-            chan_id,
-            self.serenity_context().http.clone(),
-            call,
-            //cur_pos,
-            //metadata,
-        )
-        .await
-    }
-
-    async fn is_paused(&self) -> CrackedResult<bool> {
-        let call = self.get_call().await?;
-        let handler = call.lock().await;
-        let topt = handler.queue().current();
-        if let Some(t) = topt {
-            Ok(t.get_info().await?.playing == PlayMode::Pause)
-        } else {
-            Ok(false)
-        }
-    }
-
-    async fn push_latest_msg(&self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
-        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        self.data().push_latest_msg(guild_id, mor).await
-    }
-}
-
 /// Trait to extend the Context struct with additional convenience functionality.
-pub trait ContextExt {
+pub trait ContextExt<'ctx> {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData);
+    fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData);
     fn async_send_track_metadata_write_msg(
-        &self,
+        self,
         ready_track: &TrackReadyData,
     ) -> impl Future<Output = CrackedResult<()>>;
     /// The the user id for the author of the message that created this context.
-    fn get_user_id(&self) -> serenity::UserId;
+    fn get_user_id(self) -> serenity::UserId;
     /// Gets the log of last played songs on the bot by a specific user
     fn get_last_played_by_user(
-        &self,
+        self,
         user_id: UserId,
     ) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
 
-    fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
+    fn get_guild_settings(self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
 
     /// Gets the log of last played songs on the bot
-    fn get_last_played(&self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
+    fn get_last_played(self) -> impl Future<Output = Result<Vec<String>, CrackedError>>;
     /// Return the call that the bot is currently in, if it is in one.
-    fn get_call(&self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
+    fn get_call(self) -> impl Future<Output = Result<Arc<Mutex<Call>>, CrackedError>>;
     /// Return the call and the guild id. This is convenience function I found I had many cases for.
     fn get_call_guild_id(
-        &self,
+        self,
     ) -> impl Future<Output = Result<(Arc<Mutex<Call>>, GuildId), CrackedError>>;
     /// Return the queue owned.
-    fn get_queue(&self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
+    fn get_queue(self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
-    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError>;
+    fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError>;
     /// Add a message to the cache
     fn add_msg_to_cache(
-        &self,
+        self,
         guild_id: GuildId,
         msg: Message,
     ) -> impl Future<Output = Option<Message>>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
-    fn get_active_channel_id(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+    fn get_active_channel_id(self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
 
     // ----- Send message utility functions ------ //
 
     /// Send a message notifying the user they found a command.
     fn send_found_command(
-        &self,
+        self,
         command: String,
-    ) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, Error>>;
 
     /// Send a message to the user with the invite link for the bot.
-    fn send_invite_link(&self) -> impl Future<Output = Result<ReplyHandle<'_>, Error>>;
+    fn send_invite_link(self) -> impl Future<Output = Result<ReplyHandle<'ctx>, Error>>;
 
     /// Check if the authoring user has voted for the bot on several sites within the last 12 hours.
-    fn check_and_record_vote(&self) -> impl Future<Output = Result<bool, CrackedError>>;
+    fn check_and_record_vote(self) -> impl Future<Output = Result<bool, CrackedError>>;
+
+    /// Return whether the queue is paused or not.
+    fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
+
+    /// Add a message to the stack of messages the bot is still interacting with.
+    fn push_latest_msg(self, msg: MessageOrReplyHandle)
+        -> impl Future<Output = CrackedResult<()>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
-impl ContextExt for crate::Context<'_> {
+impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Get the user id from a context.
-    fn get_user_id(&self) -> serenity::UserId {
+    fn get_user_id(self) -> serenity::UserId {
         match self {
             poise::Context::Application(ctx) => ctx.interaction.user.id,
             poise::Context::Prefix(ctx) => ctx.msg.author.id,
@@ -184,12 +91,12 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Get the guild settings for a guild.
-    async fn get_guild_settings(&self, guild_id: GuildId) -> Option<GuildSettings> {
+    async fn get_guild_settings(self, guild_id: GuildId) -> Option<GuildSettings> {
         self.data().get_guild_settings(guild_id).await
     }
 
     /// Get the last played songs for a user.
-    async fn get_last_played_by_user(&self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
+    async fn get_last_played_by_user(self, user_id: UserId) -> Result<Vec<String>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         PlayLog::get_last_played(
             self.data().database_pool.as_ref().unwrap(),
@@ -201,7 +108,7 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Get the last played songs for a guild.
-    async fn get_last_played(&self) -> Result<Vec<String>, CrackedError> {
+    async fn get_last_played(self) -> Result<Vec<String>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         PlayLog::get_last_played(
             self.data().database_pool.as_ref().unwrap(),
@@ -213,7 +120,7 @@ impl ContextExt for crate::Context<'_> {
     }
 
     async fn async_send_track_metadata_write_msg(
-        &self,
+        self,
         _ready_track: &TrackReadyData,
     ) -> CrackedResult<()> {
         todo!()
@@ -244,7 +151,7 @@ impl ContextExt for crate::Context<'_> {
     // }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(&self, ready_track: &TrackReadyData) {
+    fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData) {
         let username = ready_track.username.clone();
         let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
         let user_id = ready_track.user_id;
@@ -265,7 +172,7 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Return the call that the bot is currently in, if it is in one.
-    async fn get_call(&self) -> Result<Arc<Mutex<Call>>, CrackedError> {
+    async fn get_call(self) -> Result<Arc<Mutex<Call>>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = songbird::get(self.serenity_context())
             .await
@@ -274,7 +181,7 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Return the call that the bot is currently in, if it is in one.
-    async fn get_call_guild_id(&self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
+    async fn get_call_guild_id(self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = songbird::get(self.serenity_context())
             .await
@@ -286,23 +193,23 @@ impl ContextExt for crate::Context<'_> {
     }
 
     /// Get the queue owned.
-    async fn get_queue(&self) -> Result<TrackQueue, CrackedError> {
+    async fn get_queue(self) -> Result<TrackQueue, CrackedError> {
         let lock = self.get_call().await?;
         let call = lock.lock().await;
         Ok(call.queue().clone())
     }
 
     /// Get the database pool
-    fn get_db_pool(&self) -> Result<sqlx::PgPool, CrackedError> {
+    fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError> {
         self.data().get_db_pool()
     }
 
-    async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+    async fn add_msg_to_cache(self, guild_id: GuildId, msg: Message) -> Option<Message> {
         self.data().add_msg_to_cache(guild_id, msg).await
     }
 
     /// Gets the channel id that the bot is currently playing in for a given guild.
-    async fn get_active_channel_id(&self, guild_id: GuildId) -> Option<ChannelId> {
+    async fn get_active_channel_id(self, guild_id: GuildId) -> Option<ChannelId> {
         let serenity_context = self.serenity_context();
         let manager = songbird::get(serenity_context)
             .await
@@ -321,18 +228,17 @@ impl ContextExt for crate::Context<'_> {
     // ----- Send message utility functions ------ //
 
     /// Sends a message notifying the use they found a command.
-    async fn send_found_command(&self, command: String) -> Result<ReplyHandle, Error> {
-        self.send_reply_embed(CrackedMessage::CommandFound(command))
-            .await
+    async fn send_found_command(self, command: String) -> Result<ReplyHandle<'ctx>, Error> {
+        self.send_reply_embed(CrackedMessage::CommandFound(command)).await
     }
 
-    async fn send_invite_link(&self) -> Result<ReplyHandle, Error> {
+    async fn send_invite_link(self) -> Result<ReplyHandle<'ctx>, Error> {
         self.send_reply_embed(CrackedMessage::InviteLink).await
     }
 
     // ----------- DB Write functions ----------- //
 
-    async fn check_and_record_vote(&self) -> Result<bool, CrackedError> {
+    async fn check_and_record_vote(self) -> Result<bool, CrackedError> {
         let user_id: UserId = self.author().id;
         let bot_id: UserId = http_utils::get_bot_id(self).await?;
         let pool = self.get_db_pool()?;
@@ -354,6 +260,26 @@ impl ContextExt for crate::Context<'_> {
 
         Ok(has_voted)
     }
+
+    // -------------- Music related functions -------------- //
+    async fn is_paused(&self) -> CrackedResult<bool> {
+        let call = self.get_call().await?;
+        let handler = call.lock().await;
+        let topt = handler.queue().current();
+        if let Some(t) = topt {
+            Ok(t.get_info().await?.playing == PlayMode::Pause)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
+        self.data()
+            .push_latest_msg(guild_id, mor)
+            .await
+            .map_err(Into::into)
+    }
 }
 
 /// Extension trait for the poise::Context.
@@ -366,20 +292,34 @@ pub trait PoiseContextExt<'ctx> {
     //     &'ctx self,
     //     message: impl Into<Cow<'ctx, str>>,
     // ) -> CrackedResult<poise::ReplyHandle<'ctx>>;
-    fn author_vc(&self) -> Option<serenity::ChannelId>;
-    fn author_permissions(&self) -> impl Future<Output = CrackedResult<serenity::Permissions>>;
-    fn is_prefix(&self) -> bool;
-    fn send_reply(
-        &self,
+    fn author_vc(&'ctx self) -> Option<serenity::ChannelId>;
+    fn author_permissions(&'ctx self)
+        -> impl Future<Output = CrackedResult<serenity::Permissions>>;
+    fn is_prefix(&'ctx self) -> bool;
+    fn send_reply_owned(
+        self,
         message: CrackedMessage,
         as_embed: bool,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
+    fn send_reply(
+        &'ctx self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
+    fn send_reply_embed(
+        self,
+        message: CrackedMessage,
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, Error>>;
+    fn send_message_owned(
+        self,
+        params: SendMessageParams,
+    ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_message(
-        &self,
+        &'ctx self,
         params: SendMessageParams,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_embed_response(
-        &self,
+        &'ctx self,
         embed: CreateEmbed,
     ) -> impl Future<Output = CrackedResult<ReplyHandle<'ctx>>>;
 }
@@ -387,12 +327,12 @@ pub trait PoiseContextExt<'ctx> {
 /// Implementation of the extension trait for the poise::Context.
 impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Checks if we're in a prefix context or not.
-    fn is_prefix(&self) -> bool {
+    fn is_prefix(&'ctx self) -> bool {
         matches!(self, crate::Context::Prefix(_))
     }
 
     /// Get the VC that author of the incoming message is in if any.
-    fn author_vc(&self) -> Option<serenity::ChannelId> {
+    fn author_vc(&'ctx self) -> Option<serenity::ChannelId> {
         require_guild!(self, None)
             .voice_states
             .get(&self.author().id)
@@ -400,8 +340,25 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     /// Creates an embed from a CrackedMessage and sends it as an embed.
+    async fn send_reply_owned(
+        self,
+        message: CrackedMessage,
+        as_embed: bool,
+    ) -> Result<ReplyHandle<'ctx>, CrackedError> {
+        let color = serenity::Colour::from(&message);
+        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&message);
+        let params = SendMessageParams::new(message)
+            .with_color(color)
+            .with_as_embed(as_embed)
+            .with_embed(embed)
+            .with_reply(true);
+        let handle = self.send_message_owned(params).await?;
+        Ok(handle)
+    }
+
+    /// Creates an embed from a CrackedMessage and sends it as an embed.
     async fn send_reply(
-        &self,
+        &'ctx self,
         message: CrackedMessage,
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
@@ -416,9 +373,19 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         Ok(handle)
     }
 
+    /// Creates an embed from a CrackedMessage and sends it as an embed.
+    async fn send_reply_embed(
+        self,
+        message: CrackedMessage,
+    ) -> Result<ReplyHandle<'ctx>, Error> {
+        PoiseContextExt::send_reply_owned(self, message, true)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Base, very generic send message function.
-    async fn send_message(
-        &self,
+    async fn send_message_owned(
+        self,
         params: SendMessageParams,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         //let channel_id = send_params.channel;
@@ -450,7 +417,44 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         Ok(handle)
     }
 
-    async fn send_embed_response(&self, embed: CreateEmbed) -> CrackedResult<ReplyHandle<'ctx>> {
+    /// Base, very generic send message function.
+    async fn send_message(
+        &'ctx self,
+        params: SendMessageParams,
+    ) -> Result<ReplyHandle<'ctx>, CrackedError> {
+        //let channel_id = send_params.channel;
+        let as_embed = params.as_embed;
+        let as_reply = params.reply;
+        let as_ephemeral = params.ephemeral;
+        let text = params.msg.to_string();
+        let reply = if as_embed {
+            let embed = params
+                .embed
+                .unwrap_or(CreateEmbed::default().description(text).color(params.color));
+            CreateReply::default().embed(embed)
+        } else {
+            let c = colored::Color::TrueColor {
+                r: params.color.r(),
+                g: params.color.g(),
+                b: params.color.b(),
+            };
+            CreateReply::default().content(text.color(c).to_string())
+        };
+        let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
+        let handle = self.send(reply).await?;
+        if params.cache_msg {
+            let msg = handle.clone().into_message().await?;
+            self.data()
+                .add_msg_to_cache(self.guild_id().unwrap(), msg)
+                .await;
+        }
+        Ok(handle)
+    }
+
+    async fn send_embed_response(
+        &'ctx self,
+        embed: CreateEmbed,
+    ) -> CrackedResult<ReplyHandle<'ctx>> {
         let is_ephemeral = false;
         let is_reply = true;
         let params = SendMessageParams::default()
@@ -476,7 +480,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     //     // }
 
     /// Get the permissions of the calling user in the guild.
-    async fn author_permissions(&self) -> CrackedResult<serenity::Permissions> {
+    async fn author_permissions(&'ctx self) -> CrackedResult<serenity::Permissions> {
         // Handle non-guild call first, to allow try_unwrap calls to be safe.
         if self.guild_id().is_none() {
             return Ok(((serenity::Permissions::from_bits_truncate(
@@ -579,6 +583,9 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 //         }
 //     }
 // }
+
+/// Extension trait for the poise::Context<'_> for owned contexts.
+pub trait OwnedContextExt {}
 
 ///Struct to represent everything needed to join a voice call.
 pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);

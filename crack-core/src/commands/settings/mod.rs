@@ -1,4 +1,4 @@
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, CrackedMessage, Error};
 
 pub mod get;

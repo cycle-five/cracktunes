@@ -87,12 +87,24 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
 /// Sends a reply response, possibly as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
-    ctx: &CrackContext<'ctx>,
+    ctx: &'ctx CrackContext<'_>,
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     ctx.send_reply(message, as_embed).await.map_err(Into::into)
 }
+
+/// Sends a reply response, possibly as an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_reply_owned(
+    ctx: CrackContext<'_>,
+    message: CrackedMessage,
+    as_embed: bool,
+) -> Result<ReplyHandle<'_>, CrackedError> {
+    ctx.send_reply_owned(message, as_embed).await.map_err(Into::into)
+}
+
+
 
 /// Sends a regular reply response.
 #[cfg(not(tarpaulin_include))]

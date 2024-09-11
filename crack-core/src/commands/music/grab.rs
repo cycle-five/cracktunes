@@ -1,6 +1,7 @@
 use crate::commands::help;
-use crate::poise_ext::MessageInterfaceCtxExt;
-use crate::{Context, Error};
+use crate::messaging::interface;
+use crate::poise_ext::{ContextExt, PoiseContextExt};
+use crate::{CrackedMessage, Context, Error};
 
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]
@@ -27,10 +28,11 @@ pub async fn grab(
 /// Internal function for grab.
 async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
     let chan_id = ctx.author().create_dm_channel(&ctx).await?.id;
+    let call = ctx.get_call().await?;
 
-    ctx.send_now_playing(chan_id).await?;
+    interface::send_now_playing(chan_id, ctx.serenity_context().http.clone(), call).await?;
 
-    ctx.send_grabbed_notice().await?;
+    ctx.send_reply_embed(CrackedMessage::GrabbedNotice).await?;
 
     Ok(())
 }

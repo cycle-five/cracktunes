@@ -1,7 +1,7 @@
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::utils::{create_paged_embed, send_reply};
 use crate::{require, Context, Data, Error};
 use itertools::Itertools;

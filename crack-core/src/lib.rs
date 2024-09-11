@@ -76,6 +76,7 @@ pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
 use crate::serenity::prelude::SerenityError;
+use crack_testing::MessageOrReplyHandle;
 
 impl From<CrackedError> for SerenityError {
     fn from(_e: CrackedError) -> Self {
@@ -332,7 +333,7 @@ pub struct DataInner {
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<serenity::Message>>,
+    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
@@ -547,42 +548,42 @@ impl std::ops::Deref for Data {
     }
 }
 
-pub enum MessageOrReplyHandle<'a> {
-    Message(Message),
-    ReplyHandle(poise::ReplyHandle<'a>),
-}
+// pub enum MessageOrReplyHandle<'a> {
+//     Message(Message),
+//     ReplyHandle(poise::ReplyHandle<'a>),
+// }
 
-impl MessageOrReplyHandle<'_> {
-    pub async fn into_message(self) -> Option<Message> {
-        match self {
-            MessageOrReplyHandle::Message(msg) => Some(msg),
-            MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
-        }
-    }
+// impl MessageOrReplyHandle<'_> {
+//     pub async fn into_message(self) -> Option<Message> {
+//         match self {
+//             MessageOrReplyHandle::Message(msg) => Some(msg),
+//             MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
+//         }
+//     }
 
-    pub async fn delete(self, ctx: Context<'_>) {
-        match self {
-            MessageOrReplyHandle::Message(msg) => {
-                let _ = msg.delete(&ctx).await;
-            },
-            MessageOrReplyHandle::ReplyHandle(handle) => {
-                let _ = handle.delete(ctx).await;
-            },
-        }
-    }
-}
+//     pub async fn delete(self, ctx: Context<'_>) {
+//         match self {
+//             MessageOrReplyHandle::Message(msg) => {
+//                 let _ = msg.delete(&ctx).await;
+//             },
+//             MessageOrReplyHandle::ReplyHandle(handle) => {
+//                 let _ = handle.delete(ctx).await;
+//             },
+//         }
+//     }
+// }
 
-impl From<Message> for MessageOrReplyHandle<'_> {
-    fn from(msg: Message) -> Self {
-        MessageOrReplyHandle::Message(msg)
-    }
-}
+// impl From<Message> for MessageOrReplyHandle<'_> {
+//     fn from(msg: Message) -> Self {
+//         MessageOrReplyHandle::Message(msg)
+//     }
+// }
 
-impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
-    fn from(handle: poise::ReplyHandle<'a>) -> Self {
-        MessageOrReplyHandle::ReplyHandle(handle)
-    }
-}
+// impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
+//     fn from(handle: poise::ReplyHandle<'a>) -> Self {
+//         MessageOrReplyHandle::ReplyHandle(handle)
+//     }
+// }
 
 impl Data {
     /// Insert a guild into the guild settings map.
@@ -693,6 +694,19 @@ impl Data {
         } else {
             true
         }
+    }
+
+    /// Push a message to the command message queue.
+    pub async fn push_latest_msg(
+        &self,
+        guild_id: GuildId,
+        msg: MessageOrReplyHandle,
+    ) -> CrackedResult<()> {
+        self.guild_command_msg_queue
+            .entry(guild_id)
+            .or_default()
+            .push(msg);
+        Ok(())
     }
 }
 

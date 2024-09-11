@@ -21,6 +21,7 @@ use crate::{
     sources::youtube::build_query_aux_metadata,
     utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
+    poise_ext::ContextExt,
 };
 use ::serenity::all::CommandInteraction;
 use ::serenity::{
@@ -170,7 +171,6 @@ pub async fn playfile(
 }
 
 use crate::messaging::interface as msg_int;
-use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.

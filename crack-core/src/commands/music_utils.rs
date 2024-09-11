@@ -2,9 +2,10 @@ use crate::connection::get_voice_channel_for_user;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
-use crate::{CrackedError, MessageOrReplyHandle};
+use crate::{CrackedError};
+// use crack_testing::ReplyHandleWrapper;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::{ChannelId, GuildId};
 use songbird::{Call, Event, TrackEvent};
@@ -87,11 +88,13 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
 /// Join a voice channel.
 pub async fn do_join(
+    //ctx: &'ctx Context<'ctx>,
     ctx: Context<'_>,
     manager: &songbird::Songbird,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<Arc<Mutex<Call>>, Error> {
+    // let ctx_owned = ctx.clone();
     tracing::warn!("Joining channel: {:?}", channel_id);
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
@@ -99,14 +102,15 @@ pub async fn do_join(
             Some(call) => call,
             None => {
                 tracing::warn!("Error joining channel: {:?}", err);
-                let str = err.to_string().clone();
+                // let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
-                let crack_msg = CrackedMessage::CrackedRed(str.clone());
-                let msg = ctx.send_reply_embed(crack_msg).await?;
-                //ctx.defer().await;
-                //msg.delete_after(ctx, Duration::from_secs(10)).await;
-                let msg_or_reply = MessageOrReplyHandle::ReplyHandle(msg);
-                ctx.push_latest_msg(msg_or_reply).await;
+                // let crack_msg = CrackedMessage::CrackedRed(str.clone());
+                // let msg = PoiseContextExt::send_reply_embed(ctx, crack_msg).await?;
+                // //ctx.defer().await;
+                // //msg.delete_after(ctx, Duration::from_secs(10)).await;
+                // let msg_or_reply =
+                //     MessageOrReplyHandle::from(ReplyHandleWrapper { handle: msg.into() });
+                // ctx.data().push_latest_msg(guild_id, msg_or_reply).await;
                 return Err(Box::new(my_err));
             },
         },

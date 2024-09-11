@@ -951,6 +951,8 @@ dependencies = [
  "crack-bf",
  "crack-gpt",
  "crack-osint",
+ "crack-testing",
+ "crack-types",
  "crack-voting",
  "ctor",
  "dashmap 6.0.1",

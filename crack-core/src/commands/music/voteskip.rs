@@ -7,7 +7,7 @@ use crate::{
     errors::{verify, CrackedError},
     guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
-    poise_ext::{ContextExt, MessageInterfaceCtxExt},
+    poise_ext::{ContextExt, PoiseContextExt},
     Context, Data, Error,
 };
 use poise::serenity_prelude as serenity;

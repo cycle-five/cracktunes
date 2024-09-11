@@ -2,7 +2,7 @@ use poise::CreateReply;
 use serenity::all::{Color, CreateEmbed};
 
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
 /// Ping the bot

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use poise::serenity_prelude as serenity;
 use poise::ReplyHandle;
-use serenity::{Message, Http};
+use serenity::{Http, Message};
 
 // pub trait ReplyHandleTrait {
 //     fn into_message(&self) -> Pin<Box<dyn Future<Output = Option<Message>> + Send>>;
@@ -21,32 +21,50 @@ use serenity::{Message, Http};
 
 pub trait ReplyHandleTrait: Send + Sync {
     /// Converts the reply handle into a message.
-    fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>>;
+    fn into_message(
+        self: Arc<Self>,
+    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>>;
     /// Deletes the message associated with the reply handle.
-    fn delete(self: Arc<Self>, ctx: Http) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>>;
+    fn delete(
+        self: Arc<Self>,
+        ctx: Http,
+    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>>;
 }
 
 /// Wrapper around poise::ReplyHandle<'a> that implements ReplyHandleTrait.
-struct ReplyHandleWrapper {
-    handle: Arc<ReplyHandle<'static>>,
+pub struct ReplyHandleWrapper {
+    pub handle: Arc<ReplyHandle<'static>>,
 }
 
 impl ReplyHandleTrait for ReplyHandleWrapper {
     // fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>> {
-    fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
+    fn into_message(
+        self: Arc<Self>,
+    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
         // let handle: Arc<ReplyHandle<'static>> = Arc::clone(&self.handle);
         let handle = Arc::clone(&self.handle);
-        Box::pin(async move { <poise::ReplyHandle<'_> as Clone>::clone(&handle).into_message().await.ok() })
+        Box::pin(async move {
+            <poise::ReplyHandle<'_> as Clone>::clone(&handle)
+                .into_message()
+                .await
+                .ok()
+        })
     }
-    
-    fn delete(self: Arc<Self>, ctx: Http) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
+
+    fn delete(
+        self: Arc<Self>,
+        ctx: Http,
+    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
         // TODO: This does not work with ephemeral messages. We need to take a full
         // poise::Context instead of just the Http client here, which is going to
         // be more complex.
         // let handle: Arc<ReplyHandle<'static>> = Arc::clone(&self.handle);
         let handle = Arc::clone(&self.handle);
-        Box::pin(async move { 
-            match <poise::ReplyHandle<'_> as Clone>::clone(&handle).into_message().await {
+        Box::pin(async move {
+            match <poise::ReplyHandle<'_> as Clone>::clone(&handle)
+                .into_message()
+                .await
+            {
                 Ok(x) => x.delete(ctx).await,
                 Err(_) => Ok(()),
             }
@@ -57,15 +75,19 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
 struct ReplyHandleWrapper2;
 
 impl ReplyHandleTrait for ReplyHandleWrapper2 {
-    fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
+    fn into_message(
+        self: Arc<Self>,
+    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
         Box::pin(async move { None })
     }
 
-    fn delete(self: Arc<Self>, _ctx: Http) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
+    fn delete(
+        self: Arc<Self>,
+        _ctx: Http,
+    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
         Box::pin(async move { Ok(()) })
     }
 }
-
 
 /// Enum that can hold either a message or a reply handle.
 #[derive(Clone)]
@@ -83,9 +105,27 @@ impl std::fmt::Debug for MessageOrReplyHandle {
     }
 }
 
+impl From<Message> for MessageOrReplyHandle {
+    fn from(message: Message) -> Self {
+        MessageOrReplyHandle::Message(message)
+    }
+}
+
+impl From<Arc<dyn ReplyHandleTrait>> for MessageOrReplyHandle {
+    fn from(handle: Arc<dyn ReplyHandleTrait>) -> Self {
+        MessageOrReplyHandle::ReplyHandle(handle)
+    }
+}
+
+impl From<ReplyHandleWrapper> for MessageOrReplyHandle {
+    fn from(handle: ReplyHandleWrapper) -> Self {
+        MessageOrReplyHandle::ReplyHandle(Arc::new(handle))
+    }
+}
+
 /// Struct that holds a message or a reply handle.
 #[derive(Debug)]
-struct Container {
+pub struct Container {
     handle: MessageOrReplyHandle,
 }
 
@@ -126,7 +166,7 @@ mod tests {
     #[tokio::test]
     async fn test_into_message() {
         let message = Message::default();
-        let handle = MessageOrReplyHandle::Message(message);
+        let _handle = MessageOrReplyHandle::Message(message);
 
         // let message = handle.into_message().await.unwrap();
         // assert_eq!(message.id, 0);
@@ -135,7 +175,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete() {
         let message = Message::default();
-        let handle = MessageOrReplyHandle::Message(message);
+        let _handle = MessageOrReplyHandle::Message(message);
 
         // let ctx = Http::default();
         // handle.delete(ctx).await.unwrap();

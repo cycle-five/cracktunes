@@ -2,7 +2,7 @@ use crate::{
     commands::sub_help as help,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    poise_ext::MessageInterfaceCtxExt,
+    poise_ext::PoiseContextExt,
     Context, Error,
 };
 use crack_osint::{check_password_pwned, VirusTotalClient};
