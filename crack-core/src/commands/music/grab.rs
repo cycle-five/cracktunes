@@ -1,7 +1,7 @@
 use crate::commands::help;
 use crate::messaging::interface;
 use crate::poise_ext::{ContextExt, PoiseContextExt};
-use crate::{CrackedMessage, Context, Error};
+use crate::{Context, CrackedMessage, Error};
 
 /// Send the current tack to your DMs.
 #[cfg(not(tarpaulin_include))]

@@ -76,8 +76,7 @@ pub trait ContextExt<'ctx> {
     fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 
     /// Add a message to the stack of messages the bot is still interacting with.
-    fn push_latest_msg(self, msg: MessageOrReplyHandle)
-        -> impl Future<Output = CrackedResult<()>>;
+    fn push_latest_msg(self, msg: MessageOrReplyHandle) -> impl Future<Output = CrackedResult<()>>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -229,7 +228,8 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
 
     /// Sends a message notifying the use they found a command.
     async fn send_found_command(self, command: String) -> Result<ReplyHandle<'ctx>, Error> {
-        self.send_reply_embed(CrackedMessage::CommandFound(command)).await
+        self.send_reply_embed(CrackedMessage::CommandFound(command))
+            .await
     }
 
     async fn send_invite_link(self) -> Result<ReplyHandle<'ctx>, Error> {
@@ -374,10 +374,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     /// Creates an embed from a CrackedMessage and sends it as an embed.
-    async fn send_reply_embed(
-        self,
-        message: CrackedMessage,
-    ) -> Result<ReplyHandle<'ctx>, Error> {
+    async fn send_reply_embed(self, message: CrackedMessage) -> Result<ReplyHandle<'ctx>, Error> {
         PoiseContextExt::send_reply_owned(self, message, true)
             .await
             .map_err(Into::into)

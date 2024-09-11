@@ -17,11 +17,11 @@ use crate::{
             PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
         },
     },
+    poise_ext::ContextExt,
     sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
     utils::{get_human_readable_timestamp, get_track_handle_metadata},
     Context, Error,
-    poise_ext::ContextExt,
 };
 use ::serenity::all::CommandInteraction;
 use ::serenity::{

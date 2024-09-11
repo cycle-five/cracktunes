@@ -101,10 +101,10 @@ pub async fn send_reply_owned(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'_>, CrackedError> {
-    ctx.send_reply_owned(message, as_embed).await.map_err(Into::into)
+    ctx.send_reply_owned(message, as_embed)
+        .await
+        .map_err(Into::into)
 }
-
-
 
 /// Sends a regular reply response.
 #[cfg(not(tarpaulin_include))]

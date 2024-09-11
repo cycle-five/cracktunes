@@ -3,7 +3,8 @@ use serenity::all::{Role, RoleId};
 use std::borrow::Cow;
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::{send_reply_owned}, Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply_owned, Context,
+    Error,
 };
 
 /// Delete role.
