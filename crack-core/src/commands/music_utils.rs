@@ -88,7 +88,6 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
 /// Join a voice channel.
 pub async fn do_join(
-    //ctx: &'ctx Context<'ctx>,
     ctx: Context<'_>,
     manager: &songbird::Songbird,
     guild_id: GuildId,

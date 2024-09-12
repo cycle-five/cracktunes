@@ -258,11 +258,15 @@ impl RustyYoutubeSearch {
             ..Default::default()
         };
         let rusty_ytdl = rusty_ytdl::search::YouTube::new_with_options(&request_options)?;
+        let url = match query {
+            QueryType::VideoLink(ref url) => Some(url.clone()),
+            _ => None,
+        };
         Ok(Self {
             rusty_ytdl,
-            metadata: None,
+            url,
             query,
-            url: None,
+            metadata: None,
             video: None,
         })
     }
