@@ -21,7 +21,7 @@ pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(),
 }
 
 /// Set the premium status of the guild.
-#[poise::command(category = "Settings", prefix_command, owners_only)]
+#[poise::command(category = "Settings", prefix_command, slash_command, owners_only)]
 #[cfg(not(tarpaulin_include))]
 pub async fn premium(
     ctx: Context<'_>,

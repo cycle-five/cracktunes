@@ -44,6 +44,7 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,

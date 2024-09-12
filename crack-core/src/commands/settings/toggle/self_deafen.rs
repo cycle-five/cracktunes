@@ -6,9 +6,15 @@ use serenity::all::GuildId;
 use sqlx::PgPool;
 
 /// Toggle the self deafen for the bot.
-#[poise::command(prefix_command, owners_only, ephemeral)]
+#[poise::command(
+    category = "Settings",
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    guild_only
+)]
 #[cfg(not(tarpaulin_include))]
-pub async fn self_deafen(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn selfdeafen(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
     let res = toggle_self_deafen(
