@@ -57,9 +57,9 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
 pub fn commands() -> Vec<crate::Command> {
     vec![
         set(),
-        // //all_log_channel(),
+        // all_log_channel(),
         // auto_role(),
-        // //join_leave_log_channel(),
+        // join_leave_log_channel(),
         // music_channel(),
         // premium(),
         // volume(),
@@ -74,8 +74,9 @@ mod tests {
     fn test_commands() {
         let cmds = super::commands();
         let names = cmds.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
-        assert!(names.contains(&String::from("premium")));
-        assert!(names.contains(&String::from("volume")));
-        assert!(names.contains(&String::from("idle_timeout")));
+        assert!(!names.contains(&String::from("premium")));
+        assert!(!names.contains(&String::from("volume")));
+        assert!(!names.contains(&String::from("idle_timeout")));
+        assert!(names.contains(&String::from("set")));
     }
 }

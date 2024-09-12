@@ -71,14 +71,14 @@ pub async fn all_log_channel(
     Ok(())
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Internal function to set a log channel for a specific guild.
 pub async fn set_all_log_channel_data(
     data: &Data,
     guild_id: GuildId,
     channel_id: ChannelId,
-) -> Result<GuildSettings, Error> {
-    Ok(data
-        .guild_settings_map
+) -> Result<(), Error> {
+    data.guild_settings_map
         .write()
         .await
         .entry(guild_id)
@@ -89,6 +89,6 @@ pub async fn set_all_log_channel_data(
             GuildSettings::new(guild_id, Some(DEFAULT_PREFIX), None)
                 .set_all_log_channel(channel_id.into())
                 .to_owned()
-        })
-        .to_owned())
+        });
+    Ok(())
 }
