@@ -56,14 +56,15 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
 /// Get all settings-set commands
 pub fn commands() -> Vec<crate::Command> {
     vec![
-        //all_log_channel(),
-        auto_role(),
-        //join_leave_log_channel(),
-        music_channel(),
-        premium(),
-        volume(),
-        idle_timeout(),
-        welcome_settings(),
+        set(),
+        // //all_log_channel(),
+        // auto_role(),
+        // //join_leave_log_channel(),
+        // music_channel(),
+        // premium(),
+        // volume(),
+        // idle_timeout(),
+        // welcome_settings(),
     ]
 }
 

@@ -39,7 +39,6 @@ pub use log_channels::*;
         "get_volume",
     )
 )]
-
 /// Get settings
 #[cfg(not(tarpaulin_include))]
 pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
@@ -50,14 +49,15 @@ pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn commands() -> [crate::Command; 7] {
-    [
-        all(),
-        all_log_channel(),
-        get_auto_role(),
-        join_leave_log_channel(),
-        welcome_settings(),
-        idle_timeout(),
-        get_volume(),
+pub fn commands() -> Vec<crate::Command> {
+    vec![
+        get(),
+        // all(),
+        // all_log_channel(),
+        // get_auto_role(),
+        // join_leave_log_channel(),
+        // welcome_settings(),
+        // idle_timeout(),
+        // get_volume(),
     ]
 }
