@@ -15,6 +15,7 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
+allow-dirty = true
 
 [workspace.dependencies.sqlx]
 version = "0.8.1"
