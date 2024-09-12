@@ -412,6 +412,11 @@ impl Spotify {
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(artists: &str, track_name: &str) -> String {
+        format!("{} {}", artists, track_name)
+    }
+
+    /// Build a query for searching, from the artist names and the track name.
+    fn _build_query_lyric(artists: &str, track_name: &str) -> String {
         format!("{} {} {}", artists, track_name, MUSIC_SEARCH_SUFFIX)
     }
 
@@ -495,7 +500,7 @@ impl SpotifyTrack {
     }
 
     /// Build a query for searching, from the artist names and the track name.
-    pub fn build_query(&self) -> String {
+    pub fn build_query_lyric(&self) -> String {
         format!(
             "{} {} {}",
             &self.name(),
@@ -505,7 +510,7 @@ impl SpotifyTrack {
     }
 
     /// Build a query for searching, from the artist names and the track name.
-    pub fn build_query_base(&self) -> String {
+    pub fn build_query(&self) -> String {
         format!("{} {}", &self.name(), &self.join_artist_names())
     }
 }
@@ -564,20 +569,6 @@ mod test {
     use crate::commands::MyAuxMetadata;
 
     use super::*;
-    // use rspotify::model::{FullTrack, SimplifiedAlbum};
-    // use std::collections::HashMap;
-
-    // // Mock ClientCredsSpotify
-    // struct MockClientCredsSpotify {}
-
-    // /// Mock
-
-    // #[tokio::test]
-    // async fn test_auth() {
-    //     let creds = Credentials::new("id", "secret");
-    //     let spotify = Spotify::auth(Some(creds)).await;
-    //     assert!(spotify.is_ok());
-    // }
 
     #[tokio::test]
     async fn test_parse_spotify_url_fail() {
@@ -654,6 +645,13 @@ mod test {
     fn test_track_build_query() {
         let track = build_fake_spotify_track();
         let query = track.build_query();
+        assert_eq!(query, r#"asdf qwer"#);
+    }
+
+    #[test]
+    fn test_track_build_query_lyric() {
+        let track = build_fake_spotify_track();
+        let query = track.build_query_lyric();
         assert_eq!(query, r#"asdf qwer \"topic\""#);
     }
 }

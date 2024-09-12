@@ -123,14 +123,19 @@ use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
-        let base = match self {
+        let base = self.build_query_base();
+        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+    }
+
+    pub fn build_query_base(&self) -> Option<String> {
+        match self {
             QueryType::Keywords(keywords) => Some(keywords.clone()),
             QueryType::KeywordList(keywords_list) => Some(keywords_list.join(" ")),
             QueryType::VideoLink(url) => Some(url.clone()),
             QueryType::SpotifyTracks(tracks) => Some(
                 tracks
                     .iter()
-                    .map(|x| x.build_query_base())
+                    .map(|x| x.build_query())
                     .collect::<Vec<String>>()
                     .join(" "),
             ),
@@ -139,8 +144,7 @@ impl QueryType {
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
-        };
-        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+        }
     }
 
     /// Build a query string for a explicit result from the query type.

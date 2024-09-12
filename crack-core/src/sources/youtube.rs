@@ -145,15 +145,14 @@ pub async fn search_query_to_source_and_metadata_ytdl(
 /// Build a query from AuxMetadata.
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        "{} {} {}",
+        "{} {}",
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
-        MUSIC_SEARCH_SUFFIX,
     )
 }
 
 /// Build a query from AuxMetadata for.
-pub fn build_query_lyric_video_aux_metadata(aux_metadata: &AuxMetadata) -> String {
+pub fn build_query_lyric_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
         "{} {} {}",
         aux_metadata.track.clone().unwrap_or_default(),
@@ -179,17 +178,17 @@ mod test {
             ..Default::default()
         };
         let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
+        assert_eq!(res, "world hello");
     }
 
     #[test]
-    fn test_build_query_lyric_video_aux_metadata() {
+    fn test_build_query_lyric_aux_metadata() {
         let aux_metadata = AuxMetadata {
             artist: Some("hello".to_string()),
             track: Some("world".to_string()),
             ..Default::default()
         };
-        let res = build_query_lyric_video_aux_metadata(&aux_metadata);
+        let res = build_query_lyric_aux_metadata(&aux_metadata);
         assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
     }
 
