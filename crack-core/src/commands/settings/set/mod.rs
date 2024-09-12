@@ -72,7 +72,7 @@ mod tests {
     #[test]
     fn test_commands() {
         let cmds = super::commands();
-        let mut names = cmds.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
+        let names = cmds.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
         assert!(names.contains(&String::from("premium")));
         assert!(names.contains(&String::from("volume")));
         assert!(names.contains(&String::from("idle_timeout")));
