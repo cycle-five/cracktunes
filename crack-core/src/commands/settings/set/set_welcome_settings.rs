@@ -10,6 +10,7 @@ use serenity::all::{Channel, GuildId, Role};
 #[poise::command(
     category = "Settings",
     prefix_command,
+    slash_command,
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES|MANAGE_ROLES"
 )]
@@ -48,6 +49,7 @@ pub async fn password_verify(
 #[poise::command(
     category = "Settings",
     prefix_command,
+    slash_command,
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES|MANAGE_ROLES"
 )]

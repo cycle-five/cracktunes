@@ -1,5 +1,6 @@
+use crate::errors::CrackedError;
 use crate::http_utils;
-use crate::{commands::play_utils::QueryType, errors::CrackedError};
+use crate::music::QueryType;
 use bytes::Buf;
 use bytes::BytesMut;
 use rusty_ytdl::stream::Stream;
@@ -11,10 +12,11 @@ use rusty_ytdl::{
 };
 use serenity::async_trait;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use std::fmt::Display;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::{fmt::Display, time::Duration};
+use std::time::Duration;
 use symphonia::core::io::MediaSource;
 use tokio::sync::RwLock;
 
@@ -256,11 +258,15 @@ impl RustyYoutubeSearch {
             ..Default::default()
         };
         let rusty_ytdl = rusty_ytdl::search::YouTube::new_with_options(&request_options)?;
+        let url = match query {
+            QueryType::VideoLink(ref url) => Some(url.clone()),
+            _ => None,
+        };
         Ok(Self {
             rusty_ytdl,
-            metadata: None,
+            url,
             query,
-            url: None,
+            metadata: None,
             video: None,
         })
     }
@@ -290,6 +296,7 @@ impl Compose for RustyYoutubeSearch {
     async fn create_async(
         &mut self,
     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+        // We may or may not have the metadata, so we need to check.
         if self.metadata.is_none() {
             self.aux_metadata().await?;
         }
@@ -325,6 +332,29 @@ impl Compose for RustyYoutubeSearch {
     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
         if let Some(meta) = self.metadata.as_ref() {
             return Ok(meta.clone());
+        }
+
+        // If we have a url, we can get the metadata from that directory so no need to search.
+        if let Some(url) = self.url.as_ref() {
+            let video =
+                Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+            // let video = Video::new(url.clone()).map_err(|e| {
+            //     <CrackedError as Into<AudioStreamError>>::into(
+            //         <VideoError as Into<CrackedError>>::into(e),
+            //     )
+            // })?;
+            let video_info = video
+                .get_basic_info()
+                .await
+                .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+            // let video_info = video.get_basic_info().await.map_err(|e| {
+            //     <CrackedError as Into<AudioStreamError>>::into(
+            //         <VideoError as Into<CrackedError>>::into(e),
+            //     )
+            // })?;
+            let metadata = video_info_to_aux_metadata(&video_info);
+            self.metadata = Some(metadata.clone());
+            return Ok(metadata);
         }
 
         let res: SearchResult = self
@@ -482,8 +512,8 @@ impl From<NewSearchSource> for Input {
 #[cfg(test)]
 mod test {
     use crate::{
-        commands::play_utils::QueryType,
         http_utils,
+        music::QueryType,
         sources::{
             rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
             youtube::search_query_to_source_and_metadata_rusty,
@@ -549,16 +579,16 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_rusty_ytdl() {
-        let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
+    // #[tokio::test]
+    // async fn test_rusty_ytdl() {
+    //     let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
 
-        let rusty_ytdl = YouTube::new().unwrap();
-        for search in searches {
-            let res = rusty_ytdl.search_one(search.to_string(), None).await;
-            println!("{res:?}");
-        }
-    }
+    //     let rusty_ytdl = YouTube::new().unwrap();
+    //     for search in searches {
+    //         let res = rusty_ytdl.search_one(search.to_string(), None).await;
+    //         println!("{res:?}");
+    //     }
+    // }
 
     #[tokio::test]
     async fn test_rusty_ytdl_serial() {
@@ -661,4 +691,11 @@ mod test {
         let req = builder.build();
         assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
     }
+
+    // #[tokio::test]
+    // async fn test_build_query() {
+    //     let search = "The Night Chicago Died";
+    //     let query = rusty_ytdl::build_query(search);
+    //     assert_eq!(query, "ytsearch1:The Night Chicago Died");
+    // }
 }

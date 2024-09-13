@@ -4,7 +4,7 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::{music::doplay::RequestingUser, music::play_utils::QueryType, music::MyAuxMetadata},
+    commands::{music::doplay::RequestingUser, music::MyAuxMetadata},
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -14,6 +14,7 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
+    music::query::QueryType,
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::{
@@ -49,6 +50,9 @@ use tokio::sync::RwLock;
 use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
+// This term gets appended to search queries in the default mode to try to find the album version of a song.
+// pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
+pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
 use anyhow::Result;
 
@@ -83,11 +87,23 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
 /// Sends a reply response, possibly as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
-    ctx: &CrackContext<'ctx>,
+    ctx: &'ctx CrackContext<'_>,
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     ctx.send_reply(message, as_embed).await.map_err(Into::into)
+}
+
+/// Sends a reply response, possibly as an embed.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_reply_owned(
+    ctx: CrackContext<'_>,
+    message: CrackedMessage,
+    as_embed: bool,
+) -> Result<ReplyHandle<'_>, CrackedError> {
+    ctx.send_reply_owned(message, as_embed)
+        .await
+        .map_err(Into::into)
 }
 
 /// Sends a regular reply response.

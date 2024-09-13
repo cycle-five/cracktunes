@@ -1,8 +1,9 @@
 use crate::{
     commands::sub_help as help,
+    http_utils,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
-    poise_ext::MessageInterfaceCtxExt,
+    poise_ext::PoiseContextExt,
     Context, Error,
 };
 use crack_osint::{check_password_pwned, VirusTotalClient};
@@ -57,8 +58,6 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
-    use crate::http_utils;
-
     ctx.reply("Scanning...").await?;
     tracing::info!("Scanning URL: {}", url);
     let api_key =

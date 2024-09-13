@@ -61,11 +61,13 @@ impl EventHandler for IdleHandler {
         {
             match manager.remove(self.guild_id).await {
                 Ok(_) => {
-                    self.channel_id
-                        .say(&self.serenity_ctx, IDLE_ALERT)
-                        .await
-                        .unwrap();
-                    return Some(Event::Cancel);
+                    match self.channel_id.say(&self.serenity_ctx, IDLE_ALERT).await {
+                        Ok(_) => {},
+                        Err(e) => {
+                            tracing::error!("Error sending idle alert: {:?}", e);
+                            return Some(Event::Cancel);
+                        },
+                    };
                 },
                 Err(JoinError::NoCall) => {
                     tracing::warn!("No call found for guild: {:?}", self.guild_id);
@@ -73,6 +75,7 @@ impl EventHandler for IdleHandler {
                 },
                 Err(e) => {
                     tracing::error!("Error removing bot from voice channel: {:?}", e);
+                    return Some(Event::Cancel);
                 },
             };
         }

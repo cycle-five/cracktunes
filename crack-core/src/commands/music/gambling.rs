@@ -1,5 +1,5 @@
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
 /// Flip a coin.

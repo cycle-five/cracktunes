@@ -5,6 +5,7 @@ use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::{
     search_result_to_aux_metadata, video_info_to_aux_metadata, NewSearchSource,
 };
+use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     commands::{check_banned_domains, MyAuxMetadata},
     errors::{verify, CrackedError},
@@ -122,6 +123,11 @@ use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
+        let base = self.build_query_base();
+        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+    }
+
+    pub fn build_query_base(&self) -> Option<String> {
         match self {
             QueryType::Keywords(keywords) => Some(keywords.clone()),
             QueryType::KeywordList(keywords_list) => Some(keywords_list.join(" ")),
@@ -141,12 +147,7 @@ impl QueryType {
         }
     }
 
-    /// Build a query string for a lyric video from the query type.
-    pub fn build_query_lyric(&self) -> Option<String> {
-        self.build_query().map(|x| format!("{} lyric video", x))
-    }
-
-    /// Build a query string for a lyric video from the query type.
+    /// Build a query string for a explicit result from the query type.
     pub fn build_query_explicit(&self, query: Option<String>) -> Option<String> {
         query.map(|x| format!("{} explicit", x))
     }
@@ -619,17 +620,22 @@ impl QueryType {
                 }
                 Ok((ytdl.into(), res))
             },
-            QueryType::VideoLink(_query) => {
+            QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                // let mut ytdl = YoutubeDl::new(client_old, query.clone());
-                // let metadata = ytdl.aux_metadata().await?;
-                let client = crate::http_utils::get_client();
+                let mut ytdl = YoutubeDl::new(client_old, url.clone());
+                let metadata = ytdl.aux_metadata().await?;
+                let input = ytdl.into();
+                // let client = crate::http_utils::get_client();
+                // let search =
+                //     crate::sources::youtube::get_rusty_search(client.clone(), query.clone())
+                //         .await?;
+                // search.
                 // This call, this is what does all the work
-                let mut input = self.get_query_source(client.clone());
-                let metadata = input
-                    .aux_metadata()
-                    .await
-                    .map_err(CrackedError::AuxMetadataError)?;
+                // let mut input = self.get_query_source(client.clone());
+                // let metadata = input
+                //     .aux_metadata()
+                //     .await
+                //     .map_err(CrackedError::AuxMetadataError)?;
                 let my_metadata = MyAuxMetadata(metadata);
                 Ok((input, vec![my_metadata]))
             },

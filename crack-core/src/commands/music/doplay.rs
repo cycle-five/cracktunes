@@ -1,7 +1,7 @@
-use super::play_utils::query::QueryType;
-use super::play_utils::queue::{get_mode, get_msg, queue_track_back};
-use crate::commands::play_utils::query::query_type_from_url;
 use crate::commands::{cmd_check_music, help};
+use crate::music::query::query_type_from_url;
+use crate::music::query::QueryType;
+use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
 use crate::utils::edit_embed_response2;
 use crate::CrackedResult;
@@ -17,6 +17,7 @@ use crate::{
             PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
         },
     },
+    poise_ext::ContextExt,
     sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
     utils::{get_human_readable_timestamp, get_track_handle_metadata},
@@ -130,7 +131,14 @@ pub async fn play(
 
 /// Play a song with more options
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only, aliases("opt"))]
+#[poise::command(
+    category = "Music",
+    slash_command,
+    prefix_command,
+    guild_only,
+    aliases("opt"),
+    check = "cmd_check_music"
+)]
 pub async fn optplay(
     ctx: Context<'_>,
     #[flag]
@@ -146,14 +154,29 @@ pub async fn optplay(
     play_internal(ctx, mode, file, query_or_url).await
 }
 
+/// Play a local file.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn playfile(
+    ctx: Context<'_>,
+    #[flag]
+    #[description = "Show help menu."]
+    help: bool,
+    #[description = "File to play."] file: serenity::Attachment,
+) -> Result<(), Error> {
+    if help {
+        return help::wrapper(ctx).await;
+    }
+    play_internal(ctx, None, Some(file), None).await
+}
+
 use crate::messaging::interface as msg_int;
-use crate::poise_ext::MessageInterfaceCtxExt;
 use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
-async fn play_internal(
+pub async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
     file: Option<serenity::Attachment>,
@@ -165,7 +188,7 @@ async fn play_internal(
     use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
-    let is_prefix = ctx.prefix() != "/";
+    let is_prefix = ctx.is_prefix();
 
     let msg = get_msg(mode.clone(), query_or_url, is_prefix);
 
@@ -305,7 +328,18 @@ async fn play_internal(
 
     let _after_embed = std::time::Instant::now();
 
-    let _ = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+    let _msg = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+
+    // [Manage Messages]: Permissions::MANAGE_MESSAGES
+    // I think this does different things based on prefix or not?
+    // if !is_prefix {
+    //     match search_msg.delete(&ctx).await {
+    //         Ok(_) => {},
+    //         Err(e) => {
+    //             tracing::error!("Error deleting search message: {:?}", e);
+    //         },
+    //     }
+    // }
 
     let _after_edit_embed = std::time::Instant::now();
 

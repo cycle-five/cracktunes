@@ -7,7 +7,7 @@ use crate::Error;
 
 /// Add an additional prefix to the bot for the current guild.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, guild_only, owners_only)]
+#[poise::command(slash_command, prefix_command, guild_only, owners_only)]
 pub async fn add_prefix(
     ctx: Context<'_>,
     #[description = "The prefix to add to the bot"] prefix: String,

@@ -1,6 +1,6 @@
 use crate::commands::{uptime_internal, CrackedError};
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::{ContextExt, MessageInterfaceCtxExt};
+use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::{Context, Error};
 use chrono::Duration;
 use poise::serenity_prelude as serenity;

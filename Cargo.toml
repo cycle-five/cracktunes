@@ -6,6 +6,8 @@ members = [
   "crack-gpt",
   "crack-bf",
   "crack-voting",
+  "crack-testing",
+  "crack-types",
 ]
 resolver = "2"
 
@@ -16,7 +18,7 @@ authors = ["Cycle Five <cycle.five@proton.me>"]
 allow-dirty = true
 
 [workspace.dependencies.sqlx]
-version = "0.7.4"
+version = "0.8.1"
 default-features = false
 features = [
   "runtime-tokio",
@@ -24,7 +26,6 @@ features = [
   "macros",
   "postgres",
   "chrono",
-  "time",
   "migrate",
   "json",
 ]
@@ -40,6 +41,7 @@ features = [
   "collector",
   "client",
   "framework",
+  "standard_framework",
   "http",
   "gateway",
   "model",
@@ -62,7 +64,6 @@ features = [
   "receive",
   "builtin-queue",
 ]
-# "simd-json",
 
 [workspace.dependencies.symphonia]
 version = "0.5.4"

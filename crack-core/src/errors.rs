@@ -8,7 +8,9 @@ use crate::messaging::messages::{
     NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
-use crate::Error;
+use std::error::Error as StdError;
+pub type Error = Box<dyn StdError + Send + Sync>;
+
 use audiopus::error::Error as AudiopusError;
 use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
@@ -342,13 +344,6 @@ impl From<RSpotifyClientError> for CrackedError {
     }
 }
 
-// /// Provides an implementation to convert a [`tokio::time::error::Elapsed`] to a [`CrackedError`].
-// impl From<JoinError> for CrackedError {
-//     fn from(err: JoinError) -> Self {
-//         CrackedError::JoinChannelError(err)
-//     }
-// }
-
 /// Provides an implementation to convert a [`Elapsed`] to a [`CrackedError`].
 impl From<Elapsed> for CrackedError {
     fn from(_err: Elapsed) -> Self {
@@ -454,9 +449,6 @@ mod test {
         let err = CrackedError::NoGuildId;
         assert_eq!(format!("{}", err), NO_GUILD_ID);
 
-        // let err = CrackedError::NoGuildForChannelId(ChannelId(1));
-        // assert_eq!(format!("{}", err), "No guild for channel id 1");
-
         let err = CrackedError::NoGuildSettings;
         assert_eq!(format!("{}", err), NO_GUILD_SETTINGS);
 
@@ -478,11 +470,9 @@ mod test {
         let err = CrackedError::ParseTimeFail;
         assert_eq!(format!("{}", err), FAIL_PARSE_TIME);
 
-        // let err = CrackedError::PoisonError(PoisonError::Other("test"));
-        // assert_eq!(format!("{}", err), "No guild id");
-
-        // let err = CrackedError::TrackFail(Error::Other("test"));
-        // assert_eq!(format!("{}", err), "No guild id");
+        let err_err = Error::from("test");
+        let err = CrackedError::TrackFail(err_err);
+        assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::Serenity(SerenityError::Other("test"));
         assert_eq!(format!("{}", err), "test");
@@ -507,14 +497,20 @@ mod test {
             assert!(format!("{}", err).starts_with("error sending request for url"));
         }
 
-        // let err = CrackedError::RSpotify(RSpotifyClientError::Unauthorized);
-        // assert_eq!(format!("{}", err), "Unauthorized");
+        let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+        assert_eq!(format!("{}", err), "Token is not valid");
 
         let err = CrackedError::UnauthorizedUser;
         assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
 
         let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
         assert_eq!(format!("{}", err), "test");
+
+        let err = CrackedError::NotInRange("test", 1, 2, 3);
+        assert_eq!(
+            format!("{}", err),
+            "`test` should be between 2 and 3 but was 1"
+        );
     }
 
     #[test]

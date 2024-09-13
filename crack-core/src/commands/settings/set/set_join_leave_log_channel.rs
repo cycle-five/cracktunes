@@ -9,6 +9,7 @@ use serenity::all::Channel;
 /// Set the join-leave log channel.
 #[poise::command(
     category = "Settings",
+    slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES"

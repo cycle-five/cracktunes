@@ -4,7 +4,7 @@ use serenity::model::id::RoleId;
 use crate::commands::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Data, Error};
 
 /// Get the auto role for the server.

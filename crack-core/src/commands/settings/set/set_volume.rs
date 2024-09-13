@@ -31,6 +31,7 @@ pub async fn set_volume(
 #[poise::command(
     category = "Settings",
     slash_command,
+    prefix_command,
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn volume(

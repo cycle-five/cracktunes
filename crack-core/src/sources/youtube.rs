@@ -1,8 +1,9 @@
-use crate::commands::play_utils::QueryType;
 use crate::http_utils;
+use crate::music::query::QueryType;
 use crate::sources::rusty_ytdl::{
     search_result_to_aux_metadata, video_info_to_aux_metadata, RustyYoutubeSearch,
 };
+use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
 use crate::{commands::MyAuxMetadata, errors::CrackedError};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
@@ -55,13 +56,15 @@ pub async fn search_query_to_source_and_metadata(
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
+        // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
+        tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
         let results = rytdl.search_one(query.clone(), None).await?;
 
         tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
-            None => return search_query_to_source_and_metadata_ytdl(client, query).await, //Err(CrackedError::EmptySearchResult),
+            None => return search_query_to_source_and_metadata_ytdl(client, query).await,
         };
         let metadata = &search_result_to_aux_metadata(&result);
         metadata.clone()
@@ -148,12 +151,13 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     )
 }
 
-/// Build a query from AuxMetadata for lyric videos.
-pub fn build_query_lyric_video_aux_metadata(aux_metadata: &AuxMetadata) -> String {
+/// Build a query from AuxMetadata for.
+pub fn build_query_lyric_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
-        "{} {} lyric video",
+        "{} {} {}",
         aux_metadata.track.clone().unwrap_or_default(),
         aux_metadata.artist.clone().unwrap_or_default(),
+        MUSIC_SEARCH_SUFFIX,
     )
 }
 
@@ -165,6 +169,28 @@ mod test {
     use crate::http_utils::{self};
 
     use super::*;
+
+    #[test]
+    fn test_build_query_aux_metadata() {
+        let aux_metadata = AuxMetadata {
+            artist: Some("hello".to_string()),
+            track: Some("world".to_string()),
+            ..Default::default()
+        };
+        let res = build_query_aux_metadata(&aux_metadata);
+        assert_eq!(res, "world hello");
+    }
+
+    #[test]
+    fn test_build_query_lyric_aux_metadata() {
+        let aux_metadata = AuxMetadata {
+            artist: Some("hello".to_string()),
+            track: Some("world".to_string()),
+            ..Default::default()
+        };
+        let res = build_query_lyric_aux_metadata(&aux_metadata);
+        assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
+    }
 
     #[tokio::test]
     async fn test_get_track_metadata_video_link() {
@@ -242,17 +268,6 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_build_query_aux_metadata() {
-        let aux_metadata = AuxMetadata {
-            artist: Some("hello".to_string()),
-            track: Some("world".to_string()),
-            ..Default::default()
-        };
-        let res = build_query_aux_metadata(&aux_metadata);
-        assert_eq!(res, "world hello");
-    }
-
     /// FIXME: Mock the response.
     #[tokio::test]
     async fn test_get_rusty_search() {
@@ -265,6 +280,24 @@ mod test {
             Err(e) => {
                 //let phrase = "Sign in to confirm you’re not a bot";
                 //assert!(e.to_string().contains(phrase));
+                println!("{}", e.to_string());
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_query_to_source_and_metadata() {
+        let client = reqwest::Client::new();
+        let query = "hello".to_string();
+        let res = search_query_to_source_and_metadata(client, query).await;
+        match res {
+            Ok((source, metadata)) => {
+                assert!(!source.is_playable());
+                assert_eq!(metadata.len(), 1);
+            },
+            Err(e) => {
+                // let phrase = "Sign in to confirm you’re not a bot";
+                // assert!(e.to_string().contains(phrase));
                 println!("{}", e.to_string());
             },
         }

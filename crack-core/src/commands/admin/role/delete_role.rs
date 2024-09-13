@@ -3,7 +3,8 @@ use serenity::all::{Role, RoleId};
 use std::borrow::Cow;
 
 use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
+    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply_owned, Context,
+    Error,
 };
 
 /// Delete role.
@@ -43,6 +44,7 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
+#[cfg(not(tarpaulin_include))]
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,
@@ -59,8 +61,8 @@ pub async fn delete_role_by_id_helper(
     role.1.delete(&ctx.clone()).await?;
     // Send success message
     let role_name: Cow<'_, String> = Cow::Owned(role.1.name.to_string());
-    send_reply(
-        &ctx,
+    send_reply_owned(
+        ctx,
         CrackedMessage::RoleDeleted { role_id, role_name },
         true,
     )

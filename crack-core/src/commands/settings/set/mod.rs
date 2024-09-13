@@ -1,5 +1,5 @@
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
 // pub mod welcome;
@@ -21,7 +21,7 @@ pub use set_premium::*;
 pub use set_volume::*;
 pub use set_welcome_settings::*;
 
-/// Settings-get commands
+/// Settings-set commands
 #[poise::command(
     category = "Settings",
     slash_command,
@@ -53,15 +53,30 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn commands() -> [crate::Command; 4] {
-    [
-        //all_log_channel(),
-        //auto_role(),
-        //join_leave_log_channel(),
-        music_channel(),
-        premium(),
-        volume(),
-        idle_timeout(),
-        //welcome_settings(),
+/// Get all settings-set commands
+pub fn commands() -> Vec<crate::Command> {
+    vec![
+        set(),
+        // all_log_channel(),
+        // auto_role(),
+        // join_leave_log_channel(),
+        // music_channel(),
+        // premium(),
+        // volume(),
+        // idle_timeout(),
+        // welcome_settings(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_commands() {
+        let cmds = super::commands();
+        let names = cmds.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
+        assert!(!names.contains(&String::from("premium")));
+        assert!(!names.contains(&String::from("volume")));
+        assert!(!names.contains(&String::from("idle_timeout")));
+        assert!(names.contains(&String::from("set")));
+    }
 }

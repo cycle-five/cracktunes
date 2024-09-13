@@ -5,6 +5,8 @@ use sqlx::PgPool;
 
 /// Toggle autopause for the bot
 #[poise::command(
+    category = "Settings",
+    slash_command,
     prefix_command,
     rename = "autopause",
     required_permissions = "ADMINISTRATOR"

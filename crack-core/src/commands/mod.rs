@@ -62,6 +62,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     .into_iter()
     .chain(help::help_commands())
     .chain(music::music_commands())
+    .chain(music::game_commands())
     .chain(utility::utility_commands())
     .chain(settings::commands())
     .chain(admin::commands())
@@ -73,18 +74,18 @@ pub fn all_commands() -> Vec<crate::Command> {
 pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
         register(),
-        // #[cfg(feature = "crack-bf")]
-        // bf(),
-        // #[cfg(feature = "crack-osint")]
-        // osint(),
-        // #[cfg(feature = "crack-gpt")]
-        // chat(),
+        #[cfg(feature = "crack-bf")]
+        bf(),
+        #[cfg(feature = "crack-osint")]
+        osint(),
+        #[cfg(feature = "crack-gpt")]
+        chat(),
     ]
     .into_iter()
     .chain(help::help_commands())
     .chain(music::music_commands())
-    .chain(utility::utility_commands())
     .chain(music::game_commands())
+    .chain(utility::utility_commands())
     .chain(settings::commands())
     .chain(admin::commands())
     .chain(playlist::commands())
@@ -149,7 +150,12 @@ pub fn all_commands_map() -> dashmap::DashMap<String, crate::Command> {
 // }
 
 /// Interactively register bot commands.
-#[poise::command(prefix_command, hide_in_help = true)]
+#[poise::command(
+    category = "Admin",
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     register_application_commands_buttons_cracked(ctx).await?;
     Ok(())

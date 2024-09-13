@@ -5,13 +5,13 @@ pub mod collector;
 pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
+pub mod get_metadata;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;
 pub mod manage_sources;
 pub mod nowplaying;
 pub mod pause;
-pub mod play_utils;
 pub mod playlog;
 pub mod queue;
 pub mod remove;
@@ -32,6 +32,7 @@ pub use clear::*;
 pub use collector::*;
 pub use doplay::*;
 pub use gambling::*;
+pub use get_metadata::*;
 pub use grab::*;
 pub use leave::*;
 pub use lyrics::*;
@@ -52,36 +53,48 @@ pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
 
-pub fn music_commands() -> [crate::Command; 24] {
-    [
-        autopause(),
-        autoplay(),
-        clear(),
-        grab(),
-        leave(),
-        lyrics(),
-        nowplaying(),
-        pause(),
-        play(),
-        playlog(),
-        playnext(),
-        queue(),
-        remove(),
-        repeat(),
-        resume(),
-        seek(),
-        shuffle(),
-        skip(),
-        stop(),
-        summon::summon(),
-        summonchannel(),
-        volume(),
-        vote(),
-        voteskip(),
-    ]
+pub fn music_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![
+            autopause(),
+            autoplay(),
+            clear(),
+            grab(),
+            leave(),
+            lyrics(),
+            nowplaying(),
+            optplay(),
+            pause(),
+            play(),
+            playfile(),
+            playlog(),
+            playnext(),
+            queue(),
+            remove(),
+            repeat(),
+            resume(),
+            seek(),
+            shuffle(),
+            movesong(),
+            skip(),
+            stop(),
+            summon::summon(),
+            summonchannel(),
+            volume(),
+            vote(),
+            voteskip(),
+            get_metadata(),
+        ]
+    } else {
+        vec![]
+    }
 }
 
 /// Get the game commands.
-pub fn game_commands() -> [crate::Command; 2] {
-    [coinflip(), rolldice()]
+pub fn game_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![coinflip(), rolldice()]
+    } else {
+        vec![]
+    }
 }
