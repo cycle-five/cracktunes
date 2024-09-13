@@ -10,6 +10,7 @@ use crate::{
 /// Set the auto role for the server.
 #[poise::command(
     category = "Settings",
+    slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "MANAGE_ROLES"

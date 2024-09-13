@@ -5,7 +5,12 @@ use crate::utils::get_guild_name;
 use crate::{Context, Error};
 
 #[cfg(not(tarpaulin_include))]
-#[poise::command(category = "Settings", slash_command, prefix_command, owners_only)]
+#[poise::command(
+    category = "Settings",
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR"
+)]
 pub async fn welcome_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let welcome_settings = {

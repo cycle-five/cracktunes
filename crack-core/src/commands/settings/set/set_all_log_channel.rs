@@ -8,6 +8,7 @@ use serenity::model::id::ChannelId;
 /// Set a log channel for a specific guild.
 #[poise::command(
     category = "Settings",
+    slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES"
