@@ -183,6 +183,8 @@ pub async fn handle_event(
         },
         FullEvent::Message { new_message } => {
             let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
+            // let my_id = ctx.get_bot_id().await.unwrap_or(UserId::new(1));
+
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();
                 let _ = data_global
@@ -196,7 +198,6 @@ pub async fn handle_event(
 
             // Should we log bot messages?
             if new_message.author.bot {
-                //&& !crate::poise_ext::check_bot_message(ctx, new_message) {
                 return Ok(());
             }
             log_event!(
@@ -385,9 +386,7 @@ pub async fn handle_event(
                         prefix,
                     )
                     .await?;
-                    data_global
-                        .insert_guild(guild.id, new_guild_settings)
-                        .await?;
+                    let _ = data_global.insert_guild(guild.id, new_guild_settings).await;
                 },
                 None => {
                     tracing::error!("No database pool available");

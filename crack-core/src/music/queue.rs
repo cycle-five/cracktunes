@@ -175,7 +175,7 @@ pub async fn queue_keyword_list_back<'a>(
     for chunk in queries.chunks(10) {
         let to_queue_str = chunk
             .iter()
-            .map(|q| q.build_query().unwrap_or_default())
+            .map(|q| q.build_query_base().unwrap_or_default())
             .collect::<Vec<String>>()
             .join("\n");
         msg.edit(

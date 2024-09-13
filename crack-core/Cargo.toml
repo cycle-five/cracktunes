@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.11"
+version = "0.3.12"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -15,17 +15,28 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [features]
-default = ["cache", "playlist", "ignore-presence-log"]
-playlist = []
-shuttle = []
-ignore-presence-log = []
+default = [
+    "crack-playlist",
+    "crack-music",
+    "crack-tracing",
+    "crack-testing",
+    "crack-types",
+    "ignore-presence-log",
+    "cache",
+]
 cache = ["serenity/cache", "poise/cache"]
 crack-activity = []
-crack-metrics = ["prometheus"]
-crack-gpt = ["dep:crack-gpt"]
-crack-osint = ["dep:crack-osint"]
 crack-bf = ["dep:crack-bf"]
+crack-gpt = ["dep:crack-gpt"]
+crack-metrics = ["prometheus"]
+crack-music = []
+crack-osint = ["dep:crack-osint"]
+crack-playlist = []
+crack-tracing = []
 crack-voting = ["dep:crack-voting"]
+crack-testing = ["dep:crack-testing"]
+crack-types = ["dep:crack-types"]
+ignore-presence-log = []
 
 [dependencies]
 cfg-if = "1"
@@ -59,6 +70,8 @@ crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
 crack-bf = { path = "../crack-bf", optional = true }
 crack-voting = { path = "../crack-voting", optional = true }
+crack-testing = { path = "../crack-testing", optional = true }
+crack-types = { path = "../crack-types", optional = true }
 
 reqwest = { workspace = true }
 reqwest_old = { workspace = true }
@@ -93,24 +106,18 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 ctor = "0.2"
 tungstenite = "0.23"
 async-tungstenite = "0.27.0"
-sqlx = { version = "0.7", features = [
+sqlx = { version = "0.8.1", features = [
     "runtime-tokio",
     "tls-rustls",
     "macros",
     "postgres",
     "chrono",
-    "time",
     "migrate",
     "json",
 ] }
 
 [build-dependencies]
 vergen-gitcl = { version = "1.0.0", features = ["build"] }
-# vergen-git2 = { version = "1.0.0", features = [
-#     "build",
-#     "cargo",
-#     "rustc",
-#     "si",
-# ] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

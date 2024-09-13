@@ -1,4 +1,4 @@
-use crate::poise_ext::MessageInterfaceCtxExt;
+use crate::poise_ext::PoiseContextExt;
 use crate::{Context, CrackedMessage, Error};
 
 pub mod get;
@@ -27,8 +27,7 @@ pub use toggle::*;
         "clear_prefixes",
         "print_settings",
     ),
-    ephemeral,
-    required_permissions = "ADMINISTRATOR"
+    ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn settings(
@@ -48,9 +47,11 @@ pub async fn settings(
 }
 
 pub fn commands() -> Vec<crate::Command> {
-    vec![settings()].into_iter().collect()
-    // .chain(set::commands())
-    // .chain(    get::commands())
+    vec![settings()]
+        .into_iter()
+        .chain(set::commands())
+        .chain(get::commands())
+        .collect()
 }
 
 pub fn sub_commands() -> Vec<crate::Command> {

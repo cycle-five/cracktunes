@@ -9,7 +9,7 @@ pub use toggle_autopause::*;
 /// Settings-toggle commands
 #[poise::command(
     prefix_command,
-    subcommands("self_deafen", "toggle_autopause"),
+    subcommands("selfdeafen", "toggle_autopause"),
     ephemeral,
     owners_only
 )]
@@ -18,4 +18,9 @@ pub async fn toggle(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("You found the settings-toggle command").await?;
 
     Ok(())
+}
+
+/// Get all settings-toggle commands
+pub fn commands() -> Vec<crate::Command> {
+    vec![selfdeafen(), toggle_autopause()]
 }

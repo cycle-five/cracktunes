@@ -1,5 +1,5 @@
 use crate::{
-    commands::{forget_skip_votes, play_utils::QueryType, MyAuxMetadata},
+    commands::{forget_skip_votes, MyAuxMetadata},
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -7,6 +7,7 @@ use crate::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
+    music::query::QueryType,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
@@ -204,7 +205,14 @@ impl EventHandler for TrackEndHandler {
         };
 
         let call = self.call.clone();
-        queue_query(query, call).await;
+        match queue_query(query, call).await {
+            Ok(_) => (),
+            Err(e) => {
+                self.data.set_autoplay(self.guild_id, false).await;
+                let msg = format!("Error: {}", e);
+                tracing::warn!("{}", msg);
+            },
+        }
 
         let chan_id = channel;
 
@@ -216,16 +224,27 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
+use songbird::input::Input as SongbirdInput;
 /// Queues a query and returns the track handle.
-pub async fn queue_query(query: QueryType, call: Arc<Mutex<Call>>) -> Option<TrackHandle> {
+pub async fn queue_query(
+    query: QueryType,
+    call: Arc<Mutex<Call>>,
+) -> Result<TrackHandle, CrackedError> {
     // This is a singleton that holds a reqwest client for the music player.
     let client = crate::http_utils::get_client();
     // This call, this is what does all the work
-    let mut input = query.get_query_source(client.clone());
-    let metadata = input.aux_metadata().await.ok()?;
-    let track = call.as_ref().lock().await.enqueue_input(input).await;
-    add_metadata_to_track(&track, metadata).await;
-    Some(track)
+    // let mut input = query.get_query_source(client.clone());
+    // let metadata = input.aux_metadata().await.ok()?;
+    // let track = call.as_ref().lock().await.enqueue_input(input).await;
+    // add_metadata_to_track(&track, metadata).await;
+    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) = query
+        .get_track_source_and_metadata(Some(client.clone()))
+        .await?;
+    let track = call.as_ref().lock().await.enqueue_input(source).await;
+    if let Some(metadata) = metadata_vec.first() {
+        add_metadata_to_track(&track, metadata.clone().into()).await;
+    }
+    Ok(track)
 }
 
 /// Event handler to set the volume of the playing track to the volume

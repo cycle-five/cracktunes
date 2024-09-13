@@ -9,6 +9,7 @@ use poise::CreateReply;
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
+    slash_command,
     prefix_command,
     aliases("set_idle_timeout"),
     required_permissions = "ADMINISTRATOR"

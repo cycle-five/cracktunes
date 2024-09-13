@@ -6,25 +6,32 @@
       to a random nick name from a themed list of names. Use your
       own custom list, or choose from one of the many I've
       pre-curated and use in my own server.
-- [ ] Test Coverage > 23%.
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
+
+## v0.3.12 (2024/09/12)
+
+- [x] `/movesong` command
+- [x] `muteall` command to server mute all other people in a call (Admin only)
+- [x] `@bot` mention works like a prefix.
+- [x] default to playing the album version of songs where possible.
+- ~~[ ] Add setting for whether or not to look for album version of song.~~ (reverted moved to next release)
+- [x] Large refactoring of code into more modules
+- [x] Test Coverage > 24%.
+
+## v0.3.11 (???)
+
+- ???
 
 ## v0.3.10 (2024/07/28)
 
 - [x] performance improvements.
 - [x] All milestones recorded as GitHub issues.
 - [x] Add help option to all commands.
-- [x] Added back in internal playlist support.
-      - [x] `/playlist create <playlistname>` Creates a playlist with the given name
-      - [x] `/playlist delete <playlistname>` Deletes a playlist with the given name
-      - [x] `/playlist addto <playlistname>` Adds the currently playing song to <playlistname>
-      - [x] `/playlist list` List your playlists
-      - [x] `/playlist get <playlistname>` displays the contents of <playlistname>
-      - [x] `/playlist pplay <playlistname>` queues the given playlist on the bot
-      - [x] `/playlist loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
+- [x] Added back in internal playlist support. - [x] `/playlist create <playlistname>` Creates a playlist with the given name - [x] `/playlist delete <playlistname>` Deletes a playlist with the given name - [x] `/playlist addto <playlistname>` Adds the currently playing song to <playlistname> - [x] `/playlist list` List your playlists - [x] `/playlist get <playlistname>` displays the contents of <playlistname> - [x] `/playlist pplay <playlistname>` queues the given playlist on the bot - [x] `/playlist loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
 
-## ~~v0.3.9~~ 
+## ~~v0.3.9~~
+
 - internal testing version, publicly skipped
 - i.e. git branches got fucked and this was easier
 
@@ -40,9 +47,9 @@
 - [x] Unify messaging module.
 - [x] Fixed repeat bug when nothing is playing.
 - [-] Change `let _ = send_reply(&ctx, msg, true).await?;`
-      to `ctx.send_reply(msg, true).await?;` (half done)
-      ...
-For next version...
+  to `ctx.send_reply(msg, true).await?;` (half done)
+  ...
+  For next version...
 
 ## v0.3.7 (2024/05/29)
 
@@ -189,4 +196,3 @@ Didn't really track stuff here...
 
 - [x] Play music from YouTube
 - [x] Play music from Spotify (kind of...)
-

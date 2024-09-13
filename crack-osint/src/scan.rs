@@ -86,6 +86,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_scan_url_success() {
         // Get API key from environment
         let api_key = std::env::var("VIRUSTOTAL_API_KEY").unwrap_or("NO_KEY".to_string());

@@ -52,6 +52,7 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Simple helper to convert a `[TrackQueue]' to a `[String]`.
 pub fn queue_to_str(queue: &TrackQueue) -> String {
     let tracks = queue.current_queue();
     let mut buf = String::new();

@@ -1,3 +1,5 @@
+use crate::guild::operations::GuildSettingsOperations;
+use crate::guild::settings::DEFAULT_PREFIX;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_ERRORS;
 use crate::poise_ext::PoiseContextExt;
@@ -68,7 +70,6 @@ pub async fn poise_framework(
     config: BotConfig,
     event_log_async: EventLogAsync,
 ) -> Result<Client, Error> {
-    // install_crypto_provider();
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
 
@@ -93,7 +94,8 @@ pub async fn poise_framework(
             .map(|id| UserId::new(*id))
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
-            prefix: None,       //Some(config.get_prefix()),
+            case_insensitive_commands: true,
+            prefix: Some(config.get_prefix()),
             ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
@@ -122,6 +124,19 @@ pub async fn poise_framework(
                             return Ok(None);
                         },
                     };
+                    // ----------------
+                    // Here we re-check the original prefix because without message content intents
+                    // we can't check the prefix in the message content and only get this is we
+                    // are mentioned in the message.
+                    let original_prefix = data
+                        .get_prefix(guild_id)
+                        .await
+                        .unwrap_or(DEFAULT_PREFIX.to_string());
+                    if msg.content.starts_with(&original_prefix) {
+                        return Ok(Some(msg.content.split_at(original_prefix.len())));
+                    }
+                    // ----------------
+
                     let guild_settings_map = data.guild_settings_map.read().await.clone();
 
                     if let Some(guild_settings) = guild_settings_map.get(&guild_id) {

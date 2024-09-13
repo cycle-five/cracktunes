@@ -1,0 +1,28 @@
+[package]
+name = "crack-types"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Common types for Crack Tunes."
+keywords = ["music", "discord", "bot", "crack", "tunes", "types"]
+categories = [
+    "multimedia::audio",
+    "multimedia::music",
+    "multimedia::discord",
+    "multimedia::bot",
+]
+homepage = "https://cracktun.es/"
+# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[dependencies]
+poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
+serenity = { workspace = true }
+tokio = "1.40"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

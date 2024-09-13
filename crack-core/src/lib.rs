@@ -1,3 +1,5 @@
+#![allow(internal_features)]
+#![feature(fmt_internals)]
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
@@ -41,6 +43,8 @@ pub mod http_utils;
 pub mod macros;
 pub mod messaging;
 pub mod metrics;
+#[cfg(feature = "crack-music")]
+pub mod music;
 pub mod poise_ext;
 pub mod sources;
 #[cfg(test)]
@@ -58,7 +62,7 @@ pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
 pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
-pub type CrackedResult2<T> = anyhow::Result<T, CrackedError>;
+pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;
@@ -72,6 +76,7 @@ pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
 use crate::serenity::prelude::SerenityError;
+use crack_testing::MessageOrReplyHandle;
 
 impl From<CrackedError> for SerenityError {
     fn from(_e: CrackedError) -> Self {
@@ -222,10 +227,7 @@ impl BotConfig {
     }
 
     pub fn get_prefix(&self) -> String {
-        self.prefix
-            .as_ref()
-            .cloned()
-            .unwrap_or(DEFAULT_PREFIX.to_string())
+        self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
     pub fn get_video_status_poll_interval(&self) -> u64 {
@@ -312,46 +314,26 @@ impl PhoneCodeData {
 }
 
 /// User data, which is stored and accessible in all command invocations
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct DataInner {
     pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
     pub start_time: SystemTime,
-    // TODO?: Make this a HashMap, pointing to a settings struct containing
-    // user priviledges, etc
     #[cfg(feature = "crack-activity")]
-    #[serde(skip)]
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
-    #[serde(skip)]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
-    #[serde(skip)]
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
-    //
-    // Non-serializable below here. What did I even decide to make this Serializable for?
-    // I doubt it's doing anything, most fields aren't.
-    //
-    #[serde(skip)]
     pub phone_data: PhoneCodeData,
-    // #[serde(skip)]
-    // pub event_log: EventLog,
-    #[serde(skip)]
     pub event_log_async: EventLogAsync,
-    #[serde(skip)]
     pub db_channel: Option<Sender<MetadataMsg>>,
-    #[serde(skip)]
     pub database_pool: Option<sqlx::PgPool>,
-    #[serde(skip)]
     pub http_client: reqwest::Client,
-    // Async access fields, will switch entirely to these
-    #[serde(skip)]
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
-    #[serde(skip)]
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
-    #[serde(skip)]
+    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
 }
@@ -525,25 +507,26 @@ impl EventLogAsync {
 impl Default for DataInner {
     fn default() -> Self {
         Self {
-            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
-            up_prefix: "R",
-            bot_settings: Default::default(),
             start_time: SystemTime::now(),
             #[cfg(feature = "crack-activity")]
             user_activity_map: Arc::new(dashmap::DashMap::new()),
             #[cfg(feature = "crack-activity")]
             activity_user_map: Arc::new(dashmap::DashMap::new()),
+            #[cfg(feature = "crack-gpt")]
+            gpt_ctx: Arc::new(RwLock::new(None)),
+            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
+            up_prefix: "R",
+            bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            guild_command_msg_queue: Default::default(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             http_client: http_utils::get_client().clone(),
             db_channel: None,
-            #[cfg(feature = "crack-gpt")]
-            gpt_ctx: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -565,42 +548,42 @@ impl std::ops::Deref for Data {
     }
 }
 
-pub enum MessageOrReplyHandle<'a> {
-    Message(Message),
-    ReplyHandle(poise::ReplyHandle<'a>),
-}
+// pub enum MessageOrReplyHandle<'a> {
+//     Message(Message),
+//     ReplyHandle(poise::ReplyHandle<'a>),
+// }
 
-impl MessageOrReplyHandle<'_> {
-    pub async fn into_message(self) -> Option<Message> {
-        match self {
-            MessageOrReplyHandle::Message(msg) => Some(msg),
-            MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
-        }
-    }
+// impl MessageOrReplyHandle<'_> {
+//     pub async fn into_message(self) -> Option<Message> {
+//         match self {
+//             MessageOrReplyHandle::Message(msg) => Some(msg),
+//             MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
+//         }
+//     }
 
-    pub async fn delete(self, ctx: Context<'_>) {
-        match self {
-            MessageOrReplyHandle::Message(msg) => {
-                let _ = msg.delete(&ctx).await;
-            },
-            MessageOrReplyHandle::ReplyHandle(handle) => {
-                let _ = handle.delete(ctx).await;
-            },
-        }
-    }
-}
+//     pub async fn delete(self, ctx: Context<'_>) {
+//         match self {
+//             MessageOrReplyHandle::Message(msg) => {
+//                 let _ = msg.delete(&ctx).await;
+//             },
+//             MessageOrReplyHandle::ReplyHandle(handle) => {
+//                 let _ = handle.delete(ctx).await;
+//             },
+//         }
+//     }
+// }
 
-impl From<Message> for MessageOrReplyHandle<'_> {
-    fn from(msg: Message) -> Self {
-        MessageOrReplyHandle::Message(msg)
-    }
-}
+// impl From<Message> for MessageOrReplyHandle<'_> {
+//     fn from(msg: Message) -> Self {
+//         MessageOrReplyHandle::Message(msg)
+//     }
+// }
 
-impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
-    fn from(handle: poise::ReplyHandle<'a>) -> Self {
-        MessageOrReplyHandle::ReplyHandle(handle)
-    }
-}
+// impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
+//     fn from(handle: poise::ReplyHandle<'a>) -> Self {
+//         MessageOrReplyHandle::ReplyHandle(handle)
+//     }
+// }
 
 impl Data {
     /// Insert a guild into the guild settings map.
@@ -608,12 +591,11 @@ impl Data {
         &self,
         guild_id: GuildId,
         guild_settings: GuildSettings,
-    ) -> Result<GuildSettings, CrackedError> {
+    ) -> Option<GuildSettings> {
         self.guild_settings_map
             .write()
             .await
             .insert(guild_id, guild_settings)
-            .ok_or(CrackedError::FailedToInsert)
     }
 
     /// Create a new Data, calls default
@@ -712,6 +694,19 @@ impl Data {
         } else {
             true
         }
+    }
+
+    /// Push a message to the command message queue.
+    pub async fn push_latest_msg(
+        &self,
+        guild_id: GuildId,
+        msg: MessageOrReplyHandle,
+    ) -> CrackedResult<()> {
+        self.guild_command_msg_queue
+            .entry(guild_id)
+            .or_default()
+            .push(msg);
+        Ok(())
     }
 }
 
