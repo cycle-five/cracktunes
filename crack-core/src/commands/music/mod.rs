@@ -73,6 +73,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             remove(),
             repeat(),
             resume(),
+            search(),
             seek(),
             shuffle(),
             movesong(),
