@@ -1,5 +1,4 @@
 use crate::guild::settings::GuildSettings;
-use crate::http_utils::CacheHttpExt;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
@@ -59,22 +58,14 @@ pub async fn clear_prefixes(ctx: Context<'_>) -> Result<(), Error> {
     use crate::commands::CrackedError;
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
-    let additional_prefixes = {
-        let mut settings = ctx.data().guild_settings_map.write().await;
-        let new_settings = settings
-            .entry(guild_id)
-            .and_modify(|e| {
-                e.additional_prefixes = vec![];
-            })
-            .or_insert(GuildSettings::new(
-                guild_id,
-                Some(&prefix.clone()),
-                Some(guild_name),
-            ));
-        new_settings.additional_prefixes.clone()
-    };
-    let _ = send_reply(&ctx, CrackedMessage::Prefixes(additional_prefixes), true).await?;
+    let mut settings = ctx.data().guild_settings_map.write().await;
+    let _ = settings
+        .entry(guild_id)
+        .and_modify(|e| {
+            e.additional_prefixes = vec![];
+        })
+        .key();
+    let _ = send_reply(&ctx, CrackedMessage::Prefixes(vec![]), true).await?;
     Ok(())
 }
 
