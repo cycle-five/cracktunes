@@ -1,4 +1,7 @@
-use crate::{guild::operations::GuildSettingsOperations, Context, CrackedError, Error};
+use crate::{
+    guild::operations::GuildSettingsOperations, utils::OptionTryUnwrap, Context, CrackedError,
+    Error,
+};
 use poise::serenity_prelude as serenity;
 use serenity::all::{ChannelId, Member, Permissions, RoleId};
 use std::borrow::Cow;
@@ -21,13 +24,7 @@ pub async fn cmd_check_music_internal(
     channel_id: ChannelId,
     ctx: Context<'_>,
 ) -> Result<bool, Error> {
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            tracing::warn!("No guild id found");
-            return Ok(false);
-        },
-    };
+    let guild_id = ctx.guild_id().try_unwrap()?;
 
     let guild_settings = match ctx.data().get_guild_settings(guild_id).await {
         Some(guild_settings) => {
