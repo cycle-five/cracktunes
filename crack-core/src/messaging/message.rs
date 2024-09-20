@@ -79,6 +79,7 @@ pub enum CrackedMessage {
     PlaylistQueuing(String),
     PlayLog(Vec<String>),
     Pong,
+    Prefixes(Vec<String>),
     Premium(bool),
     PremiumPlug,
     RemoveMultiple,
@@ -299,6 +300,9 @@ impl Display for CrackedMessage {
             },
             Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
             Self::Pong => f.write_str("Pong"),
+            Self::Prefixes(prefixes) => {
+                f.write_str(&format!("{} {}", PREFIXES, prefixes.join(", ")))
+            },
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]

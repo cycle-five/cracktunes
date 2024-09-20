@@ -126,6 +126,7 @@ pub const PLAY_SEARCH: &str = "🔎 Searching...";
 pub const PLAY_QUEUE: &str = "📃 Added to queue!";
 pub const PLAY_TOP: &str = "📃 Added to top!";
 pub const PLAY_LOG: &str = "🎵 Last Played Songs";
+pub const PREFIXES: &str = "Prefixes";
 pub const PREMIUM: &str = "👑 Premium status:";
 pub const PREMIUM_PLUG: &str = "👑 Like the bot? Support my development and keep it premium-free for everyone!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const PROGRESS: &str = "Progress";

@@ -1,6 +1,6 @@
 [package]
 name = "crack-voting"
-version = "0.1.0"
+version = "0.3.13"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -20,8 +20,8 @@ path-guid = "08ECB7E7-1E6E-4C7A-9C08-2EF1DD1CE768"
 license = false
 eula = false
 
-[package.metadata.dist]
-dist = false
+# [package.metadata.dist]
+# dist = false
 
 [dependencies]
 lazy_static = "1.5"

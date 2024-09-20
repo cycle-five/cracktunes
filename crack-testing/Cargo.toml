@@ -1,6 +1,6 @@
 [package]
 name = "crack-testing"
-version = "0.1.0"
+version = "0.3.13"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true

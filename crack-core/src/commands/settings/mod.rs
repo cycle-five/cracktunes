@@ -27,8 +27,7 @@ pub use toggle::*;
         "clear_prefixes",
         "print_settings",
     ),
-    ephemeral,
-    required_permissions = "ADMINISTRATOR"
+    ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn settings(
