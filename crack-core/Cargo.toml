@@ -104,7 +104,7 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "0.2"
-tungstenite = "0.23"
+tungstenite = "0.24"
 async-tungstenite = "0.27.0"
 sqlx = { version = "0.8.1", features = [
     "runtime-tokio",
