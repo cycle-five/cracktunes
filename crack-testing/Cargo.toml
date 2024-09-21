@@ -20,5 +20,15 @@ serenity = { workspace = true }
 tokio = { version = "1.40", features = ["rt-multi-thread"] }
 crack-types = { path = "../crack-types" }
 
+[dependencies.rusty_ytdl]
+version = "0.7.4"
+default-features = false
+features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
+
+[dependencies.rspotify]
+version = "0.13"
+default-features = false
+features = ["client-reqwest", "reqwest-rustls-tls"]
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

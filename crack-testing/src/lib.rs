@@ -1,183 +1,93 @@
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
+use crack_types::AuxMetadata;
+use crack_types::QueryType;
+use std::collections::VecDeque;
 
-use poise::serenity_prelude as serenity;
-use poise::ReplyHandle;
-use serenity::{Http, Message};
+pub mod reply_handle_trait;
+pub use reply_handle_trait::run as reply_handle_trait_run;
 
-// pub trait ReplyHandleTrait {
-//     fn into_message(&self) -> Pin<Box<dyn Future<Output = Option<Message>> + Send>>;
-//     fn delete(&self, ctx: Http) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-// }
-
-/// Trait for a reply handle so that we can store it in an enum.
-// pub trait ReplyHandleTrait {
-//     /// Converts the reply handle into a message.
-//     fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>>;
-//     /// Deletes the message associated with the reply handle.
-//     fn delete(self: Arc<Self>, ctx: Http) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send>>;
-// }
-
-pub trait ReplyHandleTrait: Send + Sync {
-    /// Converts the reply handle into a message.
-    fn into_message(
-        self: Arc<Self>,
-    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>>;
-    /// Deletes the message associated with the reply handle.
-    fn delete(
-        self: Arc<Self>,
-        ctx: Http,
-    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>>;
+/// Struct the holds a track who's had it's metadata queried,
+/// and thus has a video URI associated with it, and it has all the
+/// necessary metadata to be displayed in a music player interface.
+pub struct ResolvedTrack {
+    query: QueryType,
+    metadata: Option<AuxMetadata>,
+    video: Option<rusty_ytdl::Video>,
 }
 
-/// Wrapper around poise::ReplyHandle<'a> that implements ReplyHandleTrait.
-pub struct ReplyHandleWrapper {
-    pub handle: Arc<ReplyHandle<'static>>,
-}
+impl ResolvedTrack {
+    /// Create a new ResolvedTrack
+    pub fn new(query: QueryType) -> Self {
+        ResolvedTrack {
+            query,
+            metadata: None,
+            video: None,
+        }
+    }
 
-impl ReplyHandleTrait for ReplyHandleWrapper {
-    // fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>> {
-    fn into_message(
-        self: Arc<Self>,
-    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
-        // let handle: Arc<ReplyHandle<'static>> = Arc::clone(&self.handle);
-        let handle = Arc::clone(&self.handle);
-        Box::pin(async move {
-            <poise::ReplyHandle<'_> as Clone>::clone(&handle)
-                .into_message()
+    /// Get the metadata for the track.
+    pub async fn aux_metadata(&self) -> Vec<AuxMetadata> {
+        if let Some(metadata) = &self.metadata {
+            vec![metadata.clone()]
+        } else {
+            let metadata = self
+                .query
+                .get_track_metadata()
                 .await
-                .ok()
-        })
-    }
-
-    fn delete(
-        self: Arc<Self>,
-        ctx: Http,
-    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
-        // TODO: This does not work with ephemeral messages. We need to take a full
-        // poise::Context instead of just the Http client here, which is going to
-        // be more complex.
-        // let handle: Arc<ReplyHandle<'static>> = Arc::clone(&self.handle);
-        let handle = Arc::clone(&self.handle);
-        Box::pin(async move {
-            match <poise::ReplyHandle<'_> as Clone>::clone(&handle)
-                .into_message()
-                .await
-            {
-                Ok(x) => x.delete(ctx).await,
-                Err(_) => Ok(()),
-            }
-        })
-    }
-}
-
-struct ReplyHandleWrapper2;
-
-impl ReplyHandleTrait for ReplyHandleWrapper2 {
-    fn into_message(
-        self: Arc<Self>,
-    ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
-        Box::pin(async move { None })
-    }
-
-    fn delete(
-        self: Arc<Self>,
-        _ctx: Http,
-    ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>> {
-        Box::pin(async move { Ok(()) })
-    }
-}
-
-/// Enum that can hold either a message or a reply handle.
-#[derive(Clone)]
-pub enum MessageOrReplyHandle {
-    Message(Message),
-    ReplyHandle(Arc<dyn ReplyHandleTrait>),
-}
-
-impl std::fmt::Debug for MessageOrReplyHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MessageOrReplyHandle::Message(message) => write!(f, "Message: {:?}", message),
-            MessageOrReplyHandle::ReplyHandle(_) => write!(f, "ReplyHandle"),
+                .unwrap_or_else(|_| Vec::new());
+            self.metadata = metadata.first().cloned();
+            vec![self.metadata.clone()];
         }
     }
 }
 
-impl From<Message> for MessageOrReplyHandle {
-    fn from(message: Message) -> Self {
-        MessageOrReplyHandle::Message(message)
-    }
+#[derive(Clone, Debug)]
+pub struct CrackTrackClient {
+    reqclient: reqwest::Client,
+    ytclient: rusty_ytdl::search::YouTube,
 }
 
-impl From<Arc<dyn ReplyHandleTrait>> for MessageOrReplyHandle {
-    fn from(handle: Arc<dyn ReplyHandleTrait>) -> Self {
-        MessageOrReplyHandle::ReplyHandle(handle)
-    }
-}
 
-impl From<ReplyHandleWrapper> for MessageOrReplyHandle {
-    fn from(handle: ReplyHandleWrapper) -> Self {
-        MessageOrReplyHandle::ReplyHandle(Arc::new(handle))
-    }
-}
 
-/// Struct that holds a message or a reply handle.
-#[derive(Debug)]
-pub struct Container {
-    handle: MessageOrReplyHandle,
-}
+/// run function.
+pub fn run() {
+    let mut queue = VecDeque::new();
+    let mut track = ResolvedTrack {
+        query: QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
+        metadata: None,
+        video: None,
+    };
 
-/// Implementation of Container.
-impl Container {
-    fn new(handle: MessageOrReplyHandle) -> Self {
-        Container { handle }
-    }
-
-    fn get_handle(&self) -> &MessageOrReplyHandle {
-        &self.handle
-    }
-}
-
-pub async fn run() {
-    // Example usage
-    let message = Message::default();
-    let handle = MessageOrReplyHandle::Message(message);
-
-    let container = Container::new(handle);
-
-    let _ = container.get_handle();
-
-    println!("{:?}", container);
-    // To use ReplyHandle:
-    // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
-    let wrapped_handle = ReplyHandleWrapper2;
-    let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
-    let container = Container::new(handle);
-
-    println!("{:?}", container);
+    queue.push_back(track);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_into_message() {
-        let message = Message::default();
-        let _handle = MessageOrReplyHandle::Message(message);
+    #[test]
+    fn test_run() {
+        run();
+    }
 
-        // let message = handle.into_message().await.unwrap();
-        // assert_eq!(message.id, 0);
+    #[test]
+    fn test_new() {
+        let track = ResolvedTrack::new(QueryType::VideoLink(
+            "https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string(),
+        ));
+        assert_eq!(track.metadata, None);
+        assert_eq!(track.video, None);
     }
 
     #[tokio::test]
-    async fn test_delete() {
-        let message = Message::default();
-        let _handle = MessageOrReplyHandle::Message(message);
-
-        // let ctx = Http::default();
-        // handle.delete(ctx).await.unwrap();
+    async fn test_aux_metadata() {
+        let track = ResolvedTrack::new(QueryType::VideoLink(
+            "https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string(),
+        ));
+        let metadata = track.aux_metadata().await;
+        assert_eq!(metadata.len(), 1);
+        let metadata = track.aux_metadata().await;
+        if let Some(title) = &metadata.first().unwrap().title {
+            assert_eq!(title, "NOTITLE");
+        }
     }
 }

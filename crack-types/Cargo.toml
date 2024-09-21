@@ -21,8 +21,14 @@ workspace = ".."
 
 [dependencies]
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
+songbird = { workspace = true }
 serenity = { workspace = true }
 tokio = "1.40"
+
+[dependencies.rspotify]
+version = "0.13"
+default-features = false
+features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
