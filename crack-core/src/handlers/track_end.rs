@@ -1,5 +1,5 @@
 use crate::{
-    commands::{forget_skip_votes, MyAuxMetadata},
+    commands::forget_skip_votes,
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -20,6 +20,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
+use crack_types::MyAuxMetadata;
 use serenity::all::{CacheHttp, UserId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;

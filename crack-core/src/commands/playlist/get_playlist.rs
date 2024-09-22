@@ -1,9 +1,10 @@
 use crate::{
-    commands::{cmd_check_music, MyAuxMetadata},
+    commands::cmd_check_music,
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
     Context, CrackedError, Error,
 };
+use crack_types::MyAuxMetadata;
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]

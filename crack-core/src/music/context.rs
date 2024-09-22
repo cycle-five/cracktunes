@@ -1,6 +1,6 @@
-use crate::commands::Mode;
-use crate::music::QueryType;
 use crate::Context as CrackContext;
+use crack_types::Mode;
+use crack_types::QueryType;
 use poise::serenity_prelude as serenity;
 use serenity::all::Message;
 use songbird::Call;

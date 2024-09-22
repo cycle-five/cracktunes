@@ -18,9 +18,8 @@ use crate::{
         },
     },
     poise_ext::ContextExt,
-    sources::spotify::SpotifyTrack,
     sources::youtube::build_query_aux_metadata,
-    utils::{get_human_readable_timestamp, get_track_handle_metadata},
+    utils::get_track_handle_metadata,
     Context, Error,
 };
 use ::serenity::all::CommandInteraction;
@@ -28,28 +27,14 @@ use ::serenity::{
     all::{Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
+use crack_types::get_human_readable_timestamp;
+use crack_types::Mode;
+use crack_types::MyAuxMetadata;
 use poise::serenity_prelude as serenity;
-use songbird::{
-    input::{AuxMetadata, YoutubeDl},
-    tracks::TrackHandle,
-    Call,
-};
+use songbird::{input::YoutubeDl, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Mode {
-    End,
-    Next,
-    All,
-    Reverse,
-    Shuffle,
-    Jump,
-    DownloadMKV,
-    DownloadMP3,
-    Search,
-}
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -519,119 +504,119 @@ impl Default for RequestingUser {
     }
 }
 
-/// AuxMetadata wrapper and utility functions.
-#[derive(Debug, Clone)]
-pub struct MyAuxMetadata(pub AuxMetadata);
+// /// AuxMetadata wrapper and utility functions.
+// #[derive(Debug, Clone)]
+// pub struct MyAuxMetadata(pub AuxMetadata);
 
-/// Implement TypeMapKey for MyAuxMetadata.
-impl TypeMapKey for MyAuxMetadata {
-    type Value = MyAuxMetadata;
-}
+// /// Implement TypeMapKey for MyAuxMetadata.
+// impl TypeMapKey for MyAuxMetadata {
+//     type Value = MyAuxMetadata;
+// }
 
-/// Implement From<AuxMetadata> for MyAuxMetadata.
-impl From<MyAuxMetadata> for AuxMetadata {
-    fn from(metadata: MyAuxMetadata) -> Self {
-        let MyAuxMetadata(metadata) = metadata;
-        metadata
-    }
-}
+// /// Implement From<AuxMetadata> for MyAuxMetadata.
+// impl From<MyAuxMetadata> for AuxMetadata {
+//     fn from(metadata: MyAuxMetadata) -> Self {
+//         let MyAuxMetadata(metadata) = metadata;
+//         metadata
+//     }
+// }
 
-/// Implement Default for MyAuxMetadata.
-impl Default for MyAuxMetadata {
-    fn default() -> Self {
-        MyAuxMetadata(AuxMetadata::default())
-    }
-}
+// /// Implement Default for MyAuxMetadata.
+// impl Default for MyAuxMetadata {
+//     fn default() -> Self {
+//         MyAuxMetadata(AuxMetadata::default())
+//     }
+// }
 
-/// Implement MyAuxMetadata.
-impl MyAuxMetadata {
-    /// Create a new MyAuxMetadata from AuxMetadata.
-    pub fn new(metadata: AuxMetadata) -> Self {
-        MyAuxMetadata(metadata)
-    }
+// /// Implement MyAuxMetadata.
+// impl MyAuxMetadata {
+//     /// Create a new MyAuxMetadata from AuxMetadata.
+//     pub fn new(metadata: AuxMetadata) -> Self {
+//         MyAuxMetadata(metadata)
+//     }
 
-    /// Get the internal metadata.
-    pub fn metadata(&self) -> &AuxMetadata {
-        &self.0
-    }
+//     /// Get the internal metadata.
+//     pub fn metadata(&self) -> &AuxMetadata {
+//         &self.0
+//     }
 
-    /// Create new MyAuxMetadata from &SpotifyTrack.
-    pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
-        MyAuxMetadata(AuxMetadata {
-            track: Some(track.name()),
-            artist: Some(track.artists_str()),
-            album: Some(track.album_name()),
-            date: None,
-            start_time: Some(Duration::ZERO),
-            duration: Some(track.duration()),
-            channels: Some(2),
-            channel: None,
-            sample_rate: None,
-            source_url: None,
-            thumbnail: Some(track.name()),
-            title: Some(track.name()),
-        })
-    }
+//     /// Create new MyAuxMetadata from &SpotifyTrack.
+//     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
+//         MyAuxMetadata(AuxMetadata {
+//             track: Some(track.name()),
+//             artist: Some(track.artists_str()),
+//             album: Some(track.album_name()),
+//             date: None,
+//             start_time: Some(Duration::ZERO),
+//             duration: Some(track.duration()),
+//             channels: Some(2),
+//             channel: None,
+//             sample_rate: None,
+//             source_url: None,
+//             thumbnail: Some(track.name()),
+//             title: Some(track.name()),
+//         })
+//     }
 
-    /// Set the source_url.
-    pub fn with_source_url(self, source_url: String) -> Self {
-        MyAuxMetadata(AuxMetadata {
-            source_url: Some(source_url),
-            ..self.metadata().clone()
-        })
-    }
+//     /// Set the source_url.
+//     pub fn with_source_url(self, source_url: String) -> Self {
+//         MyAuxMetadata(AuxMetadata {
+//             source_url: Some(source_url),
+//             ..self.metadata().clone()
+//         })
+//     }
 
-    /// Get a search query from the metadata for youtube.
-    pub fn get_search_query(&self) -> String {
-        let metadata = self.metadata();
-        let title = metadata.title.clone().unwrap_or_default();
-        let artist = metadata.artist.clone().unwrap_or_default();
-        format!("{} {}", title, artist)
-    }
-}
+//     /// Get a search query from the metadata for youtube.
+//     pub fn get_search_query(&self) -> String {
+//         let metadata = self.metadata();
+//         let title = metadata.title.clone().unwrap_or_default();
+//         let artist = metadata.artist.clone().unwrap_or_default();
+//         format!("{} {}", title, artist)
+//     }
+// }
 
-/// Implementation to convert `[&SpotifyTrack]` to `[MyAuxMetadata]`.
-impl From<&SpotifyTrack> for MyAuxMetadata {
-    fn from(track: &SpotifyTrack) -> Self {
-        MyAuxMetadata::from_spotify_track(track)
-    }
-}
+// /// Implementation to convert `[&SpotifyTrack]` to `[MyAuxMetadata]`.
+// impl From<&SpotifyTrack> for MyAuxMetadata {
+//     fn from(track: &SpotifyTrack) -> Self {
+//         MyAuxMetadata::from_spotify_track(track)
+//     }
+// }
 
-impl From<&SearchResult> for MyAuxMetadata {
-    fn from(search_result: &SearchResult) -> Self {
-        let mut metadata = AuxMetadata::default();
-        match search_result.clone() {
-            SearchResult::Video(video) => {
-                metadata.track = Some(video.title.clone());
-                metadata.artist = None;
-                metadata.album = None;
-                metadata.date = video.uploaded_at.clone();
+// impl From<&SearchResult> for MyAuxMetadata {
+//     fn from(search_result: &SearchResult) -> Self {
+//         let mut metadata = AuxMetadata::default();
+//         match search_result.clone() {
+//             SearchResult::Video(video) => {
+//                 metadata.track = Some(video.title.clone());
+//                 metadata.artist = None;
+//                 metadata.album = None;
+//                 metadata.date = video.uploaded_at.clone();
 
-                metadata.channels = Some(2);
-                metadata.channel = Some(video.channel.name);
-                metadata.duration = Some(Duration::from_millis(video.duration));
-                metadata.sample_rate = Some(48000);
-                metadata.source_url = Some(video.url);
-                metadata.title = Some(video.title);
-                metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
-            },
-            SearchResult::Playlist(playlist) => {
-                metadata.title = Some(playlist.name);
-                metadata.source_url = Some(playlist.url);
-                metadata.duration = None;
-                metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
-            },
-            _ => {},
-        };
-        MyAuxMetadata(metadata)
-    }
-}
+//                 metadata.channels = Some(2);
+//                 metadata.channel = Some(video.channel.name);
+//                 metadata.duration = Some(Duration::from_millis(video.duration));
+//                 metadata.sample_rate = Some(48000);
+//                 metadata.source_url = Some(video.url);
+//                 metadata.title = Some(video.title);
+//                 metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
+//             },
+//             SearchResult::Playlist(playlist) => {
+//                 metadata.title = Some(playlist.name);
+//                 metadata.source_url = Some(playlist.url);
+//                 metadata.duration = None;
+//                 metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
+//             },
+//             _ => {},
+//         };
+//         MyAuxMetadata(metadata)
+//     }
+// }
 
-impl From<SearchResult> for MyAuxMetadata {
-    fn from(search_result: SearchResult) -> Self {
-        MyAuxMetadata::from(&search_result)
-    }
-}
+// impl From<SearchResult> for MyAuxMetadata {
+//     fn from(search_result: SearchResult) -> Self {
+//         MyAuxMetadata::from(&search_result)
+//     }
+// }
 
 /// Build an embed for the cure
 async fn build_queued_embed(
@@ -676,7 +661,7 @@ async fn build_queued_embed(
 }
 
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;
-use rusty_ytdl::search::{SearchResult, YouTube};
+use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(

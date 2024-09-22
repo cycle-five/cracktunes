@@ -1,11 +1,12 @@
 use crate::{
-    commands::{cmd_check_music, help, MyAuxMetadata},
+    commands::{cmd_check_music, help},
     errors::CrackedError,
     http_utils,
     messaging::interface::create_lyrics_embed,
     poise_ext::ContextExt,
     Context, Error,
 };
+use crack_types::MyAuxMetadata;
 
 /// Search for song lyrics.
 #[cfg(not(tarpaulin_include))]

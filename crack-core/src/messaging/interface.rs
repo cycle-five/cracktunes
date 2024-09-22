@@ -1,4 +1,3 @@
-use crate::commands::MyAuxMetadata;
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::{
@@ -11,12 +10,11 @@ use crate::CrackedResult;
 use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
-    utils::{
-        build_footer_info, get_human_readable_timestamp, get_requesting_user,
-        get_track_handle_metadata,
-    },
+    utils::{build_footer_info, get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
+use crack_types::get_human_readable_timestamp;
+use crack_types::MyAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;

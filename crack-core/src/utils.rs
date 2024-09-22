@@ -4,7 +4,7 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::{music::doplay::RequestingUser, music::MyAuxMetadata},
+    commands::music::doplay::RequestingUser,
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -29,6 +29,8 @@ use ::serenity::{
     futures::StreamExt,
     model::channel::Message,
 };
+use crack_types::get_human_readable_timestamp;
+use crack_types::MyAuxMetadata;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -668,25 +670,6 @@ pub fn build_footer_info(url: &str) -> (String, String, String) {
         format!("https://www.google.com/s2/favicons?domain={}", domain),
         vanity,
     )
-}
-
-/// Converts a duration into a human readable timestamp
-pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
-    match duration {
-        Some(duration) if duration == Duration::MAX => "∞".to_string(),
-        Some(duration) => {
-            let seconds = duration.as_secs() % 60;
-            let minutes = (duration.as_secs() / 60) % 60;
-            let hours = duration.as_secs() / 3600;
-
-            if hours < 1 {
-                format!("{:02}:{:02}", minutes, seconds)
-            } else {
-                format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
-            }
-        },
-        None => "∞".to_string(),
-    }
 }
 
 use serenity::prelude::SerenityError;

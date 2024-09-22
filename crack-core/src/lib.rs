@@ -76,7 +76,7 @@ pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
 use crate::serenity::prelude::SerenityError;
-use crack_testing::MessageOrReplyHandle;
+use crack_testing::reply_handle_trait::MessageOrReplyHandle;
 
 impl From<CrackedError> for SerenityError {
     fn from(_e: CrackedError) -> Self {

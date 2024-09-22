@@ -2,15 +2,12 @@ use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::music::TrackReadyData;
 use crate::{
-    commands::CrackedError,
-    commands::{has_voted_bot_id, MyAuxMetadata},
-    db, http_utils,
-    http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
-    utils::OptionTryUnwrap,
+    commands::has_voted_bot_id, commands::CrackedError, db, http_utils,
+    http_utils::SendMessageParams, messaging::message::CrackedMessage, utils::OptionTryUnwrap,
     CrackedResult, Data, Error, MessageOrReplyHandle,
 };
 use colored::Colorize;
+use crack_types::MyAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};

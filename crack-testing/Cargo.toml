@@ -15,7 +15,6 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
-crack-rusty = { path = "../crack-source-rusty-ytdl" }
 reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "json",

@@ -1,3 +1,4 @@
+use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::music::query::QueryType;
 use crate::sources::rusty_ytdl::{
@@ -5,7 +6,7 @@ use crate::sources::rusty_ytdl::{
 };
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
-use crate::{commands::MyAuxMetadata, errors::CrackedError};
+use crack_types::MyAuxMetadata;
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 

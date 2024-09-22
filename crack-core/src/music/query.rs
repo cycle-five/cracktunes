@@ -7,7 +7,7 @@ use crate::sources::rusty_ytdl::{
 };
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    commands::{check_banned_domains, MyAuxMetadata},
+    commands::check_banned_domains,
     errors::{verify, CrackedError},
     http_utils,
     messaging::{
@@ -15,12 +15,14 @@ use crate::{
         message::CrackedMessage,
         messages::SPOTIFY_AUTH_FAILED,
     },
-    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
+    sources::spotify::{Spotify, SPOTIFY},
     utils::{edit_response_poise, yt_search_select},
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
+use crack_types::MyAuxMetadata;
+use crack_types::SpotifyTrack;
 use futures::future;
 use itertools::Itertools;
 use poise::serenity_prelude as serenity;
@@ -119,6 +121,7 @@ impl From<Queries> for Vec<QueryType> {
         q.queries
     }
 }
+use crate::sources::spotify::SpotifyTrackTrait;
 use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.

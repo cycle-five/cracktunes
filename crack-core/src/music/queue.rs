@@ -1,12 +1,14 @@
 use super::QueryType;
 use crate::{
-    commands::{Mode, MyAuxMetadata, RequestingUser},
+    commands::RequestingUser,
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
     poise_ext::ContextExt,
     Context as CrackContext, Error,
 };
+use crack_types::Mode;
+use crack_types::MyAuxMetadata;
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;

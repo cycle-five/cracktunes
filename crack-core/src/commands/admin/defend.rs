@@ -20,6 +20,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[allow(static_mut_refs)]
 static mut TEMP_CHANNEL_NAMES: Vec<GuildChannel> = Vec::new();
 static N: u64 = 15;
 
@@ -98,7 +99,9 @@ impl EventHandler for DefendHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         loop {
             unsafe {
+                #[allow(static_mut_refs)]
                 if TEMP_CHANNEL_NAMES.len() > 1 {
+                    #[allow(static_mut_refs)]
                     let next_chan: GuildChannel = TEMP_CHANNEL_NAMES.pop().unwrap();
                     let _ = next_chan.delete(&self.http).await;
                 } else {
@@ -114,7 +117,9 @@ impl EventHandler for DefendHandler {
         let rand = rand::random::<u8>();
         if rand % 2 == 0 {
             unsafe {
+                #[allow(static_mut_refs)]
                 if !TEMP_CHANNEL_NAMES.is_empty() {
+                    #[allow(static_mut_refs)]
                     let next_chan: GuildChannel = TEMP_CHANNEL_NAMES.pop().unwrap();
                     let _ = next_chan.delete(&self.http).await;
                 }
@@ -183,7 +188,10 @@ impl EventHandler for DefendHandler {
         }
 
         if let Some(c) = channel {
-            unsafe { TEMP_CHANNEL_NAMES.push(c) }
+            #[allow(static_mut_refs)]
+            unsafe {
+                TEMP_CHANNEL_NAMES.push(c)
+            }
         };
 
         None

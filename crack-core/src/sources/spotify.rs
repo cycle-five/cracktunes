@@ -4,6 +4,7 @@ use crate::{
     music::QueryType,
     utils::MUSIC_SEARCH_SUFFIX,
 };
+use crack_types::SpotifyTrack;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::model::{FullPlaylist, FullTrack, SimplifiedAlbum};
@@ -427,7 +428,6 @@ impl Spotify {
     }
 }
 
-use crack_types::SpotifyTrack;
 // /// Wrapper for a Spotify track.
 // #[derive(Debug, Clone)]
 // pub struct SpotifyTrack {
@@ -532,13 +532,6 @@ impl SpotifyTrackTrait for SpotifyTrack {
 }
 
 /// Implementation of From for SpotifyTrack.
-impl From<rspotify::model::FullTrack> for SpotifyTrack {
-    fn from(track: rspotify::model::FullTrack) -> Self {
-        Self::new(track)
-    }
-}
-
-/// Implementation of From for SpotifyTrack.
 pub fn build_fake_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
@@ -582,7 +575,7 @@ pub fn build_fake_spotify_track() -> SpotifyTrack {
 
 #[cfg(test)]
 mod test {
-    use crate::commands::MyAuxMetadata;
+    use crack_types::MyAuxMetadata;
 
     use super::*;
 
