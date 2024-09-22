@@ -1,5 +1,7 @@
 use crack_types::AuxMetadata;
+use crack_types::Error;
 use crack_types::QueryType;
+use rusty_ytdl::reqwest;
 use std::collections::VecDeque;
 
 pub mod reply_handle_trait;
@@ -24,29 +26,59 @@ impl ResolvedTrack {
         }
     }
 
-    /// Get the metadata for the track.
-    pub async fn aux_metadata(&self) -> Vec<AuxMetadata> {
-        if let Some(metadata) = &self.metadata {
-            vec![metadata.clone()]
-        } else {
-            let metadata = self
-                .query
-                .get_track_metadata()
-                .await
-                .unwrap_or_else(|_| Vec::new());
-            self.metadata = metadata.first().cloned();
-            vec![self.metadata.clone()];
-        }
-    }
+    // /// Get the metadata for the track.
+    // pub async fn aux_metadata(&self) -> Result<AuxMetadata, Error> {
+    //     if let Some(metadata) = &self.metadata {
+    //         Ok(metadata.clone())
+    //     } else {
+    //         let metadata = match self.query.get_track_metadata().await {
+    //             Ok(metadata) => metadata,
+    //             Err(e) => {
+    //                 return Err(Box::new(e));
+    //             },
+    //         };
+    //         self.metadata = metadata.first().cloned();
+    //         Ok(self.metadata.clone())
+    //     }
+    // }
+}
+
+pub async fn resolve_track(
+    client: CrackTrackClient,
+    query: QueryType,
+) -> Result<ResolvedTrack, Error> {
+    let (video, info, metadata) = match query {
+        QueryType::VideoLink(link) => {
+            let video = rusty_ytdl::Video::new(&link)?;
+            let info = video.get_info().await?;
+            let metadata = video_info_to_aux_metadata(info)?;
+
+            (video, info, metadata)
+        },
+        // QueryType::SearchQuery(query) => {
+        //     let videos = client.yt_client.search(query).await?;
+        //     let mut metadata = Vec::new();
+        //     for video in videos {
+        //         let metadata = video.get_metadata().await?;
+        //         metadata.push(metadata);
+        //     }
+        //     metadata
+        // },
+        _ => unimplemented!(),
+    };
+    let track = ResolvedTrack {
+        query,
+        metadata: Some(metadata),
+        video: Some(video),
+    };
+    Ok(track)
 }
 
 #[derive(Clone, Debug)]
 pub struct CrackTrackClient {
-    reqclient: reqwest::Client,
-    ytclient: rusty_ytdl::search::YouTube,
+    req_client: reqwest::Client,
+    yt_client: rusty_ytdl::search::YouTube,
 }
-
-
 
 /// run function.
 pub fn run() {
@@ -79,15 +111,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_aux_metadata() {
-        let track = ResolvedTrack::new(QueryType::VideoLink(
-            "https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string(),
-        ));
-        let metadata = track.aux_metadata().await;
-        assert_eq!(metadata.len(), 1);
-        let metadata = track.aux_metadata().await;
-        if let Some(title) = &metadata.first().unwrap().title {
-            assert_eq!(title, "NOTITLE");
-        }
+    async fn test_resolve_track() {
+        let query = QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string());
+        let client = CrackTrackClient {
+            req_client: reqwest::Client::new(),
+            yt_client: rusty_ytdl::search::YouTube::new().expect("New failed"),
+        };
+
+        let resolved = resolve_track(client, query).await.unwrap();
+
+        let res = resolved.metadata.unwrap();
+        assert_eq!(res.title.unwrap(), r#"Molly Nilsson "1995""#.to_string());
     }
 }

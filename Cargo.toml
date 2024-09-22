@@ -15,10 +15,9 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
-allow-dirty = true
 
 [workspace.dependencies.sqlx]
-version = "0.8.1"
+version = "0.8.2"
 default-features = false
 features = [
   "runtime-tokio",
@@ -73,7 +72,7 @@ features = ["all-formats", "all-codecs", "opt-simd"]
 version = "0.5.4"
 
 [workspace.dependencies.tokio]
-version = "1.39"
+version = "1.40"
 features = ["full"]
 
 [workspace.dependencies]

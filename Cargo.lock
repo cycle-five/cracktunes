@@ -1013,6 +1013,7 @@ version = "0.3.13"
 dependencies = [
  "crack-types",
  "poise",
+ "reqwest 0.12.7",
  "rspotify",
  "rusty_ytdl",
  "serenity",

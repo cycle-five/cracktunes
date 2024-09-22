@@ -15,10 +15,22 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
+crack-rusty = { path = "../crack-source-rusty-ytdl" }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+] }
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
 serenity = { workspace = true }
 tokio = { version = "1.40", features = ["rt-multi-thread"] }
 crack-types = { path = "../crack-types" }
+
 
 [dependencies.rusty_ytdl]
 version = "0.7.4"

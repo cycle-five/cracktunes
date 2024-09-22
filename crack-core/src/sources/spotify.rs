@@ -427,36 +427,52 @@ impl Spotify {
     }
 }
 
-/// Wrapper for a Spotify track.
-#[derive(Debug, Clone)]
-pub struct SpotifyTrack {
-    pub full_track: rspotify::model::FullTrack,
+use crack_types::SpotifyTrack;
+// /// Wrapper for a Spotify track.
+// #[derive(Debug, Clone)]
+// pub struct SpotifyTrack {
+//     pub full_track: rspotify::model::FullTrack,
+// }
+
+pub trait SpotifyTrackTrait {
+    fn new(full_track: rspotify::model::FullTrack) -> Self;
+    fn id(&self) -> TrackId<'static>;
+    fn name(&self) -> String;
+    fn artists(&self) -> Vec<SimplifiedArtist>;
+    fn artists_str(&self) -> String;
+    fn album(&self) -> SimplifiedAlbum;
+    fn album_name(&self) -> String;
+    fn duration_seconds(&self) -> i32;
+    fn duration(&self) -> Duration;
+    fn join_artist_names(&self) -> String;
+    fn build_query_lyric(&self) -> String;
+    fn build_query(&self) -> String;
 }
 
-/// Implementation of SpotifyTrack.
-impl SpotifyTrack {
+/// Implementation of our SpotifyTrackTrait.
+impl SpotifyTrackTrait for SpotifyTrack {
     /// Create a new SpotifyTrack.
-    pub fn new(full_track: rspotify::model::FullTrack) -> Self {
+    fn new(full_track: rspotify::model::FullTrack) -> Self {
         Self { full_track }
     }
 
     /// Get the ID of the track
-    pub fn id(&self) -> TrackId<'static> {
+    fn id(&self) -> TrackId<'static> {
         self.full_track.id.clone().unwrap()
     }
 
     /// Get the name of the track.
-    pub fn name(&self) -> String {
+    fn name(&self) -> String {
         self.full_track.name.clone()
     }
 
     /// Get the artists of the track.
-    pub fn artists(&self) -> Vec<SimplifiedArtist> {
+    fn artists(&self) -> Vec<SimplifiedArtist> {
         self.full_track.artists.clone()
     }
 
     /// Get the artists of the track as a string.
-    pub fn artists_str(&self) -> String {
+    fn artists_str(&self) -> String {
         self.full_track
             .artists
             .iter()
@@ -466,22 +482,22 @@ impl SpotifyTrack {
     }
 
     /// Get the album of the track.
-    pub fn album(&self) -> rspotify::model::SimplifiedAlbum {
+    fn album(&self) -> rspotify::model::SimplifiedAlbum {
         self.full_track.album.clone()
     }
 
     /// Get the album name of the track.
-    pub fn album_name(&self) -> String {
+    fn album_name(&self) -> String {
         self.full_track.album.name.clone()
     }
 
     /// Get the duration of the track.
-    pub fn duration_seconds(&self) -> i32 {
+    fn duration_seconds(&self) -> i32 {
         self.full_track.duration.num_seconds() as i32
     }
 
     /// Get the duration of the track as a Duration.
-    pub fn duration(&self) -> Duration {
+    fn duration(&self) -> Duration {
         let track_secs = self.full_track.duration.num_seconds();
         let nanos = self.full_track.duration.subsec_nanos();
         let secs = if track_secs < 0 { 0 } else { track_secs };
@@ -489,7 +505,7 @@ impl SpotifyTrack {
     }
 
     /// Join the artist names into a single string.
-    pub fn join_artist_names(&self) -> String {
+    fn join_artist_names(&self) -> String {
         let artist_names: Vec<String> = self
             .full_track
             .artists
@@ -500,7 +516,7 @@ impl SpotifyTrack {
     }
 
     /// Build a query for searching, from the artist names and the track name.
-    pub fn build_query_lyric(&self) -> String {
+    fn build_query_lyric(&self) -> String {
         format!(
             "{} {} {}",
             &self.name(),
@@ -510,7 +526,7 @@ impl SpotifyTrack {
     }
 
     /// Build a query for searching, from the artist names and the track name.
-    pub fn build_query(&self) -> String {
+    fn build_query(&self) -> String {
         format!("{} {}", &self.name(), &self.join_artist_names())
     }
 }
