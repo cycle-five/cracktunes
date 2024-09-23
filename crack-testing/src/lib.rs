@@ -1,7 +1,9 @@
+use anyhow::anyhow;
 use crack_types::AuxMetadata;
 use crack_types::Error;
 use crack_types::QueryType;
-use rusty_ytdl::reqwest;
+use crack_types::SearchResult;
+use reqwest;
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
@@ -11,6 +13,16 @@ pub mod reply_handle_trait;
 pub use reply_handle_trait::run as reply_handle_trait_run;
 
 pub const NEW_FAILED: &str = "New failed";
+
+use thiserror::Error as ThisError;
+
+#[derive(ThisError, Debug)]
+pub enum TrackResolveError {
+    #[error("Error: {0}")]
+    Other(String),
+    #[error("unknown track resolve error")]
+    Unknown,
+}
 
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
@@ -34,22 +46,6 @@ impl ResolvedTrack {
             details: None,
         }
     }
-
-    // /// Get the metadata for the track.
-    // pub async fn aux_metadata(&self) -> Result<AuxMetadata, Error> {
-    //     if let Some(metadata) = &self.metadata {
-    //         Ok(metadata.clone())
-    //     } else {
-    //         let metadata = match self.query.get_track_metadata().await {
-    //             Ok(metadata) => metadata,
-    //             Err(e) => {
-    //                 return Err(Box::new(e));
-    //             },
-    //         };
-    //         self.metadata = metadata.first().cloned();
-    //         Ok(self.metadata.clone())
-    //     }
-    // }
 }
 
 impl Display for ResolvedTrack {
@@ -137,6 +133,24 @@ impl CrackTrackClient {
             details: Some(details),
         };
         Ok(track)
+    }
+
+    pub async fn resolve_search_one(self, query: &str) -> Result<ResolvedTrack, Error> {
+        // let search_options = rusty_ytdl::search::SearchOptions {
+        //     client: Some(self.req_client.clone()),
+        //     ..Default::default()
+        // };
+        let search_results = self.yt_client.search_one(query, None).await?;
+        let video = match search_results {
+            Some(result) => match result {
+                SearchResult::Video(video) => video,
+                _ => return Err(TrackResolveError::Other("No video found".to_string()).into()),
+            },
+            _ => return Err(TrackResolveError::Other("No video found".to_string()).into()),
+        };
+        let video_url = video.url.clone();
+        let query = QueryType::VideoLink(video_url);
+        self.resolve_track(query).await
     }
 }
 

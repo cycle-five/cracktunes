@@ -1011,12 +1011,14 @@ dependencies = [
 name = "crack-testing"
 version = "0.3.14"
 dependencies = [
+ "anyhow",
  "crack-types",
  "poise",
  "reqwest 0.12.7",
  "rspotify",
  "rusty_ytdl",
  "serenity",
+ "thiserror",
  "tokio",
 ]
 

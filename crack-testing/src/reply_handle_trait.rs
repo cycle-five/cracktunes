@@ -172,12 +172,20 @@ mod tests {
         // assert_eq!(message.id, 0);
     }
 
-    #[tokio::test]
-    async fn test_delete() {
-        let message = Message::default();
-        let _handle = MessageOrReplyHandle::Message(message);
+    // #[tokio::test]
+    // async fn test_delete() {
+    //     let message = Message::default();
+    //     let handle = MessageOrReplyHandle::Message(message);
+    //     let wrapper = ReplyHandleWrapper {
+    //         handle: Arc::new(handle.into_message()),
+    //     };
 
-        // let ctx = Http::default();
-        // handle.delete(ctx).await.unwrap();
+    //     // let ctx = Http::default();
+    //     // handle.delete(ctx).await.unwrap();
+    // }
+
+    #[tokio::test]
+    async fn test_container() {
+        run().await;
     }
 }
