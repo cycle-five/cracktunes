@@ -1,12 +1,12 @@
-use anyhow::anyhow;
 use crack_types::AuxMetadata;
 use crack_types::Error;
 use crack_types::QueryType;
 use crack_types::SearchResult;
-use reqwest;
+use once_cell::sync::Lazy;
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
+use thiserror::Error as ThisError;
 
 pub use crack_types::{get_human_readable_timestamp, video_info_to_aux_metadata};
 pub mod reply_handle_trait;
@@ -14,13 +14,33 @@ pub use reply_handle_trait::run as reply_handle_trait_run;
 
 pub const NEW_FAILED: &str = "New failed";
 
-use thiserror::Error as ThisError;
+static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    println!("Creating a new reqwest client...");
+    reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build reqwest client")
+});
 
+static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
+    println!("Creating a new YouTube client...");
+    let req_client = REQ_CLIENT.clone();
+    let opts = RequestOptions {
+        client: Some(req_client.clone()),
+        ..Default::default()
+    };
+    rusty_ytdl::search::YouTube::new_with_options(&opts).expect("Failed to build YouTube client")
+});
+
+/// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
 pub enum TrackResolveError {
+    #[error("No track found")]
+    NotFound,
     #[error("Error: {0}")]
     Other(String),
-    #[error("unknown track resolve error")]
+    #[error("Unknown resolve error")]
     Unknown,
 }
 
@@ -48,6 +68,7 @@ impl ResolvedTrack {
     }
 }
 
+/// Implement [Display] for [ResolvedTrack].
 impl Display for ResolvedTrack {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let metadata = self.metadata.as_ref().unwrap();
@@ -59,6 +80,7 @@ impl Display for ResolvedTrack {
     }
 }
 
+/// Client for resolving tracks, mostly holds other clients like reqwest and rusty_ytdl.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct CrackTrackClient {
@@ -66,6 +88,7 @@ pub struct CrackTrackClient {
     yt_client: rusty_ytdl::search::YouTube,
 }
 
+/// Implement [Default] for [CrackTrackClient].
 impl Default for CrackTrackClient {
     fn default() -> Self {
         let req_client = reqwest::Client::new();
@@ -80,11 +103,14 @@ impl Default for CrackTrackClient {
     }
 }
 
+/// Implement [CrackTrackClient].
 impl CrackTrackClient {
+    /// Create a new [CrackTrackClient].
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Create a new [CrackTrackClient] with a reqwest client and a rusty_ytdl client.
     pub fn new_with_clients(
         req_client: reqwest::Client,
         yt_client: rusty_ytdl::search::YouTube,
@@ -95,6 +121,7 @@ impl CrackTrackClient {
         }
     }
 
+    /// Create a new [CrackTrackClient] with a reqwest client.
     pub fn with_req_client(req_client: reqwest::Client) -> Self {
         let opts = RequestOptions {
             client: Some(req_client.clone()),
@@ -142,16 +169,27 @@ impl CrackTrackClient {
         // };
         let search_results = self.yt_client.search_one(query, None).await?;
         let video = match search_results {
-            Some(result) => match result {
-                SearchResult::Video(video) => video,
-                _ => return Err(TrackResolveError::Other("No video found".to_string()).into()),
-            },
-            _ => return Err(TrackResolveError::Other("No video found".to_string()).into()),
+            Some(SearchResult::Video(result)) => result,
+            _ => return Err(TrackResolveError::NotFound.into()),
         };
         let video_url = video.url.clone();
         let query = QueryType::VideoLink(video_url);
         self.resolve_track(query).await
     }
+
+    /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+    pub async fn suggestion(self, query: &str) -> Result<Vec<String>, Error> {
+        self.yt_client
+            .suggestion(query, None)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+/// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
+    let client = YOUTUBE_CLIENT.clone();
+    client.suggestion(query, None).await.map_err(Into::into)
 }
 
 /// run function.
@@ -197,5 +235,26 @@ mod tests {
 
         let res = resolved.metadata.unwrap();
         assert_eq!(res.title.unwrap(), r#"Molly Nilsson "1995""#.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_suggestion() {
+        let client = CrackTrackClient {
+            req_client: reqwest::Client::new(),
+            yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
+        };
+
+        let res = client.suggestion("molly nilsson").await;
+        let res = res.expect("No results");
+        println!("{:?}", res);
+        assert_eq!(res.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_suggestion_function() {
+        let res = suggestion("molly nilsson").await;
+        let res = res.expect("No results");
+        println!("{:?}", res);
+        assert_eq!(res.len(), 10);
     }
 }

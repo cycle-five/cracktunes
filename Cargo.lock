@@ -1013,6 +1013,7 @@ version = "0.3.14"
 dependencies = [
  "anyhow",
  "crack-types",
+ "once_cell",
  "poise",
  "reqwest 0.12.7",
  "rspotify",
