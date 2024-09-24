@@ -20,7 +20,7 @@ use crate::{
     poise_ext::ContextExt,
     sources::youtube::build_query_aux_metadata,
     utils::get_track_handle_metadata,
-    Context, Error,
+    Context, Data, Error,
 };
 use ::serenity::all::CommandInteraction;
 use ::serenity::{
@@ -95,8 +95,17 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
+use crack_testing::suggestion;
+
+/// Autocomplete to suggest a search query.
+pub async fn autocomplete(
+    _ctx: poise::ApplicationContext<'_, Data, Error>,
+    searching: &str,
+) -> Vec<String> {
+    suggestion(searching).await.unwrap_or_default()
+}
+
 /// Play a song.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -109,6 +118,7 @@ pub async fn play(
     ctx: Context<'_>,
     #[rest]
     #[description = "song link or search query."]
+    #[autocomplete = "autocomplete"]
     query: String,
 ) -> Result<(), Error> {
     play_internal(ctx, None, None, Some(query)).await
