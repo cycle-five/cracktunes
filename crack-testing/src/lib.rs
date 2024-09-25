@@ -183,6 +183,7 @@ impl CrackTrackClient {
             .suggestion(query, None)
             .await
             .map_err(Into::into)
+            .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
     }
 }
 
@@ -246,7 +247,10 @@ mod tests {
 
         let res = client.suggestion("molly nilsson").await;
         let res = res.expect("No results");
-        println!("{:?}", res);
+        // let raw_res_want = r#"["\"molly nilsson\"", "\"molly nilsson tour\"", "\"molly nilsson i hope you die lyrics\"", "\"molly nilsson hey moon\"", "\"molly nilsson rym\"", "\"molly nilsson bandcamp\"", "\"molly nilsson i hope you die\"", "\"molly nilsson songs\"", "\"molly nilsson excalibur\"", "\"molly nilsson instagram\""]"#;
+        for r in res.iter() {
+            println!("{}", r);
+        }
         assert_eq!(res.len(), 10);
     }
 
