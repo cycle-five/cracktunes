@@ -9,6 +9,16 @@
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
 
+## v0.3.14 (2024/09/19)
+- Big refactor, moving a lot of the code into modules.
+- crack-testing module for testing and developing new features without
+  affecting the main bot.
+- crack-types module for shared types. New modules can depend on this
+  to avoid circular dependencies.
+
+## v0.3.13 (2024/09/19)
+- Dependency updates
+
 ## v0.3.12 (2024/09/12)
 
 - [x] `/movesong` command
@@ -28,7 +38,14 @@
 - [x] performance improvements.
 - [x] All milestones recorded as GitHub issues.
 - [x] Add help option to all commands.
-- [x] Added back in internal playlist support. - [x] `/playlist create <playlistname>` Creates a playlist with the given name - [x] `/playlist delete <playlistname>` Deletes a playlist with the given name - [x] `/playlist addto <playlistname>` Adds the currently playing song to <playlistname> - [x] `/playlist list` List your playlists - [x] `/playlist get <playlistname>` displays the contents of <playlistname> - [x] `/playlist pplay <playlistname>` queues the given playlist on the bot - [x] `/playlist loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
+- [x] Added back in internal playlist support. 
+- [x] `/playlist create <playlistname>` Creates a playlist with the given name
+- [x] `/playlist delete <playlistname>` Deletes a playlist with the given name
+- [x] `/playlist addto <playlistname>` Adds the currently playing song to <playlistname>
+- [x] `/playlist list` List your playlists
+- [x] `/playlist get <playlistname>` displays the contents of <playlistname>
+- [x] `/playlist pplay <playlistname>` queues the given playlist on the bot
+- [x] `/playlist loadspotify <spotifyurl> <playlistname>` loads a spotify playlist into a Crack Tunes playlist.
 
 ## ~~v0.3.9~~
 
