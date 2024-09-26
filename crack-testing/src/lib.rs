@@ -4,7 +4,6 @@ use crack_types::QueryType;
 use crack_types::SearchResult;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{RequestOptions, VideoOptions};
-use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use thiserror::Error as ThisError;
 
@@ -190,20 +189,48 @@ impl CrackTrackClient {
 /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
     let client = YOUTUBE_CLIENT.clone();
-    client.suggestion(query, None).await.map_err(Into::into)
+    client
+        .suggestion(query, None)
+        .await
+        .map_err(Into::into)
+        .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
+}
+
+use clap::Parser;
+
+/// Args struct for the CLI.
+#[derive(Parser, Debug)]
+#[command(
+    name = "rusty_suggest",
+    version = "1.0",
+    author = "Cycle Five <cycle.five@proton.me>",
+    about = "A simple CLI to get autocomplete suggestions from YouTube."
+)]
+struct Args {
+    /// The name of the person to greet
+    query: String,
+
+    /// Prints extra information
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 /// run function.
-pub fn run() {
-    let mut queue = VecDeque::new();
-    let track = ResolvedTrack {
-        query: QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
-        metadata: None,
-        video: None,
-        details: None,
-    };
+pub async fn run() {
+    let args: Args = Args::parse();
+    let suggestions = suggestion(&args.query).await.expect("No results");
+    for x in suggestions {
+        println!("{}", x);
+    }
+    // let mut queue = VecDeque::new();
+    // let track = ResolvedTrack {
+    //     query: QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
+    //     metadata: None,
+    //     video: None,
+    //     details: None,
+    // };
 
-    queue.push_back(track);
+    // queue.push_back(track);
 }
 
 #[cfg(test)]
@@ -247,10 +274,23 @@ mod tests {
 
         let res = client.suggestion("molly nilsson").await;
         let res = res.expect("No results");
-        // let raw_res_want = r#"["\"molly nilsson\"", "\"molly nilsson tour\"", "\"molly nilsson i hope you die lyrics\"", "\"molly nilsson hey moon\"", "\"molly nilsson rym\"", "\"molly nilsson bandcamp\"", "\"molly nilsson i hope you die\"", "\"molly nilsson songs\"", "\"molly nilsson excalibur\"", "\"molly nilsson instagram\""]"#;
-        for r in res.iter() {
-            println!("{}", r);
-        }
+        let raw_res_want = vec![
+            "molly nilsson",
+            "molly nilsson tour",
+            "molly nilsson i hope you die lyrics",
+            "molly nilsson hey moon",
+            "molly nilsson rym",
+            "molly nilsson bandcamp",
+            "molly nilsson i hope you die",
+            "molly nilsson songs",
+            "molly nilsson excalibur",
+            "molly nilsson instagram",
+        ]
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+
+        assert_eq!(res, raw_res_want);
         assert_eq!(res.len(), 10);
     }
 
@@ -258,7 +298,6 @@ mod tests {
     async fn test_suggestion_function() {
         let res = suggestion("molly nilsson").await;
         let res = res.expect("No results");
-        println!("{:?}", res);
         assert_eq!(res.len(), 10);
     }
 }

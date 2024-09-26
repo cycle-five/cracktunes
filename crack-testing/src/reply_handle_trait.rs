@@ -141,10 +141,8 @@ impl Container {
 }
 
 pub async fn run() {
-    // Example usage
     let message = Message::default();
     let handle = MessageOrReplyHandle::Message(message);
-
     let container = Container::new(handle);
 
     let _ = container.get_handle();
@@ -186,6 +184,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_container() {
-        run().await;
+        // Example usage
+        let message = Message::default();
+        let handle = MessageOrReplyHandle::Message(message);
+
+        let container = Container::new(handle);
+
+        let _ = container.get_handle();
+
+        println!("{:?}", container);
+        // To use ReplyHandle:
+        // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
+        let wrapped_handle = ReplyHandleWrapper2;
+        let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
+        let container = Container::new(handle);
+
+        println!("{:?}", container);
     }
 }

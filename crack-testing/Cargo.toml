@@ -10,13 +10,14 @@ keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
 # The official main repo is sr.ht, this is needed for the CI/CD pipeline.
-#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+# repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
-anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
 once_cell = "1.19"
+anyhow = "1.0"
 reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "json",
