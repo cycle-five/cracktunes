@@ -200,13 +200,12 @@ async fn get_app(
 }
 
 /// Run the server.
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run() {
+    //-> Result<(), Box<dyn std::error::Error>> {
     let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
     let app = get_app(ctx).await;
 
     warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
-
-    Ok(())
 }
 
 /// Custom error handling for the server.
