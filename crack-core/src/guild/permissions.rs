@@ -186,7 +186,7 @@ impl Default for GenericPermissionSettings {
 /// - If a command is in the denied commands, all other commands are allowed unless default_allow_all_commands is false.
 /// - If a command is in the allowed commands, all other commands are denied unless default_allow_all_commands is true.
 impl GenericPermissionSettings {
-    /// Check if a command is allowed by the permission settings.
+    // Check if a command is allowed by the permission settings.
     // pub fn is_command_allowed(&self, command: &str) -> bool {
     //     (self.allowed_commands.is_empty()
     //         && self.denied_commands.is_empty()

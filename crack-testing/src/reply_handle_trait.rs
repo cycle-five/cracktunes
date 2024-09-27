@@ -6,24 +6,13 @@ use poise::serenity_prelude as serenity;
 use poise::ReplyHandle;
 use serenity::{Http, Message};
 
-// pub trait ReplyHandleTrait {
-//     fn into_message(&self) -> Pin<Box<dyn Future<Output = Option<Message>> + Send>>;
-//     fn delete(&self, ctx: Http) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-// }
-
 /// Trait for a reply handle so that we can store it in an enum.
-// pub trait ReplyHandleTrait {
-//     /// Converts the reply handle into a message.
-//     fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>>;
-//     /// Deletes the message associated with the reply handle.
-//     fn delete(self: Arc<Self>, ctx: Http) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send>>;
-// }
-
 pub trait ReplyHandleTrait: Send + Sync {
     /// Converts the reply handle into a message.
     fn into_message(
         self: Arc<Self>,
     ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>>;
+
     /// Deletes the message associated with the reply handle.
     fn delete(
         self: Arc<Self>,
