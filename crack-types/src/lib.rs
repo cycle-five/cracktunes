@@ -1,3 +1,5 @@
+pub mod http;
+pub use http::*;
 // ------------------------------------------------------------------
 // Public types we use to simplify return and parameter types.
 // ------------------------------------------------------------------

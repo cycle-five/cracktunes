@@ -3,12 +3,14 @@ use crack_types::Error;
 use crack_types::QueryType;
 use crack_types::SearchResult;
 use once_cell::sync::Lazy;
+use rusty_ytdl::search::SearchType;
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use std::fmt::{self, Display, Formatter};
 use thiserror::Error as ThisError;
 
 pub use crack_types::{get_human_readable_timestamp, video_info_to_aux_metadata};
 pub mod reply_handle_trait;
+use crack_types::parse_url;
 pub use reply_handle_trait::run as reply_handle_trait_run;
 
 pub const NEW_FAILED: &str = "New failed";
@@ -196,31 +198,60 @@ pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
         .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
 }
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 /// Args struct for the CLI.
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(
-    name = "rusty_suggest",
     version = "1.0",
     author = "Cycle Five <cycle.five@proton.me>",
     about = "A simple CLI to get autocomplete suggestions from YouTube."
 )]
-struct Args {
-    /// The name of the person to greet
-    query: String,
-
-    /// Prints extra information
-    #[arg(short, long)]
-    verbose: bool,
+struct Cli {
+    /// The command to run
+    #[command(subcommand)]
+    command: Commands,
 }
 
-/// run function.
-pub async fn run() {
-    let args: Args = Args::parse();
-    let suggestions = suggestion(&args.query).await.expect("No results");
-    for x in suggestions {
-        println!("{}", x);
+/// The command to run.
+#[derive(Subcommand)]
+enum Commands {
+    Suggest {
+        /// The query to get suggestions for.
+        query: String,
+    },
+    Resolve {
+        /// URL of the video / playlist to resolve.
+        #[arg(value_parser = parse_url)]
+        url: url::Url,
+    },
+}
+
+/// Run the CLI.
+pub async fn run() -> Result<(), Error> {
+    let cli: Cli = Cli::parse();
+    match cli.command {
+        Commands::Suggest { query } => {
+            let suggestions = suggestion(&query).await.expect("No results");
+            for x in suggestions {
+                println!("{}", x);
+            }
+        },
+        Commands::Resolve { url } => {
+            // let query = QueryType::VideoLink(url.to_string());
+            let _client = CrackTrackClient::new();
+            let search_options = rusty_ytdl::search::SearchOptions {
+                search_type: SearchType::Playlist,
+                ..Default::default()
+            };
+            let yt_client = rusty_ytdl::search::YouTube::new()?;
+            let res = yt_client.search(url, Some(&search_options)).await?;
+            //let resolved = client.resolve_track(query).await.expect("No results");
+            for x in res {
+                println!("{:#?}", x);
+            }
+            // println!("{}", resolved);
+        },
     }
     // let mut queue = VecDeque::new();
     // let track = ResolvedTrack {
@@ -231,15 +262,16 @@ pub async fn run() {
     // };
 
     // queue.push_back(track);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_run() {
-        run();
+    #[tokio::test]
+    async fn test_run() {
+        let _ = run().await;
     }
 
     #[test]

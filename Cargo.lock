@@ -1117,6 +1117,7 @@ dependencies = [
  "serenity",
  "thiserror",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -1124,11 +1125,13 @@ name = "crack-types"
 version = "0.3.14"
 dependencies = [
  "poise",
+ "reqwest 0.12.7",
  "rspotify",
  "rusty_ytdl",
  "serenity",
  "songbird",
  "tokio",
+ "url",
 ]
 
 [[package]]

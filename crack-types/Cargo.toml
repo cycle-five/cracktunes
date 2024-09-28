@@ -23,7 +23,18 @@ workspace = ".."
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
-tokio = "1.40"
+tokio = { version = "1.40", features = ["rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+] }
+url = "2.5"
 
 [dependencies.rspotify]
 version = "0.13"

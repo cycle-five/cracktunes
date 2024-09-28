@@ -6,5 +6,4 @@ use crack_testing::run;
 async fn main() {
     println!("Starting server");
     let _ = run().await;
-    // run();
 }

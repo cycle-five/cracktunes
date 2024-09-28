@@ -32,6 +32,7 @@ poise = { branch = "current", git = "https://github.com/serenity-rs/poise", defa
 serenity = { workspace = true }
 tokio = { version = "1.40", features = ["rt-multi-thread"] }
 thiserror = "1.0"
+url = "2.5"
 crack-types = { path = "../crack-types" }
 
 
