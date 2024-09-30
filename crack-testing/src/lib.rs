@@ -227,14 +227,13 @@ enum Commands {
     },
 }
 
-/// Run the CLI.
-pub async fn run() -> Result<(), Error> {
-    let cli: Cli = Cli::parse();
+/// Match the CLI command and run the appropriate function.
+async fn match_cli(cli: Cli) -> Result<(), Error> {
     match cli.command {
         Commands::Suggest { query } => {
-            let suggestions = suggestion(&query).await.expect("No results");
-            for x in suggestions {
-                println!("{}", x);
+            let res = suggestion(&query).await?;
+            for suggestion in res {
+                println!("{}", suggestion);
             }
         },
         Commands::Resolve { url } => {
@@ -253,6 +252,13 @@ pub async fn run() -> Result<(), Error> {
             // println!("{}", resolved);
         },
     }
+    Ok(())
+}
+
+/// Run the CLI.
+pub async fn run() -> Result<(), Error> {
+    let cli: Cli = Cli::parse();
+    match_cli(cli).await?;
     // let mut queue = VecDeque::new();
     // let track = ResolvedTrack {
     //     query: QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
@@ -269,9 +275,20 @@ pub async fn run() -> Result<(), Error> {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_run() {
-        let _ = run().await;
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_cli() {
+        let cli = Cli::parse_from(vec!["crack_testing", "suggest", "molly nilsson"]);
+        match_cli(cli).await.expect("No results");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_cli2() {
+        let cli = Cli::parse_from(vec![
+            "crack_testing",
+            "resolve",
+            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
+        ]);
+        match_cli(cli).await.expect("No results");
     }
 
     #[test]
