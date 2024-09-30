@@ -187,9 +187,11 @@ pub fn get_client_old() -> &'static reqwest_old::Client {
 
 /// Initialize the static, global reqwest client.
 pub async fn init_http_client() -> Result<(), CrackedError> {
-    let client = get_client().clone();
+    let client = get_client();
     let res = client.get("https://httpbin.org/ip").send().await?;
-    tracing::info!("HTTP client initialized successfully: {:?}", res);
+    let status = res.status();
+    // let body = res.text().await?;
+    tracing::info!("HTTP client initialized successfully: {:?}", status.clone());
     Ok(())
 }
 /// Get the bot's user ID.
