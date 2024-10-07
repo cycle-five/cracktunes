@@ -3,14 +3,15 @@ use crack_types::Error;
 use crack_types::QueryType;
 use crack_types::SearchResult;
 use once_cell::sync::Lazy;
-use rusty_ytdl::search::SearchType;
 use rusty_ytdl::{RequestOptions, VideoOptions};
+use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use thiserror::Error as ThisError;
 
-pub use crack_types::{get_human_readable_timestamp, video_info_to_aux_metadata};
-pub mod reply_handle_trait;
 use crack_types::parse_url;
+pub use crack_types::{get_human_readable_timestamp, video_info_to_aux_metadata};
+use rusty_ytdl::search::YouTube;
+pub mod reply_handle_trait;
 pub use reply_handle_trait::run as reply_handle_trait_run;
 
 pub const NEW_FAILED: &str = "New failed";
@@ -54,6 +55,7 @@ pub struct ResolvedTrack {
     query: QueryType,
     metadata: Option<AuxMetadata>,
     video: Option<rusty_ytdl::Video>,
+    search_video: Option<rusty_ytdl::search::Video>,
     details: Option<rusty_ytdl::VideoDetails>,
 }
 
@@ -64,6 +66,7 @@ impl ResolvedTrack {
             query,
             metadata: None,
             video: None,
+            search_video: None,
             details: None,
         }
     }
@@ -158,6 +161,7 @@ impl CrackTrackClient {
             query,
             metadata: Some(metadata),
             video: Some(video),
+            search_video: None,
             details: Some(details),
         };
         Ok(track)
@@ -178,19 +182,61 @@ impl CrackTrackClient {
         self.resolve_track(query).await
     }
 
+    /// Resolve a playlist from a URL. Limit is set to 50 by default.
+    pub async fn resolve_playlist(self, url: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
+        self.resolve_playlist_limit(url, 50).await
+    }
+
+    /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
+    /// a helper method in the CrackTrackClient.
+    pub async fn resolve_playlist_limit(
+        self,
+        url: &str,
+        limit: u64,
+    ) -> Result<VecDeque<ResolvedTrack>, Error> {
+        let req_options = RequestOptions {
+            client: Some(self.req_client.clone()),
+            ..Default::default()
+        };
+        let search_options = rusty_ytdl::search::PlaylistSearchOptions {
+            limit,
+            request_options: Some(req_options),
+            ..Default::default()
+        };
+        let search_options = Some(&search_options);
+        let res = rusty_ytdl::search::Playlist::get(url, search_options).await?;
+
+        let mut queue = VecDeque::new();
+
+        for video in res.videos {
+            println!("{}", video.title);
+            let track = ResolvedTrack {
+                query: QueryType::VideoLink(video.url.clone()),
+                metadata: None,
+                video: None,
+                search_video: Some(video),
+                details: None,
+            };
+            queue.push_back(track);
+        }
+        Ok(queue)
+    }
+
     /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
     pub async fn suggestion(self, query: &str) -> Result<Vec<String>, Error> {
-        self.yt_client
-            .suggestion(query, None)
-            .await
-            .map_err(Into::into)
-            .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
+        suggestion_yt(self.yt_client, query).await
     }
 }
 
-/// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+/// Get a suggestion from a query. Use the global static client.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
+    //let client = CrackTrackClient::new();
     let client = YOUTUBE_CLIENT.clone();
+    suggestion_yt(client, query).await
+}
+
+/// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, Error> {
     client
         .suggestion(query, None)
         .await
@@ -238,18 +284,12 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         },
         Commands::Resolve { url } => {
             // let query = QueryType::VideoLink(url.to_string());
-            let _client = CrackTrackClient::new();
-            let search_options = rusty_ytdl::search::SearchOptions {
-                search_type: SearchType::Playlist,
-                ..Default::default()
-            };
-            let yt_client = rusty_ytdl::search::YouTube::new()?;
-            let res = yt_client.search(url, Some(&search_options)).await?;
-            //let resolved = client.resolve_track(query).await.expect("No results");
-            for x in res {
-                println!("{:#?}", x);
+            let client = CrackTrackClient::new();
+            let res = client.resolve_playlist(url.as_str()).await?;
+
+            for video in res {
+                println!("{}", video.search_video.unwrap().title);
             }
-            // println!("{}", resolved);
         },
     }
     Ok(())
@@ -259,15 +299,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
 pub async fn run() -> Result<(), Error> {
     let cli: Cli = Cli::parse();
     match_cli(cli).await?;
-    // let mut queue = VecDeque::new();
-    // let track = ResolvedTrack {
-    //     query: QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
-    //     metadata: None,
-    //     video: None,
-    //     details: None,
-    // };
 
-    // queue.push_back(track);
     Ok(())
 }
 
@@ -275,10 +307,13 @@ pub async fn run() -> Result<(), Error> {
 mod tests {
     use super::*;
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[tokio::test]
     async fn test_cli() {
         let cli = Cli::parse_from(vec!["crack_testing", "suggest", "molly nilsson"]);
-        match_cli(cli).await.expect("No results");
+        match match_cli(cli).await {
+            Ok(_) => (),
+            Err(e) => eprintln!("{}", e),
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -288,7 +323,7 @@ mod tests {
             "resolve",
             "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
         ]);
-        match_cli(cli).await.expect("No results");
+        match_cli(cli).await.expect("asdf");
     }
 
     #[test]

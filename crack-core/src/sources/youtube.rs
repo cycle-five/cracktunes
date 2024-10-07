@@ -9,6 +9,7 @@ use crate::CrackedResult;
 use crack_types::MyAuxMetadata;
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
+use urlencoding::encode;
 
 /// Get the source and metadata from a video link. Return value is a vector due
 /// to this being used in a method that also handles the interactive search so
@@ -58,6 +59,7 @@ pub async fn search_query_to_source_and_metadata(
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
         // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
+        let query = query.replace("\\", "").replace("\"", "");
         tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
         let results = rytdl.search_one(query.clone(), None).await?;
 
@@ -65,7 +67,9 @@ pub async fn search_query_to_source_and_metadata(
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
-            None => return search_query_to_source_and_metadata_ytdl(client, query).await,
+            None => {
+                return search_query_to_source_and_metadata_ytdl(client, query.to_string()).await
+            },
         };
         let metadata = &search_result_to_aux_metadata(&result);
         metadata.clone()

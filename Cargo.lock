@@ -1075,6 +1075,7 @@ dependencies = [
  "tungstenite 0.24.0",
  "typemap_rev",
  "url",
+ "urlencoding",
  "vergen-gitcl",
 ]
 
