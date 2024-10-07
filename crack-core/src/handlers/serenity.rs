@@ -1,6 +1,7 @@
 use crate::{
     db::GuildEntity,
     errors::CrackedError,
+    guild::settings::DEFAULT_ACTIVITY,
     guild::settings::{GuildSettings, GuildSettingsMap},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
@@ -35,9 +36,13 @@ pub struct SerenityHandler {
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
-        tracing::info!("{} is connected!", ready.user.name);
+        tracing::info!(
+            "{} {}",
+            ready.user.name,
+            crate::messaging::messages::CONNECTED
+        );
 
-        ctx.set_activity(Some(ActivityData::listening("/play")));
+        ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;

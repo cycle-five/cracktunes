@@ -33,6 +33,7 @@ pub const BUG: &str = "🐞 Bug!";
 pub const BUG_END: &str = "was None!";
 pub const BUG_REPORTED: &str = "🐞 Bug Reported!";
 pub const BUG_REPORT: &str = "🐞 Bug Report";
+pub const CONNECTED: &str = "Connected!";
 pub const DEAUTHORIZED: &str = "❌ User has been deauthorized.";
 pub const UNBANNED: &str = "Unbanned";
 // Use the unicode emoji for the check mark

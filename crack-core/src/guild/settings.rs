@@ -18,6 +18,7 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
+pub(crate) const DEFAULT_ACTIVITY: &str = "/play";
 pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
