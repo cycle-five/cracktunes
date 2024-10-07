@@ -1,15 +1,14 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::music::query::QueryType;
-use crate::sources::rusty_ytdl::{
-    search_result_to_aux_metadata, video_info_to_aux_metadata, RustyYoutubeSearch,
-};
+
+use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
+use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::MyAuxMetadata;
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
-use urlencoding::encode;
 
 /// Get the source and metadata from a video link. Return value is a vector due
 /// to this being used in a method that also handles the interactive search so

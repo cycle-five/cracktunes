@@ -3,6 +3,10 @@ use crate::http_utils;
 use crate::music::QueryType;
 use bytes::Buf;
 use bytes::BytesMut;
+use crack_types::metadata::{
+    search_result_to_aux_metadata, 
+    video_info_to_aux_metadata,
+};
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::VideoOptions;
@@ -16,7 +20,6 @@ use std::fmt::Display;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use symphonia::core::io::MediaSource;
 use tokio::sync::RwLock;
 
@@ -182,59 +185,6 @@ impl RequestOptionsBuilder {
             ..Default::default()
         }
     }
-}
-
-/// Convert a `SearchResult` to `AuxMetadata`.
-pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
-    let mut metadata = AuxMetadata::default();
-    match res.clone() {
-        SearchResult::Video(video) => {
-            metadata.track = Some(video.title.clone());
-            metadata.artist = None;
-            metadata.album = None;
-            metadata.date = video.uploaded_at.clone();
-
-            metadata.channels = Some(2);
-            metadata.channel = Some(video.channel.name);
-            metadata.duration = Some(Duration::from_millis(video.duration));
-            metadata.sample_rate = Some(48000);
-            metadata.source_url = Some(video.url);
-            metadata.title = Some(video.title);
-            metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
-        },
-        SearchResult::Playlist(playlist) => {
-            metadata.title = Some(playlist.name);
-            metadata.source_url = Some(playlist.url);
-            metadata.duration = None;
-            metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
-        },
-        _ => {},
-    };
-    metadata
-}
-
-pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
-    let mut metadata = AuxMetadata::default();
-    tracing::info!(
-        "video_info_to_aux_metadata: {:?}",
-        video.video_details.title
-    );
-    let details = &video.video_details;
-    metadata.artist = None;
-    metadata.album = None;
-    metadata.date = Some(details.publish_date.clone());
-
-    metadata.channels = Some(2);
-    metadata.channel = Some(details.owner_channel_name.clone());
-    metadata.duration = Some(Duration::from_secs(
-        details.length_seconds.parse::<u64>().unwrap_or_default(),
-    ));
-    metadata.sample_rate = Some(48000);
-    metadata.source_url = Some(details.video_url.clone());
-    metadata.title = Some(details.title.clone());
-    metadata.thumbnail = Some(details.thumbnails.first().unwrap().url.clone());
-
-    metadata
 }
 
 /// Get a video from a URL.

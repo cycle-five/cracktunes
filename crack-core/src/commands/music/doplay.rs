@@ -2,7 +2,6 @@ use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
 use crate::music::query::QueryType;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
-use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
 use crate::utils::edit_embed_response2;
 use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
@@ -28,6 +27,7 @@ use ::serenity::{
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
 use crack_types::get_human_readable_timestamp;
+use crack_types::metadata::search_result_to_aux_metadata;
 use crack_types::Mode;
 use crack_types::MyAuxMetadata;
 use poise::serenity_prelude as serenity;

@@ -46,6 +46,8 @@ pub enum TrackResolveError {
     Unknown,
 }
 
+use std::time::Duration;
+
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
 /// necessary metadata to be displayed in a music player interface.
@@ -70,15 +72,55 @@ impl ResolvedTrack {
             details: None,
         }
     }
+
+    /// Get the title of the track.
+    pub fn get_title(&self) -> String {
+        if let Some(search_video) = &self.search_video {
+            return search_video.title.clone();
+        } else if let Some(metadata) = &self.metadata {
+            return metadata.title.clone().unwrap_or_default();
+        } else if let Some(details) = &self.details {
+            return details.title.clone();
+        } else {
+            return "UNKNOWN_TITLE".to_string();
+        }
+    }
+
+    /// Get the URL of the track.
+    pub fn get_url(&self) -> String {
+        if let Some(search_video) = &self.search_video {
+            return search_video.url.clone();
+        } else if let Some(metadata) = &self.metadata {
+            return metadata.source_url.clone().unwrap_or_default();
+        } else if let Some(details) = &self.details {
+            return details.video_url.clone();
+        } else {
+            return "UNKNOWN_URL".to_string();
+        }
+    }
+
+    pub fn get_duration(&self) -> String {
+        if let Some(metadata) = &self.metadata {
+            return get_human_readable_timestamp(metadata.duration);
+        } else if let Some(details) = &self.details {
+            let duration =
+                Duration::from_secs(details.length_seconds.parse::<u64>().unwrap_or_default());
+            return get_human_readable_timestamp(Some(duration));
+        } else if let Some(search_video) = &self.search_video {
+            let duration = Duration::from_secs(search_video.duration);
+            return get_human_readable_timestamp(Some(duration));
+        } else {
+            return "UNKNOWN_DURATION".to_string();
+        }
+    }
 }
 
 /// Implement [Display] for [ResolvedTrack].
 impl Display for ResolvedTrack {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let metadata = self.metadata.as_ref().unwrap();
-        let title = metadata.title.clone().unwrap_or_default();
-        let url = metadata.source_url.clone().unwrap_or_default();
-        let duration = get_human_readable_timestamp(metadata.duration);
+        let title = self.get_title();
+        let url = self.get_url();
+        let duration = self.get_duration();
 
         write!(f, "[{}]({}) • `{}`", title, url, duration)
     }
@@ -209,7 +251,6 @@ impl CrackTrackClient {
         let mut queue = VecDeque::new();
 
         for video in res.videos {
-            println!("{}", video.title);
             let track = ResolvedTrack {
                 query: QueryType::VideoLink(video.url.clone()),
                 metadata: None,
@@ -217,6 +258,7 @@ impl CrackTrackClient {
                 search_video: Some(video),
                 details: None,
             };
+            println!("Resolved: {}", track);
             queue.push_back(track);
         }
         Ok(queue)

@@ -2,9 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
-use crate::sources::rusty_ytdl::{
-    search_result_to_aux_metadata, video_info_to_aux_metadata, NewSearchSource,
-};
+use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     commands::check_banned_domains,
@@ -21,8 +19,8 @@ use crate::{
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
-use crack_types::MyAuxMetadata;
-use crack_types::SpotifyTrack;
+use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
+use crack_types::{MyAuxMetadata, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
 use poise::serenity_prelude as serenity;
