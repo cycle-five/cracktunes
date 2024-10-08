@@ -65,6 +65,13 @@ pub enum QueryType {
     None,
 }
 
+/// `[Default]` implementation for [QueryType].
+impl Default for QueryType {
+    fn default() -> Self {
+        QueryType::None
+    }
+}
+
 /// Function to get the full artist name from a [FullTrack].
 pub fn full_track_artist_str(track: &FullTrack) -> String {
     track

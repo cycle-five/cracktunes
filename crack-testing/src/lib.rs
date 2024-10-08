@@ -1,21 +1,23 @@
-use crack_types::AuxMetadata;
-use crack_types::Error;
-use crack_types::QueryType;
-use crack_types::SearchResult;
-use once_cell::sync::Lazy;
-use rusty_ytdl::search;
-use rusty_ytdl::{RequestOptions, VideoOptions};
-use std::collections::VecDeque;
-use std::fmt::{self, Display, Formatter};
-use thiserror::Error as ThisError;
-
-use crack_types::parse_url;
-pub use crack_types::{get_human_readable_timestamp, video_info_to_aux_metadata};
-use rusty_ytdl::search::YouTube;
 pub mod reply_handle_trait;
 pub use reply_handle_trait::run as reply_handle_trait_run;
 
+use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
+use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
+
+use clap::{Parser, Subcommand};
+use once_cell::sync::Lazy;
+use rusty_ytdl::{search, search::YouTube};
+use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
+use thiserror::Error as ThisError;
+
+use std::collections::VecDeque;
+use std::fmt::{self, Display, Formatter};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
+
 pub const NEW_FAILED: &str = "New failed";
+pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
 
 static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
@@ -47,15 +49,14 @@ pub enum TrackResolveError {
     Unknown,
 }
 
-use std::time::Duration;
-
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
 /// necessary metadata to be displayed in a music player interface.
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ResolvedTrack {
     query: QueryType,
+    queued: bool,
     metadata: Option<AuxMetadata>,
     video: Option<rusty_ytdl::Video>,
     search_video: Option<rusty_ytdl::search::Video>,
@@ -67,10 +68,7 @@ impl ResolvedTrack {
     pub fn new(query: QueryType) -> Self {
         ResolvedTrack {
             query,
-            metadata: None,
-            video: None,
-            search_video: None,
-            details: None,
+            ..Default::default()
         }
     }
 
@@ -121,10 +119,23 @@ impl From<search::Video> for ResolvedTrack {
     fn from(video: search::Video) -> Self {
         ResolvedTrack {
             query: QueryType::VideoLink(video.url.clone()),
-            metadata: None,
-            video: None,
             search_video: Some(video),
-            details: None,
+            ..Default::default()
+        }
+    }
+}
+
+/// Implement [From] for ([rusty_ytdl::Video], VideoDetails, AuxMetadata) to [ResolvedTrack].
+impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
+    fn from(
+        (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
+    ) -> Self {
+        ResolvedTrack {
+            query: QueryType::VideoLink(video.get_video_url()),
+            video: Some(video),
+            metadata: Some(aux_metadata),
+            details: Some(video_details),
+            ..Default::default()
         }
     }
 }
@@ -151,6 +162,7 @@ impl Display for ResolvedTrack {
 pub struct CrackTrackClient {
     req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
+    q: VecDeque<ResolvedTrack>,
 }
 
 /// Implement [Default] for [CrackTrackClient].
@@ -164,6 +176,7 @@ impl Default for CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client: rusty_ytdl::search::YouTube::new_with_options(&opts).expect(NEW_FAILED),
+            q: VecDeque::new(),
         }
     }
 }
@@ -183,6 +196,7 @@ impl CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client,
+            q: VecDeque::new(),
         }
     }
 
@@ -195,12 +209,14 @@ impl CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client: rusty_ytdl::search::YouTube::new_with_options(&opts).expect(NEW_FAILED),
+            q: VecDeque::new(),
         }
     }
 
     /// Resolve a track from a query. This does not start or ready the track for playback.
     pub async fn resolve_track(self, query: QueryType) -> Result<ResolvedTrack, Error> {
-        let (video, details, metadata) = match query {
+        // Do we need the original query in the resolved track?
+        let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
             QueryType::VideoLink(ref url) => {
                 let request_options = RequestOptions {
                     client: Some(self.req_client.clone()),
@@ -218,14 +234,7 @@ impl CrackTrackClient {
             },
             _ => unimplemented!(),
         };
-        let track = ResolvedTrack {
-            query,
-            metadata: Some(metadata),
-            video: Some(video),
-            search_video: None,
-            details: Some(details),
-        };
-        Ok(track)
+        Ok(vid_tuple.into())
     }
 
     pub async fn resolve_search_one(self, query: &str) -> Result<ResolvedTrack, Error> {
@@ -245,7 +254,8 @@ impl CrackTrackClient {
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
     pub async fn resolve_playlist(self, url: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
-        self.resolve_playlist_limit(url, 50).await
+        self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
+            .await
     }
 
     /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
@@ -272,10 +282,8 @@ impl CrackTrackClient {
         for video in res.videos {
             let track = ResolvedTrack {
                 query: QueryType::VideoLink(video.url.clone()),
-                metadata: None,
-                video: None,
                 search_video: Some(video),
-                details: None,
+                ..Default::default()
             };
             println!("Resolved: {}", track);
             queue.push_back(track);
@@ -286,6 +294,18 @@ impl CrackTrackClient {
     /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
     pub async fn suggestion(self, query: &str) -> Result<Vec<String>, Error> {
         suggestion_yt(self.yt_client, query).await
+    }
+
+    /// Resolve a track from a query and enqueue it.
+    pub async fn enqueue_query(&mut self, query: QueryType) -> Result<(), Error> {
+        let track = self.clone().resolve_track(query).await?;
+        self.q.push_back(track);
+        Ok(())
+    }
+
+    /// Enqueue a track internally.
+    pub async fn enqueue_track(&mut self, track: ResolvedTrack) {
+        self.q.push_back(track);
     }
 }
 
@@ -305,7 +325,47 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
         .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
 }
 
-use clap::{Parser, Subcommand};
+/// A queue of tracks to be played.
+pub struct CrackTrackQueue {
+    inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
+}
+
+/// Implement [Default] for [CrackTrackQueue].
+pub fn default_queue() -> CrackTrackQueue {
+    CrackTrackQueue {
+        inner: Arc::new(Mutex::new(VecDeque::new())),
+    }
+}
+
+/// Implement [CrackTrackQueue].
+impl CrackTrackQueue {
+    /// Create a new [CrackTrackQueue].
+    pub fn new() -> Self {
+        default_queue()
+    }
+
+    /// Create a new [CrackTrackQueue] with a given queue.
+    pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
+        CrackTrackQueue {
+            inner: Arc::new(Mutex::new(queue)),
+        }
+    }
+
+    /// Get the queue.
+    pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
+        self.inner.lock().await.clone()
+    }
+
+    /// Enqueue a track.
+    pub async fn enqueue(&self, track: ResolvedTrack) {
+        self.inner.lock().await.push_back(track);
+    }
+
+    /// Dequeue a track.
+    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
+        self.inner.lock().await.pop_front()
+    }
+}
 
 /// Args struct for the CLI.
 #[derive(Parser)]
@@ -403,6 +463,7 @@ mod tests {
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
+            q: VecDeque::new(),
         };
 
         let resolved = client.resolve_track(query).await.unwrap();
@@ -416,6 +477,7 @@ mod tests {
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
+            q: VecDeque::new(),
         };
 
         let res = client.suggestion("molly nilsson").await;
