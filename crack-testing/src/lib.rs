@@ -3,6 +3,7 @@ use crack_types::Error;
 use crack_types::QueryType;
 use crack_types::SearchResult;
 use once_cell::sync::Lazy;
+use rusty_ytdl::search;
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
@@ -107,10 +108,23 @@ impl ResolvedTrack {
                 Duration::from_secs(details.length_seconds.parse::<u64>().unwrap_or_default());
             return get_human_readable_timestamp(Some(duration));
         } else if let Some(search_video) = &self.search_video {
-            let duration = Duration::from_secs(search_video.duration);
+            let duration = Duration::from_millis(search_video.duration);
             return get_human_readable_timestamp(Some(duration));
         } else {
             return "UNKNOWN_DURATION".to_string();
+        }
+    }
+}
+
+/// Implement [From] for [search::Video] to [ResolvedTrack].
+impl From<search::Video> for ResolvedTrack {
+    fn from(video: search::Video) -> Self {
+        ResolvedTrack {
+            query: QueryType::VideoLink(video.url.clone()),
+            metadata: None,
+            video: None,
+            search_video: Some(video),
+            details: None,
         }
     }
 }
@@ -122,6 +136,11 @@ impl Display for ResolvedTrack {
         let url = self.get_url();
         let duration = self.get_duration();
 
+        let url = if url.contains("youtube.com") {
+            url
+        } else {
+            format!("https://www.youtube.com/watch?v={}", url)
+        };
         write!(f, "[{}]({}) • `{}`", title, url, duration)
     }
 }
@@ -338,6 +357,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
 }
 
 /// Run the CLI.
+#[cfg(not(tarpaulin_include))]
 pub async fn run() -> Result<(), Error> {
     let cli: Cli = Cli::parse();
     match_cli(cli).await?;
