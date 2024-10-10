@@ -162,7 +162,7 @@ impl Display for ResolvedTrack {
 pub struct CrackTrackClient {
     req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
-    q: VecDeque<ResolvedTrack>,
+    q: CrackTrackQueue,
 }
 
 /// Implement [Default] for [CrackTrackClient].
@@ -176,7 +176,7 @@ impl Default for CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client: rusty_ytdl::search::YouTube::new_with_options(&opts).expect(NEW_FAILED),
-            q: VecDeque::new(),
+            q: CrackTrackQueue::new(),
         }
     }
 }
@@ -196,7 +196,7 @@ impl CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client,
-            q: VecDeque::new(),
+            q: CrackTrackQueue::new(),
         }
     }
 
@@ -209,12 +209,12 @@ impl CrackTrackClient {
         CrackTrackClient {
             req_client,
             yt_client: rusty_ytdl::search::YouTube::new_with_options(&opts).expect(NEW_FAILED),
-            q: VecDeque::new(),
+            q: CrackTrackQueue::new(),
         }
     }
 
     /// Resolve a track from a query. This does not start or ready the track for playback.
-    pub async fn resolve_track(self, query: QueryType) -> Result<ResolvedTrack, Error> {
+    pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack, Error> {
         // Do we need the original query in the resolved track?
         let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
             QueryType::VideoLink(ref url) => {
@@ -237,7 +237,7 @@ impl CrackTrackClient {
         Ok(vid_tuple.into())
     }
 
-    pub async fn resolve_search_one(self, query: &str) -> Result<ResolvedTrack, Error> {
+    pub async fn resolve_search_one(&self, query: &str) -> Result<ResolvedTrack, Error> {
         // let search_options = rusty_ytdl::search::SearchOptions {
         //     client: Some(self.req_client.clone()),
         //     ..Default::default()
@@ -252,8 +252,24 @@ impl CrackTrackClient {
         self.resolve_track(query).await
     }
 
+    pub async fn resolve_search(&self, query: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
+        let search_results = self.yt_client.search(query, None).await?;
+        let mut queue = VecDeque::new();
+        for result in search_results {
+            let video = match result {
+                SearchResult::Video(video) => video,
+                _ => continue,
+            };
+            let video_url = video.url.clone();
+            let query = QueryType::VideoLink(video_url);
+            let track = self.resolve_track(query).await?;
+            queue.push_back(track);
+        }
+        Ok(queue)
+    }
+
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
-    pub async fn resolve_playlist(self, url: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist(&self, url: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
@@ -261,7 +277,7 @@ impl CrackTrackClient {
     /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
     /// a helper method in the CrackTrackClient.
     pub async fn resolve_playlist_limit(
-        self,
+        &self,
         url: &str,
         limit: u64,
     ) -> Result<VecDeque<ResolvedTrack>, Error> {
@@ -292,20 +308,33 @@ impl CrackTrackClient {
     }
 
     /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
-    pub async fn suggestion(self, query: &str) -> Result<Vec<String>, Error> {
-        suggestion_yt(self.yt_client, query).await
+    pub async fn suggestion(&self, query: &str) -> Result<Vec<String>, Error> {
+        suggestion_yt(self.yt_client.clone(), query).await
     }
 
     /// Resolve a track from a query and enqueue it.
     pub async fn enqueue_query(&mut self, query: QueryType) -> Result<(), Error> {
         let track = self.clone().resolve_track(query).await?;
-        self.q.push_back(track);
+        let _ = self.q.push_back(track).await;
         Ok(())
     }
 
     /// Enqueue a track internally.
-    pub async fn enqueue_track(&mut self, track: ResolvedTrack) {
-        self.q.push_back(track);
+    pub async fn enqueue_track(&mut self, track: ResolvedTrack) -> Result<(), Error> {
+        let _ = self.q.push_back(track).await;
+        Ok(())
+    }
+
+    pub async fn build_display(&mut self) -> Result<(), Error> {
+        self.q.build_display().await
+    }
+
+    pub fn get_display(&self) -> String {
+        self.q.get_display()
+    }
+
+    pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
+        self.q.get_queue().await
     }
 }
 
@@ -326,14 +355,19 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
 }
 
 /// A queue of tracks to be played.
+#[derive(Clone, Debug)]
 pub struct CrackTrackQueue {
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
+    display: Option<String>,
 }
 
 /// Implement [Default] for [CrackTrackQueue].
-pub fn default_queue() -> CrackTrackQueue {
-    CrackTrackQueue {
-        inner: Arc::new(Mutex::new(VecDeque::new())),
+impl Default for CrackTrackQueue {
+    fn default() -> Self {
+        CrackTrackQueue {
+            inner: Arc::new(Mutex::new(VecDeque::new())),
+            display: None,
+        }
     }
 }
 
@@ -341,13 +375,14 @@ pub fn default_queue() -> CrackTrackQueue {
 impl CrackTrackQueue {
     /// Create a new [CrackTrackQueue].
     pub fn new() -> Self {
-        default_queue()
+        Default::default()
     }
 
     /// Create a new [CrackTrackQueue] with a given queue.
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
+            display: None,
         }
     }
 
@@ -364,6 +399,69 @@ impl CrackTrackQueue {
     /// Dequeue a track.
     pub async fn dequeue(&self) -> Option<ResolvedTrack> {
         self.inner.lock().await.pop_front()
+    }
+
+    /// Return the display string for the queue.
+    pub fn get_display(&self) -> String {
+        self.display.clone().unwrap_or_default()
+    }
+
+    /// Build the display string for the queue.
+    /// This *must* be called before displaying the queue.
+    pub async fn build_display(&mut self) -> Result<(), Error> {
+        let queue = self.inner.lock().await.clone();
+        let mut res = String::new();
+        for track in queue {
+            res.push_str(&format!("{}\n", track));
+        }
+        self.display = Some(res);
+        Ok(())
+    }
+
+    pub async fn clear(&self) {
+        self.inner.lock().await.clear();
+    }
+
+    pub async fn len(&self) -> usize {
+        self.inner.lock().await.len()
+    }
+
+    pub async fn is_empty(&self) -> bool {
+        self.inner.lock().await.is_empty()
+    }
+
+    pub async fn get(&self, index: usize) -> Option<ResolvedTrack> {
+        self.inner.lock().await.get(index).cloned()
+    }
+
+    pub async fn remove(&self, index: usize) -> Option<ResolvedTrack> {
+        self.inner.lock().await.remove(index)
+    }
+
+    pub async fn push_back(&self, track: ResolvedTrack) {
+        self.inner.lock().await.push_back(track);
+    }
+
+    pub async fn push_front(&self, track: ResolvedTrack) {
+        self.inner.lock().await.push_front(track);
+    }
+
+    pub async fn pop_back(&self) -> Option<ResolvedTrack> {
+        self.inner.lock().await.pop_back()
+    }
+
+    pub async fn pop_front(&self) -> Option<ResolvedTrack> {
+        self.inner.lock().await.pop_front()
+    }
+}
+
+impl Display for CrackTrackQueue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.display.as_ref().unwrap_or(&"No queue".to_string())
+        )
     }
 }
 
@@ -405,11 +503,10 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         },
         Commands::Resolve { url } => {
             // let query = QueryType::VideoLink(url.to_string());
-            let client = CrackTrackClient::new();
+            let mut client = CrackTrackClient::new();
             let res = client.resolve_playlist(url.as_str()).await?;
-
-            for video in res {
-                println!("{}", video.search_video.unwrap().title);
+            for track in res {
+                let _ = client.enqueue_track(track).await;
             }
         },
     }
@@ -463,7 +560,7 @@ mod tests {
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
-            q: VecDeque::new(),
+            ..Default::default()
         };
 
         let resolved = client.resolve_track(query).await.unwrap();
@@ -477,7 +574,7 @@ mod tests {
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
-            q: VecDeque::new(),
+            ..Default::default()
         };
 
         let res = client.suggestion("molly nilsson").await;
@@ -507,5 +604,34 @@ mod tests {
         let res = suggestion("molly nilsson").await;
         let res = res.expect("No results");
         assert_eq!(res.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_enqueue_query() {
+        let mut client = CrackTrackClient {
+            req_client: reqwest::Client::new(),
+            yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
+            ..Default::default()
+        };
+
+        let queries = vec![
+            QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
+            QueryType::VideoLink("https://www.youtube.com/watch?v=u8ZiCfW02S8".to_string()),
+            QueryType::VideoLink("https://www.youtube.com/watch?v=r-Ag3DJ_VUE".to_string()),
+        ];
+        for query in queries {
+            client
+                .enqueue_query(query)
+                .await
+                .expect("Failed to enqueue query");
+        }
+
+        client
+            .build_display()
+            .await
+            .expect("Failed to build display");
+
+        let disp: String = client.get_display();
+        assert!(disp.contains("Molly Nilsson"));
     }
 }
