@@ -1093,6 +1093,7 @@ dependencies = [
 name = "crack-osint"
 version = "0.3.14"
 dependencies = [
+ "crack-types",
  "ipinfo",
  "reqwest 0.12.8",
  "serde",
