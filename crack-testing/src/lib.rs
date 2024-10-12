@@ -601,6 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_suggestion_function() {
+        let _ = YOUTUBE_CLIENT.clone();
         let res = suggestion("molly nilsson").await;
         let res = res.expect("No results");
         assert_eq!(res.len(), 10);
