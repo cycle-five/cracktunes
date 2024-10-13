@@ -1,5 +1,5 @@
 # STAGE1: Build the binary
-FROM rust:1.80.1-alpine AS builder
+FROM rust:1.81.0-alpine3.20 AS builder
 
 # Install build dependencies
 # RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
@@ -22,14 +22,14 @@ COPY . .
 RUN cargo build -p cracktunes --profile=dist
 
 # STAGE2: create a slim image with the compiled binary
-FROM alpine AS runner
+FROM alpine:3.20 AS runner
 
 # Default directory
 WORKDIR /app
 
 # RUN apk add --no-cache ffmpeg curl
 RUN apk add --no-cache \
-  ffmpeg \
+  ffmpeg=6.1.1-r8 \
   curl
 
 ADD ./data /data

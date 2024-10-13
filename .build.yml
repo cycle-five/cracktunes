@@ -34,7 +34,7 @@ tasks:
                   cargo install cargo-tarpaulin
         - install-yt-dlp: |
                   export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
-                  sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2024.04.09/yt-dlp_linux
+                  sudo curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
                   sudo chmod +x /usr/local/bin/yt-dlp
 
         - fmt: |
