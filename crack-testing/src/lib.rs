@@ -98,6 +98,7 @@ impl ResolvedTrack {
         }
     }
 
+    /// Get the duration of the track.
     pub fn get_duration(&self) -> String {
         if let Some(metadata) = &self.metadata {
             return get_human_readable_timestamp(metadata.duration);
@@ -325,14 +326,19 @@ impl CrackTrackClient {
         Ok(())
     }
 
+    /// Build the display string for the queue.
+    /// This is separate because it needs to be used non-async,
+    /// but must be created async.
     pub async fn build_display(&mut self) -> Result<(), Error> {
         self.q.build_display().await
     }
 
+    /// Get the display string for the queue.
     pub fn get_display(&self) -> String {
         self.q.get_display()
     }
 
+    /// Get the queue.
     pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
         self.q.get_queue().await
     }
