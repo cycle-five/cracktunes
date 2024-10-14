@@ -14,7 +14,7 @@ use crate::{
     Context as CrackContext, Error,
 };
 use crack_types::get_human_readable_timestamp;
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -239,9 +239,9 @@ pub async fn send_now_playing(
 pub fn build_now_playing_embed_metadata(
     requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
-    metadata: MyAuxMetadata,
+    metadata: NewAuxMetadata,
 ) -> CreateEmbed {
-    let MyAuxMetadata(metadata) = metadata;
+    let NewAuxMetadata(metadata) = metadata;
     //tracing::warn!("metadata: {:?}", metadata);
 
     let title = metadata.title.clone().unwrap_or_default();
@@ -294,7 +294,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_handle_metadata(track).await;
     let requesting_user = get_requesting_user(track).await.ok();
     let duration = Some(track.get_info().await.unwrap_or_default().position);
-    build_now_playing_embed_metadata(requesting_user, duration, MyAuxMetadata(metadata))
+    build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
 }
 
 // ---------------------- Lyricsd ---------------------------- //

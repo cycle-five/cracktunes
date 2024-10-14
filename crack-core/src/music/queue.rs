@@ -7,7 +7,7 @@ use crate::{
     Context as CrackContext, Error,
 };
 use crack_types::Mode;
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 /// Data needed to queue a track.
 pub struct TrackReadyData {
     pub source: SongbirdInput,
-    pub metadata: MyAuxMetadata,
+    pub metadata: NewAuxMetadata,
     pub user_id: Option<UserId>,
     pub username: Option<String>,
 }
@@ -27,7 +27,7 @@ pub async fn ready_query(
     query_type: QueryType,
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = Some(ctx.author().id);
-    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) =
+    let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) =
         query_type.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
@@ -68,7 +68,7 @@ pub async fn queue_track_ready_front(
 
     drop(handler);
     let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
     map.insert::<RequestingUser>(RequestingUser::UserId(
         ready_track.user_id.unwrap_or(UserId::new(1)),
     ));
@@ -86,7 +86,7 @@ pub async fn queue_track_ready_back(
     let new_q = handler.queue().current_queue();
     drop(handler);
     let mut map = track_handle.typemap().write().await;
-    map.insert::<MyAuxMetadata>(ready_track.metadata.clone());
+    map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
     map.insert::<RequestingUser>(RequestingUser::from(ready_track.user_id));
     Ok(new_q)
 }
@@ -150,7 +150,7 @@ pub async fn queue_ready_track_list(
         } = ready_track;
         let track_handle = handler.enqueue_input(source).await;
         let mut map = track_handle.typemap().write().await;
-        map.insert::<MyAuxMetadata>(metadata);
+        map.insert::<NewAuxMetadata>(metadata);
         map.insert::<RequestingUser>(RequestingUser::from(user_id));
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
@@ -262,7 +262,7 @@ pub async fn queue_query_list_offset<'a>(
         // let mut handler = call.lock().await;
         let track_handle = handler.enqueue_input(input).await;
         let mut map = track_handle.typemap().write().await;
-        map.insert::<MyAuxMetadata>(metadata);
+        map.insert::<NewAuxMetadata>(metadata);
         map.insert::<RequestingUser>(RequestingUser::from(user_id));
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();

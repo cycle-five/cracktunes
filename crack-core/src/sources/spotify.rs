@@ -575,7 +575,7 @@ pub fn build_fake_spotify_track() -> SpotifyTrack {
 
 #[cfg(test)]
 mod test {
-    use crack_types::MyAuxMetadata;
+    use crack_types::NewAuxMetadata;
 
     use super::*;
 
@@ -642,7 +642,7 @@ mod test {
     #[test]
     fn test_from_spotify_track() {
         let track = build_fake_spotify_track();
-        let res = MyAuxMetadata::from_spotify_track(&track);
+        let res = NewAuxMetadata::from_spotify_track(&track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
         assert_eq!(metadata.artist, Some("qwer".to_string()));

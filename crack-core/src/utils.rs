@@ -30,7 +30,7 @@ use ::serenity::{
     model::channel::Message,
 };
 use crack_types::get_human_readable_timestamp;
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -385,9 +385,9 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
-    let MyAuxMetadata(metadata) = {
+    let NewAuxMetadata(metadata) = {
         let map = track.typemap().read().await;
-        let metadata = match map.get::<MyAuxMetadata>() {
+        let metadata = match map.get::<NewAuxMetadata>() {
             Some(my_metadata) => my_metadata,
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
@@ -400,9 +400,9 @@ pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
 }
 
 /// Creates an embed for the first N metadata in the queue.
-async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
+async fn build_queue_page_metadata(metadata: &[NewAuxMetadata], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&MyAuxMetadata> = metadata
+    let queue: Vec<&NewAuxMetadata> = metadata
         .iter()
         .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
@@ -415,7 +415,7 @@ async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> S
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let MyAuxMetadata(t) = t;
+        let NewAuxMetadata(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);
@@ -490,7 +490,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
-    metadata_arr: &[MyAuxMetadata],
+    metadata_arr: &[NewAuxMetadata],
     page: usize,
 ) -> CreateEmbed {
     CreateEmbed::default()

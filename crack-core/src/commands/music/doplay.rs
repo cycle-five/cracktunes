@@ -29,7 +29,7 @@ use ::serenity::{
 use crack_types::get_human_readable_timestamp;
 use crack_types::metadata::search_result_to_aux_metadata;
 use crack_types::Mode;
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use songbird::{input::YoutubeDl, tracks::TrackHandle, Call};
 use std::{cmp::Ordering, sync::Arc, time::Duration};
@@ -516,33 +516,33 @@ impl Default for RequestingUser {
 
 // /// AuxMetadata wrapper and utility functions.
 // #[derive(Debug, Clone)]
-// pub struct MyAuxMetadata(pub AuxMetadata);
+// pub struct NewAuxMetadata(pub AuxMetadata);
 
-// /// Implement TypeMapKey for MyAuxMetadata.
-// impl TypeMapKey for MyAuxMetadata {
-//     type Value = MyAuxMetadata;
+// /// Implement TypeMapKey for NewAuxMetadata.
+// impl TypeMapKey for NewAuxMetadata {
+//     type Value = NewAuxMetadata;
 // }
 
-// /// Implement From<AuxMetadata> for MyAuxMetadata.
-// impl From<MyAuxMetadata> for AuxMetadata {
-//     fn from(metadata: MyAuxMetadata) -> Self {
-//         let MyAuxMetadata(metadata) = metadata;
+// /// Implement From<AuxMetadata> for NewAuxMetadata.
+// impl From<NewAuxMetadata> for AuxMetadata {
+//     fn from(metadata: NewAuxMetadata) -> Self {
+//         let NewAuxMetadata(metadata) = metadata;
 //         metadata
 //     }
 // }
 
-// /// Implement Default for MyAuxMetadata.
-// impl Default for MyAuxMetadata {
+// /// Implement Default for NewAuxMetadata.
+// impl Default for NewAuxMetadata {
 //     fn default() -> Self {
-//         MyAuxMetadata(AuxMetadata::default())
+//         NewAuxMetadata(AuxMetadata::default())
 //     }
 // }
 
-// /// Implement MyAuxMetadata.
-// impl MyAuxMetadata {
-//     /// Create a new MyAuxMetadata from AuxMetadata.
+// /// Implement NewAuxMetadata.
+// impl NewAuxMetadata {
+//     /// Create a new NewAuxMetadata from AuxMetadata.
 //     pub fn new(metadata: AuxMetadata) -> Self {
-//         MyAuxMetadata(metadata)
+//         NewAuxMetadata(metadata)
 //     }
 
 //     /// Get the internal metadata.
@@ -550,9 +550,9 @@ impl Default for RequestingUser {
 //         &self.0
 //     }
 
-//     /// Create new MyAuxMetadata from &SpotifyTrack.
+//     /// Create new NewAuxMetadata from &SpotifyTrack.
 //     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
-//         MyAuxMetadata(AuxMetadata {
+//         NewAuxMetadata(AuxMetadata {
 //             track: Some(track.name()),
 //             artist: Some(track.artists_str()),
 //             album: Some(track.album_name()),
@@ -570,7 +570,7 @@ impl Default for RequestingUser {
 
 //     /// Set the source_url.
 //     pub fn with_source_url(self, source_url: String) -> Self {
-//         MyAuxMetadata(AuxMetadata {
+//         NewAuxMetadata(AuxMetadata {
 //             source_url: Some(source_url),
 //             ..self.metadata().clone()
 //         })
@@ -585,14 +585,14 @@ impl Default for RequestingUser {
 //     }
 // }
 
-// /// Implementation to convert `[&SpotifyTrack]` to `[MyAuxMetadata]`.
-// impl From<&SpotifyTrack> for MyAuxMetadata {
+// /// Implementation to convert `[&SpotifyTrack]` to `[NewAuxMetadata]`.
+// impl From<&SpotifyTrack> for NewAuxMetadata {
 //     fn from(track: &SpotifyTrack) -> Self {
-//         MyAuxMetadata::from_spotify_track(track)
+//         NewAuxMetadata::from_spotify_track(track)
 //     }
 // }
 
-// impl From<&SearchResult> for MyAuxMetadata {
+// impl From<&SearchResult> for NewAuxMetadata {
 //     fn from(search_result: &SearchResult) -> Self {
 //         let mut metadata = AuxMetadata::default();
 //         match search_result.clone() {
@@ -618,13 +618,13 @@ impl Default for RequestingUser {
 //             },
 //             _ => {},
 //         };
-//         MyAuxMetadata(metadata)
+//         NewAuxMetadata(metadata)
 //     }
 // }
 
-// impl From<SearchResult> for MyAuxMetadata {
+// impl From<SearchResult> for NewAuxMetadata {
 //     fn from(search_result: SearchResult) -> Self {
-//         MyAuxMetadata::from(&search_result)
+//         NewAuxMetadata::from(&search_result)
 //     }
 // }
 
@@ -637,10 +637,10 @@ async fn build_queued_embed(
     // FIXME
     let metadata = {
         let map = track.typemap().read().await;
-        let my_metadata = map.get::<MyAuxMetadata>().unwrap();
+        let my_metadata = map.get::<NewAuxMetadata>().unwrap();
 
         match my_metadata {
-            MyAuxMetadata(metadata) => metadata.clone(),
+            NewAuxMetadata(metadata) => metadata.clone(),
         }
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
@@ -676,7 +676,7 @@ use rusty_ytdl::search::YouTube;
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
-    aux_metadata: &[MyAuxMetadata],
+    aux_metadata: &[NewAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
     use crate::http_utils;
@@ -709,7 +709,7 @@ pub async fn queue_aux_metadata(
             let res = res.ok_or(CrackedError::Other("No results found"))?;
             let new_aux_metadata = search_result_to_aux_metadata(&res);
 
-            MyAuxMetadata(new_aux_metadata)
+            NewAuxMetadata(new_aux_metadata)
         } else {
             metadata.clone()
         };

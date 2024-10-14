@@ -7,7 +7,7 @@ use crate::{
     CrackedResult, Data, Error, MessageOrReplyHandle,
 };
 use colored::Colorize;
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
@@ -121,7 +121,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         ready_track: &TrackReadyData,
     ) -> CrackedResult<()> {
         let username = ready_track.username.clone();
-        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
+        let NewAuxMetadata(aux_metadata) = ready_track.metadata.clone();
         let user_id = ready_track.user_id;
         let guild_id = self.guild_id().unwrap();
         let channel_id = self.channel_id();
@@ -142,7 +142,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData) {
         let username = ready_track.username.clone();
-        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
+        let NewAuxMetadata(aux_metadata) = ready_track.metadata.clone();
         let user_id = ready_track.user_id;
         let guild_id = self.guild_id().unwrap();
         let channel_id = self.channel_id();

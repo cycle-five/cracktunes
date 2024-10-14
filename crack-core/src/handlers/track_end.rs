@@ -20,7 +20,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use serenity::all::{CacheHttp, UserId};
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
@@ -238,7 +238,7 @@ pub async fn queue_query(
     // let metadata = input.aux_metadata().await.ok()?;
     // let track = call.as_ref().lock().await.enqueue_input(input).await;
     // add_metadata_to_track(&track, metadata).await;
-    let (source, metadata_vec): (SongbirdInput, Vec<MyAuxMetadata>) = query
+    let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = query
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
     let track = call.as_ref().lock().await.enqueue_input(source).await;
@@ -273,7 +273,7 @@ use crate::commands::RequestingUser;
 use songbird::input::AuxMetadata;
 pub async fn add_metadata_to_track(track: &TrackHandle, metadata: AuxMetadata) {
     let mut map = track.typemap().write().await;
-    map.insert::<MyAuxMetadata>(MyAuxMetadata(metadata));
+    map.insert::<NewAuxMetadata>(NewAuxMetadata(metadata));
     map.insert::<RequestingUser>(RequestingUser::UserId(UserId::new(1)));
     drop(map);
 }

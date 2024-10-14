@@ -6,7 +6,7 @@ use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
-use crack_types::MyAuxMetadata;
+use crack_types::NewAuxMetadata;
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 
@@ -45,7 +45,7 @@ pub async fn get_rusty_search(
 pub async fn search_query_to_source_and_metadata(
     client: reqwest::Client,
     query: String,
-) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+) -> Result<(SongbirdInput, Vec<NewAuxMetadata>), CrackedError> {
     tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
 
     let metadata = {
@@ -79,7 +79,7 @@ pub async fn search_query_to_source_and_metadata(
         None => "".to_string(),
     };
     let ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), source_url);
-    let my_metadata = MyAuxMetadata(metadata);
+    let my_metadata = NewAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
 }
@@ -89,7 +89,7 @@ pub async fn search_query_to_source_and_metadata(
 pub async fn search_query_to_source_and_metadata_rusty(
     client: reqwest::Client,
     query: QueryType,
-) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+) -> Result<(SongbirdInput, Vec<NewAuxMetadata>), CrackedError> {
     tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", query);
     let request_options = RequestOptions {
         client: Some(client.clone()),
@@ -125,7 +125,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
         video: None,
     };
 
-    Ok((rusty_search.into(), vec![MyAuxMetadata(metadata)]))
+    Ok((rusty_search.into(), vec![NewAuxMetadata(metadata)]))
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -133,7 +133,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
 pub async fn search_query_to_source_and_metadata_ytdl(
     _client: reqwest::Client,
     query: String,
-) -> Result<(SongbirdInput, Vec<MyAuxMetadata>), CrackedError> {
+) -> Result<(SongbirdInput, Vec<NewAuxMetadata>), CrackedError> {
     let query = if query.starts_with("ytsearch:") {
         query
     } else {
@@ -141,7 +141,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     };
     let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
-    let my_metadata = MyAuxMetadata(metadata);
+    let my_metadata = NewAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
 }
