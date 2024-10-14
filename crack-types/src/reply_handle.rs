@@ -61,9 +61,10 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
     }
 }
 
-struct ReplyHandleWrapper2;
+/// Empty "wrapper" that implements ReplyHandleTrait for testing purposes.
+struct ReplyHandleWrapperSimple;
 
-impl ReplyHandleTrait for ReplyHandleWrapper2 {
+impl ReplyHandleTrait for ReplyHandleWrapperSimple {
     fn into_message(
         self: Arc<Self>,
     ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
@@ -139,7 +140,7 @@ pub async fn run() {
     println!("{:?}", container);
     // To use ReplyHandle:
     // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
-    let wrapped_handle = ReplyHandleWrapper2;
+    let wrapped_handle = ReplyHandleWrapperSimple;
     let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
     let container = Container::new(handle);
 
@@ -159,17 +160,14 @@ mod tests {
         // assert_eq!(message.id, 0);
     }
 
-    // #[tokio::test]
-    // async fn test_delete() {
-    //     let message = Message::default();
-    //     let handle = MessageOrReplyHandle::Message(message);
-    //     let wrapper = ReplyHandleWrapper {
-    //         handle: Arc::new(handle.into_message()),
-    //     };
+    #[tokio::test]
+    async fn test_delete() {
+        // let message = Message::default();
+        let wrapper = Arc::new(ReplyHandleWrapperSimple);
+        let x = wrapper.delete(Http::new(&"".to_string())).await;
 
-    //     // let ctx = Http::default();
-    //     // handle.delete(ctx).await.unwrap();
-    // }
+        assert!(x.is_ok());
+    }
 
     #[tokio::test]
     async fn test_container() {
@@ -184,7 +182,7 @@ mod tests {
         println!("{:?}", container);
         // To use ReplyHandle:
         // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
-        let wrapped_handle = ReplyHandleWrapper2;
+        let wrapped_handle = ReplyHandleWrapperSimple;
         let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
         let container = Container::new(handle);
 

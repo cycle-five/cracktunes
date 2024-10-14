@@ -1,6 +1,7 @@
-pub mod reply_handle_trait;
-pub use reply_handle_trait::run as reply_handle_trait_run;
+pub mod queue;
+pub use queue::*;
 
+use crack_types::TrackResolveError;
 use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
 use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
 
@@ -8,13 +9,10 @@ use clap::{Parser, Subcommand};
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
-use thiserror::Error as ThisError;
 
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 pub const NEW_FAILED: &str = "New failed";
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
@@ -37,17 +35,6 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
     };
     rusty_ytdl::search::YouTube::new_with_options(&opts).expect("Failed to build YouTube client")
 });
-
-/// Custom error type for track resolve errors.
-#[derive(ThisError, Debug)]
-pub enum TrackResolveError {
-    #[error("No track found")]
-    NotFound,
-    #[error("Error: {0}")]
-    Other(String),
-    #[error("Unknown resolve error")]
-    Unknown,
-}
 
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
@@ -358,117 +345,6 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
         .await
         .map_err(Into::into)
         .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
-}
-
-/// A queue of tracks to be played.
-#[derive(Clone, Debug)]
-pub struct CrackTrackQueue {
-    inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
-    display: Option<String>,
-}
-
-/// Implement [Default] for [CrackTrackQueue].
-impl Default for CrackTrackQueue {
-    fn default() -> Self {
-        CrackTrackQueue {
-            inner: Arc::new(Mutex::new(VecDeque::new())),
-            display: None,
-        }
-    }
-}
-
-/// Implement [CrackTrackQueue].
-impl CrackTrackQueue {
-    /// Create a new [CrackTrackQueue].
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Create a new [CrackTrackQueue] with a given queue.
-    pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
-        CrackTrackQueue {
-            inner: Arc::new(Mutex::new(queue)),
-            display: None,
-        }
-    }
-
-    /// Get the queue.
-    pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
-        self.inner.lock().await.clone()
-    }
-
-    /// Enqueue a track.
-    pub async fn enqueue(&self, track: ResolvedTrack) {
-        self.inner.lock().await.push_back(track);
-    }
-
-    /// Dequeue a track.
-    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
-        self.inner.lock().await.pop_front()
-    }
-
-    /// Return the display string for the queue.
-    pub fn get_display(&self) -> String {
-        self.display.clone().unwrap_or_default()
-    }
-
-    /// Build the display string for the queue.
-    /// This *must* be called before displaying the queue.
-    pub async fn build_display(&mut self) -> Result<(), Error> {
-        let queue = self.inner.lock().await.clone();
-        let mut res = String::new();
-        for track in queue {
-            res.push_str(&format!("{}\n", track));
-        }
-        self.display = Some(res);
-        Ok(())
-    }
-
-    pub async fn clear(&self) {
-        self.inner.lock().await.clear();
-    }
-
-    pub async fn len(&self) -> usize {
-        self.inner.lock().await.len()
-    }
-
-    pub async fn is_empty(&self) -> bool {
-        self.inner.lock().await.is_empty()
-    }
-
-    pub async fn get(&self, index: usize) -> Option<ResolvedTrack> {
-        self.inner.lock().await.get(index).cloned()
-    }
-
-    pub async fn remove(&self, index: usize) -> Option<ResolvedTrack> {
-        self.inner.lock().await.remove(index)
-    }
-
-    pub async fn push_back(&self, track: ResolvedTrack) {
-        self.inner.lock().await.push_back(track);
-    }
-
-    pub async fn push_front(&self, track: ResolvedTrack) {
-        self.inner.lock().await.push_front(track);
-    }
-
-    pub async fn pop_back(&self) -> Option<ResolvedTrack> {
-        self.inner.lock().await.pop_back()
-    }
-
-    pub async fn pop_front(&self) -> Option<ResolvedTrack> {
-        self.inner.lock().await.pop_front()
-    }
-}
-
-impl Display for CrackTrackQueue {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.display.as_ref().unwrap_or(&"No queue".to_string())
-        )
-    }
 }
 
 /// Args struct for the CLI.

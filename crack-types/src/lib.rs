@@ -5,6 +5,8 @@ pub mod http;
 pub use http::*;
 pub mod metadata;
 pub use metadata::*;
+pub mod reply_handle;
+pub use reply_handle::*;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
@@ -30,6 +32,18 @@ pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
 pub use serenity::prelude::TypeMapKey;
+pub use thiserror::Error as ThisError;
+
+/// Custom error type for track resolve errors.
+#[derive(ThisError, Debug)]
+pub enum TrackResolveError {
+    #[error("No track found")]
+    NotFound,
+    #[error("Error: {0}")]
+    Other(String),
+    #[error("Unknown resolve error")]
+    Unknown,
+}
 
 /// play Mode enum.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,7 +87,7 @@ pub enum QueryType {
     None,
 }
 
-/// `[Default]` implementation for [QueryType].
+/// [Default] implementation for [QueryType].
 impl Default for QueryType {
     fn default() -> Self {
         QueryType::None
@@ -109,7 +123,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     }
 }
 
-/// Builds a fake [Author] for testing purposes.
+/// Builds a fake [rusty_ytdl::Author] for testing purposes.
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     rusty_ytdl::Author {
         id: "id".to_string(),
@@ -124,7 +138,7 @@ pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     }
 }
 
-/// Builds a fake [Embed] for testing purposes.
+/// Builds a fake [rusty_ytdl::Embed] for testing purposes.
 pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     rusty_ytdl::Embed {
         flash_secure_url: "flash_secure_url".to_string(),

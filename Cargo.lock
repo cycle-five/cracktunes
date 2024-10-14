@@ -1132,6 +1132,7 @@ dependencies = [
  "rusty_ytdl",
  "serenity",
  "songbird",
+ "thiserror",
  "tokio",
  "url",
 ]
