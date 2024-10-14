@@ -134,7 +134,7 @@ impl From<SearchResult> for MyAuxMetadata {
     }
 }
 
-/// Convert a `[VideoInfo]` to `[AuxMetadata]`.
+/// Convert a [VideoInfo] to [AuxMetadata].
 pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
     video_details_to_aux_metadata(&video.video_details)
 }

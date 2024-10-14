@@ -57,8 +57,8 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
 pub fn commands() -> Vec<crate::Command> {
     vec![
         set(),
-        // all_log_channel(),
         // auto_role(),
+        // all_log_channel(),
         // join_leave_log_channel(),
         // music_channel(),
         // premium(),

@@ -52,6 +52,14 @@ pub struct SpotifyTrack {
 }
 
 /// Enum for type of possible queries we have to handle.
+// QueryType -> Keywords       -> ResolvedTrack
+//           -> VideoLink      -> ResolvedTrack
+//           -> File           -> ResolvedTrack
+//           -> NewYoutubeDl   -> ResolvedTrack        X
+//           -> SpotifyTracks  -> Vec<ResolvedTrack>
+//           -> PlaylistLink   -> Vec<ResolvedTrack>
+//           -> KeywordList    -> Vec<ResolvedTrack>
+//           -> YoutubeSearch  -> Vec<ResolvedTrack>
 #[derive(Clone, Debug)]
 pub enum QueryType {
     Keywords(String),
