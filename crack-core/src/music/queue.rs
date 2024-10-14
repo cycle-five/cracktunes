@@ -4,7 +4,6 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    poise_ext::ContextExt,
     Context as CrackContext, Error,
 };
 use crack_types::Mode;
@@ -99,7 +98,8 @@ pub async fn queue_track_front(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let ready_track = ready_query(ctx, query_type.clone()).await?;
-    ctx.send_track_metadata_write_msg(&ready_track);
+    // FIXME:
+    //ctx.async_send_track_metadata_write_msg(&ready_track);
     let q = queue_track_ready_front(call, ready_track).await?;
     Ok(q)
 }
@@ -113,7 +113,8 @@ pub async fn queue_track_back(
     let begin = std::time::Instant::now();
     let ready_track = ready_query(ctx, query_type.clone()).await?;
     let after_ready = std::time::Instant::now();
-    ctx.send_track_metadata_write_msg(&ready_track);
+    // FIXME:
+    //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     let queue = queue_track_ready_back(call, ready_track).await;
     let after_queue = std::time::Instant::now();
@@ -208,7 +209,8 @@ pub async fn queue_vec_query_type(
 
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
-        ctx.send_track_metadata_write_msg(&ready_track);
+        // FIXME:
+        //ctx.async_send_track_metadata_write_msg(&ready_track);
         tracks.push(ready_track);
     }
     let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
@@ -246,7 +248,8 @@ pub async fn queue_query_list_offset<'a>(
     let mut tracks = Vec::new();
     for query in queries {
         let ready_track = ready_query(ctx, query).await?;
-        ctx.send_track_metadata_write_msg(&ready_track);
+        // FIXME:
+        //ctx.async_send_track_metadata_write_msg(&ready_track);
         tracks.push(ready_track);
     }
 

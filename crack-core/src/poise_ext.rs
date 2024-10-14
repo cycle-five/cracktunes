@@ -115,36 +115,29 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         .map_err(|e| e.into())
     }
 
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
     async fn async_send_track_metadata_write_msg(
         self,
-        _ready_track: &TrackReadyData,
+        ready_track: &TrackReadyData,
     ) -> CrackedResult<()> {
-        todo!()
+        let username = ready_track.username.clone();
+        let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
+        let user_id = ready_track.user_id;
+        let guild_id = self.guild_id().unwrap();
+        let channel_id = self.channel_id();
+
+        let write_data: MetadataMsg = MetadataMsg {
+            aux_metadata,
+            user_id,
+            username,
+            guild_id,
+            channel_id,
+        };
+
+        let pool = self.data().get_db_pool().unwrap();
+        crate::db::write_metadata_pg(&pool, write_data).await?;
+        Ok(())
     }
-
-    // /// Send a message to tell the worker pool to do a db write when it feels like it.
-    // async fn async_send_track_metadata_write_msg(
-    //     &self,
-    //     ready_track: TrackReadyData,
-    // ) -> CrackedResult<()> {
-    //     let username = ready_track.username.clone();
-    //     let MyAuxMetadata(aux_metadata) = ready_track.metadata.clone();
-    //     let user_id = ready_track.user_id.clone();
-    //     let guild_id = self.guild_id().unwrap();
-    //     let channel_id = self.channel_id();
-
-    //     let write_data: MetadataMsg = MetadataMsg {
-    //         aux_metadata,
-    //         user_id,
-    //         username,
-    //         guild_id,
-    //         channel_id,
-    //     };
-
-    //     let pool = self.data().get_db_pool().unwrap();
-    //     write_metadata_pg(&pool, write_data).await?;
-    //     Ok(())
-    // }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData) {

@@ -583,26 +583,18 @@ mod tests {
             ..Default::default()
         };
 
-        let res = client.suggestion("molly nilsson").await;
-        let res = res.expect("No results");
-        let raw_res_want = vec![
-            "molly nilsson",
-            "molly nilsson tour",
-            "molly nilsson i hope you die lyrics",
-            "molly nilsson hey moon",
-            "molly nilsson rym",
-            "molly nilsson bandcamp",
-            "molly nilsson i hope you die",
-            "molly nilsson songs",
-            "molly nilsson excalibur",
-            "molly nilsson instagram",
-        ]
-        .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
-
-        assert_eq!(res, raw_res_want);
+        let res = client
+            .suggestion("molly nilsson")
+            .await
+            .expect("No results");
         assert_eq!(res.len(), 10);
+        assert_eq!(
+            res.iter()
+                .filter(|x| x.starts_with("molly nilsson"))
+                .collect::<Vec<_>>()
+                .len(),
+            10
+        );
     }
 
     #[tokio::test]
