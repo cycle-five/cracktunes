@@ -1,6 +1,7 @@
 use crate::ResolvedTrack;
 use crack_types::Error;
 
+use rand::seq::SliceRandom;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -70,30 +71,37 @@ impl CrackTrackQueue {
         Ok(())
     }
 
+    /// Clear the queue in palce.
     pub async fn clear(&self) {
         self.inner.lock().await.clear();
     }
 
+    /// Get the length of the queue.
     pub async fn len(&self) -> usize {
         self.inner.lock().await.len()
     }
 
+    /// Check if the queue is empty.
     pub async fn is_empty(&self) -> bool {
         self.inner.lock().await.is_empty()
     }
 
+    /// Get the element at the given index in the queue.
     pub async fn get(&self, index: usize) -> Option<ResolvedTrack> {
         self.inner.lock().await.get(index).cloned()
     }
 
+    /// Remove the element at the given index in the queue.
     pub async fn remove(&self, index: usize) -> Option<ResolvedTrack> {
         self.inner.lock().await.remove(index)
     }
 
+    /// Add a track to the back of the queue.
     pub async fn push_back(&self, track: ResolvedTrack) {
         self.inner.lock().await.push_back(track);
     }
 
+    /// Add a track to the front of the queue.
     pub async fn push_front(&self, track: ResolvedTrack) {
         self.inner.lock().await.push_front(track);
     }
@@ -104,6 +112,24 @@ impl CrackTrackQueue {
 
     pub async fn pop_front(&self) -> Option<ResolvedTrack> {
         self.inner.lock().await.pop_front()
+    }
+
+    pub async fn insert(&self, index: usize, track: ResolvedTrack) {
+        self.inner.lock().await.insert(index, track);
+    }
+
+    pub async fn append(&self, other: &mut VecDeque<ResolvedTrack>) {
+        self.inner.lock().await.append(other);
+    }
+
+    pub async fn append_front(&self, other: &mut VecDeque<ResolvedTrack>) {
+        self.inner.lock().await.append(&mut other.clone());
+    }
+
+    pub async fn shuffle(&self) {
+        let mut queue = self.inner.lock().await.clone();
+        queue.make_contiguous().shuffle(&mut rand::thread_rng());
+        *self.inner.lock().await = queue;
     }
 }
 

@@ -1,8 +1,8 @@
 [package]
+authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "crack-testing"
 version = "0.3.14"
 edition = "2021"
-authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
 description = "Testing module for Crack Tunes."
@@ -33,6 +33,7 @@ serenity = { workspace = true }
 tokio = { version = "1.40", features = ["rt-multi-thread"] }
 thiserror = "1.0"
 url = "2.5"
+rand = "0.8"
 crack-types = { path = "../crack-types" }
 
 

@@ -39,6 +39,8 @@ impl VotingContext {
         }
     }
 
+    /// Create a new [VotingContext] with a given pool.
+    #[allow(clippy::unused_async)]
     pub async fn new_with_pool(pool: sqlx::PgPool) -> Self {
         let secret = get_secret();
         VotingContext {
@@ -48,7 +50,7 @@ impl VotingContext {
     }
 }
 
-/// NewClass for the Webhook to store in the database.
+/// `NewClass` for the Webhook to store in the database.
 #[derive(Debug, serde::Deserialize, serde::Serialize, sqlx::FromRow, Clone, PartialEq, Eq)]
 pub struct CrackedWebhook {
     webhook: Webhook,
@@ -111,7 +113,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
     .execute(ctx.pool.as_ref())
     .await;
     if let Err(e) = res {
-        eprintln!("Failed to insert / update user: {}", e);
+        eprintln!("Failed to insert / update user: {e}");
         return Err(e);
     }
     //let executor = ctx.pool.clone();
@@ -132,7 +134,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
     match res {
         Ok(_) => println!("Webhook written to database"),
         Err(e) => {
-            eprintln!("Failed to write webhook to database: {}", e);
+            eprintln!("Failed to write webhook to database: {e}");
             return Err(e);
         },
     }
@@ -168,6 +170,7 @@ async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply
 }
 
 /// Create a filter that handles the webhook.
+#[allow(clippy::unused_async)]
 async fn get_webhook(
     ctx: VotingContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -210,7 +213,7 @@ pub async fn run() {
 
 /// Custom error handling for the server.
 async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
-    eprintln!("Error: {:?}", err);
+    eprintln!("Error: {err:?}");
     if err.find::<BodyDeserializeError>().is_some() {
         Ok(warp::reply::with_status(
             warp::reply(),
@@ -229,13 +232,13 @@ async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
 fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
     warp::header::headers_cloned()
         .map(|headers: HeaderMap| {
-            for (k, v) in headers.iter() {
+            for (k, v) in &headers {
                 // Error from `to_str` should be handled properly
                 println!(
                     "{}: {}",
                     k,
                     v.to_str().expect("Failed to print header value")
-                )
+                );
             }
         })
         .untuple_one()

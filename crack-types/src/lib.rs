@@ -87,14 +87,14 @@ pub enum QueryType {
     None,
 }
 
-/// [Default] implementation for [QueryType].
+/// [`Default`] implementation for [`QueryType`].
 impl Default for QueryType {
     fn default() -> Self {
         QueryType::None
     }
 }
 
-/// Function to get the full artist name from a [FullTrack].
+/// Function to get the full artist name from a [`FullTrack`].
 pub fn full_track_artist_str(track: &FullTrack) -> String {
     track
         .artists
@@ -114,16 +114,16 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
             let hours = duration.as_secs() / 3600;
 
             if hours < 1 {
-                format!("{:02}:{:02}", minutes, seconds)
+                format!("{minutes:02}:{seconds:02}")
             } else {
-                format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+                format!("{hours:02}:{minutes:02}:{seconds:02}")
             }
         },
         None => "∞".to_string(),
     }
 }
 
-/// Builds a fake [rusty_ytdl::Author] for testing purposes.
+/// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     rusty_ytdl::Author {
         id: "id".to_string(),
@@ -139,6 +139,7 @@ pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
 }
 
 /// Builds a fake [rusty_ytdl::Embed] for testing purposes.
+#[must_use]
 pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     rusty_ytdl::Embed {
         flash_secure_url: "flash_secure_url".to_string(),
@@ -149,7 +150,7 @@ pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     }
 }
 
-/// Builds a fake [VideoDetails] for testing purposes.
+/// Builds a fake [`VideoDetails`] for testing purposes.
 pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
     rusty_ytdl::VideoDetails {
         author: Some(build_fake_rusty_author()),
