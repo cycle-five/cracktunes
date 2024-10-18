@@ -14,7 +14,7 @@ pub struct CrackTrackQueue {
     display: Option<String>,
 }
 
-/// Implement [Default] for [CrackTrackQueue].
+/// Implement [`Default`] for [`CrackTrackQueue`].
 impl Default for CrackTrackQueue {
     fn default() -> Self {
         CrackTrackQueue {
@@ -24,14 +24,14 @@ impl Default for CrackTrackQueue {
     }
 }
 
-/// Implement [CrackTrackQueue].
+/// Implement [`CrackTrackQueue`].
 impl CrackTrackQueue {
-    /// Create a new [CrackTrackQueue].
+    /// Create a new [`CrackTrackQueue`].
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Create a new [CrackTrackQueue] with a given queue.
+    /// Create a new [`CrackTrackQueue`] with a given queue.
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
@@ -106,33 +106,44 @@ impl CrackTrackQueue {
         self.inner.lock().await.push_front(track);
     }
 
+    /// Remove the last track from the queue.
     pub async fn pop_back(&self) -> Option<ResolvedTrack> {
         self.inner.lock().await.pop_back()
     }
 
+    /// Remove the first track from the queue.
     pub async fn pop_front(&self) -> Option<ResolvedTrack> {
         self.inner.lock().await.pop_front()
     }
 
+    /// Insert a track at the given index in the queue.
     pub async fn insert(&self, index: usize, track: ResolvedTrack) {
         self.inner.lock().await.insert(index, track);
     }
 
+    /// Append another queue to the end of this queue.
     pub async fn append(&self, other: &mut VecDeque<ResolvedTrack>) {
         self.inner.lock().await.append(other);
     }
 
+    /// Append another queue to the front of this queue.
     pub async fn append_front(&self, other: &mut VecDeque<ResolvedTrack>) {
         self.inner.lock().await.append(&mut other.clone());
     }
 
+    /// Shuffle the queue.
     pub async fn shuffle(&self) {
         let mut queue = self.inner.lock().await.clone();
         queue.make_contiguous().shuffle(&mut rand::thread_rng());
         *self.inner.lock().await = queue;
     }
+
+    pub async fn append_self_to_other(&self, other: &mut VecDeque<ResolvedTrack>) {
+        other.append(&mut self.inner.lock().await.clone());
+    }
 }
 
+/// Implement [`Display`] for [`CrackTrackQueue`].
 impl Display for CrackTrackQueue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
