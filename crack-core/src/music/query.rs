@@ -601,6 +601,36 @@ impl QueryType {
         }
     }
 
+    /// Get the source (playable track) for this query.
+    pub async fn get_track_source(
+        &self,
+        client_old: reqwest_old::Client,
+    ) -> CrackedResult<songbird::input::Input> {
+        match self {
+            QueryType::YoutubeSearch(query) => {
+                tracing::error!("In YoutubeSearch");
+                let ytdl = YoutubeDl::new_search(client_old, query.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::VideoLink(url) => {
+                tracing::warn!("In VideoLink");
+                let ytdl = YoutubeDl::new(client_old, url.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::Keywords(query) => {
+                let ytdl = YoutubeDl::new(client_old, query.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_owned()).into()),
+            QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
+            QueryType::PlaylistLink(_)
+            | QueryType::SpotifyTracks(_)
+            | QueryType::KeywordList(_)
+            | QueryType::None => unimplemented!(),
+        }
+    }
+
+    /// Get the source and metadata for a given query type. This is the expensive part.
     pub async fn get_track_source_and_metadata(
         &self,
         client: Option<reqwest::Client>,

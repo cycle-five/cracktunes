@@ -184,7 +184,7 @@ pub fn search_video_to_aux_metadata(video: &rusty_ytdl::search::Video) -> AuxMet
         date: video.uploaded_at.clone(),
         channels: Some(2),
         channel: Some(video.channel.name.clone()),
-        duration: Some(Duration::from_secs(video.duration)),
+        duration: Some(Duration::from_millis(video.duration)),
         sample_rate: Some(48000),
         source_url: Some(video.url.clone()),
         title: Some(video.title.clone()),

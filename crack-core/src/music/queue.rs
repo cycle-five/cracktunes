@@ -9,8 +9,12 @@ use crate::{
 use crack_types::Mode;
 use crack_types::NewAuxMetadata;
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
-use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
-use std::sync::Arc;
+use songbird::{
+    input::Input as SongbirdInput,
+    tracks::{Queued, TrackHandle},
+    Call,
+};
+use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
 /// Data needed to queue a track.
@@ -159,6 +163,18 @@ pub async fn queue_ready_track_list(
             });
         }
     }
+    Ok(handler.queue().current_queue())
+}
+
+/// Append a list of tracks to the end of the queue.
+pub async fn _append_queue(
+    call: Arc<Mutex<Call>>,
+    mut tracks: VecDeque<Queued>,
+) -> Result<Vec<TrackHandle>, Error> {
+    let handler = call.lock().await;
+    handler.queue().modify_queue(|queue| {
+        queue.append(&mut tracks);
+    });
     Ok(handler.queue().current_queue())
 }
 

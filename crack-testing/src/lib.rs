@@ -232,25 +232,56 @@ impl CrackTrackClient {
     /// Resolve a track from a query. This does not start or ready the track for playback.
     pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack, Error> {
         // Do we need the original query in the resolved track?
-        let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
+        //let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
+        match query {
             QueryType::VideoLink(ref url) => {
-                let request_options = RequestOptions {
-                    client: Some(self.req_client.clone()),
-                    ..Default::default()
-                };
-                let video_options = VideoOptions {
-                    request_options: request_options.clone(),
-                    ..Default::default()
-                };
-                let video = rusty_ytdl::Video::new_with_options(url, video_options)?;
-                let info = video.get_info().await?;
-                let metadata = video_info_to_aux_metadata(&info);
+                // let request_options = RequestOptions {
+                //     client: Some(self.req_client.clone()),
+                //     ..Default::default()
+                // };
+                // let video_options = VideoOptions {
+                //     request_options: request_options.clone(),
+                //     ..Default::default()
+                // };
+                // let video = rusty_ytdl::Video::new_with_options(url, video_options)?;
+                // let info = video.get_info().await?;
+                // let metadata = video_info_to_aux_metadata(&info);
 
-                (video, info.video_details, metadata)
+                self.resolve_url(url).await
+            },
+            QueryType::Keywords(ref keywords) => {
+                let search_results = self.yt_client.search_one(keywords, None).await?;
+                let video = match search_results {
+                    Some(SearchResult::Video(result)) => result,
+                    _ => return Err(TrackResolveError::NotFound.into()),
+                };
+                let video_url = video.url.clone();
+                self.resolve_url(&video_url).await
             },
             _ => unimplemented!(),
+        }
+    }
+
+    async fn resolve_url(&self, url: &str) -> Result<ResolvedTrack, Error> {
+        let request_options = RequestOptions {
+            client: Some(self.req_client.clone()),
+            ..Default::default()
         };
-        Ok(vid_tuple.into())
+        let video_options = VideoOptions {
+            request_options: request_options.clone(),
+            ..Default::default()
+        };
+        let video = rusty_ytdl::Video::new_with_options(url, video_options)?;
+        let info = video.get_info().await?;
+        let metadata = video_info_to_aux_metadata(&info);
+
+        Ok(ResolvedTrack {
+            query: QueryType::VideoLink(url.to_string()),
+            video: Some(video),
+            metadata: Some(metadata),
+            details: Some(info.video_details),
+            ..Default::default()
+        })
     }
 
     pub async fn resolve_search_one(&self, query: &str) -> Result<ResolvedTrack, Error> {
@@ -400,10 +431,15 @@ enum Commands {
         #[arg(value_parser = parse_url)]
         url: url::Url,
     },
+    Query {
+        /// The query to resolve.
+        query: String,
+    },
 }
 
 /// Match the CLI command and run the appropriate function.
 async fn match_cli(cli: Cli) -> Result<(), Error> {
+    let mut client = CrackTrackClient::new();
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
@@ -413,13 +449,24 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         },
         Commands::Resolve { url } => {
             // let query = QueryType::VideoLink(url.to_string());
-            let mut client = CrackTrackClient::new();
             let res = client.resolve_playlist(url.as_str()).await?;
             for track in res {
+                println!("Resolved: {}", track);
                 let _ = client.enqueue_track(track).await;
             }
         },
+        Commands::Query { query } => {
+            // let mut client = CrackTrackClient::new();
+            let queries = query.split(",");
+            for query in queries {
+                let res = client.resolve_search_one(&query).await?;
+                println!("Resolved: {}", res);
+                let _ = client.enqueue_track(res).await;
+            }
+        },
     }
+    //client.build_display().await?;
+    //println!("{}", client.get_display());
     Ok(())
 }
 
