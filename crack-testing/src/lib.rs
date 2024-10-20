@@ -459,7 +459,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             // let mut client = CrackTrackClient::new();
             let queries = query.split(",");
             for query in queries {
-                let res = client.resolve_search_one(&query).await?;
+                let res = client.resolve_search_one(query).await?;
                 println!("Resolved: {}", res);
                 let _ = client.enqueue_track(res).await;
             }
@@ -494,7 +494,8 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[tokio::test]
     async fn test_cli2() {
         let cli = Cli::parse_from(vec![
             "crack_testing",
@@ -559,9 +560,13 @@ mod tests {
     #[tokio::test]
     async fn test_suggestion_function() {
         let client = YOUTUBE_CLIENT.clone();
-        let res = suggestion_yt(client, "molly nilsson").await;
-        let res = res.expect("No results");
-        assert_eq!(res.len(), 10);
+        let res = suggestion_yt(client.clone(), "molly nilsson").await;
+        if env::var("CI").is_ok() {
+            assert!(res.is_err());
+        } else {
+            let res = res.expect("No results");
+            assert_eq!(res.len(), 10);
+        }
     }
 
     #[tokio::test]

@@ -238,14 +238,14 @@ pub async fn play_internal(
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
-    let move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await?;
+    let _move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await;
 
     let _after_move_on = std::time::Instant::now();
 
-    // FIXME: Yeah, this is terrible, fix this.
-    if !move_on {
-        return Ok(());
-    }
+    // // FIXME: Yeah, this is terrible, fix this.
+    // if !move_on {
+    //     return Ok(());
+    // }
 
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
@@ -387,23 +387,29 @@ async fn match_mode<'a>(
     mode: Mode,
     query_type: QueryType,
     search_msg: &'a mut Message,
-) -> CrackedResult<bool> {
+) -> tokio::task::JoinHandle<CrackedResult<bool>> {
     tracing::info!("mode: {:?}", mode);
 
-    match mode {
-        Mode::Search => query_type
-            .mode_search(ctx, call)
-            .await
-            .map(|x| !x.is_empty()),
-        Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
-        Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
-        Mode::End => query_type.mode_end(ctx, call, search_msg).await,
-        Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
-        Mode::Jump => query_type.mode_jump(ctx, call).await,
-        Mode::All | Mode::Reverse | Mode::Shuffle => {
-            query_type.mode_rest(ctx, call, search_msg).await
-        },
-    }
+    let ctx = Arc::new(ctx.clone());
+    let handle = tokio::spawn(async move {
+        let ctx = ctx.clone();
+        match mode {
+            Mode::Search => query_type
+                .mode_search(ctx, call)
+                .await
+                .map(|x| !x.is_empty()),
+            Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
+            Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
+            Mode::End => query_type.mode_end(ctx, call, search_msg).await,
+            Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
+            Mode::Jump => query_type.mode_jump(ctx, call).await,
+            Mode::All | Mode::Reverse | Mode::Shuffle => {
+                query_type.mode_rest(ctx, call, search_msg).await
+            },
+        }
+    });
+
+    handle
 }
 
 // async fn query_type_to_metadata<'a>(

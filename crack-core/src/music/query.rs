@@ -292,7 +292,7 @@ impl QueryType {
 
     pub async fn mode_search(
         &self,
-        ctx: Context<'_>,
+        ctx: Arc<Context<'_>>,
         call: Arc<Mutex<Call>>,
     ) -> Result<Vec<TrackHandle>, CrackedError> {
         match self {
@@ -320,7 +320,7 @@ impl QueryType {
 
     pub async fn mode_search_keywords(
         &self,
-        ctx: Context<'_>,
+        ctx: Arc<Context<'_>>,
         call: Arc<Mutex<Call>>,
         keywords: String,
     ) -> Result<Vec<TrackHandle>, CrackedError> {

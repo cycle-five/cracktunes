@@ -7,7 +7,7 @@ use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// A queue of tracks to be played.
+/// A [`CrackTrackQueue`] queue of tracks to be played.
 #[derive(Clone, Debug)]
 pub struct CrackTrackQueue {
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
@@ -31,7 +31,7 @@ impl CrackTrackQueue {
         Default::default()
     }
 
-    /// Create a new [`CrackTrackQueue`] with a given queue.
+    /// Create a new [`CrackTrackQueue`] with a given [`VecDeque`] of [`ResolvedTrack`].
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),

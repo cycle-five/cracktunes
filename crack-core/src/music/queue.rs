@@ -27,7 +27,7 @@ pub struct TrackReadyData {
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query(
-    ctx: CrackContext<'_>,
+    ctx: Arc<CrackContext<'_>>,
     query_type: QueryType,
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = Some(ctx.author().id);
@@ -110,7 +110,7 @@ pub async fn queue_track_front(
 
 /// Pushes a track to the front of the queue.
 pub async fn queue_track_back(
-    ctx: CrackContext<'_>,
+    ctx: Arc<CrackContext<'_>>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
