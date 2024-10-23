@@ -104,8 +104,16 @@ pub fn full_track_artist_str(track: &FullTrack) -> String {
         .join(", ")
 }
 
+// use humantime::format_duration;
 /// Converts a duration into a human readable timestamp
 pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
+    // let duration = match duration {
+    //     Some(duration) if duration == Duration::MAX => return "∞".to_string(),
+    //     Some(duration) => duration,
+    //     None => return "∞".to_string(),
+    // };
+    // let formatted = format_duration(duration);
+    // formatted.substring(11, formatted.len() - 1).to_string()
     match duration {
         Some(duration) if duration == Duration::MAX => "∞".to_string(),
         Some(duration) => {

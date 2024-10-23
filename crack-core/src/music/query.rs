@@ -276,7 +276,11 @@ impl QueryType {
         }
     }
 
-    pub async fn mode_download(&self, ctx: Context<'_>, mp3: bool) -> Result<bool, CrackedError> {
+    pub async fn mode_download<'ctx>(
+        &self,
+        ctx: Context<'ctx>,
+        mp3: bool,
+    ) -> Result<bool, CrackedError> {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         ctx.channel_id()
             .send_message(
@@ -292,7 +296,7 @@ impl QueryType {
 
     pub async fn mode_search(
         &self,
-        ctx: Arc<Context<'_>>,
+        ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
     ) -> Result<Vec<TrackHandle>, CrackedError> {
         match self {
@@ -314,13 +318,13 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => {
                 self.mode_search_keywords(ctx, call, query.clone()).await
             },
-            _ => send_search_failed(&ctx).await.map(|_| Vec::new()),
+            _ => send_search_failed(&ctx).await.map(|_| vec![]),
         }
     }
 
     pub async fn mode_search_keywords(
         &self,
-        ctx: Arc<Context<'_>>,
+        ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
         keywords: String,
     ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -399,9 +403,10 @@ impl QueryType {
         &self,
         ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut crate::Message,
+        search_msg: crate::Message,
     ) -> Result<bool, CrackedError> {
         let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let search_msg = &mut search_msg.clone();
         match self {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::End, QueryType::YoutubeSearch");

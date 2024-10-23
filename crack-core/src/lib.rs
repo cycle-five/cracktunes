@@ -316,7 +316,6 @@ impl PhoneCodeData {
 /// User data, which is stored and accessible in all command invocations
 #[derive(Clone)]
 pub struct DataInner {
-    pub up_prefix: &'static str,
     pub bot_settings: BotConfig,
     pub start_time: SystemTime,
     #[cfg(feature = "crack-activity")]
@@ -347,7 +346,6 @@ impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
         result.push_str(&format!("phone_data: {:?}\n", self.phone_data));
-        result.push_str(&format!("up_prefix: {:?}\n", self.up_prefix));
         result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
         result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
         result.push_str(&format!(
@@ -514,8 +512,7 @@ impl Default for DataInner {
             activity_user_map: Arc::new(dashmap::DashMap::new()),
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
-            phone_data: PhoneCodeData::default(), //PhoneCodeData::load().unwrap(),
-            up_prefix: "R",
+            phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
@@ -523,9 +520,9 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             guild_command_msg_queue: Default::default(),
+            http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
-            http_client: http_utils::get_client().clone(),
             db_channel: None,
         }
     }
@@ -537,9 +534,11 @@ impl Default for Data {
     }
 }
 
+/// Data struct for the bot, which is stored and accessible in all command invocations
 #[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
+/// Impl [`Default`] for our custom [`Data`] struct
 impl std::ops::Deref for Data {
     type Target = DataInner;
 
@@ -548,43 +547,7 @@ impl std::ops::Deref for Data {
     }
 }
 
-// pub enum MessageOrReplyHandle<'a> {
-//     Message(Message),
-//     ReplyHandle(poise::ReplyHandle<'a>),
-// }
-
-// impl MessageOrReplyHandle<'_> {
-//     pub async fn into_message(self) -> Option<Message> {
-//         match self {
-//             MessageOrReplyHandle::Message(msg) => Some(msg),
-//             MessageOrReplyHandle::ReplyHandle(handle) => handle.into_message().await.ok(),
-//         }
-//     }
-
-//     pub async fn delete(self, ctx: Context<'_>) {
-//         match self {
-//             MessageOrReplyHandle::Message(msg) => {
-//                 let _ = msg.delete(&ctx).await;
-//             },
-//             MessageOrReplyHandle::ReplyHandle(handle) => {
-//                 let _ = handle.delete(ctx).await;
-//             },
-//         }
-//     }
-// }
-
-// impl From<Message> for MessageOrReplyHandle<'_> {
-//     fn from(msg: Message) -> Self {
-//         MessageOrReplyHandle::Message(msg)
-//     }
-// }
-
-// impl<'a: 'b, 'b> From<poise::ReplyHandle<'a>> for MessageOrReplyHandle<'b> {
-//     fn from(handle: poise::ReplyHandle<'a>) -> Self {
-//         MessageOrReplyHandle::ReplyHandle(handle)
-//     }
-// }
-
+/// Impl for our custom [`Data`] struct
 impl Data {
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(

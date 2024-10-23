@@ -31,7 +31,7 @@ use crack_types::metadata::search_result_to_aux_metadata;
 use crack_types::Mode;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
-use songbird::{input::YoutubeDl, tracks::TrackHandle, Call};
+use songbird::{tracks::TrackHandle, Call};
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -387,30 +387,85 @@ async fn match_mode<'a>(
     mode: Mode,
     query_type: QueryType,
     search_msg: &'a mut Message,
-) -> tokio::task::JoinHandle<CrackedResult<bool>> {
+) -> CrackedResult<bool> {
     tracing::info!("mode: {:?}", mode);
 
-    let ctx = Arc::new(ctx.clone());
-    let handle = tokio::spawn(async move {
-        let ctx = ctx.clone();
-        match mode {
-            Mode::Search => query_type
-                .mode_search(ctx, call)
-                .await
-                .map(|x| !x.is_empty()),
-            Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
-            Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
-            Mode::End => query_type.mode_end(ctx, call, search_msg).await,
-            Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
-            Mode::Jump => query_type.mode_jump(ctx, call).await,
-            Mode::All | Mode::Reverse | Mode::Shuffle => {
-                query_type.mode_rest(ctx, call, search_msg).await
-            },
-        }
-    });
-
-    handle
+    // let ctx = Arc::new(ctx.clone());
+    match mode {
+        Mode::Search => query_type
+            .mode_search(ctx, call)
+            .await
+            .map(|x| !x.is_empty()),
+        Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
+        Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
+        Mode::End => query_type.mode_end(ctx, call, search_msg.clone()).await,
+        Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
+        Mode::Jump => query_type.mode_jump(ctx, call).await,
+        Mode::All | Mode::Reverse | Mode::Shuffle => {
+            query_type.mode_rest(ctx, call, search_msg).await
+        },
+    }
 }
+
+// /// new match_mode function.
+// async fn match_mode_new<'ctx>(
+//     ctx: Context<'_>,
+//     call: Arc<Mutex<Call>>,
+//     mode: Mode,
+//     query_type: QueryType,
+//     search_msg: Message,
+// ) -> JoinHandle<dyn std::future::Future<Output = CrackedResult<bool>> + Send> {
+//     tracing::info!("mode: {:?}", mode);
+
+//     tokio::task::spawn(async move {
+//         //let ctx = *ctx.as_ref().to_owned();
+//         match mode {
+//             _ => query_type.mode_download(ctx, false),
+//         }
+//     })
+//     // let handle = tokio::spawn(async move {
+//     //     let ctx2 = ctx.as_ref();
+//     //     match mode {
+//     //         _ => {
+//     //             // query_type.mode_end(ctx, call, search_msg)
+//     //             let beg_time = std::time::Instant::now();
+//     //             let _ready_q = match query_type.get_track_source_and_metadata(None).await {
+//     //                 Ok(x) => x,
+//     //                 Err(e) => {
+//     //                     return Err(e);
+//     //                 },
+//     //             };
+//     //             let end_time = std::time::Instant::now();
+//     //             tracing::info!(
+//     //                 "get_track_source_and_metadata: {:?}",
+//     //                 end_time.duration_since(beg_time)
+//     //             );
+//     //             let res = match query_type.mode_end(ctx, call, search_msg.clone()).await {
+//     //                 Ok(x) if x => (),
+//     //                 Ok(_) => {
+//     //                     return Err(CrackedError::Other("No tracks in queue!"));
+//     //                 },
+//     //                 Err(e) => {
+//     //                     return Err(e);
+//     //                 },
+//     //             };
+//     //             Ok(())
+//     //         },
+//     //         // Mode::Search => query_type.mode_search(ctx1, call).await,
+//     //         //    .map(|x| !x.is_empty()),
+//     //         // Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
+//     //         // Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
+//     //         // Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
+//     //         // Mode::Jump => query_type.mode_jump(ctx, call).await,
+//     //         // Mode::All | Mode::Reverse | Mode::Shuffle => {
+//     //         //     query_type.mode_rest(ctx, call, search_msg).await
+//     //         // },
+//     //         // _ => unimplemented!(),
+//     //     }
+//     //});
+
+//     //handle
+// }
 
 // async fn query_type_to_metadata<'a>(
 //     ctx: Context<'_>,
@@ -520,120 +575,6 @@ impl Default for RequestingUser {
     }
 }
 
-// /// AuxMetadata wrapper and utility functions.
-// #[derive(Debug, Clone)]
-// pub struct NewAuxMetadata(pub AuxMetadata);
-
-// /// Implement TypeMapKey for NewAuxMetadata.
-// impl TypeMapKey for NewAuxMetadata {
-//     type Value = NewAuxMetadata;
-// }
-
-// /// Implement From<AuxMetadata> for NewAuxMetadata.
-// impl From<NewAuxMetadata> for AuxMetadata {
-//     fn from(metadata: NewAuxMetadata) -> Self {
-//         let NewAuxMetadata(metadata) = metadata;
-//         metadata
-//     }
-// }
-
-// /// Implement Default for NewAuxMetadata.
-// impl Default for NewAuxMetadata {
-//     fn default() -> Self {
-//         NewAuxMetadata(AuxMetadata::default())
-//     }
-// }
-
-// /// Implement NewAuxMetadata.
-// impl NewAuxMetadata {
-//     /// Create a new NewAuxMetadata from AuxMetadata.
-//     pub fn new(metadata: AuxMetadata) -> Self {
-//         NewAuxMetadata(metadata)
-//     }
-
-//     /// Get the internal metadata.
-//     pub fn metadata(&self) -> &AuxMetadata {
-//         &self.0
-//     }
-
-//     /// Create new NewAuxMetadata from &SpotifyTrack.
-//     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
-//         NewAuxMetadata(AuxMetadata {
-//             track: Some(track.name()),
-//             artist: Some(track.artists_str()),
-//             album: Some(track.album_name()),
-//             date: None,
-//             start_time: Some(Duration::ZERO),
-//             duration: Some(track.duration()),
-//             channels: Some(2),
-//             channel: None,
-//             sample_rate: None,
-//             source_url: None,
-//             thumbnail: Some(track.name()),
-//             title: Some(track.name()),
-//         })
-//     }
-
-//     /// Set the source_url.
-//     pub fn with_source_url(self, source_url: String) -> Self {
-//         NewAuxMetadata(AuxMetadata {
-//             source_url: Some(source_url),
-//             ..self.metadata().clone()
-//         })
-//     }
-
-//     /// Get a search query from the metadata for youtube.
-//     pub fn get_search_query(&self) -> String {
-//         let metadata = self.metadata();
-//         let title = metadata.title.clone().unwrap_or_default();
-//         let artist = metadata.artist.clone().unwrap_or_default();
-//         format!("{} {}", title, artist)
-//     }
-// }
-
-// /// Implementation to convert `[&SpotifyTrack]` to `[NewAuxMetadata]`.
-// impl From<&SpotifyTrack> for NewAuxMetadata {
-//     fn from(track: &SpotifyTrack) -> Self {
-//         NewAuxMetadata::from_spotify_track(track)
-//     }
-// }
-
-// impl From<&SearchResult> for NewAuxMetadata {
-//     fn from(search_result: &SearchResult) -> Self {
-//         let mut metadata = AuxMetadata::default();
-//         match search_result.clone() {
-//             SearchResult::Video(video) => {
-//                 metadata.track = Some(video.title.clone());
-//                 metadata.artist = None;
-//                 metadata.album = None;
-//                 metadata.date = video.uploaded_at.clone();
-
-//                 metadata.channels = Some(2);
-//                 metadata.channel = Some(video.channel.name);
-//                 metadata.duration = Some(Duration::from_millis(video.duration));
-//                 metadata.sample_rate = Some(48000);
-//                 metadata.source_url = Some(video.url);
-//                 metadata.title = Some(video.title);
-//                 metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
-//             },
-//             SearchResult::Playlist(playlist) => {
-//                 metadata.title = Some(playlist.name);
-//                 metadata.source_url = Some(playlist.url);
-//                 metadata.duration = None;
-//                 metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
-//             },
-//             _ => {},
-//         };
-//         NewAuxMetadata(metadata)
-//     }
-// }
-
-// impl From<SearchResult> for NewAuxMetadata {
-//     fn from(search_result: SearchResult) -> Self {
-//         NewAuxMetadata::from(&search_result)
-//     }
-// }
-
 /// Build an embed for the cure
 async fn build_queued_embed(
     author_title: &str,
@@ -685,7 +626,7 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[NewAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
-    use crate::http_utils;
+    // use crate::http_utils;
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
@@ -720,12 +661,14 @@ pub async fn queue_aux_metadata(
             metadata.clone()
         };
 
-        let ytdl = YoutubeDl::new(
-            http_utils::get_client_old().clone(),
-            metadata_final.metadata().source_url.clone().unwrap(),
+        let query_type = QueryType::VideoLink(
+            metadata_final
+                .metadata()
+                .source_url
+                .as_ref()
+                .cloned()
+                .expect("source_url does not exist"),
         );
-
-        let query_type = QueryType::NewYoutubeDl((ytdl, metadata_final.metadata().clone()));
         let _ = queue_track_back(ctx, &call, &query_type).await?;
     }
 

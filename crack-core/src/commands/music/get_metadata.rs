@@ -1,13 +1,37 @@
+use std::fmt::Formatter;
+
 use crate::commands::cmd_check_music;
 use crate::http_utils;
 use crate::messaging::interface as msg_int;
 use crate::music::query::query_type_from_url;
+use crate::Arc;
 use crate::CrackedMessage;
 use crate::{
     errors::{verify, CrackedError},
     Context, Error,
 };
 use rusty_ytdl::{search::YouTube, RequestOptions};
+use serenity::all::CacheHttp;
+use std::fmt::{self, Debug};
+
+#[derive(Clone)]
+pub struct CopyableContext {
+    pub http: Arc<dyn CacheHttp>,
+    pub data: crate::Data,
+    pub guild_id: serenity::model::id::GuildId,
+    pub channel_id: serenity::model::id::ChannelId,
+}
+
+impl Debug for CopyableContext {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CopyableContext")
+            .field("http", &"Box<dyn CacheHttp>")
+            .field("data", &self.data)
+            .field("guild_id", &self.guild_id)
+            .field("channel_id", &self.channel_id)
+            .finish()
+    }
+}
 
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
