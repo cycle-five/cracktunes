@@ -9,7 +9,7 @@
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
 
-## v0.3.14 (2024/09/19)
+## v0.3.14 (2024/10/28)
 - Big refactor, moving a lot of the code into modules.
 - crack-testing module for testing and developing new features without
   affecting the main bot.
