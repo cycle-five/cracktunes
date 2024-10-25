@@ -62,16 +62,20 @@ impl CrackTrackQueue {
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
     pub async fn build_display(&mut self) -> Result<(), Error> {
-        let queue = self.inner.lock().await.clone();
-        let mut res = String::new();
-        for track in queue {
-            res.push_str(&format!("{}\n", track));
-        }
-        self.display = Some(res);
+        self.display = {
+            let queue = self.inner.lock().await.clone();
+            Some(
+                queue
+                    .iter()
+                    .map(|track| track.to_string())
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            )
+        };
         Ok(())
     }
 
-    /// Clear the queue in palce.
+    /// Clear the queue in place.
     pub async fn clear(&self) {
         self.inner.lock().await.clear();
     }

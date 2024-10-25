@@ -14,22 +14,26 @@ use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
+pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
+pub const REQ_CLIENT_STR: &str = "Reqwest client";
+pub const CREATING: &str = "Creating";
 pub const NEW_FAILED: &str = "New failed";
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
 
 static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    println!("Creating a new reqwest client...");
+    println!("{}: {}...", CREATING, REQ_CLIENT_STR);
     build_configured_reqwest_client()
 });
 
 static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
-    println!("Creating a new YouTube client...");
+    println!("{}: {}...", CREATING, YOUTUBE_CLIENT_STR);
     let req_client = REQ_CLIENT.clone();
     let opts = RequestOptions {
         client: Some(req_client.clone()),
         ..Default::default()
     };
-    rusty_ytdl::search::YouTube::new_with_options(&opts).expect("Failed to build YouTube client")
+    rusty_ytdl::search::YouTube::new_with_options(&opts)
+        .expect(&format!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
 });
 
 /// Build a configured reqwest client for use in the CrackTrackClient.
@@ -38,7 +42,7 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
         .use_rustls_tls()
         .cookie_store(true)
         .build()
-        .expect("Failed to build reqwest client")
+        .expect(&format!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
 }
 
 /// Struct the holds a track who's had it's metadata queried,
@@ -107,7 +111,7 @@ impl ResolvedTrack {
     }
 }
 
-/// Implement [From] for [search::Video] to [ResolvedTrack].
+/// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
 impl From<search::Video> for ResolvedTrack {
     fn from(video: search::Video) -> Self {
         ResolvedTrack {
@@ -133,7 +137,7 @@ impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
     }
 }
 
-/// Implement [Display] for [ResolvedTrack].
+/// Implement [`Display`] for [`ResolvedTrack`].
 impl Display for ResolvedTrack {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let title = self.get_title();
