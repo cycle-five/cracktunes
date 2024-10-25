@@ -33,7 +33,7 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
         ..Default::default()
     };
     rusty_ytdl::search::YouTube::new_with_options(&opts)
-        .expect(&format!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
+        .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
 });
 
 /// Build a configured reqwest client for use in the CrackTrackClient.
@@ -42,7 +42,7 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
         .use_rustls_tls()
         .cookie_store(true)
         .build()
-        .expect(&format!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
+        .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
 }
 
 /// Struct the holds a track who's had it's metadata queried,
@@ -403,8 +403,12 @@ pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
 
 /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
 pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, Error> {
+    let query = query.replace("\"", "");
+    if query.is_empty() {
+        return Err(TrackResolveError::EmptyQuery.into());
+    }
     client
-        .suggestion(query, None)
+        .suggestion(query, Some(search::LanguageTags::EN))
         .await
         .map_err(Into::into)
         .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())

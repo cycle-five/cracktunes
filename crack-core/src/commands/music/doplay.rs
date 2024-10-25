@@ -102,7 +102,13 @@ pub async fn autocomplete(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
 ) -> Vec<String> {
-    suggestion(searching).await.unwrap_or_default()
+    match suggestion(searching).await {
+        Ok(x) => x,
+        Err(e) => {
+            tracing::error!("Error getting suggestions: {:?}", e);
+            vec![]
+        },
+    }
 }
 
 /// Play a song.

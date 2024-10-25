@@ -39,6 +39,8 @@ pub use thiserror::Error as ThisError;
 pub enum TrackResolveError {
     #[error("No track found")]
     NotFound,
+    #[error("Query is empty")]
+    EmptyQuery,
     #[error("Error: {0}")]
     Other(String),
     #[error("Unknown resolve error")]
