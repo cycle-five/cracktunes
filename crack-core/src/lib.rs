@@ -7,6 +7,7 @@ use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
+use crack_testing::CrackTrackClient;
 use db::worker_pool::MetadataMsg;
 use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
@@ -335,6 +336,7 @@ pub struct DataInner {
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
+    pub ct_client: CrackTrackClient,
 }
 
 // /// Get the default topgg client
@@ -512,6 +514,7 @@ impl Default for DataInner {
             activity_user_map: Arc::new(dashmap::DashMap::new()),
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
+            ct_client: CrackTrackClient::default(),
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),

@@ -3,7 +3,6 @@ use crate::music::query::query_type_from_url;
 use crate::music::query::QueryType;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::utils::edit_embed_response2;
-use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
@@ -21,6 +20,7 @@ use crate::{
     utils::get_track_handle_metadata,
     Context, Data, Error,
 };
+use crate::{http_utils, CrackedResult};
 use ::serenity::all::CommandInteraction;
 use ::serenity::{
     all::{Message, UserId},
@@ -32,6 +32,7 @@ use crack_types::Mode;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call};
+use std::collections::VecDeque;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -95,7 +96,7 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
-use crack_testing::suggestion;
+use crack_testing::{suggestion, ResolvedTrack};
 
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete(
@@ -157,7 +158,13 @@ pub async fn optplay(
 
 /// Play a local file.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(slash_command, prefix_command, guild_only)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    category = "Music",
+    check = "cmd_check_music"
+)]
 pub async fn playfile(
     ctx: Context<'_>,
     #[flag]
@@ -171,12 +178,63 @@ pub async fn playfile(
     play_internal(ctx, None, Some(file), None).await
 }
 
+use songbird::input::{Input as SongbirdInput, YoutubeDl};
+
+/// Enqueue an extrernal queue of resolved tracks to the internal queue
+/// for the bot in songbird.
+pub async fn enqueue_resolved_tracks(
+    call: Arc<Mutex<Call>>,
+    tracks: VecDeque<ResolvedTrack>,
+) -> Vec<TrackHandle> {
+    let mut handler = call.lock().await;
+    let http_client = http_utils::get_client_old();
+    let mut out_tracks: Vec<TrackHandle> = Vec::new();
+    for track in tracks.iter() {
+        let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+        let res = handler
+            .enqueue_input(Into::<SongbirdInput>::into(ytdl))
+            .await;
+        out_tracks.push(res);
+    }
+    out_tracks
+}
+
+/// Play a youtube playlist.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    guild_only,
+    category = "Music",
+    check = "cmd_check_music"
+)]
+pub async fn playytplaylist(
+    ctx: Context<'_>,
+    #[rest]
+    #[description = "Playlist URL."]
+    query: String,
+) -> Result<(), Error> {
+    let crack_client = ctx.data().ct_client.clone();
+    // This retrieves the call that the bot is connected to or joins the author's channel.
+    // We error hear if the bot can't join the channel, or if the author isn't in a channel,
+    // or the bot is in another channel, etc. So this should happen first.
+    let call = get_call_or_join_author(ctx).await?;
+    // This gets the metadata for all the tracks in the playlist.
+    // At this point we should have enough information to determine if any of the tracks
+    // aren't allowed or able to be played (possibly?) and display the who list of them.
+    let tracks = crack_client.resolve_playlist(&query).await?;
+    // This enqueues the tracks into the internal queue for the bot.
+    let _ = enqueue_resolved_tracks(call, tracks).await;
+    Ok(())
+}
+
 use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
 
 /// Does the actual playing of the song, all the other commands use this.
+//#[tracing::instrument(skip(ctx))]
 #[cfg(not(tarpaulin_include))]
-#[tracing::instrument(skip(ctx))]
 pub async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,

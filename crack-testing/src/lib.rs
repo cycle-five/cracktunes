@@ -109,6 +109,11 @@ impl ResolvedTrack {
             return "UNKNOWN_DURATION".to_string();
         }
     }
+
+    /// Get the metadata of the track.
+    pub fn get_metdata(&self) -> Option<AuxMetadata> {
+        self.metadata.clone()
+    }
 }
 
 /// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].

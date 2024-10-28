@@ -69,6 +69,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             playfile(),
             playlog(),
             playnext(),
+            playytplaylist(),
             queue(),
             remove(),
             repeat(),
