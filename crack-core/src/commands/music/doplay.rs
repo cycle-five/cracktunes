@@ -226,10 +226,11 @@ pub async fn playytplaylist(
     let tracks = crack_client.resolve_playlist(&query).await?;
     let _ = crack_client.build_display().await;
     let out_str = crack_client.get_display();
-    let _ = ctx.send_reply(CrackedMessage::Other(out_str), true).await?;
+    tracing::warn!("out_str: {}", out_str);
+    let _ = ctx.send_reply_embed(CrackedMessage::Other(out_str)).await?;
     // This enqueues the tracks into the internal queue for the bot.
     let _ = enqueue_resolved_tracks(call, tracks).await;
-    let _ = ctx.send_reply(CrackedMessage::PlaylistQueued, true).await?;
+    let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
 

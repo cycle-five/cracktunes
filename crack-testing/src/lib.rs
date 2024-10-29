@@ -36,6 +36,11 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
         .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
 });
 
+static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient> = Lazy::new(|| {
+    println!("{CREATING}: CrackTrackClient...");
+    CrackTrackClient::new_with_clients(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone())
+});
+
 /// Build a configured reqwest client for use in the CrackTrackClient.
 pub fn build_configured_reqwest_client() -> reqwest::Client {
     reqwest::ClientBuilder::new()
@@ -71,42 +76,42 @@ impl ResolvedTrack {
     /// Get the title of the track.
     pub fn get_title(&self) -> String {
         if let Some(search_video) = &self.search_video {
-            return search_video.title.clone();
+            search_video.title.clone()
         } else if let Some(metadata) = &self.metadata {
-            return metadata.title.clone().unwrap_or_default();
+            metadata.title.clone().unwrap_or_default()
         } else if let Some(details) = &self.details {
-            return details.title.clone();
+            details.title.clone()
         } else {
-            return "UNKNOWN_TITLE".to_string();
+            "UNKNOWN_TITLE".to_string()
         }
     }
 
     /// Get the URL of the track.
     pub fn get_url(&self) -> String {
         if let Some(search_video) = &self.search_video {
-            return search_video.url.clone();
+            search_video.url.clone()
         } else if let Some(metadata) = &self.metadata {
-            return metadata.source_url.clone().unwrap_or_default();
+            metadata.source_url.clone().unwrap_or_default()
         } else if let Some(details) = &self.details {
-            return details.video_url.clone();
+            details.video_url.clone()
         } else {
-            return "UNKNOWN_URL".to_string();
+            "UNKNOWN_URL".to_string()
         }
     }
 
     /// Get the duration of the track.
     pub fn get_duration(&self) -> String {
         if let Some(metadata) = &self.metadata {
-            return get_human_readable_timestamp(metadata.duration);
+            get_human_readable_timestamp(metadata.duration)
         } else if let Some(details) = &self.details {
             let duration =
                 Duration::from_secs(details.length_seconds.parse::<u64>().unwrap_or_default());
-            return get_human_readable_timestamp(Some(duration));
+            get_human_readable_timestamp(Some(duration))
         } else if let Some(search_video) = &self.search_video {
             let duration = Duration::from_millis(search_video.duration);
-            return get_human_readable_timestamp(Some(duration));
+            get_human_readable_timestamp(Some(duration))
         } else {
-            return "UNKNOWN_DURATION".to_string();
+            "UNKNOWN_DURATION".to_string()
         }
     }
 
@@ -308,9 +313,14 @@ impl CrackTrackClient {
         self.resolve_track(query).await
     }
 
-    pub async fn resolve_search(&self, query: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
-        let search_results = self.yt_client.search(query, None).await?;
-        let mut queue = VecDeque::new();
+    /// Resolve a search query and return a queue of tracks.
+    pub async fn resolve_search(&self, query: &str) -> Result<Vec<ResolvedTrack>, Error> {
+        let search_options = rusty_ytdl::search::SearchOptions {
+            limit: 5,
+            ..Default::default()
+        };
+        let search_results = self.yt_client.search(query, Some(&search_options)).await?;
+        let mut queue = Vec::new();
         for result in search_results {
             let video = match result {
                 SearchResult::Video(video) => video,
@@ -319,9 +329,18 @@ impl CrackTrackClient {
             let video_url = video.url.clone();
             let query = QueryType::VideoLink(video_url);
             let track = self.resolve_track(query).await?;
-            queue.push_back(track);
+            queue.push(track);
         }
         Ok(queue)
+    }
+
+    /// Get a suggestion autocomplete from a search instead of the suggestion api.
+    pub async fn resolve_suggestion_search(&self, query: &str) -> Result<Vec<String>, Error> {
+        let tracks = self.resolve_search(query).await?;
+        Ok(tracks
+            .iter()
+            .map(|track| track.to_string())
+            .collect::<Vec<String>>())
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
@@ -400,6 +419,13 @@ impl CrackTrackClient {
 }
 
 /// Get a suggestion from a query. Use the global static client.
+pub async fn suggestion2(query: &str) -> Result<Vec<String>, Error> {
+    let client = CRACK_TRACK_CLIENT.clone();
+    //let client = YOUTUBE_CLIENT.clone();
+    client.resolve_suggestion_search(query).await
+}
+
+/// Get a suggestion from a query. Use the global static client.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
     //let client = CrackTrackClient::new();
     let client = YOUTUBE_CLIENT.clone();
@@ -410,7 +436,7 @@ pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
 pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, Error> {
     let query = query.replace("\"", "");
     if query.is_empty() {
-        return Err(TrackResolveError::EmptyQuery.into());
+        return Ok(Vec::new());
     }
     client
         .suggestion(query, Some(search::LanguageTags::EN))
@@ -439,6 +465,10 @@ enum Commands {
         /// The query to get suggestions for.
         query: String,
     },
+    Suggest2 {
+        /// The query to get suggestions for, second method.
+        query: String,
+    },
     Resolve {
         /// URL of the video / playlist to resolve.
         #[arg(value_parser = parse_url)]
@@ -450,12 +480,29 @@ enum Commands {
     },
 }
 
+/// Get the query type from a youtube URL. Video or playlist.
+async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
+    if url.path().contains("playlist")
+        || url.query_pairs().any(|(k, _)| k == "list") && url.path().contains("watch")
+    {
+        Ok(QueryType::PlaylistLink(url.to_string()))
+    } else {
+        Ok(QueryType::VideoLink(url.to_string()))
+    }
+}
+
 /// Match the CLI command and run the appropriate function.
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let mut client = CrackTrackClient::new();
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
+            for suggestion in res {
+                println!("{}", suggestion);
+            }
+        },
+        Commands::Suggest2 { query } => {
+            let res = suggestion2(&query).await?;
             for suggestion in res {
                 println!("{}", suggestion);
             }
@@ -553,6 +600,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_suggestion2() {
+        if env::var("CI").is_ok() {
+            return;
+        }
+        let client = CrackTrackClient {
+            req_client: reqwest::Client::new(),
+            yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
+            ..Default::default()
+        };
+
+        let res = client
+            .resolve_suggestion_search("molly nilsson")
+            .await
+            .expect("No results");
+        assert_eq!(res.len(), 10);
+        assert_eq!(
+            res.iter()
+                .filter(|x| x.starts_with("molly nilsson"))
+                .collect::<Vec<_>>()
+                .len(),
+            10
+        );
+    }
+
+    #[tokio::test]
     async fn test_suggestion() {
         if env::var("CI").is_ok() {
             return;
@@ -624,5 +696,28 @@ mod tests {
 
         let disp: String = client.get_display();
         assert!(disp.contains("Molly Nilsson"));
+    }
+
+    #[tokio::test]
+    async fn test_yt_url_type() {
+        let urls = vec![
+            "https://www.youtube.com/watch?v=X9ukSm5gmKk",
+            "https://www.youtube.com/watch?v=X9ukSm5gmKk&list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
+            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
+        ];
+        let want_playlist = vec![false, true, true];
+        let urls = urls
+            .iter()
+            .map(|x| url::Url::parse(x).expect("Failed to parse URL"))
+            .collect::<Vec<_>>();
+
+        for (url, want) in urls.iter().zip(want_playlist) {
+            let res = yt_url_type(&url).await.expect("Failed to get URL type");
+            match res {
+                QueryType::VideoLink(_) => assert!(!want),
+                QueryType::PlaylistLink(_) => assert!(want),
+                _ => assert!(false),
+            }
+        }
     }
 }
