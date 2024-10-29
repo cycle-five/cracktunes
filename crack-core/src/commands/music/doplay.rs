@@ -21,18 +21,15 @@ use crate::{
     Context, Data, Error,
 };
 use crate::{http_utils, CrackedResult};
-use ::serenity::all::CommandInteraction;
 use ::serenity::{
-    all::{Message, UserId},
+    all::{CommandInteraction, Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
-use crack_types::get_human_readable_timestamp;
-use crack_types::metadata::search_result_to_aux_metadata;
-use crack_types::Mode;
-use crack_types::NewAuxMetadata;
+use crack_types::{
+    get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
+};
 use poise::serenity_prelude as serenity;
 use songbird::{tracks::TrackHandle, Call};
-use std::collections::VecDeque;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -184,7 +181,7 @@ use songbird::input::{Input as SongbirdInput, YoutubeDl};
 /// for the bot in songbird.
 pub async fn enqueue_resolved_tracks(
     call: Arc<Mutex<Call>>,
-    tracks: VecDeque<ResolvedTrack>,
+    tracks: Vec<ResolvedTrack>,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
     let http_client = http_utils::get_client_old();

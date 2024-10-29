@@ -510,16 +510,14 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         Commands::Resolve { url } => {
             let tracks = match yt_url_type(&url).await? {
                 QueryType::VideoLink(url) => {
-                    vec![client.resolve_track(QueryType::VideoLink(url)).await]
+                    vec![client.resolve_track(QueryType::VideoLink(url)).await?]
                 },
-                QueryType::PlaylistLink(url) => {
-                    client.resolve_playlist(url.as_str()).await
-                },
+                QueryType::PlaylistLink(url) => client.resolve_playlist(url.as_str()).await?,
                 _ => unimplemented!(),
             };
             // // let query = QueryType::VideoLink(url.to_string());
             // let res = client.resolve_playlist(url.as_str()).await?;
-            for track in res {
+            for track in tracks {
                 println!("Resolved: {}", track);
                 let _ = client.enqueue_track(track).await;
             }
