@@ -344,7 +344,7 @@ impl CrackTrackClient {
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
-    pub async fn resolve_playlist(&self, url: &str) -> Result<VecDeque<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist(&self, url: &str) -> Result<Vec<ResolvedTrack>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
@@ -355,7 +355,7 @@ impl CrackTrackClient {
         &self,
         url: &str,
         limit: u64,
-    ) -> Result<VecDeque<ResolvedTrack>, Error> {
+    ) -> Result<Vec<ResolvedTrack>, Error> {
         let req_options = RequestOptions {
             client: Some(self.req_client.clone()),
             ..Default::default()
@@ -368,7 +368,7 @@ impl CrackTrackClient {
         let search_options = Some(&search_options);
         let res = rusty_ytdl::search::Playlist::get(url, search_options).await?;
 
-        let mut queue = VecDeque::new();
+        let mut queue = Vec::new();
 
         for video in res.videos {
             let track = ResolvedTrack {
@@ -377,7 +377,7 @@ impl CrackTrackClient {
                 ..Default::default()
             };
             println!("Resolved: {}", track);
-            queue.push_back(track);
+            queue.push(track);
         }
         Ok(queue)
     }
@@ -465,7 +465,7 @@ enum Commands {
         /// The query to get suggestions for.
         query: String,
     },
-    Suggest2 {
+    SuggestNew {
         /// The query to get suggestions for, second method.
         query: String,
     },
@@ -501,15 +501,24 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
                 println!("{}", suggestion);
             }
         },
-        Commands::Suggest2 { query } => {
+        Commands::SuggestNew { query } => {
             let res = suggestion2(&query).await?;
             for suggestion in res {
                 println!("{}", suggestion);
             }
         },
         Commands::Resolve { url } => {
-            // let query = QueryType::VideoLink(url.to_string());
-            let res = client.resolve_playlist(url.as_str()).await?;
+            let tracks = match yt_url_type(&url).await? {
+                QueryType::VideoLink(url) => {
+                    vec![client.resolve_track(QueryType::VideoLink(url)).await]
+                },
+                QueryType::PlaylistLink(url) => {
+                    client.resolve_playlist(url.as_str()).await
+                },
+                _ => unimplemented!(),
+            };
+            // // let query = QueryType::VideoLink(url.to_string());
+            // let res = client.resolve_playlist(url.as_str()).await?;
             for track in res {
                 println!("Resolved: {}", track);
                 let _ = client.enqueue_track(track).await;
