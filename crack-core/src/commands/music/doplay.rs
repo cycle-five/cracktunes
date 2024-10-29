@@ -215,7 +215,7 @@ pub async fn playytplaylist(
     #[description = "Playlist URL."]
     query: String,
 ) -> Result<(), Error> {
-    let crack_client = ctx.data().ct_client.clone();
+    let mut crack_client = ctx.data().ct_client.clone();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
@@ -224,8 +224,12 @@ pub async fn playytplaylist(
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
     let tracks = crack_client.resolve_playlist(&query).await?;
+    let _ = crack_client.build_display().await;
+    let out_str = crack_client.get_display();
+    let _ = ctx.send_reply(CrackedMessage::Other(out_str), true).await?;
     // This enqueues the tracks into the internal queue for the bot.
     let _ = enqueue_resolved_tracks(call, tracks).await;
+    let _ = ctx.send_reply(CrackedMessage::PlaylistQueued, true).await?;
     Ok(())
 }
 
