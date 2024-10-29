@@ -529,6 +529,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_track() {
+        if env::var("CI").is_ok() {
+            return;
+        }
+
         let query = QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string());
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
@@ -550,6 +554,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_suggestion() {
+        if env::var("CI").is_ok() {
+            return;
+        }
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
@@ -572,6 +579,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_suggestion_function() {
+        if env::var("CI").is_ok() {
+            return;
+        }
         let client = YOUTUBE_CLIENT.clone();
         let res = suggestion_yt(client.clone(), "molly nilsson").await;
         if env::var("CI").is_ok() {
@@ -584,6 +594,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_enqueue_query() {
+        if env::var("CI").is_ok() {
+            return;
+        }
         let mut client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
