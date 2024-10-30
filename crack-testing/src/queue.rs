@@ -125,6 +125,11 @@ impl CrackTrackQueue {
         self.inner.lock().await.insert(index, track);
     }
 
+    /// Append a vector of tracks to the end of the queue.
+    pub async fn append_vec(&self, vec: Vec<ResolvedTrack>) {
+        self.inner.lock().await.append(&mut VecDeque::from(vec));
+    }
+
     /// Append another queue to the end of this queue.
     pub async fn append(&self, other: &mut VecDeque<ResolvedTrack>) {
         self.inner.lock().await.append(other);

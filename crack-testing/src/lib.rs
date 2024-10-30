@@ -400,6 +400,14 @@ impl CrackTrackClient {
         Ok(())
     }
 
+    /// Append vec of tracks to the queue.
+    pub async fn append_queue(&mut self, tracks: Vec<ResolvedTrack>) -> Result<(), Error> {
+        for track in tracks {
+            let _ = self.q.push_back(track).await;
+        }
+        Ok(())
+    }
+
     /// Build the display string for the queue.
     /// This is separate because it needs to be used non-async,
     /// but must be created async.
@@ -446,7 +454,7 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
 }
 
 /// Args struct for the CLI.
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(
     version = "1.0",
     author = "Cycle Five <cycle.five@proton.me>",
@@ -459,7 +467,7 @@ struct Cli {
 }
 
 /// The command to run.
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     Suggest {
         /// The query to get suggestions for.
@@ -492,20 +500,20 @@ async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
 }
 
 /// Match the CLI command and run the appropriate function.
+#[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let mut client = CrackTrackClient::new();
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
-            for suggestion in res {
-                println!("{}", suggestion);
-            }
+            tracing::info!("Suggestions: {res:?}");
+            // for suggestion in res {
+            //     println!("{}", suggestion);
+            // }
         },
         Commands::SuggestNew { query } => {
             let res = suggestion2(&query).await?;
-            for suggestion in res {
-                println!("{}", suggestion);
-            }
+            tracing::info!("Suggestions: {res:?}");
         },
         Commands::Resolve { url } => {
             let tracks = match yt_url_type(&url).await? {
@@ -513,14 +521,12 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
                     vec![client.resolve_track(QueryType::VideoLink(url)).await?]
                 },
                 QueryType::PlaylistLink(url) => client.resolve_playlist(url.as_str()).await?,
-                _ => unimplemented!(),
+                _ => {
+                    tracing::error!("Unknown URL type: {url}");
+                    Vec::new()
+                },
             };
-            // // let query = QueryType::VideoLink(url.to_string());
-            // let res = client.resolve_playlist(url.as_str()).await?;
-            for track in tracks {
-                println!("Resolved: {}", track);
-                let _ = client.enqueue_track(track).await;
-            }
+            client.append_queue(tracks).await?;
         },
         Commands::Query { query } => {
             // let mut client = CrackTrackClient::new();
