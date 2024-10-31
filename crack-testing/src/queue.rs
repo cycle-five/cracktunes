@@ -1,4 +1,5 @@
 use crate::ResolvedTrack;
+use crate::EMPTY_QUEUE;
 use crack_types::Error;
 
 use rand::seq::SliceRandom;
@@ -158,7 +159,7 @@ impl Display for CrackTrackQueue {
         write!(
             f,
             "{}",
-            self.display.as_ref().unwrap_or(&"No queue".to_string())
+            self.display.as_ref().unwrap_or(&EMPTY_QUEUE.to_string())
         )
     }
 }

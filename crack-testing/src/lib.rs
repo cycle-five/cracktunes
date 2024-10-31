@@ -1,28 +1,51 @@
 pub mod queue;
+use futures::StreamExt;
 pub use queue::*;
 
+//------------------------------------
+// crack_types imports
+//------------------------------------
 use crack_types::TrackResolveError;
 use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
 use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
-
+//------------------------------------
+// External library imports
+//------------------------------------
 use clap::{Parser, Subcommand};
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
-
+//------------------------------------
+// Standard library imports
+//------------------------------------
+use futures::stream::FuturesUnordered;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
-pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
-pub const REQ_CLIENT_STR: &str = "Reqwest client";
+//------------------------------------
+// Constants
+//------------------------------------
 pub const CREATING: &str = "Creating";
+pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
+pub const EMPTY_QUEUE: &str = "Queue is empty or display not built.";
 pub const NEW_FAILED: &str = "New failed";
+pub const REQ_CLIENT_STR: &str = "Reqwest client";
 pub const UNKNOWN_TITLE: &str = "Unknown title";
 pub const UNKNOWN_URL: &str = "";
 pub const UNKNOWN_DURATION: &str = "Unknown duration";
-pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
+pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
 
+//------------------------------------
+// Module statics.
+// I did this so that I could easily make sure only one instance of the client is created
+// and that it's available to all functions in the module.
+// I've read elsewhere that this is a bit of a bad practice, and that it's better to put
+// the clients in a context struct and pass it around everywhere. Other than the potential
+// problems from it getting out of hand if the module is too big, I don't see a problem with it.
+//------------------------------------
 static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     println!("{}: {}...", CREATING, REQ_CLIENT_STR);
     build_configured_reqwest_client()
@@ -133,6 +156,13 @@ impl ResolvedTrack {
     pub fn get_metdata(&self) -> Option<AuxMetadata> {
         self.metadata.clone()
     }
+
+    pub fn suggest_string(&self) -> String {
+        let title = self.get_title();
+        //let url = self.get_url();
+        let duration = self.get_duration();
+        format!("{} • `{}`", title, duration)
+    }
 }
 
 /// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
@@ -204,7 +234,6 @@ impl Default for CrackTrackClient {
     }
 }
 
-/// Implement [CrackTrackClient].
 impl CrackTrackClient {
     /// Create a new [CrackTrackClient].
     pub fn new() -> Self {
@@ -232,8 +261,8 @@ impl CrackTrackClient {
         }
     }
 
-    /// Create a new [CrackTrackClient] with a reqwest client.
-    pub fn with_req_client(req_client: reqwest::Client) -> Self {
+    /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
+    pub fn new_with_req_client(req_client: reqwest::Client) -> Self {
         let opts = RequestOptions {
             client: Some(req_client.clone()),
             ..Default::default()
@@ -343,12 +372,41 @@ impl CrackTrackClient {
         Ok(queue)
     }
 
+    /// Resolve a search query and return a queue of tracks.
+    pub async fn resolve_search_faster(&self, query: &str) -> Result<Vec<ResolvedTrack>, Error> {
+        let search_options = rusty_ytdl::search::SearchOptions {
+            limit: 5,
+            ..Default::default()
+        };
+        let search_results = self.yt_client.search(query, Some(&search_options)).await?;
+        let mut queue = Vec::new();
+        let mut tasks =
+            FuturesUnordered::<Pin<Box<dyn Future<Output = Result<ResolvedTrack, Error>>>>>::new();
+        for result in search_results {
+            let video = match result {
+                SearchResult::Video(video) => video,
+                _ => continue,
+            };
+            let video_url = video.url.clone();
+            let query = QueryType::VideoLink(video_url);
+            let track = self.resolve_track(query);
+            tasks.push(Box::pin(track));
+            // let track = self.resolve_track(query).await?;
+            // queue.push(track);
+        }
+        while let Some(res) = tasks.next().await {
+            let track = res?;
+            queue.push(track);
+        }
+        Ok(queue)
+    }
+
     /// Get a suggestion autocomplete from a search instead of the suggestion api.
     pub async fn resolve_suggestion_search(&self, query: &str) -> Result<Vec<String>, Error> {
         let tracks = self.resolve_search(query).await?;
         Ok(tracks
             .iter()
-            .map(|track| track.to_string())
+            .map(|track| track.suggest_string())
             .collect::<Vec<String>>())
     }
 
@@ -637,9 +695,10 @@ mod tests {
             .await
             .expect("No results");
         assert_eq!(res.len(), 5);
+        println!("{res:?}");
         assert_eq!(
             res.iter()
-                .filter(|x| x.starts_with("molly nilsson"))
+                .filter(|x| x.contains("Molly Nilsson"))
                 .collect::<Vec<_>>()
                 .len(),
             5
