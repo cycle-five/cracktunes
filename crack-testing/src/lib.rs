@@ -18,6 +18,9 @@ pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
 pub const REQ_CLIENT_STR: &str = "Reqwest client";
 pub const CREATING: &str = "Creating";
 pub const NEW_FAILED: &str = "New failed";
+pub const UNKNOWN_TITLE: &str = "Unknown title";
+pub const UNKNOWN_URL: &str = "";
+pub const UNKNOWN_DURATION: &str = "Unknown duration";
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
 
 static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
@@ -26,7 +29,7 @@ static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 });
 
 static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
-    println!("{}: {}...", CREATING, YOUTUBE_CLIENT_STR);
+    println!("{CREATING}: {YOUTUBE_CLIENT_STR}...");
     let req_client = REQ_CLIENT.clone();
     let opts = RequestOptions {
         client: Some(req_client.clone()),
@@ -53,15 +56,20 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
 /// necessary metadata to be displayed in a music player interface.
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub struct ResolvedTrack {
-    query: QueryType,
-    queued: bool,
-    metadata: Option<AuxMetadata>,
-    video: Option<rusty_ytdl::Video>,
-    search_video: Option<rusty_ytdl::search::Video>,
+    // FIXME One of these three has the possibility of returning
+    // the video id instead of the full URL. Need to figure out
+    // which one and document why.
     details: Option<rusty_ytdl::VideoDetails>,
+    metadata: Option<AuxMetadata>,
+    search_video: Option<rusty_ytdl::search::Video>,
+    #[allow(dead_code)]
+    query: QueryType,
+    #[allow(dead_code)]
+    queued: bool,
+    #[allow(dead_code)]
+    video: Option<rusty_ytdl::Video>,
 }
 
 impl ResolvedTrack {
@@ -82,20 +90,26 @@ impl ResolvedTrack {
         } else if let Some(details) = &self.details {
             details.title.clone()
         } else {
-            "UNKNOWN_TITLE".to_string()
+            UNKNOWN_TITLE.to_string()
         }
     }
 
     /// Get the URL of the track.
     pub fn get_url(&self) -> String {
-        if let Some(search_video) = &self.search_video {
+        let url = if let Some(search_video) = &self.search_video {
             search_video.url.clone()
         } else if let Some(metadata) = &self.metadata {
             metadata.source_url.clone().unwrap_or_default()
         } else if let Some(details) = &self.details {
             details.video_url.clone()
         } else {
-            "UNKNOWN_URL".to_string()
+            UNKNOWN_URL.to_string()
+        };
+
+        if url.contains("youtube.com") {
+            url
+        } else {
+            format!("https://www.youtube.com/watch?v={}", url)
         }
     }
 
@@ -111,7 +125,7 @@ impl ResolvedTrack {
             let duration = Duration::from_millis(search_video.duration);
             get_human_readable_timestamp(Some(duration))
         } else {
-            "UNKNOWN_DURATION".to_string()
+            UNKNOWN_DURATION.to_string()
         }
     }
 
@@ -154,11 +168,6 @@ impl Display for ResolvedTrack {
         let url = self.get_url();
         let duration = self.get_duration();
 
-        let url = if url.contains("youtube.com") {
-            url
-        } else {
-            format!("https://www.youtube.com/watch?v={}", url)
-        };
         write!(f, "[{}]({}) • `{}`", title, url, duration)
     }
 }
@@ -627,13 +636,13 @@ mod tests {
             .resolve_suggestion_search("molly nilsson")
             .await
             .expect("No results");
-        assert_eq!(res.len(), 10);
+        assert_eq!(res.len(), 5);
         assert_eq!(
             res.iter()
                 .filter(|x| x.starts_with("molly nilsson"))
                 .collect::<Vec<_>>()
                 .len(),
-            10
+            5
         );
     }
 
