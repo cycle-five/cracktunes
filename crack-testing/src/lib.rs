@@ -161,7 +161,9 @@ impl ResolvedTrack {
         let title = self.get_title();
         //let url = self.get_url();
         let duration = self.get_duration();
-        format!("{} • `{}`", title, duration).split_off(100)
+        let mut str = format!("{} ~ `{}`", title, duration);
+        str.truncate(100);
+        str
     }
 }
 

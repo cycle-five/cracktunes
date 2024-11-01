@@ -126,7 +126,7 @@ pub async fn play(
     query: String,
 ) -> Result<(), Error> {
     // Split off the first part of the query for
-    let query = query.split("•").next().unwrap_or_default().to_string();
+    let query = query.split("~").next().unwrap_or_default().to_string();
     play_internal(ctx, None, None, Some(query)).await
 }
 
