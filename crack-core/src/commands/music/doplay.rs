@@ -93,14 +93,14 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
-use crack_testing::{suggestion, ResolvedTrack};
+use crack_testing::{suggestion2, ResolvedTrack};
 
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
 ) -> Vec<String> {
-    match suggestion(searching).await {
+    match suggestion2(searching).await {
         Ok(x) => x,
         Err(e) => {
             tracing::error!("Error getting suggestions: {:?}", e);
