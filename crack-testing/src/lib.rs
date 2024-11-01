@@ -5,8 +5,8 @@ pub use queue::*;
 //------------------------------------
 // crack_types imports
 //------------------------------------
-use crack_types::TrackResolveError;
 use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
+use crack_types::{search_video_to_aux_metadata, TrackResolveError};
 use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
 //------------------------------------
 // External library imports
@@ -366,10 +366,11 @@ impl CrackTrackClient {
                 SearchResult::Video(video) => video,
                 _ => continue,
             };
-            let video_url = video.url.clone();
-            let query = QueryType::VideoLink(video_url);
-            let track = self.resolve_track(query).await?;
-            queue.push(track);
+            queue.push(video.into());
+            // let video_url = video.url.clone();
+            // let query = QueryType::VideoLink(video_url);
+            // let track = self.resolve_track(query).await?;
+            // queue.push(track);
         }
         Ok(queue)
     }
