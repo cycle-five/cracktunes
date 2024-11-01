@@ -172,12 +172,12 @@ pub fn video_details_to_aux_metadata(video_details: &VideoDetails) -> AuxMetadat
         sample_rate: Some(48000),
         source_url: Some(video_details.video_url.clone()),
         title: Some(video_details.title.clone()),
-        thumbnail: Some(video_details.thumbnails.first().unwrap().url.clone()),
+        thumbnail: video_details.thumbnails.first().map(|x| x.url.clone()),
         ..Default::default()
     }
 }
 
-/// Convert a [rusty_ytdl::search::Video] to [AuxMetadata].
+/// Convert a [`rusty_ytdl::search::Video`] to [`AuxMetadata`].
 pub fn search_video_to_aux_metadata(video: &rusty_ytdl::search::Video) -> AuxMetadata {
     AuxMetadata {
         artist: Some(video.channel.name.clone()),
