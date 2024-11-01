@@ -115,13 +115,13 @@ impl From<&SearchResult> for NewAuxMetadata {
                 metadata.sample_rate = Some(48000);
                 metadata.source_url = Some(video.url);
                 metadata.title = Some(video.title);
-                metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
+                metadata.thumbnail = video.thumbnails.first().map(|x| x.url.clone());
             },
             SearchResult::Playlist(playlist) => {
                 metadata.title = Some(playlist.name);
                 metadata.source_url = Some(playlist.url);
                 metadata.duration = None;
-                metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
+                metadata.thumbnail = playlist.thumbnails.first().map(|x| x.url.clone());
             },
             _ => {},
         };
@@ -155,11 +155,9 @@ impl From<&VideoDetails> for NewAuxMetadata {
     }
 }
 
-/// Convert [VideoDetails] to [AuxMetadata].
+/// Convert [`VideoDetails`] to [`AuxMetadata`].
 pub fn video_details_to_aux_metadata(video_details: &VideoDetails) -> AuxMetadata {
     AuxMetadata {
-        artist: None,
-        album: None,
         date: Some(video_details.publish_date.clone()),
         channels: Some(2),
         channel: Some(video_details.owner_channel_name.clone()),
@@ -188,7 +186,7 @@ pub fn search_video_to_aux_metadata(video: &rusty_ytdl::search::Video) -> AuxMet
         sample_rate: Some(48000),
         source_url: Some(video.url.clone()),
         title: Some(video.title.clone()),
-        thumbnail: Some(video.thumbnails.first().unwrap().url.clone()),
+        thumbnail: video.thumbnails.first().map(|x| x.url.clone()),
         ..Default::default()
     }
 }
@@ -200,7 +198,7 @@ pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
         SearchResult::Playlist(playlist) => AuxMetadata {
             title: Some(playlist.name),
             source_url: Some(playlist.url),
-            thumbnail: Some(playlist.thumbnails.first().unwrap().url.clone()),
+            thumbnail: playlist.thumbnails.first().map(|x| x.url.clone()),
             ..Default::default()
         },
         _ => Default::default(),
