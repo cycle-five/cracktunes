@@ -5,8 +5,8 @@ pub use queue::*;
 //------------------------------------
 // crack_types imports
 //------------------------------------
+use crack_types::TrackResolveError;
 use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
-use crack_types::{search_video_to_aux_metadata, TrackResolveError};
 use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
 //------------------------------------
 // External library imports
