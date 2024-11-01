@@ -161,7 +161,7 @@ impl ResolvedTrack {
         let title = self.get_title();
         //let url = self.get_url();
         let duration = self.get_duration();
-        format!("{} • `{}`", title, duration)
+        format!("{} • `{}`", title, duration).split_off(100)
     }
 }
 
@@ -449,7 +449,7 @@ impl CrackTrackClient {
         Ok(queue)
     }
 
-    /// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+    /// Get a suggestion from a query. Passthrough to [`rusty_ytdl::search::YouTube::suggestion`].
     pub async fn suggestion(&self, query: &str) -> Result<Vec<String>, Error> {
         suggestion_yt(self.yt_client.clone(), query).await
     }
