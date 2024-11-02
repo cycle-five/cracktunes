@@ -524,11 +524,13 @@ impl From<&CrackedMessage> for Colour {
     }
 }
 
+/// Convert a [`CrackedMessage`] into a [`CreateEmbed`].
 impl From<&CrackedMessage> for Option<CreateEmbed> {
     fn from(message: &CrackedMessage) -> Option<CreateEmbed> {
+        // Why did I do this?
         match message {
             CrackedMessage::CreateEmbed(embed) => Some(*embed.clone()),
-            _ => None,
+            msg => Some(CreateEmbed::default().description(msg.to_string())),
         }
     }
 }

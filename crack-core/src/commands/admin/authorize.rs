@@ -22,14 +22,17 @@ pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Authorize a user to use the bot.
-#[poise::command(prefix_command, slash_command, required_permissions = "ADMINISTRATOR")]
+#[poise::command(
+    category = "Admin",
+    prefix_command,
+    slash_command,
+    required_permissions = "ADMINISTRATOR"
+)]
 #[cfg(not(tarpaulin_include))]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user to add to authorized list"] user: User,
 ) -> Result<(), Error> {
-    // let id = user_id.parse::<u64>().expect("Failed to parse user id");
-
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;

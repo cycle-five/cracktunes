@@ -161,8 +161,16 @@ impl ResolvedTrack {
         let title = self.get_title();
         //let url = self.get_url();
         let duration = self.get_duration();
-        let mut str = format!("{} ~ `{}`", title, duration);
-        str.truncate(100);
+        let dur_len = duration.len() + 3;
+        let mut str = format!("{} ({})", title, duration);
+        let len = str.len();
+        if len > 100 - dur_len {
+            let mut truncate_index = 100 - dur_len;
+            while !str.is_char_boundary(truncate_index) {
+                truncate_index -= 1;
+            }
+            str.truncate(100 - dur_len);
+        }
         str
     }
 }

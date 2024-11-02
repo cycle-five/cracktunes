@@ -38,7 +38,7 @@ pub async fn get_log_channel(
     channel_name: &str,
     guild_id: &GuildId,
     data: &Data,
-) -> Option<serenity::model::id::ChannelId> {
+) -> Option<ChannelId> {
     let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
         .get(&guild_id.into())
@@ -102,6 +102,7 @@ pub async fn update_activity_map(data: Data, presence: serenity::Presence) {
 
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
+#[tracing::instrument(skip(ctx, _framework, data_global))]
 #[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
     ctx: &serenity::all::Context,
