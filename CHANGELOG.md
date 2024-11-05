@@ -9,12 +9,13 @@
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
 
-## v0.3.14 (2024/10/28)
-- Big refactor, moving a lot of the code into modules.
-- crack-testing module for testing and developing new features without
+## v0.3.14 (2024/11/05)
+- [x] Big refactor, moving a lot of the code into modules.
+- [x] crack-testing module for testing and developing new features without
   affecting the main bot.
-- crack-types module for shared types. New modules can depend on this
+- [x] crack-types module for shared types. New modules can depend on this
   to avoid circular dependencies.
+- [x] Auto complete for `/play` brings up actual youtube search results.
 
 ## v0.3.13 (2024/09/19)
 - Dependency updates
