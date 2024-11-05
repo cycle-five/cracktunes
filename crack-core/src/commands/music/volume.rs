@@ -34,10 +34,7 @@ pub async fn volume(
 
 #[cfg(not(tarpaulin_include))]
 /// Internal method to handle volume changes.
-pub async fn volume_internal<'ctx>(
-    ctx: &'ctx Context<'_>,
-    level: Option<u32>,
-) -> Result<(), Error> {
+pub async fn volume_internal(ctx: &Context<'_>, level: Option<u32>) -> Result<(), Error> {
     use crate::guild::operations::GuildSettingsOperations;
 
     tracing::error!("volume");

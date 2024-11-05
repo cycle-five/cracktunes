@@ -276,11 +276,7 @@ impl QueryType {
         }
     }
 
-    pub async fn mode_download<'ctx>(
-        &self,
-        ctx: Context<'ctx>,
-        mp3: bool,
-    ) -> Result<bool, CrackedError> {
+    pub async fn mode_download(&self, ctx: Context<'_>, mp3: bool) -> Result<bool, CrackedError> {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         ctx.channel_id()
             .send_message(
@@ -469,9 +465,9 @@ impl QueryType {
         }
     }
 
-    pub async fn mode_rest<'ctx>(
+    pub async fn mode_rest(
         &self,
-        ctx: Context<'ctx>,
+        ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {

@@ -180,11 +180,11 @@ pub async fn _append_queue(
 
 /// Queue a list of keywords to be played from the end of the queue.
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_keyword_list_back<'a>(
+pub async fn queue_keyword_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
-    msg: &'a mut Message,
+    msg: &mut Message,
 ) -> Result<(), Error> {
     let first = queries
         .first()
@@ -236,12 +236,12 @@ pub async fn queue_vec_query_type(
 /// Queue a list of queries to be played with a given offset.
 /// N.B. The offset must be 0 < offset < queue.len() + 1
 #[cfg(not(tarpaulin_include))]
-pub async fn queue_query_list_offset<'a>(
+pub async fn queue_query_list_offset(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
     offset: usize,
-    _search_msg: &'a mut Message,
+    _search_msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 

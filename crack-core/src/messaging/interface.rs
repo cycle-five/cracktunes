@@ -203,7 +203,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 }
 
 // ------ NOW PLAYING ------ //
-// This is probably the message that the use sees //
+// This is probably the message that the user sees //
 // the most from the bot.                         //
 
 use serenity::all::Http;
@@ -373,7 +373,7 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
     reply.clone()
 }
 /// Sends a message to the user indicating that the search failed.
-pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
+pub async fn send_search_failed(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
     let _guild_id = ctx.guild_id().unwrap();
     let embed = CreateEmbed::default()
         .description(format!(
@@ -387,7 +387,7 @@ pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(),
 }
 
 /// Sends a message to the user indicating that no query was provided.
-pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
+pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
