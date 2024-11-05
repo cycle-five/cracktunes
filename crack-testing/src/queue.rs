@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 /// A [`CrackTrackQueue`] queue of tracks to be played.
 #[derive(Clone, Debug)]
 pub struct CrackTrackQueue {
+    //inner: Arc<DashMap<GuildId, VecDeque<ResolvedTrack>>>,
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
     display: Option<String>,
 }

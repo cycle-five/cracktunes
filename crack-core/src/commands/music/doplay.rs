@@ -28,7 +28,7 @@ use ::serenity::{
 use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::{tracks::TrackHandle, Call};
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -214,6 +214,7 @@ pub async fn playytplaylist(
     #[description = "Playlist URL."]
     query: String,
 ) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut crack_client = ctx.data().ct_client.clone();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
@@ -223,10 +224,12 @@ pub async fn playytplaylist(
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
     let tracks = crack_client.resolve_playlist(&query).await?;
-    let _ = crack_client.build_display().await;
-    let out_str = crack_client.get_display();
-    tracing::warn!("out_str: {}", out_str);
-    let _ = ctx.send_reply_embed(CrackedMessage::Other(out_str)).await?;
+    let _ = crack_client.build_display(guild_id).await;
+    let yt_playlist_str = crack_client.get_display(guild_id);
+    tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
+    let _ = ctx
+        .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
+        .await?;
     // This enqueues the tracks into the internal queue for the bot.
     let _ = enqueue_resolved_tracks(call, tracks).await;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
@@ -288,7 +291,7 @@ pub async fn play_internal(
     let _after_call = std::time::Instant::now();
 
     let mut search_msg = msg_int::send_search_message(&ctx).await?;
-    tracing::debug!("search response msg: {:?}", search_msg);
+    //tracing::debug!("search response msg: {:?}", search_msg.message());
 
     // determine whether this is a link or a query string
     let query_type = query_type_from_url(ctx, url, file).await?;
@@ -454,7 +457,7 @@ async fn match_mode<'a>(
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
-    search_msg: &'a mut Message,
+    search_msg: &'a mut ReplyHandle<'a>,
 ) -> CrackedResult<bool> {
     tracing::info!("mode: {:?}", mode);
 

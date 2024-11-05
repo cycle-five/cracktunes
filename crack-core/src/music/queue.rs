@@ -220,7 +220,6 @@ pub async fn queue_vec_query_type(
     _mode: Mode,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-
     let mut tracks = Vec::new();
 
     for query in queries {

@@ -30,6 +30,7 @@ use ::serenity::{
     model::channel::Message,
 };
 use crack_types::get_human_readable_timestamp;
+//use crack_types::MessageOrReplyHandle;
 use crack_types::NewAuxMetadata;
 use poise::{
     serenity_prelude::{
@@ -135,7 +136,10 @@ pub async fn edit_response_poise(
 
     match get_interaction_new(ctx) {
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
-        None => send_embed_response_poise(ctx, embed).await,
+        None => match send_embed_response_poise(ctx, embed).await {
+            Ok(msg) => msg.into_message().await.map_err(Into::into),
+            Err(e) => Err(e),
+        },
     }
 }
 
@@ -241,7 +245,7 @@ pub async fn yt_search_select(
 pub async fn send_embed_response_poise<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
     let params = SendMessageParams::default()
@@ -249,11 +253,7 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(Some(embed))
         .with_reply(is_reply);
 
-    ctx.send_message(params)
-        .await?
-        .into_message()
-        .await
-        .map_err(Into::into)
+    ctx.send_message(params).await
 }
 
 pub async fn edit_reponse_interaction(
@@ -289,18 +289,22 @@ pub async fn edit_reponse_interaction(
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-    mut msg: Message,
+    msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
             .edit_response(&ctx, EditInteractionResponse::new().add_embed(embed))
             .await
             .map_err(Into::into),
-        None => msg
-            .edit(&ctx, EditMessage::new().embed(embed))
-            .await
-            .map(|_| msg)
-            .map_err(Into::into),
+        None => {
+            msg.edit(ctx, CreateReply::default().embed(embed)).await?;
+            Ok(msg.into_message().await?)
+            // let msg = msg.into_message().await?;
+            // msg.edit(&ctx, EditMessage::new().embed(embed))
+            //     .await
+            //     .map(|_| msg)
+            //     .map_err(Into::into)
+        },
     }
 }
 
@@ -349,26 +353,27 @@ pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
-    match get_interaction_new(&ctx) {
+    let reply_handle = match get_interaction_new(&ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => {
                 // match interaction2 {
                 //     Interaction::Command(interaction3) => {
                 //         tracing::warn!("CommandInteraction");
-                interaction2
+                return interaction2
                     .edit_response(
                         &ctx.serenity_context().http,
                         EditInteractionResponse::new().content(" ").embed(embed),
                     )
                     .await
-                    .map_err(Into::into)
+                    .map_err(Into::into);
                 //     },
                 //     _ => Err(CrackedError::Other("not implemented")),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(&ctx, embed).await,
         },
         None => send_embed_response_poise(&ctx, embed).await,
-    }
+    };
+    reply_handle?.into_message().await.map_err(Into::into)
 }
 
 /// Gets the requesting user from the typemap of the track handle.

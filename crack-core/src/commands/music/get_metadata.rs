@@ -42,7 +42,7 @@ impl Debug for CopyableContext {
 )]
 pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), Error> {
     let search_msg = msg_int::send_search_message(&ctx).await?;
-    tracing::debug!("search response msg: {:?}", search_msg);
+    // tracing::debug!("search response msg: {search_msg:?}");
 
     let query_type = query_type_from_url(ctx, &query_or_url, None).await?;
 

@@ -382,7 +382,7 @@ pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(),
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
     let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
@@ -397,7 +397,9 @@ pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result
 
 /// Sends the searching message after a play command is sent.
 #[cfg(not(tarpaulin_include))]
-pub async fn send_search_message<'ctx>(ctx: &'ctx CrackContext<'_>) -> CrackedResult<Message> {
+pub async fn send_search_message<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
+) -> CrackedResult<ReplyHandle<'ctx>> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     let msg = send_embed_response_poise(ctx, embed).await?;
     Ok(msg)
@@ -410,7 +412,7 @@ pub async fn create_search_response<'ctx>(
     user_id: UserId,
     query: String,
     res: Vec<AuxMetadata>,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let author = ctx
         .author_member()
         .await
@@ -428,7 +430,9 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed)
+        .await
+        .map_err(Into::into)
 }
 
 // ---------------------- Joining Channel ---------------------------- //

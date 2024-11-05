@@ -23,7 +23,7 @@ use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_met
 use crack_types::{NewAuxMetadata, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, ReplyHandle};
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType, YouTube};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::{
@@ -399,14 +399,14 @@ impl QueryType {
         Ok(true)
     }
 
-    pub async fn mode_end(
+    pub async fn mode_end<'ctx>(
         &self,
-        ctx: Context<'_>,
+        ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,
-        search_msg: crate::Message,
+        search_reply: ReplyHandle<'ctx>,
     ) -> Result<bool, CrackedError> {
         let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let search_msg = &mut search_msg.clone();
+        let search_msg = &mut search_reply.clone().into_message().await?;
         match self {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::End, QueryType::YoutubeSearch");
@@ -468,12 +468,13 @@ impl QueryType {
         }
     }
 
-    pub async fn mode_rest(
+    pub async fn mode_rest<'ctx>(
         &self,
-        ctx: Context<'_>,
+        ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut crate::Message,
+        search_reply: &'ctx ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
+        let &mut search_msg = &mut search_reply.into_message().await?;
         match self {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME

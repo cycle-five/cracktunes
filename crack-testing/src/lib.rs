@@ -1,5 +1,4 @@
 pub mod queue;
-use futures::StreamExt;
 pub use queue::*;
 
 //------------------------------------
@@ -12,17 +11,21 @@ use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
 // External library imports
 //------------------------------------
 use clap::{Parser, Subcommand};
+use dashmap::DashMap;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
+use serenity::all::GuildId;
 //------------------------------------
 // Standard library imports
 //------------------------------------
-use futures::stream::FuturesUnordered;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 //------------------------------------
@@ -219,7 +222,7 @@ pub struct CrackTrackClient {
     req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
     video_opts: VideoOptions,
-    q: CrackTrackQueue,
+    q: Arc<DashMap<GuildId, CrackTrackQueue>>,
 }
 
 /// Implement [Default] for [CrackTrackClient].
@@ -239,7 +242,8 @@ impl Default for CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: CrackTrackQueue::new(),
+            q: Arc::new(DashMap::new()),
+            //q: CrackTrackQueue::new(),
         }
     }
 }
@@ -267,7 +271,8 @@ impl CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: CrackTrackQueue::new(),
+            q: Arc::new(DashMap::new()),
+            //q: CrackTrackQueue::new(),
         }
     }
 
@@ -287,7 +292,8 @@ impl CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: CrackTrackQueue::new(),
+            q: Arc::new(DashMap::new()),
+            //q: CrackTrackQueue::new(),
         }
     }
 
@@ -465,23 +471,42 @@ impl CrackTrackClient {
         suggestion_yt(self.yt_client.clone(), query).await
     }
 
+    pub fn ensure_queue(&self, guild: GuildId) -> CrackTrackQueue {
+        if let Some(q) = self.q.get(&guild) {
+            q.clone()
+        } else {
+            let q = CrackTrackQueue::new();
+            self.q.insert(guild, q.clone());
+            q
+        }
+    }
+
     /// Resolve a track from a query and enqueue it.
-    pub async fn enqueue_query(&mut self, query: QueryType) -> Result<(), Error> {
+    pub async fn enqueue_query(&mut self, guild: GuildId, query: QueryType) -> Result<(), Error> {
         let track = self.clone().resolve_track(query).await?;
-        let _ = self.q.push_back(track).await;
+        let _ = self.ensure_queue(guild).push_back(track).await;
         Ok(())
     }
 
     /// Enqueue a track internally.
-    pub async fn enqueue_track(&mut self, track: ResolvedTrack) -> Result<(), Error> {
-        let _ = self.q.push_back(track).await;
+    pub async fn enqueue_track(
+        &mut self,
+        guild: GuildId,
+        track: ResolvedTrack,
+    ) -> Result<(), Error> {
+        let _ = self.ensure_queue(guild).push_back(track).await;
         Ok(())
     }
 
     /// Append vec of tracks to the queue.
-    pub async fn append_queue(&mut self, tracks: Vec<ResolvedTrack>) -> Result<(), Error> {
+    pub async fn append_queue(
+        &mut self,
+        guild: GuildId,
+        tracks: Vec<ResolvedTrack>,
+    ) -> Result<(), Error> {
         for track in tracks {
-            let _ = self.q.push_back(track).await;
+            let _ = self.ensure_queue(guild).push_back(track).await;
+            //let _ = self.q.push_back(track).await;
         }
         Ok(())
     }
@@ -489,18 +514,18 @@ impl CrackTrackClient {
     /// Build the display string for the queue.
     /// This is separate because it needs to be used non-async,
     /// but must be created async.
-    pub async fn build_display(&mut self) -> Result<(), Error> {
-        self.q.build_display().await
+    pub async fn build_display(&mut self, guild: GuildId) -> Result<(), Error> {
+        self.ensure_queue(guild).build_display().await
     }
 
     /// Get the display string for the queue.
-    pub fn get_display(&self) -> String {
-        self.q.get_display()
+    pub fn get_display(&self, guild: GuildId) -> String {
+        self.ensure_queue(guild).get_display()
     }
 
     /// Get the queue.
-    pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
-        self.q.get_queue().await
+    pub async fn get_queue(&self, guild: GuildId) -> VecDeque<ResolvedTrack> {
+        self.ensure_queue(guild).get_queue().await
     }
 }
 
@@ -580,6 +605,7 @@ async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
 /// Match the CLI command and run the appropriate function.
 #[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
+    let guild = GuildId::new(1);
     let mut client = CrackTrackClient::new();
     match cli.command {
         Commands::Suggest { query } => {
@@ -604,7 +630,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
                     Vec::new()
                 },
             };
-            client.append_queue(tracks).await?;
+            client.append_queue(guild, tracks).await?;
         },
         Commands::Query { query } => {
             // let mut client = CrackTrackClient::new();
@@ -612,7 +638,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             for query in queries {
                 let res = client.resolve_search_one(query).await?;
                 println!("Resolved: {}", res);
-                let _ = client.enqueue_track(res).await;
+                let _ = client.enqueue_track(guild, res).await;
             }
         },
     }
@@ -761,6 +787,7 @@ mod tests {
         if env::var("CI").is_ok() {
             return;
         }
+        let guild = GuildId::new(1);
         let mut client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
@@ -773,7 +800,7 @@ mod tests {
             QueryType::VideoLink("https://www.youtube.com/watch?v=r-Ag3DJ_VUE".to_string()),
         ];
         for query in queries {
-            let res = client.enqueue_query(query).await;
+            let res = client.enqueue_query(guild, query).await;
             if std::env::var("CI").is_ok() {
                 assert!(res.is_err());
             } else {
@@ -782,11 +809,11 @@ mod tests {
         }
 
         client
-            .build_display()
+            .build_display(guild)
             .await
             .expect("Failed to build display");
 
-        let disp: String = client.get_display();
+        let disp: String = client.get_display(guild);
         assert!(disp.contains("Molly Nilsson"));
     }
 
