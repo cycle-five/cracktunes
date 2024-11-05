@@ -347,8 +347,9 @@ impl QueryType {
         &self,
         ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut serenity::Message,
+        search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
+        let search_msg = &mut search_reply.into_message().await?;
         match self {
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
@@ -472,9 +473,9 @@ impl QueryType {
         &self,
         ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,
-        search_reply: &'ctx ReplyHandle<'_>,
+        search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
-        let &mut search_msg = &mut search_reply.into_message().await?;
+        let search_msg = &mut search_reply.into_message().await?;
         match self {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME

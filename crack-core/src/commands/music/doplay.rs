@@ -290,7 +290,7 @@ pub async fn play_internal(
 
     let _after_call = std::time::Instant::now();
 
-    let mut search_msg = msg_int::send_search_message(&ctx).await?;
+    let search_msg = msg_int::send_search_message(&ctx).await?;
     //tracing::debug!("search response msg: {:?}", search_msg.message());
 
     // determine whether this is a link or a query string
@@ -309,7 +309,14 @@ pub async fn play_internal(
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
-    let _move_on = match_mode(ctx, call.clone(), mode, query_type.clone(), &mut search_msg).await;
+    let _move_on = match_mode(
+        ctx,
+        call.clone(),
+        mode,
+        query_type.clone(),
+        search_msg.clone(),
+    )
+    .await;
 
     let _after_move_on = std::time::Instant::now();
 
@@ -452,12 +459,13 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
 /// This is what actually does the majority of the work of the function.
 /// It finds the track that the user wants to play and then actually
 /// does the process of queuing it. This needs to be optimized.
-async fn match_mode<'a>(
+async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: QueryType,
-    search_msg: &'a mut ReplyHandle<'a>,
+    //search_msg: &'a mut ReplyHandle<'a>,
+    search_msg: ReplyHandle<'_>,
 ) -> CrackedResult<bool> {
     tracing::info!("mode: {:?}", mode);
 
@@ -470,7 +478,7 @@ async fn match_mode<'a>(
         Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
         Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
         Mode::End => query_type.mode_end(ctx, call, search_msg.clone()).await,
-        Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
+        Mode::Next => query_type.mode_next(ctx, call, search_msg.clone()).await,
         Mode::Jump => query_type.mode_jump(ctx, call).await,
         Mode::All | Mode::Reverse | Mode::Shuffle => {
             query_type.mode_rest(ctx, call, search_msg).await

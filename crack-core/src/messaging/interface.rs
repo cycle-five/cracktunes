@@ -374,14 +374,14 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
 }
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
-    let guild_id = ctx.guild_id().unwrap();
+    let _guild_id = ctx.guild_id().unwrap();
     let embed = CreateEmbed::default()
         .description(format!(
             "{}",
             CrackedError::Other("Something went wrong while parsing your query!")
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
-    let msg = send_embed_response_poise(ctx, embed).await?;
+    let _msg = send_embed_response_poise(ctx, embed).await?;
     //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
