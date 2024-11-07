@@ -81,7 +81,7 @@ pub async fn queue_track_ready_front(
 }
 
 /// Pushes a track to the back of the queue, after readying it.
-pub async fn queue_track_ready_back(
+pub async fn _queue_track_ready_back(
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
@@ -118,22 +118,19 @@ pub async fn queue_track_back(
 
     let begin = std::time::Instant::now();
     //let ready_track = ready_query(ctx, query_type.clone()).await?;
-    let mut resolved = ctx
+    let resolved = ctx
         .data()
         .ct_client
         .resolve_track(query_type.clone().into())
-        .await?;
+        .await?
+        .with_user_id(user_id);
     let after_ready = std::time::Instant::now();
     // FIXME:
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
-    let queue = queue_resolved_track_back(
-        call,
-        resolved.with_user_id(user_id),
-        http_utils::get_client_old().clone(),
-    )
-    .await;
+    let queue =
+        queue_resolved_track_back(call, resolved, http_utils::get_client_old().clone()).await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r#"
