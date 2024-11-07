@@ -56,6 +56,27 @@ pub enum QueryType {
     None,
 }
 
+/// HACK
+impl From<QueryType> for crack_types::QueryType {
+    fn from(q: QueryType) -> Self {
+        match q {
+            QueryType::Keywords(keywords) => crack_types::QueryType::Keywords(keywords),
+            QueryType::KeywordList(keywords_list) => {
+                crack_types::QueryType::KeywordList(keywords_list)
+            },
+            QueryType::VideoLink(url) => crack_types::QueryType::VideoLink(url),
+            QueryType::SpotifyTracks(tracks) => crack_types::QueryType::SpotifyTracks(tracks),
+            QueryType::PlaylistLink(url) => crack_types::QueryType::PlaylistLink(url),
+            QueryType::File(file) => crack_types::QueryType::File(file),
+            QueryType::NewYoutubeDl((src, metadata)) => {
+                crack_types::QueryType::NewYoutubeDl((src, metadata))
+            },
+            QueryType::YoutubeSearch(query) => crack_types::QueryType::YoutubeSearch(query),
+            QueryType::None => crack_types::QueryType::None,
+        }
+    }
+}
+
 pub struct Queries {
     queries: Vec<QueryType>,
 }

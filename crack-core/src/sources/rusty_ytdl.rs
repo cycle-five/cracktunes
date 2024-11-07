@@ -296,6 +296,7 @@ impl MediaSourceStream {
 impl Read for MediaSourceStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Get the current tokio runtime
+        //tokio::task::spawn_blocking(move || handle.block_on(async { self.read_async(buf).await }))
         let handle = HANDLE.lock().unwrap().clone().unwrap();
         tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
     }

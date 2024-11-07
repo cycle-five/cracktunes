@@ -17,7 +17,7 @@ use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
-use serenity::all::GuildId;
+use serenity::all::{GuildId, UserId};
 //------------------------------------
 // Standard library imports
 //------------------------------------
@@ -82,7 +82,7 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
 /// Struct the holds a track who's had it's metadata queried,
 /// and thus has a video URI associated with it, and it has all the
 /// necessary metadata to be displayed in a music player interface.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ResolvedTrack {
     // FIXME One of these three has the possibility of returning
     // the video id instead of the full URL. Need to figure out
@@ -96,6 +96,22 @@ pub struct ResolvedTrack {
     queued: bool,
     #[allow(dead_code)]
     video: Option<rusty_ytdl::Video>,
+    // requesting user
+    user_id: UserId,
+}
+
+impl Default for ResolvedTrack {
+    fn default() -> Self {
+        ResolvedTrack {
+            query: QueryType::None,
+            user_id: UserId::new(1),
+            details: None,
+            metadata: None,
+            search_video: None,
+            video: None,
+            queued: false,
+        }
+    }
 }
 
 impl ResolvedTrack {
@@ -103,8 +119,14 @@ impl ResolvedTrack {
     pub fn new(query: QueryType) -> Self {
         ResolvedTrack {
             query,
+            user_id: UserId::new(1),
             ..Default::default()
         }
+    }
+
+    pub fn with_user_id(mut self, user_id: UserId) -> Self {
+        self.user_id = user_id;
+        self
     }
 
     /// Get the title of the track.
@@ -156,10 +178,16 @@ impl ResolvedTrack {
     }
 
     /// Get the metadata of the track.
-    pub fn get_metdata(&self) -> Option<AuxMetadata> {
+    pub fn get_metadata(&self) -> Option<AuxMetadata> {
         self.metadata.clone()
     }
 
+    /// Return the user id of the user who requested the track.
+    pub fn get_requesting_user(&self) -> UserId {
+        self.user_id
+    }
+
+    /// Get the autocomplete suggestion string for the track.
     pub fn suggest_string(&self) -> String {
         let title = self.get_title();
         //let url = self.get_url();
@@ -178,6 +206,14 @@ impl ResolvedTrack {
     }
 }
 
+// impl From<ResolvedTrack> for songbird::Input {
+//     fn from(track: ResolvedTrack) -> Self {
+//         let client = REQ_CLIENT.clone();
+//         let ytdl = YoutubeDl::new(client, track.get_url());
+//         songbird::Input::from(ytdl)
+//     }
+// }
+
 /// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
 impl From<search::Video> for ResolvedTrack {
     fn from(video: search::Video) -> Self {
@@ -189,7 +225,7 @@ impl From<search::Video> for ResolvedTrack {
     }
 }
 
-/// Implement [From] for ([rusty_ytdl::Video], VideoDetails, AuxMetadata) to [ResolvedTrack].
+/// Implement [`From`] for ([`rusty_ytdl::Video`], [`VideoDetails`], [`AuxMetadata`]) to [`ResolvedTrack`].
 impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
     fn from(
         (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
@@ -330,6 +366,7 @@ impl CrackTrackClient {
         }
     }
 
+    /// Resolve a URL and return a single track.
     async fn resolve_url(&self, url: &str) -> Result<ResolvedTrack, Error> {
         let request_options = RequestOptions {
             client: Some(self.req_client.clone()),
@@ -352,11 +389,8 @@ impl CrackTrackClient {
         })
     }
 
+    /// Resolve a search query and return a single track.
     pub async fn resolve_search_one(&self, query: &str) -> Result<ResolvedTrack, Error> {
-        // let search_options = rusty_ytdl::search::SearchOptions {
-        //     client: Some(self.req_client.clone()),
-        //     ..Default::default()
-        // };
         let search_results = self.yt_client.search_one(query, None).await?;
         let video = match search_results {
             Some(SearchResult::Video(result)) => result,
@@ -381,10 +415,6 @@ impl CrackTrackClient {
                 _ => continue,
             };
             queue.push(video.into());
-            // let video_url = video.url.clone();
-            // let query = QueryType::VideoLink(video_url);
-            // let track = self.resolve_track(query).await?;
-            // queue.push(track);
         }
         Ok(queue)
     }

@@ -184,18 +184,76 @@ use songbird::input::{Input as SongbirdInput, YoutubeDl};
 pub async fn enqueue_resolved_tracks(
     call: Arc<Mutex<Call>>,
     tracks: Vec<ResolvedTrack>,
+    mode: crack_types::Mode,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
     let http_client = http_utils::get_client_old();
     let mut out_tracks: Vec<TrackHandle> = Vec::new();
-    for track in tracks.iter() {
-        let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-        let res = handler
-            .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-            .await;
-        out_tracks.push(res);
+    match mode {
+        crack_types::Mode::End => {
+            for track in tracks.iter() {
+                let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+                let res = handler
+                    .enqueue_input(Into::<SongbirdInput>::into(ytdl))
+                    .await;
+                //handler.queue()
+                out_tracks.push(res);
+            }
+        },
+        //crack_types::Mode::Next => {},
+        _ => unimplemented!(),
     }
     out_tracks
+}
+
+// /// Pushes a track to the front of the queue, after readying it.
+// pub async fn queue_track_ready_front(
+//     call: &Arc<Mutex<Call>>,
+//     ready_track: TrackReadyData,
+// ) -> Result<Vec<TrackHandle>, CrackedError> {
+//     let mut handler = call.lock().await;
+//     let track_handle = handler.enqueue_input(ready_track.source).await;
+//     let new_q = handler.queue().current_queue();
+//     // Zeroth index: Currently playing track
+//     // First index: Current next track
+//     // Second index onward: Tracks to be played, we get in here most likely,
+//     // but if we're in one of the first two we don't want to do anything.
+//     if new_q.len() >= 3 {
+//         //return Ok(new_q);
+//         handler.queue().modify_queue(|queue| {
+//             let back = queue.pop_back().unwrap();
+//             queue.insert(1, back);
+//         });
+//     }
+
+//     drop(handler);
+//     let mut map = track_handle.typemap().write().await;
+//     map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
+//     map.insert::<RequestingUser>(RequestingUser::UserId(
+//         ready_track.user_id.unwrap_or(UserId::new(1)),
+//     ));
+//     drop(map);
+//     Ok(new_q)
+// }
+
+/// Pushes a track to the back of the queue, after readying it.
+pub async fn queue_resolved_track_back(
+    call: &Arc<Mutex<Call>>,
+    track: ResolvedTrack,
+    http_client: reqwest_old::Client,
+    //user_id: Option<UserId>,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+    let track_handle = handler
+        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
+        .await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+    let mut map = track_handle.typemap().write().await;
+    map.insert::<NewAuxMetadata>(NewAuxMetadata(track.get_metadata().unwrap_or_default()));
+    map.insert::<RequestingUser>(RequestingUser::from(track.get_requesting_user()));
+    Ok(new_q)
 }
 
 /// Play a youtube playlist.
@@ -219,11 +277,11 @@ pub async fn playytplaylist(
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
-    let call = get_call_or_join_author(ctx).await?;
+    let _call = get_call_or_join_author(ctx).await?;
     // This gets the metadata for all the tracks in the playlist.
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
-    let tracks = crack_client.resolve_playlist(&query).await?;
+    let _tracks = crack_client.resolve_playlist(&query).await?;
     let _ = crack_client.build_display(guild_id).await;
     let yt_playlist_str = crack_client.get_display(guild_id);
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
@@ -231,7 +289,7 @@ pub async fn playytplaylist(
         .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
         .await?;
     // This enqueues the tracks into the internal queue for the bot.
-    let _ = enqueue_resolved_tracks(call, tracks).await;
+    //let _ = enqueue_resolved_tracks(call, tracks).await;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
@@ -630,13 +688,20 @@ pub enum RequestingUser {
     UserId(UserId),
 }
 
-/// Convert `[Option<UserId>]` to `[RequestingUser]`.
+/// Convert [`Option<UserId>`] to [`RequestingUser`].
 impl From<Option<UserId>> for RequestingUser {
     fn from(user_id: Option<UserId>) -> Self {
         match user_id {
             Some(user_id) => RequestingUser::UserId(user_id),
             None => RequestingUser::default(),
         }
+    }
+}
+
+/// Convert [`UserId`] to [`RequestingUser`].
+impl From<UserId> for RequestingUser {
+    fn from(user_id: UserId) -> Self {
+        RequestingUser::UserId(user_id)
     }
 }
 

@@ -1,6 +1,6 @@
 use super::QueryType;
 use crate::{
-    commands::RequestingUser,
+    commands::{queue_resolved_track_back, RequestingUser},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
@@ -114,13 +114,26 @@ pub async fn queue_track_back(
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let user_id = ctx.author().id;
+
     let begin = std::time::Instant::now();
-    let ready_track = ready_query(ctx, query_type.clone()).await?;
+    //let ready_track = ready_query(ctx, query_type.clone()).await?;
+    let mut resolved = ctx
+        .data()
+        .ct_client
+        .resolve_track(query_type.clone().into())
+        .await?;
     let after_ready = std::time::Instant::now();
     // FIXME:
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
-    let queue = queue_track_ready_back(call, ready_track).await;
+    //let queue = queue_track_ready_back(call, ready_track).await;
+    let queue = queue_resolved_track_back(
+        call,
+        resolved.with_user_id(user_id),
+        http_utils::get_client_old().clone(),
+    )
+    .await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r#"
@@ -233,6 +246,8 @@ pub async fn queue_vec_query_type(
     Ok(())
 }
 
+use crate::http_utils;
+use crack_types::YoutubeDl;
 /// Queue a list of queries to be played with a given offset.
 /// N.B. The offset must be 0 < offset < queue.len() + 1
 #[cfg(not(tarpaulin_include))]
@@ -262,31 +277,40 @@ pub async fn queue_query_list_offset(
 
     let mut tracks = Vec::new();
     for query in queries {
-        let ready_track = ready_query(ctx, query).await?;
-        // FIXME:
-        //ctx.async_send_track_metadata_write_msg(&ready_track);
-        tracks.push(ready_track);
+        let resolved = ctx.data().ct_client.resolve_track(query.into()).await?;
+        tracks.push(resolved)
     }
+    // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
+    // for query in queries {
+    //     let ready_track = ready_query(ctx, query).await?;
+    //     // FIXME:
+    //     //ctx.async_send_track_metadata_write_msg(&ready_track);
+    //     tracks.push(ready_track);
+    // }
 
-    let mut handler = call.lock().await;
-    for (idx, ready_track) in tracks.into_iter().enumerate() {
-        let input = ready_track.source;
-        let metadata = ready_track.metadata;
-        let user_id = ready_track.user_id;
+    let mut cur_q = Default::default();
+    let client = http_utils::get_client_old();
+    let len = tracks.len();
+    for (idx, resolved) in tracks.into_iter().enumerate() {
+        let metadata = resolved.get_metadata().unwrap();
+        let user_id = resolved.get_requesting_user();
+        let ytdl = YoutubeDl::new(client.clone(), resolved.get_url());
+        let input = ytdl.into();
 
-        // let mut handler = call.lock().await;
+        let mut handler = call.lock().await;
         let track_handle = handler.enqueue_input(input).await;
-        let mut map = track_handle.typemap().write().await;
-        map.insert::<NewAuxMetadata>(metadata);
-        map.insert::<RequestingUser>(RequestingUser::from(user_id));
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();
             q.insert(idx + offset, back);
-        })
+        });
+        let mut map = track_handle.typemap().write().await;
+        map.insert::<NewAuxMetadata>(NewAuxMetadata(metadata));
+        map.insert::<RequestingUser>(RequestingUser::from(user_id));
+        if idx == len - 1 {
+            cur_q = handler.queue().current_queue();
+        }
     }
 
-    let cur_q = handler.queue().current_queue();
-    drop(handler);
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 
     Ok(())
