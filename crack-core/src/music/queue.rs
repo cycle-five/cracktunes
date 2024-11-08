@@ -109,6 +109,7 @@ pub async fn queue_track_front(
 }
 
 /// Pushes a track to the front of the queue.
+#[tracing::instrument(skip(ctx, call, query_type))]
 pub async fn queue_track_back(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,

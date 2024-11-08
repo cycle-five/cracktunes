@@ -1,12 +1,14 @@
 pub mod queue;
 pub use queue::*;
+pub mod resolve;
+pub use resolve::*;
 
 //------------------------------------
 // crack_types imports
 //------------------------------------
 use crack_types::TrackResolveError;
-use crack_types::{get_human_readable_timestamp, parse_url, video_info_to_aux_metadata};
-use crack_types::{AuxMetadata, Error, QueryType, SearchResult};
+use crack_types::{parse_url, video_info_to_aux_metadata};
+use crack_types::{Error, QueryType, SearchResult};
 //------------------------------------
 // External library imports
 //------------------------------------
@@ -16,17 +18,16 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
-use rusty_ytdl::{RequestOptions, VideoDetails, VideoOptions};
-use serenity::all::{GuildId, UserId};
+use rusty_ytdl::{RequestOptions, VideoOptions};
+use serenity::all::GuildId;
 //------------------------------------
 // Standard library imports
 //------------------------------------
 use std::collections::VecDeque;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 
 //------------------------------------
 // Constants
@@ -79,178 +80,6 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
         .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
 }
 
-/// Struct the holds a track who's had it's metadata queried,
-/// and thus has a video URI associated with it, and it has all the
-/// necessary metadata to be displayed in a music player interface.
-#[derive(Clone, Debug)]
-pub struct ResolvedTrack {
-    // FIXME One of these three has the possibility of returning
-    // the video id instead of the full URL. Need to figure out
-    // which one and document why.
-    details: Option<rusty_ytdl::VideoDetails>,
-    metadata: Option<AuxMetadata>,
-    search_video: Option<rusty_ytdl::search::Video>,
-    #[allow(dead_code)]
-    query: QueryType,
-    #[allow(dead_code)]
-    queued: bool,
-    #[allow(dead_code)]
-    video: Option<rusty_ytdl::Video>,
-    // requesting user
-    user_id: UserId,
-}
-
-impl Default for ResolvedTrack {
-    fn default() -> Self {
-        ResolvedTrack {
-            query: QueryType::None,
-            user_id: UserId::new(1),
-            details: None,
-            metadata: None,
-            search_video: None,
-            video: None,
-            queued: false,
-        }
-    }
-}
-
-impl ResolvedTrack {
-    /// Create a new ResolvedTrack
-    pub fn new(query: QueryType) -> Self {
-        ResolvedTrack {
-            query,
-            user_id: UserId::new(1),
-            ..Default::default()
-        }
-    }
-
-    pub fn with_user_id(mut self, user_id: UserId) -> Self {
-        self.user_id = user_id;
-        self
-    }
-
-    /// Get the title of the track.
-    pub fn get_title(&self) -> String {
-        if let Some(search_video) = &self.search_video {
-            search_video.title.clone()
-        } else if let Some(metadata) = &self.metadata {
-            metadata.title.clone().unwrap_or_default()
-        } else if let Some(details) = &self.details {
-            details.title.clone()
-        } else {
-            UNKNOWN_TITLE.to_string()
-        }
-    }
-
-    /// Get the URL of the track.
-    pub fn get_url(&self) -> String {
-        let url = if let Some(search_video) = &self.search_video {
-            search_video.url.clone()
-        } else if let Some(metadata) = &self.metadata {
-            metadata.source_url.clone().unwrap_or_default()
-        } else if let Some(details) = &self.details {
-            details.video_url.clone()
-        } else {
-            UNKNOWN_URL.to_string()
-        };
-
-        if url.contains("youtube.com") {
-            url
-        } else {
-            format!("https://www.youtube.com/watch?v={}", url)
-        }
-    }
-
-    /// Get the duration of the track.
-    pub fn get_duration(&self) -> String {
-        if let Some(metadata) = &self.metadata {
-            get_human_readable_timestamp(metadata.duration)
-        } else if let Some(details) = &self.details {
-            let duration =
-                Duration::from_secs(details.length_seconds.parse::<u64>().unwrap_or_default());
-            get_human_readable_timestamp(Some(duration))
-        } else if let Some(search_video) = &self.search_video {
-            let duration = Duration::from_millis(search_video.duration);
-            get_human_readable_timestamp(Some(duration))
-        } else {
-            UNKNOWN_DURATION.to_string()
-        }
-    }
-
-    /// Get the metadata of the track.
-    pub fn get_metadata(&self) -> Option<AuxMetadata> {
-        self.metadata.clone()
-    }
-
-    /// Return the user id of the user who requested the track.
-    pub fn get_requesting_user(&self) -> UserId {
-        self.user_id
-    }
-
-    /// Get the autocomplete suggestion string for the track.
-    pub fn suggest_string(&self) -> String {
-        let title = self.get_title();
-        //let url = self.get_url();
-        let duration = self.get_duration();
-        let dur_len = duration.len() + 3;
-        let mut str = format!("{} ({})", title, duration);
-        let len = str.len();
-        if len > 100 - dur_len {
-            let mut truncate_index = 100 - dur_len;
-            while !str.is_char_boundary(truncate_index) {
-                truncate_index -= 1;
-            }
-            str.truncate(100 - dur_len);
-        }
-        str
-    }
-}
-
-// impl From<ResolvedTrack> for songbird::Input {
-//     fn from(track: ResolvedTrack) -> Self {
-//         let client = REQ_CLIENT.clone();
-//         let ytdl = YoutubeDl::new(client, track.get_url());
-//         songbird::Input::from(ytdl)
-//     }
-// }
-
-/// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
-impl From<search::Video> for ResolvedTrack {
-    fn from(video: search::Video) -> Self {
-        ResolvedTrack {
-            query: QueryType::VideoLink(video.url.clone()),
-            search_video: Some(video),
-            ..Default::default()
-        }
-    }
-}
-
-/// Implement [`From`] for ([`rusty_ytdl::Video`], [`VideoDetails`], [`AuxMetadata`]) to [`ResolvedTrack`].
-impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
-    fn from(
-        (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
-    ) -> Self {
-        ResolvedTrack {
-            query: QueryType::VideoLink(video.get_video_url()),
-            video: Some(video),
-            metadata: Some(aux_metadata),
-            details: Some(video_details),
-            ..Default::default()
-        }
-    }
-}
-
-/// Implement [`Display`] for [`ResolvedTrack`].
-impl Display for ResolvedTrack {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let title = self.get_title();
-        let url = self.get_url();
-        let duration = self.get_duration();
-
-        write!(f, "[{}]({}) • `{}`", title, url, duration)
-    }
-}
-
 /// Client for resolving tracks, mostly holds other clients like reqwest and rusty_ytdl.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -281,6 +110,12 @@ impl Default for CrackTrackClient {
             q: Arc::new(DashMap::new()),
             //q: CrackTrackQueue::new(),
         }
+    }
+}
+
+impl Display for CrackTrackClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CrackTrackClient")
     }
 }
 
@@ -380,13 +215,10 @@ impl CrackTrackClient {
         let info = video.get_info().await?;
         let metadata = video_info_to_aux_metadata(&info);
 
-        Ok(ResolvedTrack {
-            query: QueryType::VideoLink(url.to_string()),
-            video: Some(video),
-            metadata: Some(metadata),
-            details: Some(info.video_details),
-            ..Default::default()
-        })
+        Ok(ResolvedTrack::default()
+            .with_details(info.video_details)
+            .with_metadata(metadata)
+            .with_video(video))
     }
 
     /// Resolve a search query and return a single track.
@@ -485,11 +317,9 @@ impl CrackTrackClient {
         let mut queue = Vec::new();
 
         for video in res.videos {
-            let track = ResolvedTrack {
-                query: QueryType::VideoLink(video.url.clone()),
-                search_video: Some(video),
-                ..Default::default()
-            };
+            let track = ResolvedTrack::default()
+                .with_query(QueryType::VideoLink(video.url.clone()))
+                .with_search_video(video);
             println!("Resolved: {}", track);
             queue.push(track);
         }
@@ -512,10 +342,14 @@ impl CrackTrackClient {
     }
 
     /// Resolve a track from a query and enqueue it.
-    pub async fn enqueue_query(&mut self, guild: GuildId, query: QueryType) -> Result<(), Error> {
-        let track = self.clone().resolve_track(query).await?;
-        let _ = self.ensure_queue(guild).push_back(track).await;
-        Ok(())
+    pub async fn enqueue_query(
+        &mut self,
+        guild: GuildId,
+        query: QueryType,
+    ) -> Result<ResolvedTrack, Error> {
+        let track = self.resolve_track(query).await?;
+        let _ = self.ensure_queue(guild).push_back(track.clone()).await;
+        Ok(track)
     }
 
     /// Enqueue a track internally.
@@ -523,9 +357,9 @@ impl CrackTrackClient {
         &mut self,
         guild: GuildId,
         track: ResolvedTrack,
-    ) -> Result<(), Error> {
-        let _ = self.ensure_queue(guild).push_back(track).await;
-        Ok(())
+    ) -> Result<ResolvedTrack, Error> {
+        let _ = self.ensure_queue(guild).push_back(track.clone()).await;
+        Ok(track)
     }
 
     /// Append vec of tracks to the queue.
@@ -830,12 +664,24 @@ mod tests {
             QueryType::VideoLink("https://www.youtube.com/watch?v=r-Ag3DJ_VUE".to_string()),
         ];
         for query in queries {
-            let res = client.enqueue_query(guild, query).await;
-            if std::env::var("CI").is_ok() {
-                assert!(res.is_err());
+            if let Ok(track) = client.enqueue_query(guild, query).await {
+                println!("Enqueued: {}", track);
+                client
+                    .build_display(guild)
+                    .await
+                    .expect("Failed to build display");
+                let disp: String = client.get_display(guild);
+                println!("{}", disp);
             } else {
-                let _ = res.expect("query failed");
+                if !std::env::var("CI").is_ok() {
+                    assert!(false);
+                }
             }
+            // if std::env::var("CI").is_ok() {
+            //     assert!(res.is_err());
+            // } else {
+            //     let _ = res.expect("query failed");
+            // }
         }
 
         client
@@ -843,8 +689,14 @@ mod tests {
             .await
             .expect("Failed to build display");
 
-        let disp: String = client.get_display(guild);
-        assert!(disp.contains("Molly Nilsson"));
+        let mut q = client.get_queue(guild).await;
+        assert_eq!(q.len(), 3);
+        let first = q.pop_front().unwrap();
+        assert!(first.get_title().contains("Molly Nilsson"));
+        // let disp: String = client.get_display(guild);
+        // println!("{}", disp);
+        // // println!("{:?}", client);
+        // assert!(disp.contains("Molly Nilsson"));
     }
 
     #[tokio::test]

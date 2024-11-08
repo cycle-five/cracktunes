@@ -1111,7 +1111,7 @@ dependencies = [
  "anyhow",
  "clap",
  "crack-types",
- "dashmap 6.1.0",
+ "dashmap 5.5.3",
  "futures",
  "once_cell",
  "poise",
