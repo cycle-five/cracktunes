@@ -21,7 +21,7 @@ pub struct BotStatus<'ctx> {
     pub calling_user: String,
 }
 
-impl<'ctx> fmt::Display for BotStatus<'ctx> {
+impl fmt::Display for BotStatus<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

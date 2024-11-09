@@ -1,6 +1,6 @@
 [package]
 name = "crack-gpt"
-version = "0.3.13"
+version = "0.3.14"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -15,7 +15,7 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [dependencies]
-async-openai = "0.23"
+async-openai = "0.24.0"
 ttl_cache = "0.5"
 const_format = "0.2"
 tokio = { workspace = true }

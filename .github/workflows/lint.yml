@@ -15,15 +15,19 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+      
+      - name: "Update"
+        run: |
+          sudo apt-get update
+          sudo apt-get dist-upgrade -y 
+          sudo apt-get autoremove -y
 
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-          # rustup toolchain install nightly --profile minimal --no-self-update
+          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
           rustup default ${{ matrix.rust-version }}
           rustup update
-          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
-          # rustup component add rustfmt clippy --toolchain nightly
         shell: bash
       - 
         uses: ikalnytskyi/action-setup-postgres@v4
@@ -66,4 +70,4 @@ jobs:
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
         if: success() || failure()
-        run: cargo clippy --all -- -D clippy::all -D warnings
+        run: cargo clippy --all -- -D clippy::all -D warnings --allow clippy::needless_return

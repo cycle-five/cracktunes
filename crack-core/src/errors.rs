@@ -8,7 +8,7 @@ use crate::messaging::messages::{
     NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
-use std::error::Error as StdError;
+pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
 use audiopus::error::Error as AudiopusError;
@@ -80,6 +80,7 @@ pub enum CrackedError {
     Poise(Error),
     QueueEmpty,
     Reqwest(reqwest::Error),
+    ReqwestOld(reqwest_old::Error),
     RoleNotFound(serenity::RoleId),
     RSpotify(RSpotifyClientError),
     RSpotifyLockError(String),
@@ -188,6 +189,7 @@ impl Display for CrackedError {
             Self::PoisonError(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
+            Self::ReqwestOld(err) => f.write_str(&format!("{err}")),
             Self::RoleNotFound(role_id) => {
                 f.write_fmt(format_args!("{} {}", ROLE_NOT_FOUND, role_id))
             },
@@ -327,6 +329,13 @@ impl From<SerenityError> for CrackedError {
 impl From<reqwest::Error> for CrackedError {
     fn from(err: reqwest::Error) -> Self {
         Self::Reqwest(err)
+    }
+}
+
+/// Provides an implementation to convert a [`reqwest::Error`] to a [`CrackedError`].
+impl From<reqwest_old::Error> for CrackedError {
+    fn from(err: reqwest_old::Error) -> Self {
+        Self::ReqwestOld(err)
     }
 }
 

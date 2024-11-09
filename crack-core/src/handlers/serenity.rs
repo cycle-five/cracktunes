@@ -1,10 +1,12 @@
 use crate::{
+    // commands::queue_aux_metadata,
     db::GuildEntity,
     errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::settings::{GuildSettings, GuildSettingsMap, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig, Data,
+    BotConfig,
+    Data,
 };
 use ::serenity::{
     all::Message,
@@ -35,12 +37,13 @@ pub struct SerenityHandler {
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
-        tracing::info!("{} is connected!", ready.user.name);
+        tracing::info!(
+            "{} {}",
+            ready.user.name,
+            crate::messaging::messages::CONNECTED
+        );
 
-        ctx.set_activity(Some(ActivityData::listening(format!(
-            "{}play",
-            self.data.bot_settings.get_prefix()
-        ))));
+        ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
@@ -441,6 +444,35 @@ impl SerenityHandler {
         }
     }
 }
+
+// /// Run a worker that writes metadata to the database.
+// pub async fn queuing_worker(
+//     mut receiver: mpsc::Receiver<NewAuxMetadata>,
+//     ctx: Arc<SerenityContext>,
+// ) {
+//     while let Some(message) = receiver.recv().await {
+//         tracing::trace!("Received message in run_db_worker: {}", message);
+//         queue_aux_metadata(ctx, aux_metadata, msg).await;
+//     }
+// }
+
+// async fn queue_tracks_worker(ctx: Arc<SerenityContext>) {
+//     // Wait for work to come in on the message queue
+//     let mut queue = ctx.data.write().await.get::<Queue>().unwrap().clone();
+//     loop {
+//         let track = queue.pop();
+//         match track {
+//             Some(track) => {
+//                 // Do something with the track
+//                 tracing::info!("Track: {:?}", track);
+//             },
+//             None => {
+//                 // Wait for a bit before checking the queue again
+//                 tokio::time::sleep(Duration::from_secs(1)).await;
+//             },
+//         }
+//     }
+// }
 
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();

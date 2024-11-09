@@ -77,7 +77,9 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
     init_metrics();
-    let config = load_bot_config().await.unwrap();
+    let config = load_bot_config()
+        .await
+        .expect("Error: Failed to load bot config");
     tracing::warn!("Using config: {:?}", config);
 
     let mut client = config::poise_framework(config, event_log_async).await?;

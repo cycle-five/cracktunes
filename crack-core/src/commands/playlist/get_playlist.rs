@@ -1,9 +1,10 @@
 use crate::{
-    commands::{cmd_check_music, MyAuxMetadata},
+    commands::cmd_check_music,
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
     Context, CrackedError, Error,
 };
+use crack_types::NewAuxMetadata;
 
 /// Get a playlist
 #[cfg(not(tarpaulin_include))]
@@ -15,7 +16,7 @@ use crate::{
     rename = "get"
 )]
 pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<(), Error> {
-    let (aux_metadata, playlist_name): (Vec<MyAuxMetadata>, String) =
+    let (aux_metadata, playlist_name): (Vec<NewAuxMetadata>, String) =
         get_playlist_(ctx, playlist).await?;
     let embed = build_tracks_embed_metadata(playlist_name, aux_metadata.as_slice(), 0).await;
 
@@ -29,7 +30,7 @@ pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<
 pub async fn get_playlist_(
     ctx: Context<'_>,
     playlist: String,
-) -> Result<(Vec<MyAuxMetadata>, String), Error> {
+) -> Result<(Vec<NewAuxMetadata>, String), Error> {
     let pool = ctx
         .data()
         .database_pool
@@ -49,7 +50,7 @@ pub async fn get_playlist_(
     let aux_metadata = metadata
         .iter()
         .flat_map(|m| match aux_metadata_from_db(m) {
-            Ok(aux) => Some(MyAuxMetadata(aux.clone())),
+            Ok(aux) => Some(NewAuxMetadata(aux.clone())),
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);
                 None

@@ -1,6 +1,6 @@
 [package]
 name = "crack-types"
-version = "0.3.13"
+version = "0.3.14"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -21,8 +21,32 @@ workspace = ".."
 
 [dependencies]
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
+songbird = { workspace = true }
 serenity = { workspace = true }
-tokio = "1.40"
+tokio = { version = "1.40", features = ["rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+] }
+url = "2.5"
+thiserror = "1.0"
+humantime = "2.1"
+
+[dependencies.rspotify]
+version = "0.13"
+default-features = false
+features = ["client-reqwest", "reqwest-rustls-tls"]
+
+[dependencies.rusty_ytdl]
+version = "0.7.4"
+default-features = false
+features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

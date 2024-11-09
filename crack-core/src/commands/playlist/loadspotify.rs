@@ -1,13 +1,15 @@
 use crate::{
-    commands::{cmd_check_music, MyAuxMetadata},
+    commands::cmd_check_music,
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
     errors::verify,
     http_utils,
     messaging::message::CrackedMessage,
-    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
+    sources::spotify::{Spotify, SPOTIFY},
     utils::send_reply,
     Context, CrackedError, Error,
 };
+use crack_types::NewAuxMetadata;
+use crack_types::SpotifyTrack;
 use songbird::input::AuxMetadata;
 use url::Url;
 
@@ -54,7 +56,7 @@ pub async fn loadspotify_(
 
     let metadata = playlist_tracks
         .iter()
-        .map(Into::<MyAuxMetadata>::into)
+        .map(Into::<NewAuxMetadata>::into)
         .collect::<Vec<_>>();
 
     let db_pool = get_db_or_err!(ctx);
@@ -63,7 +65,7 @@ pub async fn loadspotify_(
     let playls = Playlist::create(db_pool, &name.clone(), ctx.author().id.get() as i64).await?;
     let guild_id_i64 = guild_id.get() as i64;
     let channel_id_i64 = channel_id.get() as i64;
-    for MyAuxMetadata(m) in metadata {
+    for NewAuxMetadata(m) in metadata {
         metadata_vec.push(m.clone());
         let res = aux_metadata_to_db_structures(&m, guild_id_i64, channel_id_i64);
         match res {

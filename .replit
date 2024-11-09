@@ -1,7 +1,7 @@
 run = "cargo build"
 hidden = ["target"]
 entrypoint = "src/main.rs"
-modules = ["rust-stable:v4-20240117-0bd73cd"]
+modules = ["rust-nightly:v4"]
 
 [packager]
 language = "rust"
@@ -10,8 +10,7 @@ language = "rust"
 packageSearch = true
 
 [nix]
-channel = "stable-22_11"
-#channel = "stable"
+channel = "stable-24_05"
 
 [gitHubImport]
 requiredFiles = [".replit", "replit.nix"]
@@ -22,7 +21,7 @@ requiredFiles = [".replit", "replit.nix"]
 pattern = "**/*.rs"
 
 [languages.rust.languageServer]
-start = "rust-analyzer"
+start = "rust-nightly-analyzer"
 
 [deployment]
 run = ["sh", "-c", "cargo run"]

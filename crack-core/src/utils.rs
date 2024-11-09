@@ -4,7 +4,7 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::{music::doplay::RequestingUser, music::MyAuxMetadata},
+    commands::music::doplay::RequestingUser,
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -29,6 +29,9 @@ use ::serenity::{
     futures::StreamExt,
     model::channel::Message,
 };
+use crack_types::get_human_readable_timestamp;
+//use crack_types::MessageOrReplyHandle;
+use crack_types::NewAuxMetadata;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -133,7 +136,10 @@ pub async fn edit_response_poise(
 
     match get_interaction_new(ctx) {
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
-        None => send_embed_response_poise(ctx, embed).await,
+        None => match send_embed_response_poise(ctx, embed).await {
+            Ok(msg) => msg.into_message().await.map_err(Into::into),
+            Err(e) => Err(e),
+        },
     }
 }
 
@@ -239,7 +245,7 @@ pub async fn yt_search_select(
 pub async fn send_embed_response_poise<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     embed: CreateEmbed,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
     let params = SendMessageParams::default()
@@ -247,11 +253,7 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(Some(embed))
         .with_reply(is_reply);
 
-    ctx.send_message(params)
-        .await?
-        .into_message()
-        .await
-        .map_err(Into::into)
+    ctx.send_message(params).await
 }
 
 pub async fn edit_reponse_interaction(
@@ -287,18 +289,22 @@ pub async fn edit_reponse_interaction(
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
-    mut msg: Message,
+    msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
             .edit_response(&ctx, EditInteractionResponse::new().add_embed(embed))
             .await
             .map_err(Into::into),
-        None => msg
-            .edit(&ctx, EditMessage::new().embed(embed))
-            .await
-            .map(|_| msg)
-            .map_err(Into::into),
+        None => {
+            msg.edit(ctx, CreateReply::default().embed(embed)).await?;
+            Ok(msg.into_message().await?)
+            // let msg = msg.into_message().await?;
+            // msg.edit(&ctx, EditMessage::new().embed(embed))
+            //     .await
+            //     .map(|_| msg)
+            //     .map_err(Into::into)
+        },
     }
 }
 
@@ -347,26 +353,27 @@ pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
-    match get_interaction_new(&ctx) {
+    let reply_handle = match get_interaction_new(&ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => {
                 // match interaction2 {
                 //     Interaction::Command(interaction3) => {
                 //         tracing::warn!("CommandInteraction");
-                interaction2
+                return interaction2
                     .edit_response(
                         &ctx.serenity_context().http,
                         EditInteractionResponse::new().content(" ").embed(embed),
                     )
                     .await
-                    .map_err(Into::into)
+                    .map_err(Into::into);
                 //     },
                 //     _ => Err(CrackedError::Other("not implemented")),
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(&ctx, embed).await,
         },
         None => send_embed_response_poise(&ctx, embed).await,
-    }
+    };
+    reply_handle?.into_message().await.map_err(Into::into)
 }
 
 /// Gets the requesting user from the typemap of the track handle.
@@ -383,9 +390,9 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
-    let MyAuxMetadata(metadata) = {
+    let NewAuxMetadata(metadata) = {
         let map = track.typemap().read().await;
-        let metadata = match map.get::<MyAuxMetadata>() {
+        let metadata = match map.get::<NewAuxMetadata>() {
             Some(my_metadata) => my_metadata,
             None => {
                 tracing::warn!("No metadata found for track: {:?}", track);
@@ -398,9 +405,9 @@ pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
 }
 
 /// Creates an embed for the first N metadata in the queue.
-async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> String {
+async fn build_queue_page_metadata(metadata: &[NewAuxMetadata], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&MyAuxMetadata> = metadata
+    let queue: Vec<&NewAuxMetadata> = metadata
         .iter()
         .skip(start_idx)
         .take(EMBED_PAGE_SIZE)
@@ -413,7 +420,7 @@ async fn build_queue_page_metadata(metadata: &[MyAuxMetadata], page: usize) -> S
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let MyAuxMetadata(t) = t;
+        let NewAuxMetadata(t) = t;
         let title = t.title.clone().unwrap_or_default();
         let url = t.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(t.duration);
@@ -488,7 +495,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
 
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
-    metadata_arr: &[MyAuxMetadata],
+    metadata_arr: &[NewAuxMetadata],
     page: usize,
 ) -> CreateEmbed {
     CreateEmbed::default()
@@ -668,25 +675,6 @@ pub fn build_footer_info(url: &str) -> (String, String, String) {
         format!("https://www.google.com/s2/favicons?domain={}", domain),
         vanity,
     )
-}
-
-/// Converts a duration into a human readable timestamp
-pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
-    match duration {
-        Some(duration) if duration == Duration::MAX => "∞".to_string(),
-        Some(duration) => {
-            let seconds = duration.as_secs() % 60;
-            let minutes = (duration.as_secs() / 60) % 60;
-            let hours = duration.as_secs() / 3600;
-
-            if hours < 1 {
-                format!("{:02}:{:02}", minutes, seconds)
-            } else {
-                format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
-            }
-        },
-        None => "∞".to_string(),
-    }
 }
 
 use serenity::prelude::SerenityError;

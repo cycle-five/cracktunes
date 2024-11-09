@@ -1,7 +1,6 @@
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, Context, CrackedError, Error};
 use crack_bf::BrainfuckProgram;
-use poise::ReplyHandle;
 use std::io::Cursor;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -37,7 +36,7 @@ pub async fn bf_internal(
     ctx: Context<'_>,
     program: String,
     input: String,
-) -> Result<ReplyHandle<'_>, CrackedError> {
+) -> Result<(), CrackedError> {
     tracing::info!("program: {program}, input: {input}");
     let mut bf = BrainfuckProgram::new(program);
 
@@ -59,18 +58,11 @@ pub async fn bf_internal(
     let string_out = cursor_to_string(output, n)?;
     tracing::info!("string_out\n{string_out}");
     let final_out = format!("```{string_out}```");
-    ctx.send_reply(CrackedMessage::Other(final_out), false)
-        .await
+    let _ = ctx
+        .send_reply(CrackedMessage::Other(final_out), false)
+        .await?;
+    Ok(())
 }
-
-// async fn cursor_to_string(mut cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {
-//     //let mut output = Vec::with_capacity(n);
-//     let output = String::new();
-//     let x = cur.into_inner().fill_buf().await?;
-//     tracing::info!("length: {}", x.len());
-//     assert_eq!(n, x.len());
-//     Ok(output)
-// }
 
 fn cursor_to_string(cur: Cursor<Vec<u8>>, n: usize) -> Result<String, Error> {
     //let mut output = Vec::with_capacity(n);

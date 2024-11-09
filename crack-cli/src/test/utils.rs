@@ -1,8 +1,8 @@
 use config_file::FromConfigFile;
+use crack_core::BotConfig;
+use crack_types::get_human_readable_timestamp;
 use poise::serenity_prelude::GuildId;
 use std::time::Duration;
-
-use crack_core::{utils::get_human_readable_timestamp, BotConfig};
 
 #[test]
 fn test_get_human_readable_timestamp() {

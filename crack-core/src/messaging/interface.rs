@@ -1,4 +1,3 @@
-use crate::commands::MyAuxMetadata;
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::{
@@ -11,12 +10,11 @@ use crate::CrackedResult;
 use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
 use crate::{
     messaging::message::CrackedMessage,
-    utils::{
-        build_footer_info, get_human_readable_timestamp, get_requesting_user,
-        get_track_handle_metadata,
-    },
+    utils::{build_footer_info, get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
+use crack_types::get_human_readable_timestamp;
+use crack_types::NewAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -205,7 +203,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 }
 
 // ------ NOW PLAYING ------ //
-// This is probably the message that the use sees //
+// This is probably the message that the user sees //
 // the most from the bot.                         //
 
 use serenity::all::Http;
@@ -241,9 +239,9 @@ pub async fn send_now_playing(
 pub fn build_now_playing_embed_metadata(
     requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
-    metadata: MyAuxMetadata,
+    metadata: NewAuxMetadata,
 ) -> CreateEmbed {
-    let MyAuxMetadata(metadata) = metadata;
+    let NewAuxMetadata(metadata) = metadata;
     //tracing::warn!("metadata: {:?}", metadata);
 
     let title = metadata.title.clone().unwrap_or_default();
@@ -296,7 +294,7 @@ pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
     let metadata = get_track_handle_metadata(track).await;
     let requesting_user = get_requesting_user(track).await.ok();
     let duration = Some(track.get_info().await.unwrap_or_default().position);
-    build_now_playing_embed_metadata(requesting_user, duration, MyAuxMetadata(metadata))
+    build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
 }
 
 // ---------------------- Lyricsd ---------------------------- //
@@ -375,21 +373,21 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateRep
     reply.clone()
 }
 /// Sends a message to the user indicating that the search failed.
-pub async fn send_search_failed<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
-    let guild_id = ctx.guild_id().unwrap();
+pub async fn send_search_failed(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
+    let _guild_id = ctx.guild_id().unwrap();
     let embed = CreateEmbed::default()
         .description(format!(
             "{}",
             CrackedError::Other("Something went wrong while parsing your query!")
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
-    let msg = send_embed_response_poise(ctx, embed).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _msg = send_embed_response_poise(ctx, embed).await?;
+    //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
 /// Sends a message to the user indicating that no query was provided.
-pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result<(), CrackedError> {
+pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
@@ -399,7 +397,9 @@ pub async fn send_no_query_provided<'ctx>(ctx: &'ctx CrackContext<'_>) -> Result
 
 /// Sends the searching message after a play command is sent.
 #[cfg(not(tarpaulin_include))]
-pub async fn send_search_message<'ctx>(ctx: &'ctx CrackContext<'_>) -> CrackedResult<Message> {
+pub async fn send_search_message<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
+) -> CrackedResult<ReplyHandle<'ctx>> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
     let msg = send_embed_response_poise(ctx, embed).await?;
     Ok(msg)
@@ -412,7 +412,7 @@ pub async fn create_search_response<'ctx>(
     user_id: UserId,
     query: String,
     res: Vec<AuxMetadata>,
-) -> Result<Message, CrackedError> {
+) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let author = ctx
         .author_member()
         .await
@@ -430,7 +430,9 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(ctx, embed).await
+    send_embed_response_poise(ctx, embed)
+        .await
+        .map_err(Into::into)
 }
 
 // ---------------------- Joining Channel ---------------------------- //

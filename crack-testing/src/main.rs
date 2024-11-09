@@ -4,7 +4,6 @@ use crack_testing::run;
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() {
-    println!("Starting server");
+    println!("Starting...");
     let _ = run().await;
-    // run();
 }

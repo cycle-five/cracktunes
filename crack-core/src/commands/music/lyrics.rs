@@ -1,11 +1,12 @@
 use crate::{
-    commands::{cmd_check_music, help, MyAuxMetadata},
+    commands::{cmd_check_music, help},
     errors::CrackedError,
     http_utils,
     messaging::interface::create_lyrics_embed,
     poise_ext::ContextExt,
     Context, Error,
 };
+use crack_types::NewAuxMetadata;
 
 /// Search for song lyrics.
 #[cfg(not(tarpaulin_include))]
@@ -57,7 +58,7 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
                 .ok_or(CrackedError::NothingPlaying)?;
 
             let lock = track_handle.typemap().read().await;
-            let MyAuxMetadata(data) = lock.get::<MyAuxMetadata>().unwrap();
+            let NewAuxMetadata(data) = lock.get::<NewAuxMetadata>().unwrap();
             tracing::info!("data: {:?}", data);
             data.track
                 .clone()

@@ -59,34 +59,50 @@ pub async fn set_global_handlers(
         },
     );
 
-    drop(handler);
+    //drop(handler);
 }
 
 /// Get the call handle for songbird.
 #[cfg(not(tarpaulin_include))]
-#[tracing::instrument]
+#[tracing::instrument(skip(ctx))]
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = songbird::get(ctx.serenity_context())
         .await
         .ok_or(CrackedError::NoSongbird)?;
 
-    // Return the call if it already exists
-    if let Some(call) = manager.get(guild_id) {
-        return Ok(call);
-    }
+    // Return the call if it already exists.
     // Otherwise, try to join the channel of the user who sent the message.
-    let channel_id = {
-        let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
-        get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
-    };
+    if let Some(call) = manager.get(guild_id) {
+        Ok(call)
+    } else {
+        let channel_id = {
+            let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
+            get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
+        };
 
-    let call: Arc<Mutex<Call>> = do_join(ctx, &manager, guild_id, channel_id).await?;
+        do_join(ctx, &manager, guild_id, channel_id)
+            .await
+            .map_err(|err| err.into())
+    }
+    // // Return the call if it already exists
+    // if let Some(call) = manager.get(guild_id) {
+    //     return Ok(call);
+    // }
+    // // Otherwise, try to join the channel of the user who sent the message.
+    // let channel_id = {
+    //     let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?;
+    //     get_voice_channel_for_user(&guild.clone(), &ctx.author().id)?
+    // };
 
-    Ok(call)
+    // let call: Arc<Mutex<Call>> = do_join(ctx, &manager, guild_id, channel_id).await?;
+
+    // Ok(call)
 }
 
 /// Join a voice channel.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument]
 pub async fn do_join(
     ctx: Context<'_>,
     manager: &songbird::Songbird,
@@ -94,7 +110,20 @@ pub async fn do_join(
     channel_id: ChannelId,
 ) -> Result<Arc<Mutex<Call>>, Error> {
     // let ctx_owned = ctx.clone();
-    tracing::warn!("Joining channel: {:?}", channel_id);
+    let guild = guild_id
+        .to_guild_cached(&ctx)
+        .ok_or(CrackedError::NoGuildCached)?
+        .clone();
+    let guild_name = guild.name;
+    let channel_name = guild
+        .channels
+        .get(&channel_id)
+        .ok_or(CrackedError::NoChannelId)?
+        .name
+        .clone();
+    tracing::warn!(
+        "Joining channel: {channel_name} ({channel_id:?}) in {guild_name} ({guild_id:?})"
+    );
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
         Err(err) => match manager.get(guild_id) {

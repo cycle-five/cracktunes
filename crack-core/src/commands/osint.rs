@@ -132,7 +132,8 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
 /// Check if a password has been pwned.
 #[poise::command(prefix_command, hide_in_help)]
 pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> {
-    let pwned = check_password_pwned(&password).await?;
+    let client = http_utils::get_client();
+    let pwned = check_password_pwned(client, &password).await?;
     let message = if pwned {
         CrackedMessage::PasswordPwned
     } else {

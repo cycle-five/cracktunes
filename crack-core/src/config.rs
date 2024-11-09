@@ -73,10 +73,10 @@ pub async fn poise_framework(
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
 
-    tracing::warn!("Using prefix: {}", config.get_prefix());
-    let up_prefix = config.get_prefix().to_ascii_uppercase();
-    // FIXME: Is this the proper way to allocate this memory?
-    let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
+    // tracing::warn!("Using prefix: {}", config.get_prefix());
+    // let up_prefix = config.get_prefix().to_ascii_uppercase();
+    // // FIXME: Is this the proper way to allocate this memory?
+    // let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
     let commands = crate::commands::all_commands();
     let _commands_map = crate::commands::all_commands_map();
@@ -89,7 +89,7 @@ pub async fn poise_framework(
         owners: config
             .owners
             .as_ref()
-            .unwrap_or(&vec![])
+            .unwrap_or(&vec![285219649921220608])
             .iter()
             .map(|id| UserId::new(*id))
             .collect(),
@@ -98,7 +98,7 @@ pub async fn poise_framework(
             prefix: Some(config.get_prefix()),
             ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
-            additional_prefixes: vec![poise::Prefix::Literal(up_prefix_cloned)],
+            additional_prefixes: vec![],
             stripped_dynamic_prefix: Some(|ctx, msg, data| {
                 Box::pin(async move {
                     // allow specific bots with specific prefixes to use bot commands for testing.
@@ -119,8 +119,6 @@ pub async fn poise_framework(
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
-                            // tracing::warn!("No guild id found");
-                            // GuildId::new(1)
                             return Ok(None);
                         },
                     };

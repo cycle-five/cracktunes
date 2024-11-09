@@ -23,10 +23,12 @@
         "./crack-bf/Cargo.toml",
         "./crack-gpt/Cargo.toml",
         "./crack-osint/Cargo.toml",
-        "./crack-voting/Cargo.toml"
+        "./crack-voting/Cargo.toml",
+        "./crack-types/Cargo.toml",
+        "./crack-testing/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
-    "rust-analyzer.checkOnSave": false,
+    "rust-analyzer.checkOnSave": true,
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
     "keyboard.dispatch": "keyCode",

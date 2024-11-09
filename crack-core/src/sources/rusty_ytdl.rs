@@ -3,67 +3,24 @@ use crate::http_utils;
 use crate::music::QueryType;
 use bytes::Buf;
 use bytes::BytesMut;
+use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::VideoOptions;
 use rusty_ytdl::{
-    search::{Playlist, SearchResult, YouTube},
+    search::{SearchResult, YouTube},
     Video, VideoInfo,
 };
 use serenity::async_trait;
-use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
 use std::fmt::Display;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use symphonia::core::io::MediaSource;
 use tokio::sync::RwLock;
 
 use super::ytdl::HANDLE;
-/// Hacky, why did I do this? `AsString`
-pub trait AsString {
-    fn as_string(&self) -> String;
-}
-
-/// Implement the `AsString` trait for the `SearchResult` enum.
-impl AsString for SearchResult {
-    fn as_string(&self) -> String {
-        match self {
-            SearchResult::Video(video) => video.title.clone(),
-            SearchResult::Playlist(playlist) => playlist.name.clone(),
-            SearchResult::Channel(channel) => channel.name.clone(),
-        }
-    }
-}
-
-/// Implement the `AsString` trait for the `VideoInfo` struct.
-impl AsString for VideoInfo {
-    fn as_string(&self) -> String {
-        self.video_details.title.clone()
-    }
-}
-
-/// Implement the `AsString` trait for the `Playlist` struct.
-impl AsString for Playlist {
-    fn as_string(&self) -> String {
-        self.name.clone()
-    }
-}
-
-/// Implement the `AsString` trait for the `YouTube` struct.
-impl AsString for YouTube {
-    fn as_string(&self) -> String {
-        "YouTube".to_string()
-    }
-}
-
-/// Implement the `AsString` trait for the `YoutubeDl` struct.
-impl AsString for YoutubeDl {
-    fn as_string(&self) -> String {
-        "YoutubeDl".to_string()
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeSearch {
@@ -74,53 +31,23 @@ pub struct RustyYoutubeSearch {
     pub query: QueryType,
 }
 
-type RustyYoutube = YouTube;
-type YtdlpYoutube = YoutubeDl;
-type YouTubeClient = either::Either<RustyYoutube, YtdlpYoutube>;
-/// More general struct to wrap the search instances. Name this better.
 #[derive(Clone, Debug)]
-pub struct FastYoutubeSearch {
+pub struct NewRustyRequest {
+    // required in param
     pub query: QueryType,
-    pub reqwest_client: reqwest::Client,
-    pub ytdl_client: YouTubeClient,
+    // optional in param
     pub url: Option<String>,
+    // out params
     pub metadata: Option<AuxMetadata>,
-    pub video: Option<Arc<VideoInfo>>,
+    pub video: Option<Video>,
 }
 
-impl FastYoutubeSearch {
-    pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
-        let req_opts = RequestOptionsBuilder::new()
-            .set_client(client.clone())
-            .build();
-        let ytdl_client = YouTube::new_with_options(&req_opts)?;
-        Ok(Self {
-            query,
-            reqwest_client: client,
-            ytdl_client: either::Left(ytdl_client),
-            url: None,
-            metadata: None,
-            video: None,
-        })
-    }
-
-    pub fn reset_search(&mut self) {
-        self.metadata = None;
-        self.url = None;
-        self.video = None;
-    }
-}
-
-impl Display for FastYoutubeSearch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            r#"FastYT: Query: {:?}
-            ytdl: {:?}"#,
-            self.query.build_query(),
-            either::for_both!(&self.ytdl_client, ytdl => ytdl.as_string()),
-        )
-    }
+#[derive(Clone, Debug)]
+pub struct NewRustyClient {
+    pub req_client: reqwest::Client,
+    pub rusty_ytdl: YouTube,
+    pub req_opts: RequestOptions,
+    pub vid_opts: VideoOptions,
 }
 
 impl Display for RustyYoutubeSearch {
@@ -184,70 +111,12 @@ impl RequestOptionsBuilder {
     }
 }
 
-/// Convert a `SearchResult` to `AuxMetadata`.
-pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
-    let mut metadata = AuxMetadata::default();
-    match res.clone() {
-        SearchResult::Video(video) => {
-            metadata.track = Some(video.title.clone());
-            metadata.artist = None;
-            metadata.album = None;
-            metadata.date = video.uploaded_at.clone();
-
-            metadata.channels = Some(2);
-            metadata.channel = Some(video.channel.name);
-            metadata.duration = Some(Duration::from_millis(video.duration));
-            metadata.sample_rate = Some(48000);
-            metadata.source_url = Some(video.url);
-            metadata.title = Some(video.title);
-            metadata.thumbnail = Some(video.thumbnails.first().unwrap().url.clone());
-        },
-        SearchResult::Playlist(playlist) => {
-            metadata.title = Some(playlist.name);
-            metadata.source_url = Some(playlist.url);
-            metadata.duration = None;
-            metadata.thumbnail = Some(playlist.thumbnails.first().unwrap().url.clone());
-        },
-        _ => {},
-    };
-    metadata
-}
-
-pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
-    let mut metadata = AuxMetadata::default();
-    tracing::info!(
-        "video_info_to_aux_metadata: {:?}",
-        video.video_details.title
-    );
-    let details = &video.video_details;
-    metadata.artist = None;
-    metadata.album = None;
-    metadata.date = Some(details.publish_date.clone());
-
-    metadata.channels = Some(2);
-    metadata.channel = Some(details.owner_channel_name.clone());
-    metadata.duration = Some(Duration::from_secs(
-        details.length_seconds.parse::<u64>().unwrap_or_default(),
-    ));
-    metadata.sample_rate = Some(48000);
-    metadata.source_url = Some(details.video_url.clone());
-    metadata.title = Some(details.title.clone());
-    metadata.thumbnail = Some(details.thumbnails.first().unwrap().url.clone());
-
-    metadata
-}
-
 /// Get a video from a URL.
-pub async fn get_video_info(url: String) -> Result<VideoInfo, CrackedError> {
-    // let vid_options = VideoOptions {
-    //     request_options: RequestOptions {
-    //         client: Some(self.client.clone()),
-    //         ..Default::default()
-    //     },
-    //     ..Default::default()
-    // };
-    // let video = Video::new_with_options(&url, vid_options)?;
-    let video = Video::new(&url)?;
+pub async fn get_video_info(
+    url: String,
+    video_opts: VideoOptions,
+) -> Result<VideoInfo, CrackedError> {
+    let video = Video::new_with_options(&url, video_opts)?;
     video.get_basic_info().await.map_err(|e| e.into())
 }
 
@@ -338,20 +207,10 @@ impl Compose for RustyYoutubeSearch {
         if let Some(url) = self.url.as_ref() {
             let video =
                 Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
-            // let video = Video::new(url.clone()).map_err(|e| {
-            //     <CrackedError as Into<AudioStreamError>>::into(
-            //         <VideoError as Into<CrackedError>>::into(e),
-            //     )
-            // })?;
             let video_info = video
                 .get_basic_info()
                 .await
                 .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
-            // let video_info = video.get_basic_info().await.map_err(|e| {
-            //     <CrackedError as Into<AudioStreamError>>::into(
-            //         <VideoError as Into<CrackedError>>::into(e),
-            //     )
-            // })?;
             let metadata = video_info_to_aux_metadata(&video_info);
             self.metadata = Some(metadata.clone());
             return Ok(metadata);
@@ -373,10 +232,6 @@ impl Compose for RustyYoutubeSearch {
         self.url = Some(metadata.source_url.clone().unwrap());
 
         Ok(metadata)
-
-        // self.metadata
-        //     .clone()
-        //     .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))
     }
 }
 
@@ -441,6 +296,7 @@ impl MediaSourceStream {
 impl Read for MediaSourceStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Get the current tokio runtime
+        //tokio::task::spawn_blocking(move || handle.block_on(async { self.read_async(buf).await }))
         let handle = HANDLE.lock().unwrap().clone().unwrap();
         tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
     }

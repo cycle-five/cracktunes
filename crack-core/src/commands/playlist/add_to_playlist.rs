@@ -1,11 +1,12 @@
 use crate::{
-    commands::{cmd_check_music, MyAuxMetadata},
+    commands::cmd_check_music,
     db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, MetadataAnd, Playlist},
     errors::CrackedError,
     poise_ext::ContextExt as _,
     Context, Error,
 };
+use crack_types::NewAuxMetadata;
 use sqlx::PgPool;
 
 /// Adds a song to a playlist
@@ -32,8 +33,8 @@ pub async fn add_to_playlist(
     let queue = call.lock().await.queue().clone();
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;
-    let metadata = match typemap.get::<MyAuxMetadata>() {
-        Some(MyAuxMetadata(meta)) => meta,
+    let metadata = match typemap.get::<NewAuxMetadata>() {
+        Some(NewAuxMetadata(meta)) => meta,
         None => {
             return Err(CrackedError::Other("Failed to get metadata for track.").into());
         },

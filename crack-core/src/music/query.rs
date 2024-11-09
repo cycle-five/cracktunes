@@ -2,12 +2,10 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
-use crate::sources::rusty_ytdl::{
-    search_result_to_aux_metadata, video_info_to_aux_metadata, NewSearchSource,
-};
+use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    commands::{check_banned_domains, MyAuxMetadata},
+    commands::check_banned_domains,
     errors::{verify, CrackedError},
     http_utils,
     messaging::{
@@ -15,15 +13,17 @@ use crate::{
         message::CrackedMessage,
         messages::SPOTIFY_AUTH_FAILED,
     },
-    sources::spotify::{Spotify, SpotifyTrack, SPOTIFY},
+    sources::spotify::{Spotify, SPOTIFY},
     utils::{edit_response_poise, yt_search_select},
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
+use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
+use crack_types::{NewAuxMetadata, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, ReplyHandle};
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType, YouTube};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::{
@@ -54,6 +54,27 @@ pub enum QueryType {
     NewYoutubeDl((YoutubeDl, AuxMetadata)),
     YoutubeSearch(String),
     None,
+}
+
+/// HACK
+impl From<QueryType> for crack_types::QueryType {
+    fn from(q: QueryType) -> Self {
+        match q {
+            QueryType::Keywords(keywords) => crack_types::QueryType::Keywords(keywords),
+            QueryType::KeywordList(keywords_list) => {
+                crack_types::QueryType::KeywordList(keywords_list)
+            },
+            QueryType::VideoLink(url) => crack_types::QueryType::VideoLink(url),
+            QueryType::SpotifyTracks(tracks) => crack_types::QueryType::SpotifyTracks(tracks),
+            QueryType::PlaylistLink(url) => crack_types::QueryType::PlaylistLink(url),
+            QueryType::File(file) => crack_types::QueryType::File(file),
+            QueryType::NewYoutubeDl((src, metadata)) => {
+                crack_types::QueryType::NewYoutubeDl((src, metadata))
+            },
+            QueryType::YoutubeSearch(query) => crack_types::QueryType::YoutubeSearch(query),
+            QueryType::None => crack_types::QueryType::None,
+        }
+    }
 }
 
 pub struct Queries {
@@ -119,6 +140,7 @@ impl From<Queries> for Vec<QueryType> {
         q.queries
     }
 }
+use crate::sources::spotify::SpotifyTrackTrait;
 use crate::sources::youtube::search_query_to_source_and_metadata;
 impl QueryType {
     /// Build a query string from the query type.
@@ -313,7 +335,7 @@ impl QueryType {
             QueryType::YoutubeSearch(query) => {
                 self.mode_search_keywords(ctx, call, query.clone()).await
             },
-            _ => send_search_failed(&ctx).await.map(|_| Vec::new()),
+            _ => send_search_failed(&ctx).await.map(|_| vec![]),
         }
     }
 
@@ -342,8 +364,9 @@ impl QueryType {
         &self,
         ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut serenity::Message,
+        search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
+        let search_msg = &mut search_reply.into_message().await?;
         match self {
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
@@ -394,13 +417,14 @@ impl QueryType {
         Ok(true)
     }
 
-    pub async fn mode_end(
+    pub async fn mode_end<'ctx>(
         &self,
-        ctx: Context<'_>,
+        ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut crate::Message,
+        search_reply: ReplyHandle<'ctx>,
     ) -> Result<bool, CrackedError> {
         let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+        let search_msg = &mut search_reply.clone().into_message().await?;
         match self {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::End, QueryType::YoutubeSearch");
@@ -466,8 +490,9 @@ impl QueryType {
         &self,
         ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
-        search_msg: &mut crate::Message,
+        search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
+        let search_msg = &mut search_reply.into_message().await?;
         match self {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME
@@ -516,7 +541,7 @@ impl QueryType {
         &self,
         ytclient: YouTube,
         reqclient: reqwest::Client,
-    ) -> CrackedResult<Vec<MyAuxMetadata>> {
+    ) -> CrackedResult<Vec<NewAuxMetadata>> {
         match self {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
@@ -529,7 +554,7 @@ impl QueryType {
                 let search_results = ytclient.search(query, Some(&search_options)).await?;
                 Ok(search_results
                     .into_iter()
-                    .map(MyAuxMetadata::from)
+                    .map(NewAuxMetadata::from)
                     .collect_vec())
             },
             QueryType::VideoLink(query) => {
@@ -544,17 +569,17 @@ impl QueryType {
                 let video_info = video.get_info().await?;
                 let metadata = video_info_to_aux_metadata(&video_info);
 
-                Ok(vec![MyAuxMetadata(metadata)])
+                Ok(vec![NewAuxMetadata(metadata)])
             },
             QueryType::Keywords(query) => ytclient
                 .search_one(query.clone(), None)
                 .await?
-                .map(MyAuxMetadata::from)
+                .map(NewAuxMetadata::from)
                 .map(|metadata| vec![metadata])
                 .ok_or(CrackedError::Other("No search results found!")),
             QueryType::File(_file) => {
                 // FIXME: Maybe try to parse some metadata from the file?
-                Ok(vec![MyAuxMetadata::default()])
+                Ok(vec![NewAuxMetadata::default()])
             },
             QueryType::NewYoutubeDl(_data) => {
                 // FIXME: Maybe just throw an error? This doesn't really make since because it's a different yt client...
@@ -571,7 +596,7 @@ impl QueryType {
                 let search_results = ytclient.search(url, Some(&search_options)).await?;
                 Ok(search_results
                     .into_iter()
-                    .map(MyAuxMetadata::from)
+                    .map(NewAuxMetadata::from)
                     .collect_vec())
             },
             QueryType::SpotifyTracks(tracks) => {
@@ -581,7 +606,7 @@ impl QueryType {
                 let metadatas = future::join_all(keywords_list)
                     .await
                     .into_iter()
-                    .filter_map_ok(|x| x.map(MyAuxMetadata::from))
+                    .filter_map_ok(|x| x.map(NewAuxMetadata::from))
                     .flatten()
                     .collect_vec();
                 Ok(metadatas)
@@ -591,7 +616,7 @@ impl QueryType {
                 for keyword in keywords_list {
                     let res = ytclient.search_one(keyword, None).await?.unwrap();
                     let my_metadata = search_result_to_aux_metadata(&res);
-                    let my_metadata = MyAuxMetadata(my_metadata);
+                    let my_metadata = NewAuxMetadata(my_metadata);
                     metadatas.push(my_metadata);
                 }
                 Ok(metadatas)
@@ -600,10 +625,40 @@ impl QueryType {
         }
     }
 
+    /// Get the source (playable track) for this query.
+    pub async fn get_track_source(
+        &self,
+        client_old: reqwest_old::Client,
+    ) -> CrackedResult<songbird::input::Input> {
+        match self {
+            QueryType::YoutubeSearch(query) => {
+                tracing::error!("In YoutubeSearch");
+                let ytdl = YoutubeDl::new_search(client_old, query.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::VideoLink(url) => {
+                tracing::warn!("In VideoLink");
+                let ytdl = YoutubeDl::new(client_old, url.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::Keywords(query) => {
+                let ytdl = YoutubeDl::new(client_old, query.clone());
+                Ok(ytdl.into())
+            },
+            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_owned()).into()),
+            QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
+            QueryType::PlaylistLink(_)
+            | QueryType::SpotifyTracks(_)
+            | QueryType::KeywordList(_)
+            | QueryType::None => unimplemented!(),
+        }
+    }
+
+    /// Get the source and metadata for a given query type. This is the expensive part.
     pub async fn get_track_source_and_metadata(
         &self,
         client: Option<reqwest::Client>,
-    ) -> CrackedResult<(SongbirdInput, Vec<MyAuxMetadata>)> {
+    ) -> CrackedResult<(SongbirdInput, Vec<NewAuxMetadata>)> {
         use colored::Colorize;
         let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         let client_old = http_utils::get_client_old().clone();
@@ -615,7 +670,7 @@ impl QueryType {
                 let mut res = Vec::new();
                 let asdf = ytdl.search(None).await?;
                 for metadata in asdf {
-                    let my_metadata = MyAuxMetadata(metadata);
+                    let my_metadata = NewAuxMetadata(metadata);
                     res.push(my_metadata);
                 }
                 Ok((ytdl.into(), res))
@@ -636,7 +691,7 @@ impl QueryType {
                 //     .aux_metadata()
                 //     .await
                 //     .map_err(CrackedError::AuxMetadataError)?;
-                let my_metadata = MyAuxMetadata(metadata);
+                let my_metadata = NewAuxMetadata(metadata);
                 Ok((input, vec![my_metadata]))
             },
             QueryType::Keywords(query) => {
@@ -647,19 +702,19 @@ impl QueryType {
                 Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
-                // let my_metadata = MyAuxMetadata(metadata);
+                // let my_metadata = NewAuxMetadata(metadata);
                 // Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");
                 Ok((
                     HttpRequest::new(client_old, file.url.to_owned()).into(),
-                    vec![MyAuxMetadata::default()],
+                    vec![NewAuxMetadata::default()],
                 ))
             },
             QueryType::NewYoutubeDl(data) => {
                 let (ytdl, aux_metadata) = data.clone();
-                Ok((ytdl.into(), vec![MyAuxMetadata(aux_metadata)]))
+                Ok((ytdl.into(), vec![NewAuxMetadata(aux_metadata)]))
             },
             QueryType::PlaylistLink(url) => {
                 tracing::warn!("In PlaylistLink");
@@ -677,7 +732,7 @@ impl QueryType {
                 let res = rusty_ytdl.search(url, Some(&search_options)).await?;
                 let mut metadata = Vec::with_capacity(res.len());
                 for r in res {
-                    metadata.push(MyAuxMetadata(search_result_to_aux_metadata(&r)));
+                    metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
                 }
                 let input = self.get_query_source(client.clone());
                 Ok((input, metadata))
@@ -694,7 +749,7 @@ impl QueryType {
                 );
                 tracing::warn!("ytdl: {:?}", ytdl);
                 let metdata = ytdl.aux_metadata().await.unwrap();
-                let my_metadata = MyAuxMetadata(metdata);
+                let my_metadata = NewAuxMetadata(metdata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::KeywordList(keywords_list) => {
@@ -711,7 +766,7 @@ impl QueryType {
                         return Err(CrackedError::AudioStream(e));
                     },
                 };
-                let my_metadata = MyAuxMetadata(metdata);
+                let my_metadata = NewAuxMetadata(metdata);
                 Ok((ytdl.into(), vec![my_metadata]))
             },
             QueryType::None => unimplemented!(),
