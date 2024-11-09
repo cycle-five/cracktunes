@@ -475,9 +475,6 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
             tracing::info!("Suggestions: {res:?}");
-            // for suggestion in res {
-            //     println!("{}", suggestion);
-            // }
         },
         Commands::SuggestNew { query } => {
             let res = suggestion2(&query).await?;
@@ -497,7 +494,6 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             client.append_queue(guild, tracks).await?;
         },
         Commands::Query { query } => {
-            // let mut client = CrackTrackClient::new();
             let queries = query.split(",");
             for query in queries {
                 let res = client.resolve_search_one(query).await?;
@@ -506,8 +502,6 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             }
         },
     }
-    //client.build_display().await?;
-    //println!("{}", client.get_display());
     Ok(())
 }
 
@@ -535,7 +529,6 @@ mod tests {
         }
     }
 
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[tokio::test]
     async fn test_cli2() {
         let cli = Cli::parse_from(vec![
@@ -544,6 +537,24 @@ mod tests {
             "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
         ]);
         match_cli(cli).await.expect("asdf");
+    }
+
+    #[tokio::test]
+    async fn test_cli3() {
+        let cli = Cli::parse_from(vec!["crack_testing", "suggest-new", "molly nilsson"]);
+        match match_cli(cli).await {
+            Ok(_) => (),
+            Err(e) => eprintln!("{}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cli4() {
+        let cli = Cli::parse_from(vec!["crack_testing", "query", "molly nilsson"]);
+        match match_cli(cli).await {
+            Ok(_) => (),
+            Err(e) => eprintln!("{}", e),
+        }
     }
 
     #[test]
@@ -677,11 +688,6 @@ mod tests {
                     assert!(false);
                 }
             }
-            // if std::env::var("CI").is_ok() {
-            //     assert!(res.is_err());
-            // } else {
-            //     let _ = res.expect("query failed");
-            // }
         }
 
         client
@@ -693,10 +699,6 @@ mod tests {
         assert_eq!(q.len(), 3);
         let first = q.pop_front().unwrap();
         assert!(first.get_title().contains("Molly Nilsson"));
-        // let disp: String = client.get_display(guild);
-        // println!("{}", disp);
-        // // println!("{:?}", client);
-        // assert!(disp.contains("Molly Nilsson"));
     }
 
     #[tokio::test]
