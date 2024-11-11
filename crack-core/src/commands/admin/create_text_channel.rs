@@ -25,7 +25,7 @@ pub async fn create_text_channel(
     let guild = guild_id.to_partial_guild(&ctx).await?;
     match guild
         .create_channel(
-            &ctx,
+            ctx.http(),
             CreateChannel::new(channel_name.clone())
                 .kind(serenity::model::channel::ChannelType::Text),
         )

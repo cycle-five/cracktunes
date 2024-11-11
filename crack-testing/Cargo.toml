@@ -18,25 +18,25 @@ workspace = ".."
 anyhow = "1.0"
 crack-types = { path = "../crack-types" }
 clap = { version = "4.5", features = ["derive"] }
-dashmap = "5.5.3"
+dashmap = "6.1"
 once_cell = "1.20"
 futures = "0.3"
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = [
-  "blocking",
-  "json",
-  "multipart",
-  "rustls-tls",
-  "cookies",
-  "charset",
-  "http2",
-  "macos-system-configuration",
+reqwest = { version = "0.12.4", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+    "charset",
+    "http2",
+    "macos-system-configuration",
 ] }
 serenity = { workspace = true }
 tracing = "0.1.40"
-tokio = { version = "1.40", features = ["rt-multi-thread"] }
-thiserror = "1.0"
-poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
+tokio = { version = "1.34", features = ["rt-multi-thread"] }
+thiserror = "1.0.69"
+poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
 url = "2.5"
 
 

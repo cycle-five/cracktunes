@@ -20,6 +20,7 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
+use songbird::Call;
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -337,6 +338,7 @@ pub struct DataInner {
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
     pub ct_client: CrackTrackClient,
+    pub songbird: Arc<Mutex<Call>>,
 }
 
 // /// Get the default topgg client
@@ -515,6 +517,7 @@ impl Default for DataInner {
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
+            songbird: Arc::new(songbird::Songbird::default()),
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),

@@ -17,6 +17,7 @@ use crate::{
     music::query::QueryType,
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
+use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
@@ -83,7 +84,7 @@ impl<T> OptionTryUnwrap<T> for Option<T> {
 
 /// FIXME: This really should just be used as the method on the struct.
 /// Leaving this out of convenience, eventually it should be removed.
-pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<String> {
+pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<FixedString> {
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
@@ -178,7 +179,7 @@ pub async fn yt_search_select(
     // Ask the user for its favorite animal
     let m = channel_id
         .send_message(
-            &ctx,
+            ctx.http(),
             CreateMessage::new().content("Search results").select_menu(
                 CreateSelectMenu::new(
                     "song_select",
@@ -198,13 +199,13 @@ pub async fn yt_search_select(
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
     let interaction = match m
-        .await_component_interaction(&ctx.shard)
+        .await_component_interaction(ctx.shard)
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
         Some(x) => x,
         None => {
-            m.reply(&ctx, "Timed out").await.unwrap();
+            m.reply(ctx.http(), "Timed out").await.unwrap();
             return Err(CrackedError::Other("Timed out").into());
         },
     };
@@ -224,7 +225,7 @@ pub async fn yt_search_select(
     // Acknowledge the interaction and edit the message
     let res = interaction
         .create_response(
-            &ctx,
+            ctx.into(),
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
                     title: rev_map.get(url).unwrap().to_string(),
@@ -236,7 +237,7 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    m.delete(&ctx).await.unwrap();
+    m.delete(ctx).await.unwrap();
     res
 }
 
@@ -244,7 +245,7 @@ pub async fn yt_search_select(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
     ctx: &'ctx CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
@@ -263,19 +264,28 @@ pub async fn edit_reponse_interaction(
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Component(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Modal(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Autocomplete(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(http.http(), EditInteractionResponse::new().embed(embed.clone()))
             .await
             //.map(|_| Message::default())
             .map_err(Into::into),
@@ -288,12 +298,12 @@ pub async fn edit_reponse_interaction(
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
-            .edit_response(&ctx, EditInteractionResponse::new().add_embed(embed))
+            .edit_response(ctx.http(), EditInteractionResponse::new().add_embed(embed))
             .await
             .map_err(Into::into),
         None => {
@@ -312,7 +322,7 @@ pub async fn edit_embed_response2(
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
@@ -351,7 +361,7 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     let reply_handle = match get_interaction_new(&ctx) {
         Some(interaction1) => match interaction1 {
@@ -376,32 +386,22 @@ pub async fn edit_embed_response_poise(
     reply_handle?.into_message().await.map_err(Into::into)
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct TrackData {
+    pub user_id: Option<serenity::UserId>,
+    pub aux_metadata: Option<AuxMetadata>,
+}
+
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
-    let user = match track.typemap().read().await.get::<RequestingUser>() {
-        Some(RequestingUser::UserId(user)) => *user,
-        None => {
-            tracing::warn!("No user found for track: {:?}", track);
-            return Err(CrackedError::NoUserAutoplay);
-        },
-    };
-    Ok(user)
+    let data: Arc<TrackData> = track.data();
+    data.user_id.ok_or(CrackedError::NoUserAutoplay)
 }
 
 /// Gets the metadata from a track.
-pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
-    let NewAuxMetadata(metadata) = {
-        let map = track.typemap().read().await;
-        let metadata = match map.get::<NewAuxMetadata>() {
-            Some(my_metadata) => my_metadata,
-            None => {
-                tracing::warn!("No metadata found for track: {:?}", track);
-                return AuxMetadata::default();
-            },
-        };
-        metadata.clone()
-    };
-    metadata
+pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
+    let data: Arc<TrackData> = track.data();
+    data.aux_metadata.ok_or(CrackedError::NoMetadata)
 }
 
 /// Creates an embed for the first N metadata in the queue.
@@ -525,26 +525,27 @@ pub async fn create_paged_embed(
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+    let embed = CreateEmbed::new()
+        .title(title.clone())
+        .author(CreateEmbedAuthor::new(author.clone()))
+        .description(page_getter(0))
+        .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages)));
 
-    let mut message = {
-        let reply = ctx
-            .send(
-                CreateReply::default()
-                    .embed(
-                        CreateEmbed::new()
-                            .title(title.clone())
-                            .author(CreateEmbedAuthor::new(author.clone()))
-                            .description(page_getter(0))
-                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
-                    )
-                    .components(create_nav_btns(0, num_pages)),
-            )
-            .await?;
-        reply.into_message().await?
-    };
+    let create_reply = CreateReply::default()
+        .embed(embed)
+        .components(create_nav_btns(0, num_pages));
+    // let mut message = {
+    //     let reply = ctx.clone().send(create_reply).await?;
+    //     reply.into_message().await?
+    // };
+    let reply_handle = ctx.clone().send(create_reply).await?;
+    let shard_messanger = ctx.serenity_context().clone().shard;
 
-    let mut cib = message
-        .await_component_interactions(ctx)
+    let mut cib = reply_handle
+        .clone()
+        .into_message()
+        .await?
+        .await_component_interactions(shard_messanger.clone())
         .timeout(Duration::from_secs(60 * 10))
         .stream();
 
@@ -562,7 +563,7 @@ pub async fn create_paged_embed(
         };
 
         mci.create_response(
-            &ctx,
+            ctx.http(),
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
                     .embeds(vec![CreateEmbed::new()
@@ -580,10 +581,10 @@ pub async fn create_paged_embed(
         .await?;
     }
 
-    message
+    reply_handle
         .edit(
-            &ctx.serenity_context().http,
-            EditMessage::default()
+            ctx,
+            CreateReply::default()
                 .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
         )
         .await

@@ -35,7 +35,7 @@ pub async fn create(
     let icon = match icon {
         Some(attachment) => {
             let url = attachment.url.clone();
-            Some(CreateAttachment::url(&ctx, &url).await?)
+            Some(CreateAttachment::url(ctx.http(), &url.to_string(), name.to_string()).await?)
         },
         None => None,
     };
@@ -58,7 +58,7 @@ pub async fn create(
     send_reply(
         &ctx,
         CrackedMessage::RoleCreated {
-            role_name: role.name.clone(),
+            role_name: role.name,
             role_id: role.id,
         },
         true,
@@ -82,7 +82,7 @@ pub async fn create_role_internal(
     colour: Option<u32>,
     unicode_emoji: Option<String>,
     audit_log_reason: Option<String>,
-    icon: Option<&CreateAttachment>,
+    icon: Option<&CreateAttachment<'_>>,
 ) -> Result<Role, CrackedError> {
     let perms = Permissions::from_bits(permissions.unwrap_or_default())
         .ok_or(CrackedError::InvalidPermissions)?;
@@ -93,13 +93,13 @@ pub async fn create_role_internal(
         .hoist(hoist.unwrap_or_default())
         .mentionable(mentionable.unwrap_or_default())
         .permissions(Into::into(perms))
-        .position(position.unwrap_or_default())
+        .position(position.unwrap_or_default() as i16)
         .colour(colour)
         .unicode_emoji(unicode_emoji)
         .audit_log_reason(&audit_log_reason)
         .icon(icon);
     guild_id
-        .create_role(&ctx, role_builder)
+        .create_role(ctx.http(), role_builder)
         .await
         .map_err(Into::into)
 }

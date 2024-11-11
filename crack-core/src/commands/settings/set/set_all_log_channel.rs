@@ -4,6 +4,7 @@ use crate::Data;
 use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use serenity::all::{Channel, GuildId};
 use serenity::model::id::ChannelId;
+use std::sync::Arc;
 
 /// Set a log channel for a specific guild.
 #[poise::command(
@@ -73,9 +74,10 @@ pub async fn all_log_channel(
 }
 
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(data))]
 /// Internal function to set a log channel for a specific guild.
 pub async fn set_all_log_channel_data(
-    data: &Data,
+    data: Arc<Data>,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<(), Error> {

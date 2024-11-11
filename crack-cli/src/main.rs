@@ -25,7 +25,6 @@ use {
 #[cfg(feature = "crack-telemetry")]
 use {
     std::sync::Arc,
-    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
 };
 
 // #[cfg(feature = "crack-telemetry")]
@@ -233,27 +232,6 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     }
 }
 
-// fn get_bunyan_writer() -> Arc<std::io::BufWriter<_>> {
-//     let log_path = &format!("{}/bunyan.log", get_log_prefix());
-//     let debug_file = std::fs::File::create(log_path);
-//     let debug_file = match debug_file {
-//         Ok(file) => std::io::BufWriter::new(file),
-//         Err(error) => std::io::BufWriter::new(std::io::sink()), //panic!("Error: {:?}", error),
-//     };
-//     Arc::new(debug_file)
-// }
-
-#[cfg(feature = "crack-telemetry")]
-fn get_bunyan_writer() -> Arc<std::fs::File> {
-    let log_path = &format!("{}/bunyan.log", get_log_prefix());
-    let debug_file = std::fs::File::create(log_path);
-    let debug_file = match debug_file {
-        Ok(file) => file,
-        Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
-    };
-    Arc::new(debug_file)
-}
-
 /// Get the current log layer
 #[cfg(feature = "crack-tracing")]
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
@@ -329,8 +307,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
     #[cfg(feature = "crack-telemetry")]
-    let formatting_layer =
-        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    let stdout_formatting_layer = get_current_log_layer();
 
     // Layer for printing to stdout.
     #[cfg(feature = "crack-tracing")]

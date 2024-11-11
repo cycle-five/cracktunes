@@ -10,6 +10,7 @@ pub use reply_handle::*;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
+use songbird::Call;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::sync::Arc;
@@ -26,12 +27,12 @@ pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 // pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
 // pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
+pub type SongbirdCall = Arc<Mutex<Call>>;
 
 // ------------------------------------------------------------------
 // Public Re-exports
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
-pub use serenity::prelude::TypeMapKey;
 pub use thiserror::Error as ThisError;
 
 /// Custom error type for track resolve errors.
@@ -86,7 +87,7 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }

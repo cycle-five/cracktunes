@@ -20,22 +20,23 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
-poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
+poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
-tokio = { version = "1.40", features = ["rt-multi-thread"] }
-reqwest = { version = "0.12", default-features = false, features = [
-  "blocking",
-  "json",
-  "multipart",
-  "rustls-tls",
-  "cookies",
-  "charset",
-  "http2",
-  "macos-system-configuration",
+tokio = { version = "1.34", features = ["rt-multi-thread"] }
+typemap_rev = "0.3.0"
+reqwest = { version = "0.12.4", default-features = false, features = [
+    "blocking",
+    "json",
+    "multipart",
+    "rustls-tls",
+    "cookies",
+    "charset",
+    "http2",
+    "macos-system-configuration",
 ] }
 url = "2.5"
-thiserror = "1.0"
+thiserror = "1.0.69"
 humantime = "2.1"
 
 [dependencies.rspotify]
