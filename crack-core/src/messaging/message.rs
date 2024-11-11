@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
 
-use ::serenity::builder::CreateEmbed;
+use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude as serenity;
@@ -41,7 +41,7 @@ pub enum CrackedMessage {
     Clean(i32),
     CrackedError(CrackedError),
     CrackedRed(String),
-    CreateEmbed(Box<CreateEmbed>),
+    CreateEmbed(Box<CreateEmbed<'static>>),
     CommandFound(String),
     DiceRoll {
         dice: u32,
@@ -86,11 +86,11 @@ pub enum CrackedMessage {
     Resume,
     RoleCreated {
         role_id: serenity::RoleId,
-        role_name: String,
+        role_name: FixedString,
     },
     RoleDeleted {
         role_id: serenity::RoleId,
-        role_name: Cow<'static, String>,
+        role_name: FixedString,
     },
     RoleNotFound,
     #[cfg(feature = "crack-osint")]
@@ -137,7 +137,7 @@ pub enum CrackedMessage {
     },
     TextChannelCreated {
         channel_id: serenity::ChannelId,
-        channel_name: String,
+        channel_name: FixedString,
     },
     Uptime {
         mention: String,
@@ -147,18 +147,18 @@ pub enum CrackedMessage {
         id: UserId,
         mention: Mention,
         guild_id: serenity::GuildId,
-        guild_name: String,
+        guild_name: FixedString,
     },
     UserDeauthorized {
         id: UserId,
         mention: Mention,
         guild_id: serenity::GuildId,
-        guild_name: String,
+        guild_name: FixedString,
     },
     UserTimeout {
         id: UserId,
         mention: Mention,
-        timeout_until: String,
+        timeout_until: FixedString,
     },
     UserKicked {
         mention: Mention,
@@ -440,13 +440,19 @@ impl Display for CrackedMessage {
     }
 }
 
+impl From<CrackedMessage> for Cow<'_, str> {
+    fn from(message: CrackedMessage) -> Self {
+        message.to_string().into()
+    }
+}
+
 impl From<CrackedMessage> for String {
     fn from(message: CrackedMessage) -> Self {
         message.to_string()
     }
 }
 
-impl From<CrackedMessage> for CreateEmbed {
+impl From<CrackedMessage> for CreateEmbed<'_> {
     fn from(message: CrackedMessage) -> Self {
         CreateEmbed::default().description(message.to_string())
     }
@@ -525,8 +531,8 @@ impl From<&CrackedMessage> for Colour {
 }
 
 /// Convert a [`CrackedMessage`] into a [`CreateEmbed`].
-impl From<&CrackedMessage> for Option<CreateEmbed> {
-    fn from(message: &CrackedMessage) -> Option<CreateEmbed> {
+impl<'a, 'b> From<&'a CrackedMessage> for Option<CreateEmbed<'b>> {
+    fn from(message: &'a CrackedMessage) -> Option<CreateEmbed<'b>> {
         // Why did I do this?
         match message {
             CrackedMessage::CreateEmbed(embed) => Some(*embed.clone()),

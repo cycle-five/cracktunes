@@ -28,6 +28,7 @@ use serenity::{
 };
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
+use std::borrow::Cow;
 use std::fmt::Write;
 use std::time::Duration;
 
@@ -56,13 +57,13 @@ pub async fn build_log_embed(
 }
 
 /// Build a log embed with(out?) a thumbnail.
-pub async fn build_log_embed_thumb(
-    guild_name: &str,
-    title: &str,
-    id: &str,
-    description: &str,
-    avatar_url: &str,
-) -> Result<CreateEmbed, CrackedError> {
+pub async fn build_log_embed_thumb<'a>(
+    guild_name: &'a str,
+    title: &'a str,
+    id: &'a str,
+    description: &'a str,
+    avatar_url: &'a str,
+) -> Result<CreateEmbed<'a>, CrackedError> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
     let footer = CreateEmbedFooter::new(footer_str);
@@ -89,7 +90,7 @@ pub async fn send_log_embed_thumb(
     let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
-        .send_message(cache_http, CreateMessage::new().embed(embed))
+        .send_message(cache_http.http(), CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }
@@ -106,7 +107,7 @@ pub async fn send_log_embed(
     let embed = build_log_embed(title, description, avatar_url).await?;
 
     channel
-        .send_message(http, CreateMessage::new().embed(embed))
+        .send_message(http.http(), CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }
@@ -138,7 +139,10 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let mut description = String::new();
 
     for (i, &t) in queue.iter().enumerate() {
-        let metadata = get_track_handle_metadata(t).await;
+        // FIXME
+        let metadata = get_track_handle_metadata(t)
+            .await
+            .expect("metadata should exist");
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
@@ -160,7 +164,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
-    let (description, thumbnail) = if !tracks.is_empty() {
+    let (description, thumbnail): (Cow<'_, str>, String) = if !tracks.is_empty() {
         let metadata = get_track_handle_metadata(&tracks[0]).await;
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
@@ -184,14 +188,17 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
                 .unwrap_or(&String::from(QUEUE_NO_SRC)),
             get_human_readable_timestamp(metadata.duration)
         );
-        (description, thumbnail)
+        (Cow::Owned(description), thumbnail)
     } else {
-        (String::from(QUEUE_NOTHING_IS_PLAYING), "".to_string())
+        (
+            Cow::Owned(QUEUE_NOTHING_IS_PLAYING.to_string()),
+            "".to_string(),
+        )
     };
 
     CreateEmbed::default()
         .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, &description, false)
+        .field(QUEUE_NOW_PLAYING, description, false)
         .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
             "{} {} {} {}",
@@ -229,18 +236,15 @@ pub async fn send_now_playing(
         None => CreateMessage::new().content("Nothing playing"),
     };
     tracing::warn!("sending message: {:?}", msg);
-    channel
-        .send_message(Arc::clone(&http), msg)
-        .await
-        .map_err(|e| e.into())
+    channel.send_message(&http, msg).await.map_err(|e| e.into())
 }
 
 /// Creates an embed from a CrackedMessage and sends it as an embed.
-pub fn build_now_playing_embed_metadata(
+pub fn build_now_playing_embed_metadata<'a>(
     requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
     metadata: NewAuxMetadata,
-) -> CreateEmbed {
+) -> CreateEmbed<'a> {
     let NewAuxMetadata(metadata) = metadata;
     //tracing::warn!("metadata: {:?}", metadata);
 
@@ -349,7 +353,7 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
+pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow<'_>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(vec![
         create_single_nav_btn("<<", cant_left),
@@ -362,12 +366,12 @@ pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow> {
 // -------- Search Results -------- //
 
 /// Creates a search results reply.
-pub async fn create_search_results_reply(results: Vec<CreateEmbed>) -> CreateReply {
+pub async fn create_search_results_reply(results: Vec<CreateEmbed<'_>>) -> CreateReply<'_> {
     let mut reply = CreateReply::default()
         .reply(true)
         .content("Search results:");
     for result in results {
-        reply.embeds.push(result);
+        reply.embed(result);
     }
 
     reply.clone()

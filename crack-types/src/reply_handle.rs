@@ -54,7 +54,7 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
                 .into_message()
                 .await
             {
-                Ok(x) => x.delete(ctx).await,
+                Ok(x) => x.delete(&ctx, Some("bye")).await,
                 Err(_) => Ok(()),
             }
         })

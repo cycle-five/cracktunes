@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
+use reqwest as reqwest_old;
 use reqwest::Client;
-use reqwest_old;
 use std::future::Future;
 
 use crate::errors::CrackedError;
@@ -9,9 +9,10 @@ use crate::serenity::Color;
 use serenity::all::{
     CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
 };
+use serenity::small_fixed_array::FixedString;
 
-/// Parameter structure for functions that send messages to a channel.
 #[derive(Debug, PartialEq)]
+/// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams {
     pub channel: ChannelId,
     pub as_embed: bool,
@@ -20,7 +21,7 @@ pub struct SendMessageParams {
     pub color: Color,
     pub cache_msg: bool,
     pub msg: CrackedMessage,
-    pub embed: Option<CreateEmbed>,
+    pub embed: Option<CreateEmbed<'static>>,
 }
 
 impl Default for SendMessageParams {
@@ -81,8 +82,8 @@ impl SendMessageParams {
 
 /// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
-    fn cache(&self) -> Option<impl CacheHttp>;
-    fn http(&self) -> Option<&Http>;
+    // fn cache(&self) -> Option<impl CacheHttp>;
+    // fn http(&self) -> Option<&Http>;
     fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
     fn user_id_to_username_or_default(&self, user_id: UserId) -> String;
     fn channel_id_to_guild_name(
@@ -96,19 +97,11 @@ pub trait CacheHttpExt {
     fn guild_name_from_guild_id(
         &self,
         guild_id: GuildId,
-    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
 }
 
 /// Implement the CacheHttpExt trait for any type that implements CacheHttp.
 impl<T: CacheHttp> CacheHttpExt for T {
-    fn cache(&self) -> Option<impl CacheHttp> {
-        Some(self)
-    }
-
-    fn http(&self) -> Option<&Http> {
-        Some(self.http())
-    }
-
     async fn get_bot_id(&self) -> Result<UserId, CrackedError> {
         get_bot_id(self).await
     }
@@ -120,8 +113,9 @@ impl<T: CacheHttp> CacheHttpExt for T {
     async fn channel_id_to_guild_name(
         &self,
         channel_id: ChannelId,
-    ) -> Result<String, CrackedError> {
-        get_guild_name(self, channel_id).await
+        guild_id: GuildId,
+    ) -> Result<FixedString, CrackedError> {
+        get_guild_name(self, channel_id, guild_id).await
     }
 
     /// Sends a message to a channel.
@@ -138,10 +132,16 @@ impl<T: CacheHttp> CacheHttpExt for T {
         } else {
             CreateMessage::new().content(content)
         };
-        channel.send_message(self, msg).await.map_err(Into::into)
+        channel
+            .send_message(self.http(), msg)
+            .await
+            .map_err(Into::into)
     }
 
-    async fn guild_name_from_guild_id(&self, guild_id: GuildId) -> Result<String, CrackedError> {
+    async fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> Result<FixedString, CrackedError> {
         guild_name_from_guild_id(self, guild_id).await
     }
 }
@@ -272,9 +272,10 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,
     channel_id: ChannelId,
-) -> Result<String, CrackedError> {
+    guild_id: GuildId,
+) -> Result<FixedString, CrackedError> {
     channel_id
-        .to_channel(cache_http)
+        .to_channel(cache_http, Some(guild_id))
         .await?
         .guild()
         .map(|x| x.guild_id)
@@ -290,7 +291,7 @@ pub async fn get_guild_name(
 pub async fn guild_name_from_guild_id(
     cache_http: impl CacheHttp,
     guild_id: GuildId,
-) -> Result<String, CrackedError> {
+) -> Result<FixedString, CrackedError> {
     guild_id
         .to_partial_guild(cache_http)
         .await

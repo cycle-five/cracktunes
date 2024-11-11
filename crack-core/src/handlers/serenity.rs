@@ -167,6 +167,7 @@ impl EventHandler for SerenityHandler {
             }
             return;
         }
+        let manager = ctx.data::<Data>().songbird;
 
         let manager = songbird::get(&ctx).await.unwrap();
         let guild_id = new.guild_id.unwrap();
@@ -438,7 +439,7 @@ impl SerenityHandler {
         if user.id == new.user_id && !new.deaf {
             guild
                 .unwrap()
-                .edit_member(&ctx, new.user_id, EditMember::default().deafen(true))
+                .edit_member(ctx.http(), new.user_id, EditMember::default().deafen(true))
                 .await
                 .unwrap();
         }
@@ -554,8 +555,9 @@ pub async fn voice_state_diff_str(
     // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
     cache: Arc<impl serenity::CacheHttp>,
 ) -> Result<String, CrackedError> {
+    let guild_id = new.guild_id;
     let channel = match new.channel_id {
-        Some(channel_id) => channel_id.to_channel(cache.clone()).await.ok(),
+        Some(channel_id) => channel_id.to_channel(cache.clone(), guild_id).await.ok(),
         None => None,
     };
     let premium = true; //DEFAULT_PREMIUM;
@@ -594,7 +596,7 @@ pub async fn voice_state_diff_str(
             let user_name = &new.member.as_ref().unwrap().user.name;
             let user_mention = new.member.as_ref().unwrap().user.mention();
             let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache).await?.mention();
+            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
 
             let user = if premium {
                 user_mention.to_string()
@@ -615,7 +617,7 @@ pub async fn voice_state_diff_str(
         } else if old.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
             let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache).await?.mention();
+            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
 
             return Ok(format!(
                 "Member joined voice channel\n{} joined {}\n",
@@ -624,8 +626,14 @@ pub async fn voice_state_diff_str(
         } else {
             let old_channel_id = old.channel_id.unwrap();
             let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id.to_channel(cache.clone()).await?.mention();
-            let new_channel_mention = new_channel_id.to_channel(cache.clone()).await?.mention();
+            let old_channel_mention = old_channel_id
+                .to_channel(cache.clone(), guild_id)
+                .await?
+                .mention();
+            let new_channel_mention = new_channel_id
+                .to_channel(cache.clone(), guild_id)
+                .await?
+                .mention();
             result.push_str(&format!(
                 "Switched voice channels: {} -> {}\n",
                 old_channel_mention, new_channel_mention
