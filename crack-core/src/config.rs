@@ -95,14 +95,14 @@ pub async fn poise_framework(
             .collect(),
         prefix_options: poise::PrefixFrameworkOptions {
             case_insensitive_commands: true,
-            prefix: Some(config.get_prefix()),
+            prefix: Some(Cow::Owned(config.get_prefix())),
             ignore_bots: false, // This is for automated smoke tests
             edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600)).into()),
             additional_prefixes: vec![],
             stripped_dynamic_prefix: Some(|ctx, msg, data| {
                 Box::pin(async move {
                     // allow specific bots with specific prefixes to use bot commands for testing.
-                    if msg.author.bot {
+                    if msg.author.bot() {
                         if !crate::poise_ext::check_bot_message(ctx, msg) {
                             return Ok(None);
                         }
@@ -184,7 +184,7 @@ pub async fn poise_framework(
                     None => return Ok(true),
                     Some(guild_id) => ctx.guild_name_from_guild_id(guild_id).await,
                 }
-                .unwrap_or("Unknown".to_string());
+                .unwrap_or("Unknown".into());
                 tracing::warn!("Guild: {}", name);
                 Ok(true)
             })
@@ -263,37 +263,40 @@ pub async fn poise_framework(
         .discord_token;
     let data2 = data.clone();
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
-    let framework = poise::Framework::new(options, |ctx, ready, _framework| {
-        Box::pin(async move {
-            tracing::info!("Logged in as {}", ready.user.name);
-            crate::commands::register::register_globally_cracked(
-                &ctx,
-                &crate::commands::commands_to_register(),
-            )
-            .await?;
-            ctx.data
-                .write()
-                .await
-                .insert::<GuildSettingsMap>(guild_settings_map.clone());
-            Ok(data.clone())
-        })
-    });
-    let serenity_handler = SerenityHandler {
-        is_loop_running: false.into(),
-        data: data2.clone(),
-    };
+    let framework = poise::Framework::new(options);
+    // , |ctx, ready, _framework| {
+    //     Box::pin(async move {
+    //         tracing::info!("Logged in as {}", ready.user.name);
+    //         crate::commands::register::register_globally_cracked(
+    //             &ctx,
+    //             &crate::commands::commands_to_register(),
+    //         )
+    //         .await?;
+    //         ctx.data
+    //             .write()
+    //             .await
+    //             .insert::<GuildSettingsMap>(guild_settings_map.clone());
+    //         Ok(data.clone())
+    //     })
+    // });
+    // let serenity_handler = SerenityHandler {
+    //     is_loop_running: false.into(),
+    //     data: data2.clone(),
+    // };
 
     let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
+    songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
     //     options: Default::default(),
     //     cmd_lookup: commands_map,
     //     shard_manager: std::sync::Mutex::new(None),
     // });
-    let client = Client::builder(token, intents)
+    let client = Client::builder(&token, intents)
         .framework(framework)
         .register_songbird_from_config(songbird_config)
         .event_handler(serenity_handler)
+        .data(data2)
         //.event_handler_arc(bot_test_handler.clone())
         .await
         .unwrap();
@@ -383,4 +386,13 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
         }
     }
     None
+}
+
+#[poise::command(prefix_command, owners_only)]
+async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
+    let commands = &ctx.framework().options().commands;
+    poise::builtins::register_globally(ctx.http(), commands).await?;
+
+    ctx.say("Successfully registered slash commands!").await?;
+    Ok(())
 }

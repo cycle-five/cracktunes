@@ -200,10 +200,11 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Gets the channel id that the bot is currently playing in for a given guild.
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<ChannelId> {
         let serenity_context = self.serenity_context();
-        let manager = songbird::get(serenity_context)
-            .await
-            .expect("Failed to get songbird manager")
-            .clone();
+        let manager = self.data().songbird.clone();
+        // let manager = songbird::get(serenity_context)
+        //     .await
+        //     .expect("Failed to get songbird manager")
+        //     .clone();
 
         let call_lock = manager.get(guild_id)?;
         let call = call_lock.lock().await;

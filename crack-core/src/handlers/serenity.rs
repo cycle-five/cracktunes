@@ -127,7 +127,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let role_id = serenity::RoleId::new(role_id);
-            match new_member.add_role(&ctx, role_id).await {
+            match new_member.add_role(ctx.http(), role_id, None).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
                 },
@@ -223,8 +223,9 @@ impl EventHandler for SerenityHandler {
 
         let num_inserted = {
             let ctx1 = arc_ctx.clone();
-            let lock = ctx1.data.read().await;
-            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+            let guild_settings_map = ctx1.data::<GuildSettingsMap>();
+            //let lock = ctx1.data.read().await;
+            //let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
             let mut data_write = self.data.guild_settings_map.write().await;
 
             let mut x = 0;
@@ -304,9 +305,11 @@ impl SerenityHandler {
         new_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
     ) {
         tracing::warn!("in merge_guild_settings");
-        let mut data = ctx.data.write().await;
+        // let mut data = ctx.data.write().await;
 
-        let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+        // let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+        let data = ctx.data::<Data>();
+        let mut settings = data.get_guild_settings().await;
         let mut new_settings = new_settings.lock().unwrap();
 
         tracing::warn!("new_settings len: {:?}", new_settings.len());
@@ -538,7 +541,7 @@ async fn check_delete_old_messages(
     }
     for msg in to_delete {
         tracing::error!("Deleting old message: {:#?}", msg);
-        match msg.delete(ctx.clone()).await {
+        match msg.delete(ctx.http(), Some("delete old messages")).await {
             Ok(_) => {},
             Err(err) => {
                 tracing::error!("Error deleting message: {}", err);
