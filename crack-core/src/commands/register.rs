@@ -282,3 +282,4 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
 
     Ok(())
 }
+
