@@ -724,7 +724,7 @@ async fn build_queued_embed(
     author_title: &str,
     track: &TrackHandle,
     estimated_time: Duration,
-) -> CreateEmbed {
+) -> CreateEmbed<'_> {
     // FIXME
     let metadata = {
         let map = track.typemap().read().await;

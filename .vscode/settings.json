@@ -28,7 +28,7 @@
         "./crack-testing/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
-    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.checkOnSave": false,
     "gitdoc.enabled": false,
     "editor.fontFamily": "0xProto Nerd Font Mono",
     "keyboard.dispatch": "keyCode",

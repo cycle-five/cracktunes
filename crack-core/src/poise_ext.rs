@@ -243,7 +243,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         let record_vote = has_voted && !has_voted_db;
 
         if record_vote {
-            let username = self.author().name.clone();
+            let username = self.author().name.to_string();
             db::User::insert_or_update_user(&pool, i64::from(user_id), username).await?;
             db::UserVote::insert_user_vote(&pool, i64::from(user_id), "top.gg".to_string()).await?;
         }
@@ -440,7 +440,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 
     async fn send_embed_response(
         &'ctx self,
-        embed: CreateEmbed,
+        embed: CreateEmbed<'ctx>,
     ) -> CrackedResult<ReplyHandle<'ctx>> {
         let is_ephemeral = false;
         let is_reply = true;

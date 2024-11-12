@@ -156,7 +156,7 @@ pub async fn volume_internal(ctx: &Context<'_>, level: Option<u32>) -> Result<()
     Ok(())
 }
 
-pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed {
+pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed<'_> {
     CreateEmbed::default().description(create_volume_desc(old, new))
 }
 
