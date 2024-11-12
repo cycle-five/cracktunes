@@ -473,8 +473,8 @@ pub async fn log_guild_role_delete(
     http: &impl CacheHttp,
     log_data: &(&GuildId, &RoleId, &Option<Role>),
 ) -> Result<(), Error> {
-    let (&_guild_id, &role_id, role) = log_data;
-    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let (&guild_id, &role_id, role) = log_data;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
     let default_role = Role::default();
     let role = role.as_ref().unwrap_or(&default_role);
     let title = format!("Role Deleted: {}", role.name);

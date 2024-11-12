@@ -42,11 +42,11 @@ use std::time::Duration;
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
-pub async fn build_log_embed(
-    title: &str,
-    description: &str,
-    avatar_url: &str,
-) -> Result<CreateEmbed, CrackedError> {
+pub async fn build_log_embed<'a>(
+    title: &'a str,
+    description: &'a str,
+    avatar_url: &'a str,
+) -> Result<CreateEmbed<'a>, CrackedError> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let footer = CreateEmbedFooter::new(now_time_str);
     Ok(CreateEmbed::default()

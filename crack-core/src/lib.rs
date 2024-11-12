@@ -405,6 +405,20 @@ impl DataInner {
         }
     }
 
+    pub fn with_ct_client(&self, ct_client: CrackTrackClient) -> Self {
+        Self {
+            ct_client,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_songbird(&self, songbird: songbird::Songbird) -> Self {
+        Self {
+            songbird: Arc::new(songbird),
+            ..self.clone()
+        }
+    }
+
     /// Set the guild settings map for the data.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {

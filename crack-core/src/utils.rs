@@ -199,6 +199,7 @@ pub async fn yt_search_select(
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
     let interaction = match m
+        .id
         .await_component_interaction(ctx.shard)
         .timeout(Duration::from_secs(60 * 3))
         .await
@@ -237,7 +238,7 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    m.delete(ctx).await.unwrap();
+    m.id.delete(ctx.http()).await.unwrap();
     res
 }
 
@@ -260,7 +261,7 @@ pub async fn send_embed_response_poise<'ctx>(
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
     interaction: &Interaction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
@@ -401,7 +402,7 @@ pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
     let data: Arc<TrackData> = track.data();
-    data.aux_metadata.ok_or(CrackedError::NoMetadata)
+    data.aux_metadata.clone().ok_or(CrackedError::NoMetadata)
 }
 
 /// Creates an embed for the first N metadata in the queue.
@@ -545,6 +546,7 @@ pub async fn create_paged_embed(
         .clone()
         .into_message()
         .await?
+        .id
         .await_component_interactions(shard_messanger.clone())
         .timeout(Duration::from_secs(60 * 10))
         .stream();
@@ -835,9 +837,9 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(&s).unwrap();
+        let btn = serde_json::from_str::<Button>(s.into()).unwrap();
 
-        assert_eq!(btn.label, Some("<<".to_string()));
+        assert_eq!(btn.label, Some("<<".to_string().into()));
         // assert_eq!(btn.style, ButtonStyle::Primary);
         assert_eq!(btn.disabled, true);
     }
@@ -847,7 +849,7 @@ mod test {
         let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
-            for btn in nav_btns {
+            for btn in nav_btns.into_owned() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
                 println!("s: {}", s);
                 let btn = serde_json::from_str::<Button>(&s).unwrap();

@@ -1,8 +1,8 @@
+use crate::serenity::client::{client::Context as SerenityContext, EventHandler};
 use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
-use serenity::client::EventHandler;
 use serenity::prelude::RwLock;
-use serenity::{client::Context as SerenityContext, model::gateway::Ready};
+use serenity::model::gateway::Ready;
 use songbird::tracks::PlayMode;
 use songbird::{
     model::payload::{ClientDisconnect, Speaking},

@@ -22,8 +22,7 @@ pub async fn create_text_channel(
     channel_name: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild = guild_id.to_partial_guild(&ctx).await?;
-    match guild
+    match guild_id
         .create_channel(
             ctx.http(),
             CreateChannel::new(channel_name.clone())
@@ -70,8 +69,7 @@ pub async fn create_category(
     category_name: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild = guild_id.to_partial_guild(&ctx).await?;
-    match guild
+    match guild_id
         .create_channel(
             &ctx,
             CreateChannel::new(category_name.clone())
