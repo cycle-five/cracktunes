@@ -28,7 +28,7 @@ pub struct TrackReadyData {
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query(
     ctx: CrackContext<'_>,
-    query_type: QueryType,
+    query_type: QueryType<'_>,
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = Some(ctx.author().id);
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) =
@@ -40,13 +40,16 @@ pub async fn ready_query(
         },
     };
 
-    let username = user_id.map(|x| ctx.user_id_to_username_or_default(x));
+    let username = match user_id {
+        Some(x) => ctx.user_id_to_username_or_default(x).await,
+        None => "(none)".to_string(),
+    };
 
     Ok(TrackReadyData {
         source,
         metadata,
         user_id,
-        username,
+        username: Some(username),
     })
 }
 
@@ -63,7 +66,6 @@ pub async fn queue_track_ready_front(
     // Second index onward: Tracks to be played, we get in here most likely,
     // but if we're in one of the first two we don't want to do anything.
     if new_q.len() >= 3 {
-        //return Ok(new_q);
         handler.queue().modify_queue(|queue| {
             let back = queue.pop_back().unwrap();
             queue.insert(1, back);

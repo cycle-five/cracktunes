@@ -11,7 +11,7 @@ use serenity::all::{
 };
 use serenity::small_fixed_array::FixedString;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams {
     pub channel: ChannelId,
@@ -22,6 +22,20 @@ pub struct SendMessageParams {
     pub cache_msg: bool,
     pub msg: CrackedMessage,
     pub embed: Option<CreateEmbed<'static>>,
+}
+
+/// Implement [`PartialEq`] for [`SendMessageParams`].
+impl PartialEq for SendMessageParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.channel == other.channel
+            && self.as_embed == other.as_embed
+            && self.ephemeral == other.ephemeral
+            && self.reply == other.reply
+            && self.color == other.color
+            && self.cache_msg == other.cache_msg
+            && self.msg == other.msg
+        // Note: We don't compare `embed` here
+    }
 }
 
 impl Default for SendMessageParams {
@@ -75,7 +89,7 @@ impl SendMessageParams {
         Self { cache_msg, ..self }
     }
 
-    pub fn with_embed(self, embed: Option<CreateEmbed>) -> Self {
+    pub fn with_embed(self, embed: Option<CreateEmbed<'static>>) -> Self {
         Self { embed, ..self }
     }
 }
@@ -85,11 +99,15 @@ pub trait CacheHttpExt {
     // fn cache(&self) -> Option<impl CacheHttp>;
     // fn http(&self) -> Option<&Http>;
     fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
-    fn user_id_to_username_or_default(&self, user_id: UserId) -> String;
+    fn user_id_to_username_or_default(
+        &self,
+        user_id: UserId,
+    ) -> impl Future<Output = String> + Send;
     fn channel_id_to_guild_name(
         &self,
         channel_id: ChannelId,
-    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
     fn send_channel_message(
         &self,
         params: SendMessageParams,
@@ -106,8 +124,8 @@ impl<T: CacheHttp> CacheHttpExt for T {
         get_bot_id(self).await
     }
 
-    fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
-        cache_to_username_or_default(self, user_id)
+    async fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
+        cache_to_username_or_default(self, user_id).await
     }
 
     async fn channel_id_to_guild_name(
@@ -230,19 +248,11 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
-pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
-    // let asdf = cache.cache()?.user(user_id);
-
-    match cache_http.cache() {
-        Some(cache) => match cache.user(user_id) {
-            Some(x) => x.name.clone(),
-            None => {
-                tracing::warn!("cache.user returned None");
-                UNKNOWN.to_string()
-            },
-        },
-        None => {
-            tracing::warn!("cache_http.cache() returned None");
+pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
+    match user_id.to_user(cache_http).await {
+        Ok(x) => x.name.to_string(),
+        Err(_) => {
+            tracing::warn!("cache.user returned None");
             UNKNOWN.to_string()
         },
     }
@@ -338,6 +348,6 @@ mod test {
             params.msg,
             CrackedMessage::Other("Hello, world!".to_string())
         );
-        assert_eq!(params.embed, None);
+        assert_eq!(params.embed.is_none(), true);
     }
 }

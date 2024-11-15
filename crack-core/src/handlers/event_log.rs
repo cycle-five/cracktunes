@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::event_log_impl::*;
 use crate::{
     errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
@@ -36,8 +38,8 @@ impl<T: Serialize> Serialize for LogEntry<T> {
 /// Gets the log channel for a given guild.
 pub async fn get_log_channel(
     channel_name: &str,
-    guild_id: &GuildId,
-    data: &Data,
+    guild_id: GuildId,
+    data: Arc<Data>,
 ) -> Option<ChannelId> {
     let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
@@ -49,19 +51,19 @@ pub async fn get_log_channel(
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
     guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
-    guild_id: &GuildId,
+    guild_id: GuildId,
     event: &FullEvent,
 ) -> Result<ChannelId, CrackedError> {
     let guild_settings_map = guild_settings_map.read().await;
 
     let guild_settings = guild_settings_map
-        .get(guild_id)
+        .get(&guild_id)
         .map(Ok)
         .unwrap_or_else(|| {
             tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
             Err(CrackedError::LogChannelWarning(
                 event.snake_case_name(),
-                *guild_id,
+                guild_id,
             ))
         })?
         .clone();
@@ -70,31 +72,32 @@ pub async fn get_channel_id(
             if guild_settings.ignored_channels.contains(&channel_id.get()) {
                 return Err(CrackedError::LogChannelWarning(
                     event.snake_case_name(),
-                    *guild_id,
+                    guild_id,
                 ));
             }
             Ok(channel_id)
         },
         None => Err(CrackedError::LogChannelWarning(
             event.snake_case_name(),
-            *guild_id,
+            guild_id,
         )),
     }
 }
 
 #[cfg(feature = "crack-activity")]
 /// Updates the activity map with the latest presence.
-pub async fn update_activity_map(data: Data, presence: serenity::Presence) {
+pub async fn update_activity_map(data: Arc<Data>, presence: serenity::Presence) {
     let id = presence.user.id;
     let activity = presence.activities.first();
     if let Some(activity) = activity {
         data.user_activity_map.insert(id, activity.clone());
     } else {
         if let Some(old_activity) = data.user_activity_map.remove(&id) {
-            data.activity_user_map.alter(&old_activity.1.name, |_, v| {
-                v.remove(&id);
-                v
-            });
+            data.activity_user_map
+                .alter(old_activity.1.name.as_str(), |_, v| {
+                    v.remove(&id);
+                    v
+                });
             tracing::trace!("Removed Activity {:?}", old_activity);
         }
     }
@@ -108,9 +111,11 @@ pub async fn handle_event(
     ctx: &serenity::all::Context,
     event_in: &FullEvent,
     _framework: FrameworkContext<'_, Data, Error>,
-    data_global: &Data,
+    data_global: Arc<Data>,
 ) -> Result<(), Error> {
     // let event_log = Arc::new(&data_global.event_log);
+
+    use std::sync::Arc;
 
     use crate::{db::GuildEntity, guild::settings::DEFAULT_PREFIX};
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
@@ -118,7 +123,8 @@ pub async fn handle_event(
     let guild_settings = &data_global.guild_settings_map;
 
     match event_in {
-        FullEvent::PresenceUpdate { new_data } => {
+        FullEvent::PresenceUpdate { old_data, new_data } => {
+            let _ = old_data;
             let _ = new_data;
             #[cfg(feature = "crack-activity")]
             update_activity_map(data_global.clone(), new_data.clone()).await;
@@ -145,7 +151,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 new_member,
-                &new_member.guild_id,
+                new_member.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -162,7 +168,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -176,8 +182,8 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 log_data,
-                &guild_id,
-                &ctx,
+                guild_id,
+                ctx,
                 event_log,
                 event_name
             )
@@ -198,7 +204,7 @@ pub async fn handle_event(
             }
 
             // Should we log bot messages?
-            if new_message.author.bot {
+            if new_message.author.bot() {
                 return Ok(());
             }
             log_event!(
@@ -206,7 +212,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 new_message,
-                &new_message.guild_id.unwrap(),
+                new_message.guild_id.unwrap(),
                 &ctx,
                 event_log,
                 event_name
@@ -219,7 +225,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 event,
-                &event.guild_id.unwrap_or_default(),
+                event.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -231,7 +237,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 permission,
-                &permission.guild_id,
+                permission.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -243,7 +249,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 execution,
-                &execution.guild_id,
+                execution.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -254,7 +260,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &rule,
-            &rule.guild_id,
+            rule.guild_id,
             &ctx,
             event_log,
             event_name
@@ -264,7 +270,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name.to_string(), rule.clone()),
-            &rule.guild_id,
+            rule.guild_id,
             &ctx,
             event_log,
             event_name
@@ -274,7 +280,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, rule),
-            &rule.guild_id,
+            rule.guild_id,
             &ctx,
             event_log,
             event_name
@@ -284,7 +290,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, category),
-            &category.guild_id,
+            category.guild_id,
             &ctx,
             event_log,
             event_name
@@ -294,7 +300,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, category),
-            &category.guild_id,
+            category.guild_id,
             &ctx,
             event_log,
             event_name
@@ -304,7 +310,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(channel, messages),
-            &channel.guild_id,
+            channel.guild_id,
             &ctx,
             event_log,
             event_name
@@ -314,7 +320,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, pin),
-            &pin.guild_id.unwrap_or_default(),
+            pin.guild_id.unwrap_or_default(),
             &ctx,
             event_log,
             event_name
@@ -330,7 +336,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &(event_name, old, new),
-                &guild_id,
+                guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -346,7 +352,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -362,7 +368,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -383,7 +389,7 @@ pub async fn handle_event(
                     let (_, new_guild_settings) = GuildEntity::get_or_create(
                         p,
                         guild.id.get() as i64,
-                        guild.name.clone(),
+                        guild.name.to_string(),
                         prefix,
                     )
                     .await?;
@@ -398,7 +404,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &(guild, is_new),
-                &guild.id,
+                guild.id,
                 &ctx,
                 event_log,
                 event_name
@@ -411,7 +417,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &(guild, is_new, guild_settings),
-                &guild.id,
+                guild.id,
                 &ctx,
                 event_log,
                 event_name
@@ -425,7 +431,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &incomplete.id,
+                incomplete.id,
                 &ctx,
                 event_log,
                 event_name
@@ -455,7 +461,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                guild_id.clone(),
                 &ctx,
                 event_log,
                 event_name
@@ -468,7 +474,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                guild_id.clone(),
                 &ctx,
                 event_log,
                 event_name
@@ -499,7 +505,7 @@ pub async fn handle_event(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
                 new.user.name,
                 new.user.id,
-                new.user.created_at(),
+                new.user.id.created_at(),
                 new.joined_at
             );
 
@@ -530,7 +536,7 @@ pub async fn handle_event(
 
             match (maybe_log_channel, old_if_available) {
                 (Some(_), Some(old)) => {
-                    if old.pending && !new.pending {
+                    if old.pending() && !new.pending() {
                         notes = "Click Verify";
                         title = format!("Member Approved: {}", new.user.name);
                     } else {
@@ -538,7 +544,7 @@ pub async fn handle_event(
                     };
                 },
                 (None, Some(old)) => {
-                    if old.pending && !new.pending {
+                    if old.pending() && !new.pending() {
                         notes = "Click Verify";
                         title = format!("Member Approved: {}", new.user.name);
                     } else if !title.is_empty() {
@@ -581,7 +587,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &new,
-                &new.guild_id,
+                new.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -598,7 +604,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                guild_id.clone(),
                 &ctx,
                 event_log,
                 event_name
@@ -615,7 +621,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &new.guild_id,
+                new.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -632,7 +638,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &new.guild_id,
+                new.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -646,7 +652,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &event.guild_id,
+                event.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -659,7 +665,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &event.guild_id,
+                event.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -672,7 +678,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &event.guild_id,
+                event.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -685,7 +691,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &subscribed.guild_id,
+                subscribed.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -698,7 +704,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &unsubscribed.guild_id,
+                unsubscribed.guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -714,7 +720,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id,
+                guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -736,7 +742,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &new_data.id,
+                new_data.id,
                 &ctx,
                 event_log,
                 event_name
@@ -766,7 +772,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &integration.guild_id.unwrap_or_default(),
+                integration.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -779,7 +785,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &integration.guild_id.unwrap_or_default(),
+                integration.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -796,7 +802,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id,
+                guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -811,7 +817,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id,
+                guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -824,7 +830,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &data.guild_id.unwrap_or_default(),
+                data.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -836,7 +842,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 data,
-                &data.guild_id.unwrap_or_default(),
+                data.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -853,7 +859,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id.unwrap_or_default(),
+                guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -904,10 +910,10 @@ pub async fn handle_event(
             new,
             event,
         } => {
-            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+            if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
                 || old_if_available
                     .as_ref()
-                    .map(|x| x.author.bot)
+                    .map(|x| x.author.bot())
                     .unwrap_or(false)
             {
                 return Ok(());
@@ -922,7 +928,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &event.guild_id.unwrap_or_default(),
+                event.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -935,8 +941,8 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 add_reaction,
-                &add_reaction.guild_id.unwrap_or_default(),
-                &ctx,
+                add_reaction.guild_id.unwrap_or_default(),
+                ctx,
                 event_log,
                 event_name
             )
@@ -947,8 +953,8 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 removed_reaction,
-                &removed_reaction.guild_id.unwrap_or_default(),
-                &ctx,
+                removed_reaction.guild_id.unwrap_or_default(),
+                ctx,
                 event_log,
                 event_name
             )

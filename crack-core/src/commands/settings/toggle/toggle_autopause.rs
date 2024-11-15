@@ -16,7 +16,7 @@ pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
     let res = toggle_autopause_internal(
-        ctx.data().clone(),
+        ctx.data(),
         ctx.data()
             .database_pool
             .clone()
@@ -35,12 +35,16 @@ pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
 /// Toggle the autopause for the bot.
 #[cfg(not(tarpaulin_include))]
 pub async fn toggle_autopause_internal(
-    data: Data,
+    data: Arc<Data>,
     pool: PgPool,
     guild_id: GuildId,
-    guild_name: Option<String>,
+    guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
+    use std::sync::Arc;
+
+    use serenity::small_fixed_array::FixedString;
+
     let res = data
         .guild_settings_map
         .write()

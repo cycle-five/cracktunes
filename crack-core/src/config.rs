@@ -15,9 +15,11 @@ use crate::{
     BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use colored::Colorize;
+use poise::framework;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
-use songbird::serenity::SerenityInit;
+use songbird::Songbird;
+use std::borrow::Cow;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
@@ -27,7 +29,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
     match error {
-        poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
+        //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::EventHandler { error, event, .. } => match event {
             FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
             },
@@ -189,8 +191,12 @@ pub async fn poise_framework(
                 Ok(true)
             })
         }),
-        event_handler: |ctx, event, framework, data_global| {
-            Box::pin(async move { handle_event(ctx, event, framework, data_global).await })
+        //event_handler: |ctx, event, framework, data_global| {
+        event_handler: |framework, event| {
+            Box::pin(async move {
+                let ctx = framework.serenity_context;
+                handle_event(ctx, event, framework, framework.user_data()).await
+            })
         },
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
@@ -279,24 +285,26 @@ pub async fn poise_framework(
     //         Ok(data.clone())
     //     })
     // });
-    // let serenity_handler = SerenityHandler {
-    //     is_loop_running: false.into(),
-    //     data: data2.clone(),
-    // };
-
     let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
-    songbird::register_serenity!(framework, songbird_config);
+    let manager = songbird::Songbird::serenity_from_config(songbird_config);
+    let data3 = data2.with_songbird(manager);
+    // songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
     //     options: Default::default(),
     //     cmd_lookup: commands_map,
     //     shard_manager: std::sync::Mutex::new(None),
     // });
+    let serenity_handler = SerenityHandler {
+        is_loop_running: false.into(),
+        data: data2.clone(),
+    };
+
     let client = Client::builder(&token, intents)
-        .framework(framework)
-        .register_songbird_from_config(songbird_config)
+        .voice_manager(manager)
         .event_handler(serenity_handler)
         .data(data2)
+        .framework(framework)
         //.event_handler_arc(bot_test_handler.clone())
         .await
         .unwrap();

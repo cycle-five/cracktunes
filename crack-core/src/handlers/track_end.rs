@@ -1,3 +1,5 @@
+use crate::commands::RequestingUser;
+use crate::utils::TrackData;
 use crate::{
     commands::forget_skip_votes,
     db::PgPoolExtPlayLog,
@@ -9,7 +11,10 @@ use crate::{
     },
     music::query::QueryType,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message},
+    utils::{
+        calculate_num_pages, forget_queue_message, set_track_handle_metadata,
+        set_track_handle_requesting_user,
+    },
     CrackedResult,
     Data, //, Error,
 };
@@ -22,6 +27,7 @@ use ::serenity::{
 };
 use crack_types::NewAuxMetadata;
 use serenity::all::{CacheHttp, UserId};
+use songbird::input::AuxMetadata;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -31,7 +37,7 @@ use tokio::sync::Mutex;
 // channels for the music player.
 pub struct TrackEndHandler {
     pub guild_id: GuildId,
-    pub data: Data,
+    pub data: Arc<Data>,
     pub cache: Arc<Cache>,
     pub http: Arc<Http>,
     pub call: Arc<Mutex<Call>>,
@@ -41,7 +47,7 @@ pub struct TrackEndHandler {
 // use crate::commands::play_utils::ready_query2;
 pub struct ModifyQueueHandler {
     pub guild_id: GuildId,
-    pub data: Data,
+    pub data: Arc<Data>,
     pub http: Arc<Http>,
     pub cache: Arc<Cache>,
     pub call: Arc<Mutex<Call>>,
@@ -81,36 +87,6 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
 
     union
 }
-
-// fn is_playing(track_states: TrackStates) -> bool {
-//     track_states
-//         .iter()
-//         .any(|(state, _)| state.playing == PlayMode::Play)
-// }
-
-// fn is_paused(track_states: TrackStates) -> bool {
-//     track_states
-//         .iter()
-//         .any(|(state, _)| state.playing == PlayMode::Pause)
-// }
-
-// fn is_stopped(track_states: TrackStates) -> bool {
-//     track_states
-//         .iter()
-//         .any(|(state, _)| state.playing == PlayMode::Stop)
-// }
-
-// fn is_end(track_states: TrackStates) -> bool {
-//     track_states
-//         .iter()
-//         .any(|(state, _)| state.playing == PlayMode::End)
-// }
-
-// fn is_errored(track_states: TrackStates) -> bool {
-//     track_states
-//         .iter()
-//         .any(|(state, _)| matches!(state.playing, PlayMode::Errored(_)))
-// }
 
 /// Event handler to handle the end of a track.
 #[async_trait]
@@ -181,7 +157,7 @@ impl EventHandler for TrackEndHandler {
                 Some(c) => c,
                 _ => handler
                     .current_channel()
-                    .map(|c| ChannelId::new(c.0.get()))
+                    .map(|c| ChannelId::new(c.get()))
                     .unwrap(),
             };
             let track = handler.queue().current().clone();
@@ -241,9 +217,9 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = query
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
-    let track = call.as_ref().lock().await.enqueue_input(source).await;
+    let mut track = call.as_ref().lock().await.enqueue_input(source).await;
     if let Some(metadata) = metadata_vec.first() {
-        add_metadata_to_track(&track, metadata.clone().into()).await;
+        add_metadata_to_track(&mut track, metadata.clone().into()).await;
     }
     Ok(track)
 }
@@ -263,30 +239,29 @@ impl EventHandler for ModifyQueueHandler {
         };
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
-        let cache_http = (&self.cache, self.http.as_ref());
-        update_queue_messages(&cache_http, &self.data, &queue, self.guild_id).await;
+        let cache_http = (Some(&self.cache), self.http.as_ref());
+        update_queue_messages(&cache_http, self.data.clone(), &queue, self.guild_id).await;
 
         None
     }
 }
-use crate::commands::RequestingUser;
-use songbird::input::AuxMetadata;
-pub async fn add_metadata_to_track(track: &TrackHandle, metadata: AuxMetadata) {
-    let mut map = track.typemap().write().await;
-    map.insert::<NewAuxMetadata>(NewAuxMetadata(metadata));
-    map.insert::<RequestingUser>(RequestingUser::UserId(UserId::new(1)));
-    drop(map);
+
+/// Adds metadata to a track handle with a default requesting user.
+pub async fn add_metadata_to_track(track: &mut TrackHandle, metadata: AuxMetadata) {
+    let data = track.data::<TrackData>();
+    set_track_handle_metadata(track, metadata).await;
+    set_track_handle_requesting_user(track, UserId::new(1)).await;
 }
 
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.
 pub async fn update_queue_messages(
     cache_http: &impl CacheHttp,
-    data: &Data,
-    tracks: &[TrackHandle],
+    data: Arc<Data>,
+    tracks: &'trk [TrackHandle],
     guild_id: GuildId,
 ) {
-    let cache_map = data.guild_cache_map.lock().await;
+    let cache_map = data.guild_cache_map.lock().await.clone();
 
     let mut messages = match cache_map.get(&guild_id) {
         Some(cache) => cache.queue_messages.clone(),
@@ -312,7 +287,9 @@ pub async fn update_queue_messages(
             .await;
 
         if edit_message.is_err() {
-            forget_queue_message(data, message, guild_id).await.ok();
+            forget_queue_message(data.clone(), message, guild_id)
+                .await
+                .ok();
         };
     }
 }

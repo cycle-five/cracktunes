@@ -9,7 +9,9 @@ use crate::{
 use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
+use serenity::small_fixed_array::FixedString;
 use std::result::Result;
+use std::str::FromStr;
 
 /// Osint Commands
 #[poise::command(
@@ -35,7 +37,7 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
     let guild_name = ctx
         .guild()
         .map(|x| x.name.clone())
-        .unwrap_or("DMs".to_string());
+        .unwrap_or(FixedString::from_str("DMs".to_string()).expect("wtf?"));
 
     let msg_str = format!("Osint found in {guild_name}!");
     let msg = ctx

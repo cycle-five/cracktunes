@@ -163,9 +163,9 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 }
 
 /// Creates a queue embed.
-pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed {
-    let (description, thumbnail): (Cow<'_, str>, String) = if !tracks.is_empty() {
-        let metadata = get_track_handle_metadata(&tracks[0]).await;
+pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'_> {
+    let (description, thumbnail): (String, String) = if !tracks.is_empty() {
+        let metadata = get_track_handle_metadata(&tracks[0]).await.unwrap();
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
         let thumbnail = match url::Url::parse(&url) {
@@ -188,17 +188,14 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
                 .unwrap_or(&String::from(QUEUE_NO_SRC)),
             get_human_readable_timestamp(metadata.duration)
         );
-        (Cow::Owned(description), thumbnail)
+        (description, thumbnail)
     } else {
-        (
-            Cow::Owned(QUEUE_NOTHING_IS_PLAYING.to_string()),
-            "".to_string(),
-        )
+        (QUEUE_NOTHING_IS_PLAYING.to_string(), "".to_string())
     };
 
     CreateEmbed::default()
         .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, description, false)
+        .field(QUEUE_NOW_PLAYING, Cow::Owned(description.into()), false)
         .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
             "{} {} {} {}",
@@ -230,7 +227,7 @@ pub async fn send_now_playing(
     let mutex_guard = call.lock().await;
     let msg: CreateMessage = match mutex_guard.queue().current() {
         Some(track_handle) => {
-            let embed = create_now_playing_embed(&track_handle).await;
+            let embed = create_now_playing_embed(track_handle.clone()).await;
             CreateMessage::new().embed(embed)
         },
         None => CreateMessage::new().content("Nothing playing"),
@@ -293,10 +290,10 @@ pub fn build_now_playing_embed_metadata<'a>(
 }
 
 /// Creates a now playing embed for the given track.
-pub async fn create_now_playing_embed(track: &TrackHandle) -> CreateEmbed {
+pub async fn create_now_playing_embed(track: TrackHandle) -> CreateEmbed<'_> {
     // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
-    let metadata = get_track_handle_metadata(track).await;
-    let requesting_user = get_requesting_user(track).await.ok();
+    let metadata = get_track_handle_metadata(&track).await.expect("uhoh...");
+    let requesting_user = get_requesting_user(&track).await.ok();
     let duration = Some(track.get_info().await.unwrap_or_default().position);
     build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
 }
@@ -344,7 +341,7 @@ pub async fn create_lyrics_embed(
 // ---------------------- Navigation Buttons ---------------------------- //
 
 /// Builds a single navigation button for the queue.
-pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton {
+pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_> {
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)

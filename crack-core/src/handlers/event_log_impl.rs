@@ -1,24 +1,33 @@
 use super::serenity::voice_state_diff_str;
-use crate::{http_utils::get_guild_name, messaging::interface::send_log_embed_thumb, Error};
+use crate::{
+    errors::CrackedError, http_utils::get_guild_name, messaging::interface::send_log_embed_thumb,
+    Error,
+};
 use colored::Colorize;
 use serde::Serialize;
-use serenity::all::{
-    ActionExecution, ApplicationId, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
-    Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
-    GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
-    IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message, MessageId,
-    MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
-    UnavailableGuild,
+use serenity::{
+    all::{
+        ActionExecution, ApplicationId, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
+        Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
+        GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
+        IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message,
+        MessageId, MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
+        UnavailableGuild,
+    },
+    model::guild,
+    small_fixed_array::FixedString,
 };
+use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: T,
 ) -> Result<(), Error> {
-    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
     tracing::info!(
         "{}",
         format!(
@@ -34,15 +43,23 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Integration,
 ) -> Result<(), Error> {
     let integration = log_data.clone();
-    let guild_id = integration.guild_id.unwrap_or_default();
+    let guild_id_int = integration.guild_id.unwrap_or_default();
+    if guild_id_int != guild_id {
+        tracing::warn!(
+            "Integration Update Event: Guild ID mismatch: {} != {}",
+            guild_id_int,
+            guild_id,
+        );
+    }
     let title = format!("Integration Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -60,17 +77,18 @@ pub async fn log_integration_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &(&IntegrationId, &GuildId, &Option<ApplicationId>),
 ) -> Result<(), Error> {
-    let &(integration_id, guild_id, _application_id) = log_data;
+    let &(integration_id, _guild_id, _application_id) = log_data;
     let title = format!(
         "Integration Delete Event {} {} {}",
         integration_id, guild_id, channel_id
     );
     let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -88,6 +106,7 @@ pub async fn log_integration_delete(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Integration,
 ) -> Result<(), Error> {
@@ -96,7 +115,7 @@ pub async fn log_integration_create(
     let title = format!("Integration Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -114,6 +133,7 @@ pub async fn log_integration_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_interaction_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Interaction,
 ) -> Result<(), Error> {
@@ -125,7 +145,7 @@ pub async fn log_interaction_create(
     let title = format!("Interaction Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(cache_http, channel_id).await?;
+    let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -143,6 +163,7 @@ pub async fn log_interaction_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_invite_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &InviteDeleteEvent,
 ) -> Result<(), Error> {
@@ -151,7 +172,7 @@ pub async fn log_invite_delete(
     let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -169,6 +190,7 @@ pub async fn log_invite_delete(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_invite_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &InviteCreateEvent,
 ) -> Result<(), Error> {
@@ -177,7 +199,7 @@ pub async fn log_invite_create(
     let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -195,14 +217,15 @@ pub async fn log_invite_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_stickers_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildId, &HashMap<StickerId, Sticker>),
 ) -> Result<(), Error> {
-    let (guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = *log_data;
+    let (_guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = *log_data;
     let title = format!("Guild Stickers Update for guild {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -220,6 +243,7 @@ pub async fn log_guild_stickers_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
 ) -> Result<(), Error> {
@@ -237,7 +261,7 @@ pub async fn log_guild_scheduled_event_delete(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -255,6 +279,7 @@ pub async fn log_guild_scheduled_event_delete(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_add(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &GuildScheduledEventUserAddEvent,
 ) -> Result<(), Error> {
@@ -268,7 +293,7 @@ pub async fn log_guild_scheduled_event_user_add(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -286,6 +311,7 @@ pub async fn log_guild_scheduled_event_user_add(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_remove(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &GuildScheduledEventUserRemoveEvent,
 ) -> Result<(), Error> {
@@ -299,7 +325,7 @@ pub async fn log_guild_scheduled_event_user_remove(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -317,6 +343,7 @@ pub async fn log_guild_scheduled_event_user_remove(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
 ) -> Result<(), Error> {
@@ -334,7 +361,7 @@ pub async fn log_guild_scheduled_event_update(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -352,11 +379,12 @@ pub async fn log_guild_scheduled_event_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&Guild, &Option<bool>),
 ) -> Result<(), Error> {
     let &(guild, is_new) = log_data;
-    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
 
     // FIXME!
     // // make sure we have the guild stored or store it
@@ -395,11 +423,12 @@ pub async fn log_guild_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_delete_event(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&UnavailableGuild, &Option<Guild>),
 ) -> Result<(), Error> {
     let &(unavailable, full) = log_data;
-    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
 
     // FIXME!
     // // make sure we have the guild stored or store it
@@ -446,10 +475,11 @@ pub async fn log_guild_delete_event(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Role,
 ) -> Result<(), Error> {
-    let guild_name = crate::http_utils::get_guild_name(http, channel_id).await?;
+    let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
     let title = format!("Role Created: {}", log_data.name);
     let description = guild_role_to_string(log_data);
     let avatar_url = "";
@@ -470,6 +500,7 @@ pub async fn log_guild_role_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildId, &RoleId, &Option<Role>),
 ) -> Result<(), Error> {
@@ -497,6 +528,7 @@ pub async fn log_guild_role_delete(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(String, Rule),
 ) -> Result<(), Error> {
@@ -510,7 +542,7 @@ pub async fn log_automod_rule_update(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -528,6 +560,7 @@ pub async fn log_automod_rule_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
 ) -> Result<(), Error> {
@@ -545,7 +578,7 @@ pub async fn log_guild_scheduled_event_create(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -564,6 +597,7 @@ use serenity::model::guild::automod::Rule;
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &Rule,
 ) -> Result<(), Error> {
@@ -576,7 +610,7 @@ pub async fn log_automod_rule_create(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -594,6 +628,7 @@ pub async fn log_automod_rule_create(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_command_execution(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ActionExecution,
 ) -> Result<(), Error> {
@@ -606,7 +641,7 @@ pub async fn log_automod_command_execution(
         .unwrap_or_default()
         .avatar_url()
         .unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -624,6 +659,7 @@ pub async fn log_automod_command_execution(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_command_permissions_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &CommandPermissions,
 ) -> Result<(), Error> {
@@ -633,7 +669,7 @@ pub async fn log_command_permissions_update(
     let description = format!("Permissions: {:?}", permissions.permissions);
     let avatar_url = "";
 
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -649,8 +685,9 @@ pub async fn log_command_permissions_update(
 
 pub async fn log_channel_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(&GuildChannel, &Option<Vec<Message>>),
+    log_data: &(&GuildChannel, &Option<VecDequeue<Message>>),
 ) -> Result<(), Error> {
     let &(guild_channel, messages) = log_data;
     let del_channel_id = guild_channel.id;
@@ -660,7 +697,7 @@ pub async fn log_channel_delete(
         messages.as_ref().map(|x| x.len()).unwrap_or_default()
     );
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -676,19 +713,17 @@ pub async fn log_channel_delete(
 
 pub async fn log_message_delete(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
 ) -> Result<(), Error> {
     let &(del_channel_id, message_id, guild_id) = log_data;
     let id = message_id.to_string();
     let title = format!("Message Deleted: {}", id);
-    let description = format!(
-        "ChannelId: {}\nGuildId: {}",
-        del_channel_id,
-        guild_id.unwrap_or_default()
-    );
+    let guild_id = guild_id.unwrap_or_default();
+    let description = format!("ChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -704,18 +739,19 @@ pub async fn log_message_delete(
 
 pub async fn log_user_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&Option<CurrentUser>, &CurrentUser),
 ) -> Result<Message, Error> {
     let &(old, new) = log_data;
     let title = format!("User Updated: {}", new.name);
     let description = format!(
-        "Old User: {}\nNew User: {}",
-        old.clone()
-            .map(|x| x.name.clone())
-            .unwrap_or_else(|| "None".to_string()),
-        new.name
-    );
+            "Old User: {}\nNew User: {}",
+            old.clone().map(|x| x.name.clone()).unwrap_or_else(
+                || FixedString::from_str("None").expect("Failed to create FixedString")
+            ),
+            new.name
+        );
 
     let name = new.name.clone();
     let avatar_url = new.avatar_url().unwrap_or_default();
@@ -729,7 +765,7 @@ pub async fn log_user_update(
     } else {
         description
     };
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
 
     send_log_embed_thumb(
         &guild_name,
@@ -745,6 +781,7 @@ pub async fn log_user_update(
 
 pub async fn log_reaction_remove(
     channel_id_first: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Reaction,
 ) -> Result<(), Error> {
@@ -752,13 +789,14 @@ pub async fn log_reaction_remove(
     let member = reaction.member.clone().unwrap_or_default();
     let message_id = reaction.message_id;
     let channel_id = reaction.channel_id;
+    let guild_id = reaction.guild_id.unwrap_or_default();
     let title = format!("Reaction Removed: {}", reaction.emoji);
     let description = format!(
         "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
         channel_id, message_id, reaction.emoji, member.user.name
     );
     let avatar_url = member.avatar_url().unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id_first,
@@ -774,6 +812,7 @@ pub async fn log_reaction_remove(
 
 pub async fn log_reaction_add(
     channel_id_first: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Reaction,
 ) -> Result<(), Error> {
@@ -781,13 +820,14 @@ pub async fn log_reaction_add(
     let member = reaction.member.clone().unwrap_or_default();
     let message_id = reaction.message_id;
     let channel_id = reaction.channel_id;
+    let guild_id = reaction.guild_id.unwrap_or_default();
     let title = format!("Reaction Added: {}", reaction.emoji);
     let description = format!(
         "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
         channel_id, message_id, reaction.emoji, member.user.name
     );
     let avatar_url = member.avatar_url().unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id_first,
@@ -804,6 +844,7 @@ pub async fn log_reaction_add(
 /// Log a message update event.
 pub async fn log_message_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(
         &Option<serenity::model::prelude::Message>,
@@ -813,7 +854,7 @@ pub async fn log_message_update(
 ) -> Result<(), Error> {
     // Don't log message updates from bots
     // TODO: Make this configurable
-    if log_data.2.author.as_ref().map(|x| x.bot).unwrap_or(false) {
+    if log_data.2.author.as_ref().map(|x| x.bot()).unwrap_or(false) {
         return Ok(());
     }
 
@@ -859,7 +900,7 @@ pub async fn log_message_update(
             default_msg_string(msg)
         }
     };
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -884,6 +925,7 @@ pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, 
 /// Log a guild ban.
 pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&str, &GuildId, &serenity::model::prelude::User),
 ) -> Result<(), Error> {
@@ -893,7 +935,7 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
     let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();
 
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -910,6 +952,7 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
 /// Log a guild ban removal
 pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&str, &GuildId, &serenity::model::prelude::User),
 ) -> Result<(), Error> {
@@ -919,7 +962,7 @@ pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
     let description = "";
     let avatar_url = user.avatar_url().unwrap_or_default();
 
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -940,8 +983,8 @@ pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
         role.name,
         role.id,
         role.colour,
-        role.hoist,
-        role.mentionable,
+        role.hoist(),
+        role.mentionable(),
         role.permissions,
         role.position,
     )
@@ -959,13 +1002,14 @@ pub fn guild_role_diff(
     if old.colour != new.colour {
         diff_str.push_str(&format!("Color: {:#?} -> {:#?}\n", old.colour, new.colour));
     }
-    if old.hoist != new.hoist {
-        diff_str.push_str(&format!("Hoist: {} -> {}\n", old.hoist, new.hoist));
+    if old.hoist() != new.hoist() {
+        diff_str.push_str(&format!("Hoist: {} -> {}\n", old.hoist(), new.hoist()));
     }
-    if old.mentionable != new.mentionable {
+    if old.mentionable() != new.mentionable() {
         diff_str.push_str(&format!(
             "Mentionable: {} -> {}\n",
-            old.mentionable, new.mentionable
+            old.mentionable(),
+            new.mentionable()
         ));
     }
     if old.permissions != new.permissions {
@@ -983,6 +1027,7 @@ pub fn guild_role_diff(
 /// Log a guild role update event.
 pub async fn log_guild_role_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(
         &Option<serenity::model::prelude::Role>,
@@ -997,7 +1042,7 @@ pub async fn log_guild_role_update(
         .unwrap_or_else(|| guild_role_to_string(new));
     // FIXME: Use icon or emoji
     let avatar_url = "";
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1013,6 +1058,7 @@ pub async fn log_guild_role_update(
 /// Log a guild role creation event.
 pub async fn log_guild_member_removal(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildId, &serenity::model::prelude::User, &Option<Member>),
 ) -> Result<serenity::model::prelude::Message, Error> {
@@ -1020,11 +1066,11 @@ pub async fn log_guild_member_removal(
     let title = format!("Member Left: {}", user.name);
     let description = format!(
         "Account Created: {}\nJoined: {:?}",
-        user.created_at(),
+        user.id.created_at(),
         member_data_if_available.clone().and_then(|m| m.joined_at)
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1040,6 +1086,7 @@ pub async fn log_guild_member_removal(
 /// Log a guild member addition event.
 pub async fn log_guild_member_addition(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     new_member: &Member,
 ) -> Result<serenity::model::prelude::Message, Error> {
@@ -1047,10 +1094,10 @@ pub async fn log_guild_member_addition(
     let title = format!("Member Joined: {}", new_member.user.name);
     let description = format!(
         "Account Created: {}\nJoined: {:?}",
-        new_member.user.created_at(),
+        new_member.user.id.created_at(),
         new_member.joined_at
     );
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1113,9 +1160,9 @@ impl std::fmt::Display for PresenceUserPrinter {
                 self.user.id,
                 self.user.discriminator,
                 self.user.avatar,
-                self.user.bot,
-                self.user.mfa_enabled,
-                self.user.verified,
+                self.user.bot(),
+                self.user.mfa_enabled(),
+                self.user.verified(),
                 self.user.email,
                 self.user.public_flags,
             )
@@ -1193,6 +1240,7 @@ impl std::fmt::Display for ClientStatusPrinter {
 #[cfg(not(tarpaulin_include))]
 pub async fn log_presence_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     new_data: &Presence,
 ) -> Result<serenity::model::prelude::Message, Error> {
@@ -1201,7 +1249,7 @@ pub async fn log_presence_update(
     }
     .to_string();
 
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     let title = format!(
         "Presence Update: {}",
         new_data.user.name.clone().unwrap_or_default()
@@ -1233,6 +1281,7 @@ pub async fn log_presence_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_voice_channel_status_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     ctx: &SerenityContext,
     log_data: &(&Option<String>, &Option<String>, &ChannelId, &GuildId),
 ) -> Result<serenity::model::prelude::Message, Error> {
@@ -1241,7 +1290,7 @@ pub async fn log_voice_channel_status_update(
 
     let description = "";
     let avatar_url = "";
-    let guild_name = get_guild_name(&ctx, channel_id).await?;
+    let guild_name = get_guild_name(&ctx, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1258,6 +1307,7 @@ pub async fn log_voice_channel_status_update(
 #[cfg(not(tarpaulin_include))]
 pub async fn log_voice_state_update(
     channel_id: ChannelId,
+    guild_id: GuildId,
     ctx: &SerenityContext,
     log_data: &(
         &Option<serenity::model::prelude::VoiceState>,
@@ -1276,7 +1326,7 @@ pub async fn log_voice_state_update(
         .clone()
         .and_then(|x| x.user.avatar_url())
         .unwrap_or_default();
-    let guild_name = get_guild_name(&ctx, channel_id).await?;
+    let guild_name = get_guild_name(&ctx, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1292,6 +1342,7 @@ pub async fn log_voice_state_update(
 /// Noop log a typing start event.
 pub async fn log_typing_start_noop(
     _channel_id: ChannelId,
+    _guild_id: GuildId,
     _http: &impl CacheHttp,
     _event: &serenity::model::prelude::TypingStartEvent,
 ) -> Result<serenity::model::prelude::Message, Error> {
@@ -1301,11 +1352,14 @@ pub async fn log_typing_start_noop(
 /// Log a typing start event.
 pub async fn log_typing_start(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     event: &serenity::model::prelude::TypingStartEvent,
 ) -> Result<serenity::model::prelude::Message, Error> {
+    let guild_id = event.guild_id; //.ok_or(CrackedError::NoGuildId)?;
+    let guild_id_no_opt = guild_id.ok_or(CrackedError::NoGuildId)?;
     let user = event.user_id.to_user(http).await?;
-    let channel_name = channel_id.to_channel(http).await?.to_string();
+    let channel_name = channel_id.to_channel(http, guild_id).await?.to_string();
     let name = user.name.clone();
     let guild = event
         .guild_id
@@ -1327,7 +1381,8 @@ pub async fn log_typing_start(
         name, event.user_id, event.channel_id
     );
     let avatar_url = user.avatar_url().unwrap_or_default();
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_id = event.guild_id.unwrap_or_default();
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
         &guild_name,
         &channel_id,
@@ -1342,10 +1397,11 @@ pub async fn log_typing_start(
 
 pub async fn log_message(
     channel_id: ChannelId,
+    guild_id: GuildId,
     http: &impl CacheHttp,
     new_message: &serenity::model::prelude::Message,
 ) -> Result<serenity::model::prelude::Message, Error> {
-    let guild_name = get_guild_name(http, channel_id).await?;
+    let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     let title = format!("Message: {}", new_message.author.name);
     let id = new_message.author.id;
     let description = format!(
@@ -1372,7 +1428,9 @@ macro_rules! log_event {
             .write_log_obj_async($event_name, $log_data)
             .await?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $http, $log_data).await.map(|_| ())
+        $log_func(channel_id, $guild_id, $http, $log_data)
+            .await
+            .map(|_| ())
     }};
 }
 
@@ -1383,7 +1441,9 @@ macro_rules! log_event2 {
             .write_log_obj_async($event_name, $log_data)
             .await?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $ctx, $log_data).await.map(|_| ())
+        $log_func(channel_id, $guild_id, $ctx, $log_data)
+            .await
+            .map(|_| ())
     }};
 }
 
@@ -1394,6 +1454,8 @@ macro_rules! log_event_async {
             .write_log_obj_async($event_name, $log_data)
             .await?;
         let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
-        $log_func(channel_id, $http, $log_data).await.map(|_| ())
+        $log_func(channel_id, $guild_id, $http, $log_data)
+            .await
+            .map(|_| ())
     }};
 }
