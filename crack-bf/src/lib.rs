@@ -73,7 +73,7 @@ impl BrainfuckProgram {
     fn write_cell(&self, writer: &mut impl Write) -> Result<(), Error> {
         let val = self.cells[self.ptr];
         match writer.write_all(&[val]) {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(e) => Err(Box::new(e)),
         }
     }
@@ -87,6 +87,7 @@ impl BrainfuckProgram {
     // }
 
     /// Run the brainfuck program.
+    #[allow(clippy::match_on_vec_items)]
     pub async fn run_async<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<usize, Error>
     where
         R: AsyncBufRead + Unpin,

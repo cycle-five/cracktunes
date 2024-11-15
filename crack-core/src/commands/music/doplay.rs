@@ -21,6 +21,7 @@ use crate::{
     Context, Data, Error,
 };
 use crate::{http_utils, CrackedResult};
+use ::serenity::all::{AutoModRuleCreateEvent, CreateAutocompleteResponse};
 use ::serenity::{
     all::{CommandInteraction, Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
@@ -100,6 +101,7 @@ pub async fn autocomplete(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
 ) -> Vec<String> {
+    CreateAutocompleteResponse::
     match suggestion2(searching).await {
         Ok(x) => x,
         Err(e) => {

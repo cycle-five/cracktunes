@@ -137,6 +137,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 }
 
 /// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
+#[must_use]
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     rusty_ytdl::Author {
         id: "id".to_string(),
@@ -151,7 +152,7 @@ pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     }
 }
 
-/// Builds a fake [rusty_ytdl::Embed] for testing purposes.
+/// Builds a fake [`rusty_ytdl::Embed`] for testing purposes.
 #[must_use]
 pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     rusty_ytdl::Embed {

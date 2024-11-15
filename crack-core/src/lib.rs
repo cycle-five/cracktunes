@@ -20,7 +20,7 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
-use songbird::Call;
+use songbird::{Call, Songbird};
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -80,12 +80,12 @@ use crate::messaging::message::CrackedMessage;
 use crate::serenity::prelude::SerenityError;
 use crack_types::reply_handle::MessageOrReplyHandle;
 
-impl From<CrackedError> for SerenityError {
-    fn from(_e: CrackedError) -> Self {
-        //let bs = Box::new(e.to_string());
-        SerenityError::Other("CrackedError")
-    }
-}
+// impl From<CrackedError> for SerenityError {
+//     fn from(_e: CrackedError) -> Self {
+//         //let bs = Box::new(e.to_string());
+//         SerenityError::Other("CrackedError")
+//     }
+// }
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -338,7 +338,7 @@ pub struct DataInner {
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
     pub ct_client: CrackTrackClient,
-    pub songbird: Arc<Mutex<Call>>,
+    pub songbird: Arc<Songbird>,
 }
 
 // /// Get the default topgg client
@@ -531,7 +531,7 @@ impl Default for DataInner {
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
-            songbird: Arc::new(songbird::Songbird::default()),
+            songbird: songbird::Songbird::serenity(),
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
@@ -558,7 +558,7 @@ impl Default for Data {
 #[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
-/// Impl [`Default`] for our custom [`Data`] struct
+/// Impl [`Deref`] for our custom [`Data`] struct
 impl std::ops::Deref for Data {
     type Target = DataInner;
 
@@ -690,6 +690,14 @@ impl Data {
             .or_default()
             .push(msg);
         Ok(())
+    }
+
+    pub async fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+        Self(Arc::new(self.0.with_bot_settings(bot_settings)))
+    }
+
+    pub async fn with_songbird(&self, songbird: songbird::Songbird) -> Self {
+        Self(Arc::new(self.0.with_songbird(songbird)))
     }
 }
 

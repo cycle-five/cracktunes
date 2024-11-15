@@ -137,7 +137,7 @@ pub enum CrackedMessage {
     },
     TextChannelCreated {
         channel_id: serenity::ChannelId,
-        channel_name: FixedString,
+        channel_name: FixedString<u16>,
     },
     Uptime {
         mention: String,

@@ -31,6 +31,7 @@ use ::serenity::{
     model::channel::Message,
 };
 use crack_types::get_human_readable_timestamp;
+use futures::lock;
 //use crack_types::MessageOrReplyHandle;
 use crack_types::NewAuxMetadata;
 use poise::{
@@ -387,22 +388,68 @@ pub async fn edit_embed_response_poise(
     reply_handle?.into_message().await.map_err(Into::into)
 }
 
+// /// Data struct for the bot, which is stored and accessible in all command invocations
+// #[derive(Clone, Debug)]
+// pub struct TrackData(pub ArcTrackData);
+
+// /// Impl [`Deref`] for our custom [`Data`] struct
+// impl std::ops::Deref for TrackData {
+//     type Target = TrackDataInner;
+
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+
+//use tokio::sync::RwLock;
+/// Modifiable data struct for the track information.
 #[derive(Clone, Debug, Default)]
 pub struct TrackData {
-    pub user_id: Option<serenity::UserId>,
-    pub aux_metadata: Option<AuxMetadata>,
+    pub user_id: Arc<RwLock<Option<serenity::UserId>>>,
+    pub aux_metadata: Arc<RwLock<Option<AuxMetadata>>>,
 }
+// pub type ArcTrackData = Arc<TrackDataInner>;
+
+// impl std::ops::DerefMut for TrackData {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         Arc::get_mut(self).unwrap()
+//     }
+// }
 
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
     let data: Arc<TrackData> = track.data();
-    data.user_id.ok_or(CrackedError::NoUserAutoplay)
+    let lock = data.user_id.read().await;
+    lock.ok_or(CrackedError::NoUserAutoplay)
 }
 
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
     let data: Arc<TrackData> = track.data();
-    data.aux_metadata.clone().ok_or(CrackedError::NoMetadata)
+    let lock = data.aux_metadata.read().await;
+    lock.clone().ok_or(CrackedError::NoMetadata)
+}
+
+/// Sets the metadata for a track.
+pub async fn set_track_handle_metadata(
+    track: &mut TrackHandle,
+    metadata: AuxMetadata,
+) -> Result<(), CrackedError> {
+    let mut data: Arc<TrackData> = track.data();
+    let mut lock = data.aux_metadata.write().await;
+    *lock = Some(metadata);
+    Ok(())
+}
+
+/// Sets the requesting user for a track.
+pub async fn set_track_handle_requesting_user(
+    track: &mut TrackHandle,
+    user_id: serenity::UserId,
+) -> Result<(), CrackedError> {
+    let data: Arc<TrackData> = track.data();
+    let mut lock = data.user_id.write().await;
+    *lock = Some(user_id);
+    Ok(())
 }
 
 /// Creates an embed for the first N metadata in the queue.
@@ -447,7 +494,7 @@ pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
 
 /// Forget the current cache of queue messages we need to update.
 pub async fn forget_queue_message(
-    data: &Data,
+    data: Arc<Data>,
     message: &Message,
     guild_id: GuildId,
 ) -> Result<(), CrackedError> {
@@ -532,14 +579,18 @@ pub async fn create_paged_embed(
         .description(page_getter(0))
         .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages)));
 
-    let create_reply = CreateReply::default()
-        .embed(embed)
-        .components(create_nav_btns(0, num_pages));
+    let reply_handle = {
+        let create_reply = CreateReply::default()
+            .embed(embed)
+            .components(create_nav_btns(0, num_pages));
+        ctx.send(create_reply).await?
+    };
     // let mut message = {
     //     let reply = ctx.clone().send(create_reply).await?;
     //     reply.into_message().await?
     // };
-    let reply_handle = ctx.clone().send(create_reply).await?;
+    // let reply_handle = ctx.clone().send(create_reply).await?;
+    // drop(create_reply);
     let shard_messanger = ctx.serenity_context().clone().shard;
 
     let mut cib = reply_handle
@@ -592,6 +643,7 @@ pub async fn create_paged_embed(
         .await
         .unwrap();
 
+    drop(reply_handle);
     Ok(())
 }
 

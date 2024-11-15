@@ -8,6 +8,10 @@
       pre-curated and use in my own server.
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
+- [ ] Decide on whether to use ephemeral for admin messages.
+
+## v0.0.15 (2024/12/05)
+- [ ] 
 
 ## v0.3.14 (2024/11/05)
 - [x] Big refactor, moving a lot of the code into modules.

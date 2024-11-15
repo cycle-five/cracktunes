@@ -18,6 +18,7 @@ use crate::{
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
+use ::serenity::small_fixed_array::FixedString;
 use colored::Colorize;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::{NewAuxMetadata, SpotifyTrack};
@@ -31,6 +32,7 @@ use songbird::{
     tracks::TrackHandle,
     Call,
 };
+use std::str::FromStr;
 use std::{
     ops::Deref,
     path::Path,
@@ -51,7 +53,7 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(serenity::Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
@@ -161,8 +163,8 @@ impl QueryType {
                     .collect::<Vec<String>>()
                     .join(" "),
             ),
-            QueryType::PlaylistLink(url) => Some(url.clone()),
-            QueryType::File(file) => Some(file.url.clone()),
+            QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::File(file) => Some(file.url.to_string()),
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
@@ -301,7 +303,7 @@ impl QueryType {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         ctx.channel_id()
             .send_message(
-                ctx,
+                ctx.http(),
                 CreateMessage::new()
                     .content(format!("Download status {}", status))
                     .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
@@ -348,7 +350,9 @@ impl QueryType {
         //let reqwest_client = ctx.data().http_client.clone();
         let search_results = YoutubeDl::new_search(http_utils::get_client_old().clone(), keywords)
             .search(None)
-            .await?;
+            .await?
+            .collect::<Vec<_>>();
+
         // let user_id = ctx.author().id;
         let qt = yt_search_select(
             ctx.serenity_context().clone(),
@@ -708,7 +712,7 @@ impl QueryType {
             QueryType::File(file) => {
                 tracing::warn!("In File");
                 Ok((
-                    HttpRequest::new(client_old, file.url.to_owned()).into(),
+                    HttpRequest::new(client_old, FixedString::from_str(file.url)).into(),
                     vec![NewAuxMetadata::default()],
                 ))
             },

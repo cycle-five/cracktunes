@@ -20,13 +20,12 @@ pub trait ReplyHandleTrait: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>>;
 }
 
-/// Wrapper around poise::ReplyHandle<'a> that implements ReplyHandleTrait.
+/// Wrapper around `poise::ReplyHandle`<'a> that implements [`ReplyHandleTrait`].
 pub struct ReplyHandleWrapper {
     pub handle: Arc<ReplyHandle<'static>>,
 }
 
 impl ReplyHandleTrait for ReplyHandleWrapper {
-    // fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>> {
     fn into_message(
         self: Arc<Self>,
     ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
@@ -61,7 +60,7 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
     }
 }
 
-/// Empty "wrapper" that implements ReplyHandleTrait for testing purposes.
+/// Empty "wrapper" that implements [`ReplyHandleTrait`] for testing purposes.
 struct ReplyHandleWrapperSimple;
 
 impl ReplyHandleTrait for ReplyHandleWrapperSimple {
@@ -89,7 +88,7 @@ pub enum MessageOrReplyHandle {
 impl std::fmt::Debug for MessageOrReplyHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MessageOrReplyHandle::Message(message) => write!(f, "Message: {:?}", message),
+            MessageOrReplyHandle::Message(message) => write!(f, "Message: {message:?}"),
             MessageOrReplyHandle::ReplyHandle(_) => write!(f, "ReplyHandle"),
         }
     }
@@ -137,14 +136,14 @@ pub async fn run() {
 
     let _ = container.get_handle();
 
-    println!("{:?}", container);
+    println!("{container:?}");
     // To use ReplyHandle:
     // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
     let wrapped_handle = ReplyHandleWrapperSimple;
     let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
     let container = Container::new(handle);
 
-    println!("{:?}", container);
+    println!("{container:?}");
 }
 
 #[cfg(test)]
