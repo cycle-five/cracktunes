@@ -632,7 +632,7 @@ impl QueryType {
     /// Get the source (playable track) for this query.
     pub async fn get_track_source(
         &self,
-        client_old: reqwest_old::Client,
+        client_old: reqwest::Client,
     ) -> CrackedResult<songbird::input::Input> {
         match self {
             QueryType::YoutubeSearch(query) => {

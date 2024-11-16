@@ -47,7 +47,7 @@ pub async fn defend(
     let next_action = Arc::new(atomic::AtomicU16::new(0));
     let handler = DefendHandler {
         ctx: Arc::new(ctx.serenity_context().clone()),
-        http: ctx.http(),
+        http: ctx.http().as_ref(),
         manager: songbird.clone(),
         role: role.clone(),
         guild_id: Some(guild_id),
@@ -58,7 +58,7 @@ pub async fn defend(
         .await
         .add_global_event(Event::Periodic(Duration::from_secs(N), None), handler);
 
-    let mut type_map = ctx.serenity_context().data().actions
+    let data = ctx.data();
     type_map.insert::<AtomicU16Key>(next_action);
 
     poise::say_reply(ctx, format!("Tag attackers with role {}", role.name)).await?;
@@ -158,7 +158,8 @@ impl EventHandler for DefendHandler {
             let channel_name = format!("Losers-{}", now_str);
             tracing::warn!("Creating channel {}", channel_name);
             // Now create the channel
-            let channel = guild.id
+            let channel = guild
+                .id
                 .create_channel(
                     self.http.as_ref(),
                     CreateChannel::new(channel_name.clone()).kind(ChannelType::Voice),

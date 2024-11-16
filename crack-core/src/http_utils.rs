@@ -13,7 +13,7 @@ use serenity::small_fixed_array::FixedString;
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
-pub struct SendMessageParams {
+pub struct SendMessageParams<'a> {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
@@ -21,11 +21,11 @@ pub struct SendMessageParams {
     pub color: Color,
     pub cache_msg: bool,
     pub msg: CrackedMessage,
-    pub embed: Option<CreateEmbed<'static>>,
+    pub embed: Option<CreateEmbed<'a>>,
 }
 
 /// Implement [`PartialEq`] for [`SendMessageParams`].
-impl PartialEq for SendMessageParams {
+impl PartialEq for SendMessageParams<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.channel == other.channel
             && self.as_embed == other.as_embed
@@ -38,7 +38,7 @@ impl PartialEq for SendMessageParams {
     }
 }
 
-impl Default for SendMessageParams {
+impl Default for SendMessageParams<'_> {
     fn default() -> Self {
         SendMessageParams {
             channel: ChannelId::new(1),
@@ -53,7 +53,7 @@ impl Default for SendMessageParams {
     }
 }
 
-impl SendMessageParams {
+impl<'a> SendMessageParams<'a> {
     pub fn new(msg: CrackedMessage) -> Self {
         Self {
             msg,
@@ -89,7 +89,7 @@ impl SendMessageParams {
         Self { cache_msg, ..self }
     }
 
-    pub fn with_embed(self, embed: Option<CreateEmbed<'static>>) -> Self {
+    pub fn with_embed(self, embed: Option<CreateEmbed<'a>>) -> Self {
         Self { embed, ..self }
     }
 }
@@ -140,7 +140,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
     #[cfg(not(tarpaulin_include))]
     async fn send_channel_message(
         &self,
-        params: SendMessageParams,
+        params: SendMessageParams<'_>,
     ) -> Result<Message, CrackedError> {
         let channel = params.channel;
         let content = format!("{}", params.msg);

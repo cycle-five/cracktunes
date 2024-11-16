@@ -3,6 +3,7 @@ use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
 use crate::CrackedResult;
+use ::serenity::small_fixed_array::FixedString;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, OpenOptions};
 use std::io::Write;
+use std::str::FromStr;
 use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
@@ -304,7 +306,7 @@ use super::permissions::GenericPermissionSettings;
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
-    pub guild_name: String,
+    pub guild_name: FixedString,
     pub prefix: String,
     // A vc token per guild.
     #[serde(default = "premium_default")]
@@ -394,7 +396,9 @@ impl From<crate::db::GuildSettingsRead> for GuildSettings {
         let mut settings = GuildSettings::new(
             GuildId::new(settings_db.guild_id as u64),
             Some(&settings_db.prefix),
-            Some(settings_db.guild_name),
+            Some(FixedString::from_str(
+                &settings_db.guild_name,
+            ).expect("Failed to convert guild name")),
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
@@ -425,7 +429,7 @@ impl GuildSettings {
     pub fn new(
         guild_id: GuildId,
         prefix: Option<&str>,
-        guild_name: Option<String>,
+        guild_name: Option<FixedString>,
     ) -> GuildSettings {
         let allowed_domains: HashSet<String> = DEFAULT_ALLOWED_DOMAINS
             .iter()
@@ -437,7 +441,7 @@ impl GuildSettings {
             None => DEFAULT_PREFIX.to_string(),
         };
 
-        let guild_name = guild_name.map(|x| x.to_string()).unwrap_or_default();
+        let guild_name = guild_name.unwrap_or_default();
         let asdf: Vec<u64> = vec![1165246445654388746];
         GuildSettings {
             guild_id,
@@ -806,7 +810,7 @@ impl GuildSettings {
         if self.guild_name.is_empty() {
             self.guild_id.to_string()
         } else {
-            self.guild_name.clone()
+            self.guild_name.to_string()
         }
     }
 

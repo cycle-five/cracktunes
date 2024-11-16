@@ -311,7 +311,7 @@ pub trait PoiseContextExt<'ctx> {
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_embed_response(
         &'ctx self,
-        embed: CreateEmbed,
+        embed: CreateEmbed<'ctx>,
     ) -> impl Future<Output = CrackedResult<ReplyHandle<'ctx>>>;
 }
 

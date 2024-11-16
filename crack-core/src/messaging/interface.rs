@@ -290,7 +290,7 @@ pub fn build_now_playing_embed_metadata<'a>(
 }
 
 /// Creates a now playing embed for the given track.
-pub async fn create_now_playing_embed(track: TrackHandle) -> CreateEmbed<'_> {
+pub async fn create_now_playing_embed<'a>(track: TrackHandle) -> CreateEmbed<'a> {
     // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
     let metadata = get_track_handle_metadata(&track).await.expect("uhoh...");
     let requesting_user = get_requesting_user(&track).await.ok();
@@ -298,10 +298,14 @@ pub async fn create_now_playing_embed(track: TrackHandle) -> CreateEmbed<'_> {
     build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
 }
 
-// ---------------------- Lyricsd ---------------------------- //
+// ---------------------- Lyrics ---------------------------- //
 
 /// Creates a lyrics embed for the given track.
-pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> CreateEmbed {
+pub async fn create_lyrics_embed_old(
+    track: String,
+    artists: String,
+    lyric: String,
+) -> CreateEmbed<'static> {
     CreateEmbed::default()
         .author(CreateEmbedAuthor::new(artists))
         .title(track)
@@ -350,14 +354,14 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_>
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow<'_>> {
+pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow<'static>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-    vec![CreateActionRow::Buttons(vec![
+    vec![CreateActionRow::Buttons(Cow::Owned(vec![
         create_single_nav_btn("<<", cant_left),
         create_single_nav_btn("<", cant_left),
         create_single_nav_btn(">", cant_right),
         create_single_nav_btn(">>", cant_right),
-    ])]
+    ]))]
 }
 
 // -------- Search Results -------- //
@@ -368,7 +372,7 @@ pub async fn create_search_results_reply(results: Vec<CreateEmbed<'_>>) -> Creat
         .reply(true)
         .content("Search results:");
     for result in results {
-        reply.embed(result);
+        reply = reply.clone().embed(result);
     }
 
     reply.clone()
@@ -382,7 +386,7 @@ pub async fn send_search_failed(ctx: &CrackContext<'_>) -> Result<(), CrackedErr
             CrackedError::Other("Something went wrong while parsing your query!")
         ))
         .footer(CreateEmbedFooter::new("Search failed!"));
-    let _msg = send_embed_response_poise(ctx, embed).await?;
+    let _msg = send_embed_response_poise(*ctx, embed).await?;
     //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
@@ -392,7 +396,7 @@ pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), Cracke
     let embed = CreateEmbed::default()
         .description(format!("{}", CrackedError::Other("No query provided!")))
         .footer(CreateEmbedFooter::new("No query provided!"));
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(*ctx, embed).await?;
     Ok(())
 }
 
@@ -402,7 +406,7 @@ pub async fn send_search_message<'ctx>(
     ctx: &'ctx CrackContext<'_>,
 ) -> CrackedResult<ReplyHandle<'ctx>> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    let msg = send_embed_response_poise(ctx, embed).await?;
+    let msg = send_embed_response_poise(*ctx, embed).await?;
     Ok(msg)
 }
 
@@ -431,7 +435,7 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(ctx, embed)
+    send_embed_response_poise(*ctx, embed)
         .await
         .map_err(Into::into)
 }
