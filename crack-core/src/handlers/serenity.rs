@@ -351,14 +351,10 @@ impl SerenityHandler {
                     continue;
                 },
             };
-            tracing::info!(
-                "Loading guild settings for {}, {}",
-                guild_id,
-                guild_name.clone()
-            );
+            let to_write = guild_name.clone();
+            tracing::info!("Loading guild settings for {guild_id}, {to_write}");
 
-            let mut default =
-                GuildSettings::new(guild_id, Some(&prefix), Some(guild_name.to_string()));
+            let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name));
 
             let pool = self.data.database_pool.clone().unwrap();
             let _ = default.load_if_exists(&pool).await.map_err(|err| {
@@ -374,8 +370,8 @@ impl SerenityHandler {
                 .insert(guild_id, default.clone());
 
             match default.save(&pool).await {
-                Ok(()) => tracing::info!("Saved guild {guild_name}..."),
-                Err(err) => tracing::error!("Failed to save guild {guild_name} due to {err}"),
+                Ok(()) => tracing::info!("Saved guild {to_write}..."),
+                Err(err) => tracing::error!("Failed to save guild {to_write} due to {err}"),
             }
         }
     }
@@ -409,7 +405,7 @@ impl SerenityHandler {
             let prefix = prefix.clone();
             let pool = self.data.database_pool.clone().unwrap();
             let (_guild, settings) =
-                GuildEntity::get_or_create(&pool, guild_id_int, guild_name.to_string(), prefix)
+                GuildEntity::get_or_create(&pool, guild_id_int, guild_name, prefix)
                     .await
                     .unwrap();
             let mut guild_settings_map = self.data.guild_settings_map.write().await;

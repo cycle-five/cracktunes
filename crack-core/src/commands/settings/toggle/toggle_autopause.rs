@@ -1,7 +1,9 @@
 use crate::http_utils::CacheHttpExt;
 use crate::{errors::CrackedError, guild::settings::GuildSettings, Context, Data, Error};
 use serenity::all::GuildId;
+use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// Toggle autopause for the bot
 #[poise::command(
@@ -41,9 +43,7 @@ pub async fn toggle_autopause_internal(
     guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
-    use std::sync::Arc;
 
-    use serenity::small_fixed_array::FixedString;
 
     let res = data
         .guild_settings_map

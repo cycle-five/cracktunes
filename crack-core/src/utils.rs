@@ -227,7 +227,7 @@ pub async fn yt_search_select(
     // Acknowledge the interaction and edit the message
     let res = interaction
         .create_response(
-            ctx.into(),
+            ctx.http(),
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
                     title: rev_map.get(url).unwrap().to_string(),
@@ -239,15 +239,15 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    m.id.delete(ctx.http()).await.unwrap();
+    channel_id.delete_message(ctx.http(), m.id, None).await?;
     res
 }
 
 /// Sends a reply response with an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
-    ctx: &'ctx CrackContext<'_>,
-    embed: CreateEmbed<'_>,
+    ctx: CrackContext<'_>,
+    embed: CreateEmbed<'ctx>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
@@ -368,9 +368,6 @@ pub async fn edit_embed_response_poise(
     let reply_handle = match get_interaction_new(&ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => {
-                // match interaction2 {
-                //     Interaction::Command(interaction3) => {
-                //         tracing::warn!("CommandInteraction");
                 return interaction2
                     .edit_response(
                         &ctx.serenity_context().http,
@@ -383,7 +380,7 @@ pub async fn edit_embed_response_poise(
             },
             CommandOrMessageInteraction::Message(_) => send_embed_response_poise(&ctx, embed).await,
         },
-        None => send_embed_response_poise(&ctx, embed).await,
+        None => send_embed_response_poise(ctx, embed).await,
     };
     reply_handle?.into_message().await.map_err(Into::into)
 }
@@ -564,7 +561,7 @@ pub async fn build_tracks_embed_metadata(
 
 /// Creates and sends a paged embed.
 pub async fn create_paged_embed(
-    ctx: CrackContext<'_>,
+    ctx: CrackContext<'a>,
     author: String,
     title: String,
     content: String,
@@ -583,7 +580,7 @@ pub async fn create_paged_embed(
         let create_reply = CreateReply::default()
             .embed(embed)
             .components(create_nav_btns(0, num_pages));
-        ctx.send(create_reply).await?
+        ctx.send(create_reply).await
     };
     // let mut message = {
     //     let reply = ctx.clone().send(create_reply).await?;
@@ -901,7 +898,7 @@ mod test {
         let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
-            for btn in nav_btns.into_owned() {
+            for btn in nav_btns.clone() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
                 println!("s: {}", s);
                 let btn = serde_json::from_str::<Button>(&s).unwrap();

@@ -242,7 +242,7 @@ pub async fn enqueue_resolved_tracks(
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
     track: ResolvedTrack,
-    http_client: reqwest_old::Client,
+    http_client: reqwest::Client,
     //user_id: Option<UserId>,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;

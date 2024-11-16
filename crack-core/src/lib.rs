@@ -21,6 +21,7 @@ use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
 use songbird::{Call, Songbird};
+use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -335,6 +336,7 @@ pub struct DataInner {
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
+    pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
     pub ct_client: CrackTrackClient,
@@ -540,6 +542,7 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             guild_command_msg_queue: Default::default(),
+            guild_cnt_map: Default::default(),
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
