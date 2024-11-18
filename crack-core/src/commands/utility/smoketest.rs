@@ -1,4 +1,4 @@
-use crate::commands::help;
+//use crate::commands::help;
 use crate::errors::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
@@ -67,7 +67,8 @@ pub async fn smoketest(
     help: bool,
 ) -> Result<(), Error> {
     if help {
-        return help::wrapper(ctx).await;
+        //return help::wrapper(ctx).await;
+        panic!("Help not implemented");
     }
 
     smoketest_internal(ctx).await
@@ -130,7 +131,7 @@ pub async fn run_smoke_test(test: SmokeTest<'_>) -> CrackedResult<()> {
         Ok(_) => (),
         Err(e) => {
             tracing::error!("Error sending message: {e:?}");
-            return Err(CrackedError::Other("Error sending message".to_string()));
+            return Err(CrackedError::Other("Error sending message"));
         },
     }
     if let Some(wait_secs) = test.wait_secs {

@@ -414,9 +414,9 @@ impl DataInner {
         }
     }
 
-    pub fn with_songbird(&self, songbird: songbird::Songbird) -> Self {
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self {
-            songbird: Arc::new(songbird),
+            songbird,
             ..self.clone()
         }
     }
@@ -699,8 +699,12 @@ impl Data {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 
-    pub async fn with_songbird(&self, songbird: songbird::Songbird) -> Self {
-        Self(Arc::new(self.0.with_songbird(songbird)))
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
+        Self(self.arc_inner().with_songbird(songbird).into())
+    }
+
+    pub fn arc_inner(&self) -> Arc<DataInner> {
+        Into::into(self.0.clone())
     }
 }
 

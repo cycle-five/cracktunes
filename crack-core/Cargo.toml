@@ -66,6 +66,7 @@ itertools = "0.13"
 indexmap = "2.2"
 futures = "0.3"
 urlencoding = "2.1"
+extract_map = "0.1"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }

@@ -142,7 +142,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
                         let group_name = command_obj.name.clone();
                         let subcommand_name = remaining_args;
                         let msg = CrackedMessage::SubcommandNotFound {
-                            group: group_name,
+                            group: group_name.to_string(),
                             subcommand: subcommand_name,
                         };
 

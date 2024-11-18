@@ -33,7 +33,9 @@ pub type SongbirdCall = Arc<Mutex<Call>>;
 // Public Re-exports
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
+pub use serenity::all::UserId;
 pub use thiserror::Error as ThisError;
+pub use typemap_rev::TypeMapKey;
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
@@ -94,6 +96,42 @@ pub enum QueryType {
 impl Default for QueryType {
     fn default() -> Self {
         QueryType::None
+    }
+}
+
+/// Enum for the requesting user of a track.
+#[derive(Debug, Clone)]
+pub enum RequestingUser {
+    UserId(UserId),
+}
+
+/// Convert [`Option<UserId>`] to [`RequestingUser`].
+impl From<Option<UserId>> for RequestingUser {
+    fn from(user_id: Option<UserId>) -> Self {
+        match user_id {
+            Some(user_id) => RequestingUser::UserId(user_id),
+            None => RequestingUser::default(),
+        }
+    }
+}
+
+/// Convert [`UserId`] to [`RequestingUser`].
+impl From<UserId> for RequestingUser {
+    fn from(user_id: UserId) -> Self {
+        RequestingUser::UserId(user_id)
+    }
+}
+
+/// We implement TypeMapKey for RequestingUser.
+impl TypeMapKey for RequestingUser {
+    type Value = RequestingUser;
+}
+
+/// Default implementation for RequestingUser.
+impl Default for RequestingUser {
+    fn default() -> Self {
+        let user = UserId::new(1);
+        RequestingUser::UserId(user)
     }
 }
 

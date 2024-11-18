@@ -3,7 +3,9 @@ use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
-    borrow::Cow, fmt::{self, Display, Formatter}, time::Duration
+    borrow::Cow,
+    fmt::{self, Display, Formatter},
+    time::Duration,
 };
 
 /// [`ResolvedTrack`] struct for holding resolved track information, this
@@ -177,7 +179,7 @@ impl ResolvedTrack {
     }
 
     /// autocomplete option for the track.
-    pub fn autocomplete_option(&self) -> AutocompleteChoice {
+    pub fn autocomplete_option(&self) -> AutocompleteChoice<'static> {
         AutocompleteChoice {
             name: Cow::Owned(self.suggest_string()),
             value: AutocompleteValue::String(Cow::Owned((self.get_url()))),

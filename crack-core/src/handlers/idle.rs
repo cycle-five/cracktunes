@@ -26,7 +26,6 @@ use songbird::error::JoinError;
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         let manager = &self.serenity_ctx.data::<crate::Data>().songbird;
-        //let manager = songbird::get(&self.serenity_ctx.to_owned()).await?;
         let EventContext::Track(track_list) = ctx else {
             return None;
         };

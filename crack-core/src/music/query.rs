@@ -436,7 +436,8 @@ impl QueryType {
                 let res =
                     YoutubeDl::new_search(http_utils::get_client_old().clone(), query.clone())
                         .search(None)
-                        .await?;
+                        .await?
+                        .collect()
                 let user_id = ctx.author().id;
                 create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
@@ -649,7 +650,7 @@ impl QueryType {
                 let ytdl = YoutubeDl::new(client_old, query.clone());
                 Ok(ytdl.into())
             },
-            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_owned()).into()),
+            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
             QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
             QueryType::PlaylistLink(_)
             | QueryType::SpotifyTracks(_)
@@ -712,7 +713,7 @@ impl QueryType {
             QueryType::File(file) => {
                 tracing::warn!("In File");
                 Ok((
-                    HttpRequest::new(client_old, FixedString::from_str(file.url)).into(),
+                    HttpRequest::new(client_old, file.url.to_string()).into(),
                     vec![NewAuxMetadata::default()],
                 ))
             },

@@ -19,7 +19,8 @@ use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoOptions};
-use serenity::all::GuildId;
+use serenity::all::{AutocompleteChoice, GuildId};
+use std::borrow::Cow;
 //------------------------------------
 // Standard library imports
 //------------------------------------
@@ -281,12 +282,19 @@ impl CrackTrackClient {
     }
 
     /// Get a suggestion autocomplete from a search instead of the suggestion api.
-    pub async fn resolve_suggestion_search(&self, query: &str) -> Result<Vec<String>, Error> {
+    pub async fn resolve_suggestion_search(
+        &self,
+        query: &str,
+    ) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
         let tracks = self.resolve_search(query).await?;
-        Ok(tracks
+        let autocomplete_choices: Vec<AutocompleteChoice<'static>> = tracks
             .iter()
-            .map(|track| track.suggest_string())
-            .collect::<Vec<String>>())
+            .map(|track| Cow::Owned(track.clone()))
+            .collect::<Vec<Cow<'static, ResolvedTrack>>>()
+            .into_iter()
+            .map(|track| track.clone().autocomplete_option())
+            .collect::<Vec<AutocompleteChoice<'static>>>();
+        Ok(autocomplete_choices)
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
@@ -394,7 +402,7 @@ impl CrackTrackClient {
 }
 
 /// Get a suggestion from a query. Use the global static client.
-pub async fn suggestion2(query: &str) -> Result<Vec<String>, Error> {
+pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice<'_>>, Error> {
     let client = CRACK_TRACK_CLIENT.clone();
     //let client = YOUTUBE_CLIENT.clone();
     client.resolve_suggestion_search(query).await
@@ -610,7 +618,7 @@ mod tests {
         println!("{res:?}");
         assert_eq!(
             res.iter()
-                .filter(|x| x.contains("Molly Nilsson"))
+                .filter(|&x| x.clone().name.contains("Molly Nilsson"))
                 .collect::<Vec<_>>()
                 .len(),
             5

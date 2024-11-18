@@ -1,4 +1,3 @@
-use crate::commands::RequestingUser;
 use crate::utils::TrackData;
 use crate::{
     commands::forget_skip_votes,
@@ -26,6 +25,7 @@ use ::serenity::{
     model::id::GuildId,
 };
 use crack_types::NewAuxMetadata;
+use crack_types::RequestingUser;
 use serenity::all::{CacheHttp, UserId};
 use songbird::input::AuxMetadata;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
@@ -258,7 +258,7 @@ pub async fn add_metadata_to_track(track: &mut TrackHandle, metadata: AuxMetadat
 pub async fn update_queue_messages(
     cache_http: &impl CacheHttp,
     data: Arc<Data>,
-    tracks: &'trk [TrackHandle],
+    tracks: &[TrackHandle],
     guild_id: GuildId,
 ) {
     let cache_map = data.guild_cache_map.lock().await.clone();

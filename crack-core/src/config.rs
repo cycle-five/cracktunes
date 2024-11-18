@@ -1,3 +1,4 @@
+use crate::db::to_fixed;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
 #[cfg(feature = "crack-metrics")]
@@ -12,7 +13,7 @@ use crate::{
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     utils::{check_reply, count_command},
-    BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
+    BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use colored::Colorize;
 use poise::framework;
@@ -186,7 +187,7 @@ pub async fn poise_framework(
                     None => return Ok(true),
                     Some(guild_id) => ctx.guild_name_from_guild_id(guild_id).await,
                 }
-                .unwrap_or("Unknown".into());
+                .unwrap_or(to_fixed("Unknown"));
                 tracing::warn!("Guild: {}", name);
                 Ok(true)
             })
@@ -286,8 +287,8 @@ pub async fn poise_framework(
     //     })
     // });
     let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
-    let manager = songbird::Songbird::serenity_from_config(songbird_config);
-    let data3 = data2.with_songbird(manager);
+    let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
+    let data3 = data2.with_songbird(manager.clone());
     // songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
@@ -301,9 +302,9 @@ pub async fn poise_framework(
     };
 
     let client = Client::builder(&token, intents)
-        .voice_manager(manager)
+        .voice_manager::<Songbird>(manager.clone())
         .event_handler(serenity_handler)
-        .data(data2)
+        .data(data2.clone().into())
         .framework(framework)
         //.event_handler_arc(bot_test_handler.clone())
         .await
@@ -397,7 +398,7 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
 }
 
 #[poise::command(prefix_command, owners_only)]
-async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
+async fn register_commands_new<'a>(ctx: Context<'a>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
     poise::builtins::register_globally(ctx.http(), commands).await?;
 

@@ -1,4 +1,4 @@
-use crate::serenity::client::{client::Context as SerenityContext, EventHandler};
+use crate::serenity::client::{Context as SerenityContext, EventHandler};
 use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
 use serenity::prelude::RwLock;

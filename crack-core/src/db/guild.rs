@@ -8,9 +8,10 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use serenity::small_fixed_array::FixedString;
+use serenity::small_fixed_array::{FixedString, ValidLength};
 use sqlx::PgPool;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub struct GuildPermissionPivot {
     pub guild_id: i64,
@@ -475,9 +476,15 @@ impl GuildEntity {
     }
 }
 
+/// Convert a string to a fixed string.
+pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
+    FixedString::from_str(&s.into()).unwrap()
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::HashSet;
+    use std::str::FromStr;
 
     use super::*;
     use sqlx::PgPool;
@@ -489,7 +496,7 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -506,7 +513,7 @@ mod test {
         let (mut guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            FixedString::from_str("test"),
+            FixedString::from_str("test").unwrap(),
             "test".to_string(),
         )
         .await
@@ -530,7 +537,7 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -572,7 +579,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -598,7 +605,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -624,7 +631,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await

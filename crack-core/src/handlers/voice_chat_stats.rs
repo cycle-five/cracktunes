@@ -1,12 +1,13 @@
 use crate::{
     commands::admin::{deafen::deafen_internal, mute::mute_internal},
+    db::to_fixed,
     errors::CrackedError,
     messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,
 };
 use poise::serenity_prelude as serenity;
 
-use ::serenity::all::CacheHttp;
+use ::serenity::{all::CacheHttp, small_fixed_array::FixedString};
 use colored::Colorize;
 use serenity::{
     builder::CreateMessage, model::id::GuildId, Channel, ChannelId, Context as SerenityContext,
@@ -165,7 +166,7 @@ async fn run_cam_enforcement(
                     let channel = ChannelId::new(kick_conf.chan_id);
                     let _ = channel
                         .send_message(
-                            cache_http,
+                            cache_http.http(),
                             CreateMessage::default().content({
                                 format!("{} {}: {}", user.mention(), kick_conf.dc_msg, state)
                             }),
@@ -181,15 +182,17 @@ async fn run_cam_enforcement(
     }
 }
 
+use extract_map::ExtractKey;
+use extract_map::ExtractMap;
 /// Check the camera statuses of all the users in voice channels per
 /// guild and if there's rules aroun camera usage, enforce them.
 async fn check_camera_status(
     ctx: Arc<SerenityContext>,
     guild_id: GuildId,
 ) -> (Vec<CamPollEvent>, String) {
-    let (voice_states, guild_name): (HashMap<UserId, VoiceState>, String) =
-        match guild_id.to_guild_cached(&ctx) {
-            Some(guild) => (guild.voice_states.clone(), guild.name.clone()),
+    let (voice_states, guild_name): (ExtractMap<UserId, VoiceState>, String) =
+        match guild_id.to_guild_cached(&ctx.cache.clone()) {
+            Some(guild) => (guild.voice_states.clone(), guild.name.to_string()),
             None => {
                 tracing::error!("Guild not found {guild_id}.");
                 return (vec![], "".to_string());
@@ -199,20 +202,21 @@ async fn check_camera_status(
     let mut cams = Vec::new();
     let mut output: String = format!("{}\n", guild_name.bright_green());
 
-    for (user_id, voice_state) in voice_states {
+    for voice_state in voice_states.iter() {
+        let user_id = voice_state.extract_key();
         if let Some(chan_id) = voice_state.channel_id {
             let user_name = match user_id.to_user(&ctx).await {
                 Ok(user) => user.name,
                 Err(err) => {
                     tracing::error!("Error getting user: {err}");
-                    UNKNOWN.to_string()
+                    to_fixed(UNKNOWN)
                 },
             };
-            let channel_name = match chan_id.to_channel(&ctx).await {
+            let channel_name = match chan_id.to_channel(ctx, Some(guild_id)).await {
                 Ok(chan) => match chan {
-                    Channel::Guild(chan) => chan.name,
-                    Channel::Private(chan) => chan.name(),
-                    _ => String::from(UNKNOWN),
+                    Channel::Guild(chan) => chan.name.to_string(),
+                    Channel::Private(chan) => chan.recipient.name.to_string(),
+                    _ => UNKNOWN.to_string(),
                 },
                 Err(err) => {
                     tracing::error!(
@@ -222,7 +226,7 @@ async fn check_camera_status(
                     "Missing Access".to_string()
                 },
             };
-            let status = CamStatus::from(voice_state.self_video);
+            let status = CamStatus::from(voice_state.self_video());
             let last_change = Instant::now();
 
             let info = CamPollEvent {
@@ -368,7 +372,7 @@ mod test {
         let config_map = HashMap::<u64, &CamKickConfig>::new();
         let http = poise::serenity_prelude::http::Http::new("");
         let cache = Arc::new(poise::serenity_prelude::Cache::new());
-        let cache_http = (&cache, &http);
+        let cache_http = (Some(&cache), &http);
         // let ctx = Arc::new(SerenityContext::new());
         let res =
             check_and_enforce_cams(cam, &cam, &mut cam_states, &config_map, &cache_http).await;

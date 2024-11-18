@@ -391,14 +391,17 @@ impl Display for GuildSettings {
     }
 }
 
-impl From<crate::db::GuildSettingsRead> for GuildSettings {
-    fn from(settings_db: crate::db::GuildSettingsRead) -> Self {
+use crate::db::GuildSettingsRead;
+
+impl From<GuildSettingsRead> for GuildSettings {
+    fn from(settings_db: GuildSettingsRead) -> Self {
         let mut settings = GuildSettings::new(
             GuildId::new(settings_db.guild_id as u64),
             Some(&settings_db.prefix),
-            Some(FixedString::from_str(
-                &settings_db.guild_name,
-            ).expect("Failed to convert guild name")),
+            Some(
+                FixedString::from_str(&settings_db.guild_name)
+                    .expect("Failed to convert guild name"),
+            ),
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;

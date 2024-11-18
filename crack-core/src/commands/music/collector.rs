@@ -17,16 +17,16 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(
         CreateReply::default()
             .content("I want some boops!")
-            .components(vec![CreateActionRow::Buttons(vec![CreateButton::new(
-                id_str,
-            )
-            .style(serenity::ButtonStyle::Primary)
-            .label("Boop me!")])]),
+            .components(Cow::Owned([CreateActionRow::Buttons(Cow::Owned(
+                CreateButton::new(id_str)
+                    .style(serenity::ButtonStyle::Primary)
+                    .label("Boop me!"),
+            ))])),
     )
     .await?;
 
     let mut boop_count = 0;
-    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx)
+    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context().shard)
         .author_id(ctx.author().id)
         .channel_id(ctx.channel_id())
         .timeout(std::time::Duration::from_secs(120))
@@ -43,7 +43,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
 
         mci.create_response(
-            &ctx,
+            ctx.http(),
             CreateInteractionResponse::UpdateMessage(CreateInteractionResponseMessage::default()),
         )
         .await?;

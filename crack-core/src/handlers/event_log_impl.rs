@@ -17,8 +17,8 @@ use serenity::{
     model::guild,
     small_fixed_array::FixedString,
 };
-use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
+use std::{collections::VecDeque, str::FromStr};
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
@@ -213,15 +213,16 @@ pub async fn log_invite_create(
     .map(|_| ())
 }
 
+use extract_map::ExtractMap;
 /// Log Guild Stickers Update Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_stickers_update(
     channel_id: ChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(&GuildId, &HashMap<StickerId, Sticker>),
+    log_data: &(&ExtractMap<StickerId, Sticker>),
 ) -> Result<(), Error> {
-    let (_guild_id, _stickers): (&GuildId, &HashMap<StickerId, Sticker>) = *log_data;
+    let (_stickers): (&ExtractMap<StickerId, Sticker>) = *log_data;
     let title = format!("Guild Stickers Update for guild {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -687,7 +688,7 @@ pub async fn log_channel_delete(
     channel_id: ChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(&GuildChannel, &Option<VecDequeue<Message>>),
+    log_data: &(&GuildChannel, &Option<VecDeque<Message>>),
 ) -> Result<(), Error> {
     let &(guild_channel, messages) = log_data;
     let del_channel_id = guild_channel.id;
