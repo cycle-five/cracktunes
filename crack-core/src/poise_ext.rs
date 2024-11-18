@@ -2,9 +2,17 @@ use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::music::TrackReadyData;
 use crate::{
-    commands::has_voted_bot_id, commands::CrackedError, db, http_utils,
-    http_utils::SendMessageParams, messaging::message::CrackedMessage, utils::OptionTryUnwrap,
-    CrackedResult, Data, Error, MessageOrReplyHandle,
+    // commands::has_voted_bot_id
+    commands::CrackedError,
+    db,
+    http_utils,
+    http_utils::SendMessageParams,
+    messaging::message::CrackedMessage,
+    utils::OptionTryUnwrap,
+    CrackedResult,
+    Data,
+    Error,
+    MessageOrReplyHandle,
 };
 use colored::Colorize;
 use crack_types::NewAuxMetadata;
@@ -13,6 +21,7 @@ use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
 use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
+use core::panic;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -163,18 +172,14 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Return the call that the bot is currently in, if it is in one.
     async fn get_call(self) -> Result<Arc<Mutex<Call>>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let manager = songbird::get(self.serenity_context())
-            .await
-            .ok_or(CrackedError::NotConnected)?;
+        let manager = self.data().songbird.clone();
         manager.get(guild_id).ok_or(CrackedError::NotConnected)
     }
 
     /// Return the call that the bot is currently in, if it is in one.
     async fn get_call_guild_id(self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let manager = songbird::get(self.serenity_context())
-            .await
-            .ok_or(CrackedError::NotConnected)?;
+        let manager = self.data().songbird.clone();
         manager
             .get(guild_id)
             .map(|x| (x, guild_id))
@@ -201,16 +206,11 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<ChannelId> {
         let serenity_context = self.serenity_context();
         let manager = self.data().songbird.clone();
-        // let manager = songbird::get(serenity_context)
-        //     .await
-        //     .expect("Failed to get songbird manager")
-        //     .clone();
-
         let call_lock = manager.get(guild_id)?;
         let call = call_lock.lock().await;
 
         let channel_id = call.current_channel()?;
-        let serenity_channel_id = ChannelId::new(channel_id.0.into());
+        let serenity_channel_id = ChannelId::new(channel_id.get());
 
         Some(serenity_channel_id)
     }
@@ -233,12 +233,14 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         let user_id: UserId = self.author().id;
         let bot_id: UserId = http_utils::get_bot_id(self).await?;
         let pool = self.get_db_pool()?;
-        let has_voted = has_voted_bot_id(
-            http_utils::get_client().clone(),
-            u64::from(bot_id),
-            u64::from(user_id),
-        )
-        .await?;
+        let has_voted = false;
+        panic!("Not implemented");
+        // let has_voted = has_voted_bot_id(
+        //     http_utils::get_client().clone(),
+        //     u64::from(bot_id),
+        //     u64::from(user_id),
+        // )
+        // .await?;
         let has_voted_db =
             db::UserVote::has_voted_recently_topgg(i64::from(user_id), &pool).await?;
         let record_vote = has_voted && !has_voted_db;
@@ -303,11 +305,11 @@ pub trait PoiseContextExt<'ctx> {
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, Error>>;
     fn send_message_owned(
         self,
-        params: SendMessageParams,
+        params: SendMessageParams<'ctx>,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_message(
         &'ctx self,
-        params: SendMessageParams,
+        params: SendMessageParams<'ctx>,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_embed_response(
         &'ctx self,
@@ -374,7 +376,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Base, very generic send message function.
     async fn send_message_owned(
         self,
-        params: SendMessageParams,
+        params: SendMessageParams<'ctx>,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         //let channel_id = send_params.channel;
         let as_embed = params.as_embed;
@@ -408,7 +410,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Base, very generic send message function.
     async fn send_message(
         &'ctx self,
-        params: SendMessageParams,
+        params: SendMessageParams<'ctx>,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         //let channel_id = send_params.channel;
         let as_embed = params.as_embed;

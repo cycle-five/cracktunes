@@ -37,9 +37,7 @@ pub async fn remove_internal(
     e_index: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let remove_index = b_index;

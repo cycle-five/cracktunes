@@ -1,32 +1,32 @@
-pub mod admin;
+//pub mod admin;
 #[cfg(feature = "crack-bf")]
 pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
-pub mod help;
-pub mod music;
+// pub mod help;
+// pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
 pub mod permissions;
-pub mod playlist;
+//pub mod playlist;
 pub mod register;
-pub mod settings;
+//pub mod settings;
 pub mod utility;
 
-pub use admin::commands;
+//pub use admin::commands;
 #[cfg(feature = "crack-bf")]
 pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
-pub use help::sub_help;
-pub use music::*;
+// pub use help::sub_help;
+// pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
 pub use permissions::*;
 pub use register::*;
-pub use settings::*;
+//pub use settings::*;
 pub use utility::*;
 
 pub use crate::errors::CrackedError;
@@ -37,6 +37,7 @@ pub type MessageResult = Result<Message, CrackedError>;
 pub type EmptyResult = Result<(), crate::Error>;
 
 use crate::{Context, Error};
+use std::borrow::Cow;
 
 pub trait ConvertToEmptyResult {
     fn convert(self) -> EmptyResult;
@@ -60,13 +61,13 @@ pub fn all_commands() -> Vec<crate::Command> {
         chat(),
     ]
     .into_iter()
-    .chain(help::help_commands())
-    .chain(music::music_commands())
-    .chain(music::game_commands())
+    //.chain(help::help_commands())
+    // .chain(music::music_commands())
+    // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    .chain(settings::commands())
-    .chain(admin::commands())
-    .chain(playlist::commands())
+    //.chain(settings::commands())
+    //.chain(admin::commands())
+    //.chain(playlist::commands())
     .collect()
 }
 
@@ -82,21 +83,21 @@ pub fn commands_to_register() -> Vec<crate::Command> {
         chat(),
     ]
     .into_iter()
-    .chain(help::help_commands())
-    .chain(music::music_commands())
-    .chain(music::game_commands())
+    //.chain(help::help_commands())
+    // .chain(music::music_commands())
+    // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    .chain(settings::commands())
-    .chain(admin::commands())
-    .chain(playlist::commands())
+    //.chain(settings::commands())
+    //.chain(admin::commands())
+    //.chain(playlist::commands())
     .collect()
 }
 
-pub fn all_command_names() -> Vec<String> {
+pub fn all_command_names() -> Vec<Cow<'static, str>> {
     all_commands().into_iter().map(|c| c.name).collect()
 }
 
-pub fn all_commands_map() -> dashmap::DashMap<String, crate::Command> {
+pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
     all_commands()
         .into_iter()
         .map(|c| (c.name.clone(), c))

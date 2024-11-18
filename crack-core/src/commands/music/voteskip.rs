@@ -50,7 +50,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     let bot_channel_id =
         get_voice_channel_for_user(&guild, &ctx.serenity_context().cache.current_user().id)
             .unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;

@@ -21,7 +21,7 @@ use crate::{
     Context, Data, Error,
 };
 use crate::{http_utils, CrackedResult};
-use ::serenity::all::{AutoModRuleCreateEvent, CreateAutocompleteResponse};
+use ::serenity::all::{AutoModRuleCreateEvent, AutocompleteChoice, CreateAutocompleteResponse};
 use ::serenity::{
     all::{CommandInteraction, Message, UserId},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
@@ -31,6 +31,7 @@ use crack_types::{
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::{tracks::TrackHandle, Call};
+use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use typemap_rev::TypeMapKey;
@@ -97,18 +98,22 @@ pub async fn search(
 use crack_testing::{suggestion2, ResolvedTrack};
 
 /// Autocomplete to suggest a search query.
-pub async fn autocomplete(
+pub async fn autocomplete<'a>(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
-) -> Vec<String> {
-    CreateAutocompleteResponse::
-    match suggestion2(searching).await {
-        Ok(x) => x,
-        Err(e) => {
-            tracing::error!("Error getting suggestions: {:?}", e);
-            vec![]
-        },
-    }
+) -> CreateAutocompleteResponse<'a> {
+    // let choices = match suggestion2(searching).await {
+    //     Ok(x) => {
+    //         let choices = x.iter().map(|choice| choice).collect();
+    //         choices
+    //     },
+    //     Err(e) => {
+    //         tracing::error!("Error getting suggestions: {:?}", e);
+    //         vec![]
+    //     },
+    // };
+    let choices = suggestion2(searching).await.unwrap_or_default().as_slice();
+    CreateAutocompleteResponse::new().set_choices(choices.clone())
 }
 
 /// Play a song.
@@ -252,9 +257,11 @@ pub async fn queue_resolved_track_back(
         .await;
     let new_q = handler.queue().current_queue();
     drop(handler);
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<NewAuxMetadata>(NewAuxMetadata(track.get_metadata().unwrap_or_default()));
-    map.insert::<RequestingUser>(RequestingUser::from(track.get_requesting_user()));
+    set_track_handle_metadata(track_handle, track).await?;
+    set_track_handle_requesting_user(track_handle, track).await?;
+    // let mut map = track_handle.typemap().write().await;
+    // map.insert::<NewAuxMetadata>(NewAuxMetadata(track.get_metadata().unwrap_or_default()));
+    // map.insert::<RequestingUser>(RequestingUser::from(track.get_requesting_user()));
     Ok(new_q)
 }
 
@@ -432,24 +439,24 @@ pub async fn play_internal(
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
+                    create_now_playing_embed(track.clone()).await
                 },
                 (QueryType::YoutubeSearch(_x), y) => {
                     tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
+                    create_now_playing_embed(track.clone()).await
                 },
                 (x, y) => {
                     tracing::error!("{:?} {:?} {:?}", x, y, mode);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
+                    create_now_playing_embed(track.clone()).await
                 },
             }
         },
         Ordering::Equal => {
             tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
-            create_now_playing_embed(track).await
+            create_now_playing_embed(track.clone()).await
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
@@ -684,57 +691,20 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
     }
 }
 
-/// Enum for the requesting user of a track.
-#[derive(Debug, Clone)]
-pub enum RequestingUser {
-    UserId(UserId),
-}
-
-/// Convert [`Option<UserId>`] to [`RequestingUser`].
-impl From<Option<UserId>> for RequestingUser {
-    fn from(user_id: Option<UserId>) -> Self {
-        match user_id {
-            Some(user_id) => RequestingUser::UserId(user_id),
-            None => RequestingUser::default(),
-        }
-    }
-}
-
-/// Convert [`UserId`] to [`RequestingUser`].
-impl From<UserId> for RequestingUser {
-    fn from(user_id: UserId) -> Self {
-        RequestingUser::UserId(user_id)
-    }
-}
-
-/// We implement TypeMapKey for RequestingUser.
-impl TypeMapKey for RequestingUser {
-    type Value = RequestingUser;
-}
-
-/// Default implementation for RequestingUser.
-impl Default for RequestingUser {
-    /// Defualt is UserId(1).
-    fn default() -> Self {
-        let user = UserId::new(1);
-        RequestingUser::UserId(user)
-    }
-}
-
 /// Build an embed for the cure
-async fn build_queued_embed(
-    author_title: &str,
-    track: &TrackHandle,
+async fn build_queued_embed<'att>(
+    author_title: &'att str,
+    track: &'att TrackHandle,
     estimated_time: Duration,
-) -> CreateEmbed<'_> {
-    // FIXME
+) -> CreateEmbed<'att> {
     let metadata = {
-        let map = track.typemap().read().await;
-        let my_metadata = map.get::<NewAuxMetadata>().unwrap();
+        // let map = track.typemap().read().await;
+        // let my_metadata = map.get::<NewAuxMetadata>().unwrap();
 
-        match my_metadata {
-            NewAuxMetadata(metadata) => metadata.clone(),
-        }
+        // match my_metadata {
+        //     NewAuxMetadata(metadata) => metadata.clone(),
+        // }
+        get_track_handle_metadata(track).await?
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
     let meta_title = metadata.title.clone().unwrap_or(QUEUE_NO_TITLE.to_string());
@@ -778,9 +748,8 @@ pub async fn queue_aux_metadata(
     let search_results = aux_metadata;
 
     let client = &ctx.data().http_client;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NotConnected)?;
+    let manager = ctx.data().songbird.clone();
+
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let req = RequestOptionsBuilder::new()

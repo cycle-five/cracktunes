@@ -1,4 +1,4 @@
-
+[graph]
 all-features = true
 
 [bans]
@@ -7,18 +7,11 @@ deny = [{ name = "hyper-tls" }, { name = "openssl" }]
 skip-tree = [
     { name = "windows_x86_64_gnullvm" },
     { name = "windows-sys" },
-    # { name = "hermit-abi" },
-    # { name = "syn" },
-    # { name = "bitflags" },
-    # { name = "indexmap" },
-    # { name = "examples" },
 ]
 
 [licenses]
-unlicensed = "deny"
 # We want really high confidence when inferring licenses from text
 confidence-threshold = 0.92
-copyleft = "deny"
 allow = [
     "Apache-2.0",
     "ISC",

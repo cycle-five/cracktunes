@@ -337,6 +337,12 @@ impl From<SerenityError> for CrackedError {
     }
 }
 
+impl From<CrackedError> for SerenityError {
+    fn from(x: CrackedError) -> Self {
+        SerenityError::Io(std::io::Error::new(std::io::ErrorKind::Other, "CrackedError"))
+    }
+}
+
 /// Provides an implementation to convert a [`reqwest::Error`] to a [`CrackedError`].
 impl From<reqwest::Error> for CrackedError {
     fn from(err: reqwest::Error) -> Self {

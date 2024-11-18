@@ -46,7 +46,7 @@ pub async fn deauthorize(
             crate::guild::settings::GuildSettings::new(
                 guild_id,
                 Some(&ctx.data().bot_settings.get_prefix()),
-                Some(guild_name),
+                Some(guild_name.clone()),
             )
             .clone()
         })
@@ -60,7 +60,7 @@ pub async fn deauthorize(
             id,
             mention,
             guild_id,
-            guild_name,
+            guild_name: guild_name.clone(),
         },
         true,
     )

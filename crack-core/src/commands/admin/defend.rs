@@ -37,8 +37,6 @@ pub async fn defend(
     #[description = "Role to defend against"] role: serenity::all::Role,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-
-    //let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
     let songbird = ctx.data().songbird.clone();
     let call = songbird
         .get(guild_id)
@@ -47,7 +45,7 @@ pub async fn defend(
     let next_action = Arc::new(atomic::AtomicU16::new(0));
     let handler = DefendHandler {
         ctx: Arc::new(ctx.serenity_context().clone()),
-        http: ctx.http().as_ref(),
+        http: Arc::new(ctx.http().clone()),
         manager: songbird.clone(),
         role: role.clone(),
         guild_id: Some(guild_id),

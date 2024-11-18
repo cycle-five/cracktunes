@@ -389,7 +389,7 @@ pub async fn handle_event(
                     let (_, new_guild_settings) = GuildEntity::get_or_create(
                         p,
                         guild.id.get() as i64,
-                        guild.name.to_string(),
+                        guild.name.clone(),
                         prefix,
                     )
                     .await?;
@@ -714,13 +714,13 @@ pub async fn handle_event(
             guild_id,
             current_state,
         } => {
-            let log_data = (guild_id, current_state);
+            let log_data = (current_state);
             log_event!(
                 log_guild_stickers_update,
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -802,7 +802,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -1026,7 +1026,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id,
+                guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -1047,7 +1047,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &guild_id,
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name

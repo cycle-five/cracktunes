@@ -7,13 +7,16 @@ use crate::{
     Context as CrackContext, Error,
 };
 use crack_types::NewAuxMetadata;
-use crack_types::{Mode, TrackResolveError};
-use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
+use serenity::{
+    all::{CreateEmbed, EditMessage, Message, UserId},
+    small_fixed_array::FixedString,
+};
 use songbird::{
     input::Input as SongbirdInput,
     tracks::{Queued, TrackHandle},
     Call,
 };
+use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -28,7 +31,7 @@ pub struct TrackReadyData {
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query(
     ctx: CrackContext<'_>,
-    query_type: QueryType<'_>,
+    query_type: QueryType,
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = Some(ctx.author().id);
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) =
@@ -333,7 +336,11 @@ pub async fn queue_query_list_offset(
 /// Get the play mode and the message from the parameters to the play command.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
 #[tracing::instrument]
-pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (Mode, String) {
+pub fn get_mode(
+    is_prefix: bool,
+    msg: Option<FixedString>,
+    mode: Option<FixedString>,
+) -> (Mode, FixedString) {
     let opt_mode = mode.clone();
     if is_prefix {
         let asdf2 = msg
@@ -363,9 +370,12 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
         if mode != Mode::End {
             let s = msg.clone().unwrap_or_default();
             let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
-            (mode, s2.to_string())
+            (mode, FixedString::from_str(s2).expect("wtf?"))
         } else {
-            (Mode::End, msg.unwrap_or_default())
+            (
+                Mode::End,
+                FixedString::from_str(&msg.unwrap_or_default()).expect("wtf?"),
+            )
         }
     } else {
         let mode = match opt_mode
@@ -384,7 +394,10 @@ pub fn get_mode(is_prefix: bool, msg: Option<String>, mode: Option<String>) -> (
             "search" => Mode::Search,
             _ => Mode::End,
         };
-        (mode, msg.unwrap_or_default())
+        (
+            mode,
+            FixedString::from_str(&msg.unwrap_or_default()).expect("wtf?"),
+        )
     }
 }
 
@@ -419,18 +432,20 @@ pub fn get_msg(
 
 #[cfg(test)]
 mod test {
+    use crate::db::to_fixed;
+
     use super::*;
 
     #[test]
     fn test_get_mode() {
         let is_prefix = true;
-        let x = "asdf".to_string();
+        let x = to_fixed("asdf");
         let msg = Some(x.clone());
-        let mode = Some("".to_string());
+        let mode = Some(to_fixed(""));
 
         assert_eq!(get_mode(is_prefix, msg, mode), (Mode::End, x.clone()));
 
-        let x = "".to_string();
+        let x = to_fixed("");
         let is_prefix = true;
         let msg = None;
         let mode = Some(x.clone());
@@ -445,13 +460,13 @@ mod test {
 
         let is_prefix = false;
         let msg = Some(x.clone());
-        let mode = Some("next".to_string());
+        let mode = Some(to_fixed("next"));
 
         assert_eq!(get_mode(is_prefix, msg, mode), (Mode::Next, x.clone()));
 
         let is_prefix = false;
         let msg = None;
-        let mode = Some("downloadmkv".to_string());
+        let mode = Some(to_fixed("downloadmkv"));
 
         assert_eq!(
             get_mode(is_prefix, msg, mode),
@@ -460,7 +475,7 @@ mod test {
 
         let is_prefix = false;
         let msg = None;
-        let mode = Some("downloadmp3".to_string());
+        let mode = Some(to_fixed("downloadmp3"));
 
         assert_eq!(
             get_mode(is_prefix, msg, mode),

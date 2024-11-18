@@ -4,7 +4,6 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::music::doplay::RequestingUser,
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -33,7 +32,7 @@ use ::serenity::{
 use crack_types::get_human_readable_timestamp;
 use futures::lock;
 //use crack_types::MessageOrReplyHandle;
-use crack_types::NewAuxMetadata;
+use crack_types::{NewAuxMetadata, RequestingUser};
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -53,13 +52,13 @@ use std::{
 };
 use tokio::sync::RwLock;
 use url::Url;
+use anyhow::Result;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 // This term gets appended to search queries in the default mode to try to find the album version of a song.
 // pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
-use anyhow::Result;
 
 #[cold]
 fn create_err(line: u32, file: &str) -> anyhow::Error {
@@ -131,12 +130,12 @@ pub async fn send_nonembed_reply(
 #[cfg(not(tarpaulin_include))]
 /// Edit an embed response with a CrackedMessage.
 pub async fn edit_response_poise(
-    ctx: &CrackContext<'_>,
+    ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
-    match get_interaction_new(ctx) {
+    match get_interaction_new(&ctx) {
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
         None => match send_embed_response_poise(ctx, embed).await {
             Ok(msg) => msg.into_message().await.map_err(Into::into),
@@ -201,7 +200,7 @@ pub async fn yt_search_select(
     // manually in the EventHandler.
     let interaction = match m
         .id
-        .await_component_interaction(ctx.shard)
+        .await_component_interaction(ctx.shard.clone())
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
@@ -246,7 +245,7 @@ pub async fn yt_search_select(
 /// Sends a reply response with an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
-    ctx: CrackContext<'_>,
+    ctx: CrackContext<'ctx>,
     embed: CreateEmbed<'ctx>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
@@ -256,7 +255,7 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(Some(embed))
         .with_reply(is_reply);
 
-    ctx.send_message(params).await
+    ctx.send_message_owned(params).await
 }
 
 pub async fn edit_reponse_interaction(
@@ -378,7 +377,7 @@ pub async fn edit_embed_response_poise(
                 //     },
                 //     _ => Err(CrackedError::Other("not implemented")),
             },
-            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(&ctx, embed).await,
+            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
         None => send_embed_response_poise(ctx, embed).await,
     };
@@ -560,9 +559,9 @@ pub async fn build_tracks_embed_metadata(
 }
 
 /// Creates and sends a paged embed.
-pub async fn create_paged_embed(
-    ctx: CrackContext<'a>,
-    author: String,
+pub async fn create_paged_embed<'ctx>(
+    ctx: CrackContext<'ctx>,
+    author: FixedString<u8>,
     title: String,
     content: String,
     page_size: usize,
@@ -570,77 +569,82 @@ pub async fn create_paged_embed(
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
-    let embed = CreateEmbed::new()
-        .title(title.clone())
-        .author(CreateEmbedAuthor::new(author.clone()))
-        .description(page_getter(0))
-        .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages)));
 
-    let reply_handle = {
-        let create_reply = CreateReply::default()
-            .embed(embed)
-            .components(create_nav_btns(0, num_pages));
-        ctx.send(create_reply).await
-    };
-    // let mut message = {
-    //     let reply = ctx.clone().send(create_reply).await?;
-    //     reply.into_message().await?
-    // };
-    // let reply_handle = ctx.clone().send(create_reply).await?;
-    // drop(create_reply);
-    let shard_messanger = ctx.serenity_context().clone().shard;
-
-    let mut cib = reply_handle
-        .clone()
-        .into_message()
-        .await?
-        .id
-        .await_component_interactions(shard_messanger.clone())
-        .timeout(Duration::from_secs(60 * 10))
-        .stream();
-
-    while let Some(mci) = cib.next().await {
-        let btn_id = &mci.data.custom_id;
-
-        let mut page_wlock = page.write().await;
-
-        *page_wlock = match btn_id.as_str() {
-            "<<" => 0,
-            "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
-            ">" => min(page_wlock.add(1), num_pages - 1),
-            ">>" => num_pages - 1,
-            _ => continue,
+    let x: Result<(), CrackedError> = {
+        let reply_handle = {
+            ctx.send(
+                CreateReply::default()
+                    .embed(
+                        CreateEmbed::new()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(0))
+                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
+                    )
+                    .components(create_nav_btns(0, num_pages)),
+            )
+            .await?
         };
+        // let mut message = {
+        //     let reply = ctx.clone().send(create_reply).await?;
+        //     reply.into_message().await?
+        // };
+        // let reply_handle = ctx.clone().send(create_reply).await?;
+        // drop(create_reply);
+        let shard_messanger = ctx.serenity_context().clone().shard;
 
-        mci.create_response(
-            ctx.http(),
-            CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::new()
-                    .embeds(vec![CreateEmbed::new()
-                        .title(title.clone())
-                        .author(CreateEmbedAuthor::new(author.clone()))
-                        .description(page_getter(*page_wlock))
-                        .footer(CreateEmbedFooter::new(format!(
-                            "Page {}/{}",
-                            *page_wlock + 1,
-                            num_pages
-                        )))])
-                    .components(create_nav_btns(*page_wlock, num_pages)),
-            ),
-        )
-        .await?;
-    }
+        let mut cib = reply_handle
+            .clone()
+            .into_message()
+            .await?
+            .id
+            .await_component_interactions(shard_messanger.clone())
+            .timeout(Duration::from_secs(60 * 10))
+            .stream();
 
-    reply_handle
-        .edit(
-            ctx,
-            CreateReply::default()
-                .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
-        )
-        .await
-        .unwrap();
+        while let Some(mci) = cib.next().await {
+            let btn_id = &mci.data.custom_id;
 
-    drop(reply_handle);
+            let mut page_wlock = page.write().await;
+
+            *page_wlock = match btn_id.as_str() {
+                "<<" => 0,
+                "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
+                ">" => min(page_wlock.add(1), num_pages - 1),
+                ">>" => num_pages - 1,
+                _ => continue,
+            };
+
+            mci.create_response(
+                ctx.http(),
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embeds(vec![CreateEmbed::new()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(*page_wlock))
+                            .footer(CreateEmbedFooter::new(format!(
+                                "Page {}/{}",
+                                *page_wlock + 1,
+                                num_pages
+                            )))])
+                        .components(create_nav_btns(*page_wlock, num_pages)),
+                ),
+            )
+            .await?;
+        }
+
+        reply_handle
+            .edit(
+                ctx,
+                CreateReply::default()
+                    .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
+            )
+            .await
+            .unwrap();
+        Ok(())
+    };
+
     Ok(())
 }
 
@@ -848,7 +852,7 @@ mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 
-    use crate::messaging::interface::create_single_nav_btn;
+    use crate::{db::to_fixed, messaging::interface::create_single_nav_btn};
 
     use super::*;
 
@@ -886,10 +890,9 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(s.into()).unwrap();
+        let btn = serde_json::from_str::<Button>(&*s).unwrap();
 
-        assert_eq!(btn.label, Some("<<".to_string().into()));
-        // assert_eq!(btn.style, ButtonStyle::Primary);
+        assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
         assert_eq!(btn.disabled, true);
     }
 
@@ -898,7 +901,7 @@ mod test {
         let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
-            for btn in nav_btns.clone() {
+            for btn in nav_btns.iter() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
                 println!("s: {}", s);
                 let btn = serde_json::from_str::<Button>(&s).unwrap();

@@ -1,5 +1,6 @@
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
+use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
     PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
     QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
@@ -21,6 +22,7 @@ use lyric_finder::LyricResult;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::EmbedField;
 use serenity::all::GuildId;
+use serenity::small_fixed_array::FixedString;
 use serenity::{
     all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
     all::{CacheHttp, ChannelId, Mentionable, UserId},
@@ -30,6 +32,7 @@ use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::borrow::Cow;
 use std::fmt::Write;
+use std::str::FromStr;
 use std::time::Duration;
 
 //###########################################################################//
@@ -126,19 +129,20 @@ pub fn requesting_user_to_string(user_id: UserId) -> String {
 #[cfg(not(tarpaulin_include))]
 async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    let queue: Vec<&TrackHandle> = tracks
-        .iter()
-        .skip(start_idx + 1)
-        .take(EMBED_PAGE_SIZE)
-        .collect();
+    // let queue: Vec<&TrackHandle> = tracks
+    //     .iter()
+    //     .skip(start_idx + 1)
+    //     .take(EMBED_PAGE_SIZE)
+    //     .collect();
+    let queue = tracks.iter().skip(start_idx).take(EMBED_PAGE_SIZE);
 
-    if queue.is_empty() {
-        return String::from(QUEUE_NO_SONGS);
-    }
+    // if queue.is_empty() {
+    //     return String::from(QUEUE_NO_SONGS);
+    // }
 
     let mut description = String::new();
 
-    for (i, &t) in queue.iter().enumerate() {
+    for (i, t) in queue.enumerate() {
         // FIXME
         let metadata = get_track_handle_metadata(t)
             .await
@@ -165,7 +169,9 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'_> {
     let (description, thumbnail): (String, String) = if !tracks.is_empty() {
-        let metadata = get_track_handle_metadata(&tracks[0]).await.unwrap();
+        let metadata = get_track_handle_metadata(&tracks.first().unwrap())
+            .await
+            .unwrap();
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
         let thumbnail = match url::Url::parse(&url) {
@@ -317,8 +323,6 @@ pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
     lyric_res: LyricResult,
 ) -> Result<(), CrackedError> {
-    use super::messages::UNKNOWN;
-
     let (track, artists, lyric) = match lyric_res {
         LyricResult::Some {
             track,
@@ -334,10 +338,10 @@ pub async fn create_lyrics_embed(
 
     create_paged_embed(
         ctx,
-        artists,
+        FixedString::from_str(&artists).expect("wtf?"),
         track,
         lyric,
-        DEFAULT_LYRICS_PAGE_SIZE, //ctx.data().bot_settings.lyrics_page_size,
+        DEFAULT_LYRICS_PAGE_SIZE,
     )
     .await
 }
@@ -354,7 +358,7 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_>
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<CreateActionRow<'static>> {
+pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(Cow::Owned(vec![
         create_single_nav_btn("<<", cant_left),

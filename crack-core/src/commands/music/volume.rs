@@ -29,12 +29,12 @@ pub async fn volume(
     if help {
         return help::wrapper(ctx).await;
     }
-    volume_internal(&ctx, level).await
+    volume_internal(ctx, level).await
 }
 
 #[cfg(not(tarpaulin_include))]
 /// Internal method to handle volume changes.
-pub async fn volume_internal(ctx: &Context<'_>, level: Option<u32>) -> Result<(), Error> {
+pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(), Error> {
     use crate::guild::operations::GuildSettingsOperations;
 
     tracing::error!("volume");
@@ -52,7 +52,7 @@ pub async fn volume_internal(ctx: &Context<'_>, level: Option<u32>) -> Result<()
     tracing::error!("guild_id: {:?}", guild_id);
     let embed = {
         tracing::error!("embed");
-        let manager = match songbird::get(ctx.serenity_context()).await {
+        let manager = match ctx.data().songbird {
             Some(manager) => manager,
             None => {
                 tracing::error!("Can't get manager.");

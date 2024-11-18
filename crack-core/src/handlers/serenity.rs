@@ -170,7 +170,6 @@ impl EventHandler for SerenityHandler {
         }
         let manager = ctx.data::<Data>().songbird.clone();
 
-        //let manager = songbird::get(&ctx).await.unwrap();
         let guild_id = new.guild_id.unwrap();
 
         // This is a voice state update event for the bot
