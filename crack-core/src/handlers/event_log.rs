@@ -43,7 +43,7 @@ pub async fn get_log_channel(
 ) -> Option<ChannelId> {
     let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
-        .get(&guild_id.into())
+        .get(&guild_id)
         .map(|x| x.get_log_channel(channel_name))
         .unwrap()
 }
@@ -113,10 +113,6 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: Arc<Data>,
 ) -> Result<(), Error> {
-    // let event_log = Arc::new(&data_global.event_log);
-
-    use std::sync::Arc;
-
     use crate::{db::GuildEntity, guild::settings::DEFAULT_PREFIX};
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
@@ -461,7 +457,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id.clone(),
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -474,7 +470,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id.clone(),
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -604,7 +600,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                guild_id.clone(),
+                *guild_id,
                 &ctx,
                 event_log,
                 event_name
@@ -714,7 +710,7 @@ pub async fn handle_event(
             guild_id,
             current_state,
         } => {
-            let log_data = (current_state);
+            let log_data = current_state;
             log_event!(
                 log_guild_stickers_update,
                 guild_settings,

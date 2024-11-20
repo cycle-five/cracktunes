@@ -1,5 +1,7 @@
 use crack_types::Duration;
-use serenity::all::{Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions};
+use serenity::all::{
+    Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions, TransportCompression,
+};
 use std::{
     num::{NonZeroU16, NonZeroUsize},
     sync::{Arc, OnceLock},
@@ -13,6 +15,7 @@ impl ShardManagerOptionsBuilder {
         let ws_url = "ws://localhost:3030".to_string();
         let ws_url: Arc<str> = Arc::from(ws_url);
         Self(ShardManagerOptions {
+            compression: TransportCompression::None,
             data: Arc::new(crate::Data::default()),
             event_handler: None,
             raw_event_handler: None,

@@ -243,27 +243,7 @@ pub async fn enqueue_resolved_tracks(
 //     Ok(new_q)
 // }
 
-/// Pushes a track to the back of the queue, after readying it.
-pub async fn queue_resolved_track_back(
-    call: &Arc<Mutex<Call>>,
-    track: ResolvedTrack,
-    http_client: reqwest::Client,
-    //user_id: Option<UserId>,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let mut handler = call.lock().await;
-    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-    let track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
-    let new_q = handler.queue().current_queue();
-    drop(handler);
-    set_track_handle_metadata(track_handle, track).await?;
-    set_track_handle_requesting_user(track_handle, track).await?;
-    // let mut map = track_handle.typemap().write().await;
-    // map.insert::<NewAuxMetadata>(NewAuxMetadata(track.get_metadata().unwrap_or_default()));
-    // map.insert::<RequestingUser>(RequestingUser::from(track.get_requesting_user()));
-    Ok(new_q)
-}
+
 
 /// Play a youtube playlist.
 #[cfg(not(tarpaulin_include))]
@@ -623,32 +603,7 @@ async fn match_mode(
 //     tracing::info!("mode: {:?}", mode);
 // }
 
-/// Check if the domain that we're playing from is banned.
-// FIXME: This is borked.
-pub fn check_banned_domains(
-    guild_settings: &GuildSettings,
-    query_type: Option<QueryType>,
-) -> CrackedResult<Option<QueryType>> {
-    if let Some(QueryType::Keywords(_)) = query_type {
-        if !guild_settings.allow_all_domains.unwrap_or(true)
-            && (guild_settings.banned_domains.contains("youtube.com")
-                || (guild_settings.banned_domains.is_empty()
-                    && !guild_settings.allowed_domains.contains("youtube.com")))
-        {
-            // let message = CrackedMessage::PlayDomainBanned {
-            //     domain: "youtube.com".to_string(),
-            // };
 
-            // send_reply(&ctx, message).await?;
-            // Ok(None)
-            Err(CrackedError::Other("youtube.com is banned"))
-        } else {
-            Ok(query_type)
-        }
-    } else {
-        Ok(query_type)
-    }
-}
 
 /// Calculate the time until the next track plays.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {

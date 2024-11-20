@@ -1,5 +1,25 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
+pub mod commands;
+pub mod config;
+pub mod connection;
+pub mod db;
+pub mod errors;
+pub mod guild;
+pub mod handlers;
+pub mod http_utils;
+#[macro_use]
+pub mod macros;
+pub mod messaging;
+pub mod metrics;
+#[cfg(feature = "crack-music")]
+pub mod music;
+pub mod poise_ext;
+pub mod sources;
+#[cfg(test)]
+pub mod test;
+pub mod utils;
+
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
@@ -21,7 +41,7 @@ use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
 use songbird::{Call, Songbird};
-use std::sync::atomic::AtomicU16;
+// use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -34,28 +54,9 @@ use std::{
 };
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
-pub mod commands;
-pub mod config;
-pub mod connection;
-pub mod db;
-pub mod errors;
-pub mod guild;
-pub mod handlers;
-pub mod http_utils;
-#[macro_use]
-pub mod macros;
-pub mod messaging;
-pub mod metrics;
-#[cfg(feature = "crack-music")]
-pub mod music;
-pub mod poise_ext;
-pub mod sources;
-#[cfg(test)]
-pub mod test;
-pub mod utils;
-
 // ------------------------------------------------------------------
-// Public types we use to simplify return and parameter types.
+// Our public types used throughout cracktunes.
+// Probably want to move these to crack-types...
 // ------------------------------------------------------------------
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -78,15 +79,8 @@ pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
-use crate::serenity::prelude::SerenityError;
+// use crate::serenity::prelude::SerenityError;
 use crack_types::reply_handle::MessageOrReplyHandle;
-
-// impl From<CrackedError> for SerenityError {
-//     fn from(_e: CrackedError) -> Self {
-//         //let bs = Box::new(e.to_string());
-//         SerenityError::Other("CrackedError")
-//     }
-// }
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -107,6 +101,7 @@ impl Default for CamKickConfig {
             timeout: 0,
             guild_id: 0,
             chan_id: 0,
+            // FIXME: This should be a const or a static
             dc_msg: "You have been violated for being cammed down for too long.".to_string(),
             msg_on_deafen: false,
             msg_on_mute: false,
@@ -692,6 +687,22 @@ impl Data {
             .entry(guild_id)
             .or_default()
             .push(msg);
+        Ok(())
+    }
+
+    /// Forget all skip votes for a guild
+    // This is used when a track ends, or when a user leaves the voice channel.
+    // This is to prevent users from voting to skip a track, then leaving the voice channel.
+    // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
+    pub async fn forget_skip_votes(&self, guild_id: GuildId) -> Result<(), Error> {
+        let _res = self
+            .guild_cache_map
+            .lock()
+            .await
+            .entry(guild_id)
+            .and_modify(|cache| cache.current_skip_votes = HashSet::new())
+            .or_default();
+
         Ok(())
     }
 

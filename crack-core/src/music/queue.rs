@@ -1,11 +1,13 @@
 use super::QueryType;
 use crate::{
-    commands::{queue_resolved_track_back, RequestingUser},
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
+    utils::{set_track_handle_metadata, set_track_handle_requesting_user},
     Context as CrackContext, Error,
 };
+use crack_testing::ResolvedTrack;
+use crack_types::Mode;
 use crack_types::NewAuxMetadata;
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
@@ -20,7 +22,33 @@ use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
+/// Takes a resolved track and queues it to the back of the queue.
+/// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
+/// # Errors
+///
+pub async fn queue_resolved_track_back(
+    call: &Arc<Mutex<Call>>,
+    track: ResolvedTrack,
+    http_client: reqwest::Client,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+    let mut track_handle = handler
+        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
+        .await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+    set_track_handle_metadata(
+        &mut track_handle,
+        track.metadata.ok_or(CrackedError::NoMetadata)?,
+    )
+    .await?;
+    set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
+    Ok(new_q)
+}
+
 /// Data needed to queue a track.
+/// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
 pub struct TrackReadyData {
     pub source: SongbirdInput,
     pub metadata: NewAuxMetadata,
@@ -62,7 +90,7 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let track_handle = handler.enqueue_input(ready_track.source).await;
+    let mut track_handle = handler.enqueue_input(ready_track.source).await;
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -76,29 +104,25 @@ pub async fn queue_track_ready_front(
     }
 
     drop(handler);
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::UserId(
-        ready_track.user_id.unwrap_or(UserId::new(1)),
-    ));
-    drop(map);
+    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
+    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
     Ok(new_q)
 }
 
-/// Pushes a track to the back of the queue, after readying it.
-pub async fn _queue_track_ready_back(
-    call: &Arc<Mutex<Call>>,
-    ready_track: TrackReadyData,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let mut handler = call.lock().await;
-    let track_handle = handler.enqueue_input(ready_track.source).await;
-    let new_q = handler.queue().current_queue();
-    drop(handler);
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
-    map.insert::<RequestingUser>(RequestingUser::from(ready_track.user_id));
-    Ok(new_q)
-}
+// /// Pushes a track to the back of the queue, after readying it.
+// pub async fn _queue_track_ready_back(
+//     call: &Arc<Mutex<Call>>,
+//     ready_track: TrackReadyData,
+// ) -> Result<Vec<TrackHandle>, CrackedError> {
+//     let mut handler = call.lock().await;
+//     let track_handle = handler.enqueue_input(ready_track.source).await;
+//     let new_q = handler.queue().current_queue();
+//     drop(handler);
+//     let mut map = track_handle.typemap().write().await;
+//     map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
+//     map.insert::<RequestingUser>(RequestingUser::from(ready_track.user_id));
+//     Ok(new_q)
+// }
 
 /// Pushes a track to the front of the queue.
 pub async fn queue_track_front(
@@ -182,10 +206,9 @@ pub async fn queue_ready_track_list(
             user_id,
             ..
         } = ready_track;
-        let track_handle = handler.enqueue_input(source).await;
-        let mut map = track_handle.typemap().write().await;
-        map.insert::<NewAuxMetadata>(metadata);
-        map.insert::<RequestingUser>(RequestingUser::from(user_id));
+        let mut track_handle = handler.enqueue_input(source).await;
+        set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
+        set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
                 let back = queue.pop_back().unwrap();
@@ -275,6 +298,8 @@ pub async fn queue_query_list_offset(
     offset: usize,
     _search_msg: &mut Message,
 ) -> Result<(), Error> {
+    use crate::utils::set_track_handle_metadata;
+
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     // Can this starting section be simplified?
@@ -315,14 +340,15 @@ pub async fn queue_query_list_offset(
         let input = ytdl.into();
 
         let mut handler = call.lock().await;
-        let track_handle = handler.enqueue_input(input).await;
+        let mut track_handle = handler.enqueue_input(input).await;
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();
             q.insert(idx + offset, back);
         });
-        let mut map = track_handle.typemap().write().await;
-        map.insert::<NewAuxMetadata>(NewAuxMetadata(metadata));
-        map.insert::<RequestingUser>(RequestingUser::from(user_id));
+        //let mut map = track_handle.typemap().write().await;
+        set_track_handle_metadata(&mut track_handle, metadata).await?;
+        set_track_handle_requesting_user(&mut track_handle, user_id).await?;
+
         if idx == len - 1 {
             cur_q = handler.queue().current_queue();
         }

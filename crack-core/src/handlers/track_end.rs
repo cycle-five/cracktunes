@@ -1,6 +1,5 @@
 use crate::utils::TrackData;
 use crate::{
-    commands::forget_skip_votes,
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
@@ -123,7 +122,7 @@ impl EventHandler for TrackEndHandler {
 
         tracing::trace!("Forgetting skip votes");
         // FIXME
-        match forget_skip_votes(&self.data, self.guild_id).await {
+        match self.data.forget_skip_votes(self.guild_id).await {
             Ok(_) => tracing::trace!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
@@ -219,7 +218,7 @@ pub async fn queue_query(
         .await?;
     let mut track = call.as_ref().lock().await.enqueue_input(source).await;
     if let Some(metadata) = metadata_vec.first() {
-        add_metadata_to_track(&mut track, metadata.clone().into()).await;
+        add_metadata_to_track(&mut track, metadata.clone().into()).await?;
     }
     Ok(track)
 }
@@ -247,10 +246,14 @@ impl EventHandler for ModifyQueueHandler {
 }
 
 /// Adds metadata to a track handle with a default requesting user.
-pub async fn add_metadata_to_track(track: &mut TrackHandle, metadata: AuxMetadata) {
+pub async fn add_metadata_to_track(
+    track: &mut TrackHandle,
+    metadata: AuxMetadata,
+) -> CrackedResult<()> {
     let data = track.data::<TrackData>();
-    set_track_handle_metadata(track, metadata).await;
-    set_track_handle_requesting_user(track, UserId::new(1)).await;
+    set_track_handle_metadata(track, metadata).await?;
+    set_track_handle_requesting_user(track, UserId::new(1)).await?;
+    Ok(())
 }
 
 /// This function goes through all the active "queue" messages that are still
