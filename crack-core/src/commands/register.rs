@@ -5,7 +5,6 @@
 use std::borrow::Cow;
 
 use poise::serenity_prelude as serenity;
-use serenity::CreateButton;
 
 /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
 /// to register the commands on Discord
@@ -282,4 +281,3 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
 
     Ok(())
 }
-

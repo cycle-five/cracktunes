@@ -7,7 +7,7 @@ use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
     errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap},
+    guild::settings::GuildSettings,
     handlers::{handle_event, SerenityHandler},
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
@@ -16,7 +16,6 @@ use crate::{
     BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use colored::Colorize;
-use poise::framework;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
@@ -288,7 +287,6 @@ pub async fn poise_framework(
     // });
     let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
-    let data3 = data2.with_songbird(manager.clone());
     // songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
