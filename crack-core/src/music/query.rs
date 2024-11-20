@@ -5,9 +5,9 @@ use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    commands::check_banned_domains,
     errors::{verify, CrackedError},
     http_utils,
+    http_utils::check_banned_domains,
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
@@ -18,7 +18,6 @@ use crate::{
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
-use ::serenity::small_fixed_array::FixedString;
 use colored::Colorize;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::{NewAuxMetadata, SpotifyTrack};
@@ -32,7 +31,6 @@ use songbird::{
     tracks::TrackHandle,
     Call,
 };
-use std::str::FromStr;
 use std::{
     ops::Deref,
     path::Path,
@@ -437,7 +435,7 @@ impl QueryType {
                     YoutubeDl::new_search(http_utils::get_client_old().clone(), query.clone())
                         .search(None)
                         .await?
-                        .collect()
+                        .collect();
                 let user_id = ctx.author().id;
                 create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
@@ -524,7 +522,7 @@ impl QueryType {
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(&ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }

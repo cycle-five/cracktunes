@@ -7,7 +7,7 @@ use crate::{
 };
 use poise::serenity_prelude as serenity;
 
-use ::serenity::{all::CacheHttp, small_fixed_array::FixedString};
+use ::serenity::all::CacheHttp;
 use colored::Colorize;
 use serenity::{
     builder::CreateMessage, model::id::GuildId, Channel, ChannelId, Context as SerenityContext,
@@ -204,15 +204,16 @@ async fn check_camera_status(
 
     for voice_state in voice_states.iter() {
         let user_id = voice_state.extract_key();
+        let user = user_id.to_user(ctx.clone()).await;
         if let Some(chan_id) = voice_state.channel_id {
-            let user_name = match user_id.to_user(&ctx).await {
+            let user_name = match user {
                 Ok(user) => user.name,
                 Err(err) => {
                     tracing::error!("Error getting user: {err}");
                     to_fixed(UNKNOWN)
                 },
             };
-            let channel_name = match chan_id.to_channel(ctx, Some(guild_id)).await {
+            let channel_name = match chan_id.to_channel(ctx.clone(), Some(guild_id)).await {
                 Ok(chan) => match chan {
                     Channel::Guild(chan) => chan.name.to_string(),
                     Channel::Private(chan) => chan.recipient.name.to_string(),
@@ -230,7 +231,7 @@ async fn check_camera_status(
             let last_change = Instant::now();
 
             let info = CamPollEvent {
-                user_id,
+                user_id: *user_id,
                 guild_id,
                 chan_id,
                 status,

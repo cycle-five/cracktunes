@@ -2,8 +2,8 @@ use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
-    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
-    QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
+    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SRC, QUEUE_NO_TITLE,
+    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
@@ -169,7 +169,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'_> {
     let (description, thumbnail): (String, String) = if !tracks.is_empty() {
-        let metadata = get_track_handle_metadata(&tracks.first().unwrap())
+        let metadata = get_track_handle_metadata(tracks.first().unwrap())
             .await
             .unwrap();
 
@@ -201,7 +201,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 
     CreateEmbed::default()
         .thumbnail(thumbnail)
-        .field(QUEUE_NOW_PLAYING, Cow::Owned(description.into()), false)
+        .field(QUEUE_NOW_PLAYING, Cow::Owned(description), false)
         .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
             "{} {} {} {}",

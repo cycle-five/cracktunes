@@ -103,18 +103,3 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Forget all skip votes for a guild
-// This is used when a track ends, or when a user leaves the voice channel.
-// This is to prevent users from voting to skip a track, then leaving the voice channel.
-// TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
-pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), Error> {
-    let _res = data
-        .guild_cache_map
-        .lock()
-        .await
-        .entry(guild_id)
-        .and_modify(|cache| cache.current_skip_votes = HashSet::new())
-        .or_default();
-
-    Ok(())
-}

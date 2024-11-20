@@ -182,7 +182,7 @@ impl ResolvedTrack {
     pub fn autocomplete_option(&self) -> AutocompleteChoice<'static> {
         AutocompleteChoice {
             name: Cow::Owned(self.suggest_string()),
-            value: AutocompleteValue::String(Cow::Owned((self.get_url()))),
+            value: AutocompleteValue::String(Cow::Owned(self.get_url())),
             name_localizations: Default::default(),
         }
     }

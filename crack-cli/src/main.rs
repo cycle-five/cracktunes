@@ -11,6 +11,8 @@ use tokio::runtime::Handle;
 
 #[cfg(feature = "crack-tracing")]
 use crack_core::guild::settings::get_log_prefix;
+#[cfg(feature = "crack-telemetry")]
+use std::sync::Arc;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 #[cfg(feature = "crack-metrics")]
@@ -21,10 +23,6 @@ use {
     poise::serenity_prelude as serenity,
     prometheus::{Encoder, TextEncoder},
     warp::Filter,
-};
-#[cfg(feature = "crack-telemetry")]
-use {
-    std::sync::Arc,
 };
 
 // #[cfg(feature = "crack-telemetry")]
@@ -69,6 +67,7 @@ fn main() -> Result<(), Error> {
 }
 
 use crack_core::config;
+use crack_core::guild::operations::GuildSettingsOperations;
 
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
@@ -87,22 +86,12 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     http_utils::init_http_client().await?;
 
     // let client = framework.client();
-    let data_ro = client.data.clone();
-    let mut data_global = data_ro.write().await;
-    match data_global.get::<GuildSettingsMap>() {
-        Some(guild_settings_map) => {
-            for (guild_id, guild_settings) in guild_settings_map.iter() {
-                tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
-            }
-        },
-        None => {
-            tracing::info!("No guild settings found");
-            data_global.insert::<GuildSettingsMap>(HashMap::default());
-        },
-    }
-    data_global.insert::<GuildCacheMap>(HashMap::default());
+    let data_arc = client.data::<crack_core::Data>().clone();
+    let guild_settings_map = data_arc.guild_settings_map.read().await.clone();
 
-    drop(data_global);
+    for (guild_id, guild_settings) in guild_settings_map.iter() {
+        tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
+    }
 
     // let bot = client.start_shards(2);
     let bot = client.start_autosharded();

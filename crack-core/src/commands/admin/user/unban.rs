@@ -43,10 +43,10 @@ pub async fn unban_by_user_id(
 #[cfg(not(tarpaulin_include))]
 pub async fn unban_internal(ctx: Context<'_>, user_id: UserId) -> CommandResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild = guild_id.to_partial_guild(&ctx).await?;
+    // let guild = guild_id.to_partial_guild(&ctx).await?;
     let user = user_id.to_user(&ctx).await?;
     let mention = user.mention();
-    let msg = if let Err(e) = guild.unban(&ctx, user_id).await {
+    let msg = if let Err(e) = guild_id.unban(ctx.http(), user_id, None).await {
         CrackedMessage::Other(format!("Failed to unban user: {}", e))
     } else {
         CrackedMessage::UserUnbanned {

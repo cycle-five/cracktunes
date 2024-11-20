@@ -398,7 +398,7 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
 }
 
 #[poise::command(prefix_command, owners_only)]
-async fn register_commands_new<'a>(ctx: Context<'a>) -> Result<(), Error> {
+async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
     poise::builtins::register_globally(ctx.http(), commands).await?;
 

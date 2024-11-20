@@ -317,19 +317,16 @@ impl From<serde_json::Error> for CrackedError {
 /// Provides an implementation to convert a [`SerenityError`] to a [`CrackedError`].
 impl From<SerenityError> for CrackedError {
     fn from(err: SerenityError) -> Self {
-        match err {
-            // SerenityError::NotInRange(param, value, lower, upper) => {
-            //     Self::NotInRange(param, value as isize, lower as isize, upper as isize)
-            // },
-            // SerenityError::Other(msg) => Self::Other(msg),
-            _ => Self::Serenity(err),
-        }
+        Self::Serenity(err)
     }
 }
 
 impl From<CrackedError> for SerenityError {
-    fn from(x: CrackedError) -> Self {
-        SerenityError::Io(std::io::Error::new(std::io::ErrorKind::Other, "CrackedError"))
+    fn from(_x: CrackedError) -> Self {
+        SerenityError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "CrackedError",
+        ))
     }
 }
 

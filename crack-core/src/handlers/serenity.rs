@@ -24,8 +24,7 @@ use serenity::{
     ChannelId, {Context as SerenityContext, EventHandler},
 };
 use std::{
-    collections::HashMap,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
     time::SystemTime,
 };
 use tokio::time::Duration;
@@ -301,7 +300,7 @@ impl EventHandler for SerenityHandler {
     }
 }
 
-use crate::guild::operations::GuildSettingsOperations;
+// use crate::guild::operations::GuildSettingsOperations;
 
 impl SerenityHandler {
     // async fn _merge_guild_settings(

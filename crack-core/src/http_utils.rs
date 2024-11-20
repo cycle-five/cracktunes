@@ -4,11 +4,12 @@ use reqwest::Client;
 use std::future::Future;
 
 use crate::errors::CrackedError;
+use crate::guild::settings::GuildSettings;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::music::QueryType;
 use crate::serenity::Color;
-use serenity::all::{
-    CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
-};
+use crate::CrackedResult;
+use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
 
 #[derive(Debug)]
@@ -307,6 +308,27 @@ pub async fn guild_name_from_guild_id(
         .await
         .map(|x| x.name)
         .map_err(Into::into)
+}
+
+/// Check if the domain that we're playing from is banned.
+// FIXME: This is borked.
+pub fn check_banned_domains(
+    guild_settings: &GuildSettings,
+    query_type: Option<QueryType>,
+) -> CrackedResult<Option<QueryType>> {
+    if let Some(QueryType::Keywords(_)) = query_type {
+        if !guild_settings.allow_all_domains.unwrap_or(true)
+            && (guild_settings.banned_domains.contains("youtube.com")
+                || (guild_settings.banned_domains.is_empty()
+                    && !guild_settings.allowed_domains.contains("youtube.com")))
+        {
+            Err(CrackedError::Other("youtube.com is banned"))
+        } else {
+            Ok(query_type)
+        }
+    } else {
+        Ok(query_type)
+    }
 }
 
 #[cfg(test)]

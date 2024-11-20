@@ -36,6 +36,7 @@ git = "https://github.com/serenity-rs/serenity"
 branch = "next"
 default-features = false
 features = [
+  #  "typesize",
   "builder",
   "cache",
   "temp_cache",

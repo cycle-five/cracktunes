@@ -24,15 +24,14 @@ use ::serenity::{
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
+        CreateInteractionResponseMessage, EditInteractionResponse,
     },
     futures::StreamExt,
     model::channel::Message,
 };
+use anyhow::Result;
 use crack_types::get_human_readable_timestamp;
-use futures::lock;
-//use crack_types::MessageOrReplyHandle;
-use crack_types::{NewAuxMetadata, RequestingUser};
+use crack_types::NewAuxMetadata;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -52,13 +51,11 @@ use std::{
 };
 use tokio::sync::RwLock;
 use url::Url;
-use anyhow::Result;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 // This term gets appended to search queries in the default mode to try to find the album version of a song.
 // pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
-
 
 #[cold]
 fn create_err(line: u32, file: &str) -> anyhow::Error {
@@ -431,7 +428,7 @@ pub async fn set_track_handle_metadata(
     track: &mut TrackHandle,
     metadata: AuxMetadata,
 ) -> Result<(), CrackedError> {
-    let mut data: Arc<TrackData> = track.data();
+    let data: Arc<TrackData> = track.data();
     let mut lock = data.aux_metadata.write().await;
     *lock = Some(metadata);
     Ok(())
@@ -559,18 +556,18 @@ pub async fn build_tracks_embed_metadata(
 }
 
 /// Creates and sends a paged embed.
-pub async fn create_paged_embed<'ctx>(
-    ctx: CrackContext<'ctx>,
+pub async fn create_paged_embed(
+    ctx: CrackContext<'_>,
     author: FixedString<u8>,
     title: String,
     content: String,
     page_size: usize,
-) -> Result<(), CrackedError> {
+) -> CrackedResult<()> {
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
-    let x: Result<(), CrackedError> = {
+    let _x: Result<(), CrackedError> = {
         let reply_handle = {
             ctx.send(
                 CreateReply::default()

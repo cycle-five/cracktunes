@@ -127,7 +127,7 @@ pub fn get_all_test_messages() -> Vec<String> {
 
 /// Run a smoke test.
 pub async fn run_smoke_test(test: SmokeTest<'_>) -> CrackedResult<()> {
-    match test.chan.say(&test.ctx.http(), test.say_msg).await {
+    match test.chan.say(test.ctx.http(), test.say_msg).await {
         Ok(_) => (),
         Err(e) => {
             tracing::error!("Error sending message: {e:?}");

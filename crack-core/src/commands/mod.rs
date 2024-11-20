@@ -1,4 +1,4 @@
-//pub mod admin;
+pub mod admin;
 #[cfg(feature = "crack-bf")]
 pub mod bf;
 #[cfg(feature = "crack-gpt")]

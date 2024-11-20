@@ -14,11 +14,10 @@ use serenity::{
         MessageId, MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
         UnavailableGuild,
     },
-    model::guild,
+    model::guild::automod::AutoModRule,
     small_fixed_array::FixedString,
 };
-use std::{collections::HashMap, sync::Arc};
-use std::{collections::VecDeque, str::FromStr};
+use std::{collections::VecDeque, str::FromStr, sync::Arc};
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
@@ -220,9 +219,9 @@ pub async fn log_guild_stickers_update(
     channel_id: ChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(&ExtractMap<StickerId, Sticker>),
+    log_data: &&ExtractMap<StickerId, Sticker>,
 ) -> Result<(), Error> {
-    let (_stickers): (&ExtractMap<StickerId, Sticker>) = *log_data;
+    let _stickers: &ExtractMap<StickerId, Sticker> = log_data;
     let title = format!("Guild Stickers Update for guild {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -531,7 +530,7 @@ pub async fn log_automod_rule_update(
     channel_id: ChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(String, Rule),
+    log_data: &(String, AutoModRule),
 ) -> Result<(), Error> {
     let (_event_name, log_data) = log_data.clone();
     let title = format!("Automod Rule Update: {}", log_data.creator_id);
@@ -593,14 +592,13 @@ pub async fn log_guild_scheduled_event_create(
     .map(|_| ())
 }
 
-use serenity::model::guild::automod::Rule;
 /// Log a automod rule create event
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
     channel_id: ChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &Rule,
+    log_data: &AutoModRule,
 ) -> Result<(), Error> {
     let title = format!("Automod Rule Create: {}", log_data.creator_id);
     let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
@@ -790,7 +788,7 @@ pub async fn log_reaction_remove(
     let member = reaction.member.clone().unwrap_or_default();
     let message_id = reaction.message_id;
     let channel_id = reaction.channel_id;
-    let guild_id = reaction.guild_id.unwrap_or_default();
+    // let guild_id = reaction.guild_id.unwrap_or_default();
     let title = format!("Reaction Removed: {}", reaction.emoji);
     let description = format!(
         "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
@@ -821,7 +819,10 @@ pub async fn log_reaction_add(
     let member = reaction.member.clone().unwrap_or_default();
     let message_id = reaction.message_id;
     let channel_id = reaction.channel_id;
-    let guild_id = reaction.guild_id.unwrap_or_default();
+    let guild_id2 = reaction.guild_id.unwrap_or_default();
+    if guild_id != guild_id2 {
+        tracing::warn!("Reaction Add Event: Guild ID mismatch: {guild_id2} != {guild_id}");
+    }
     let title = format!("Reaction Added: {}", reaction.emoji);
     let description = format!(
         "Channel: {}\nMessage: {}\nEmoji: {}, Member: {}",
