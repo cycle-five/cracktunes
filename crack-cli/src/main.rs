@@ -1,11 +1,5 @@
 use config_file::FromConfigFile;
-use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
-use crack_core::sources::ytdl::HANDLE;
-use crack_core::BotConfig;
-use crack_core::BotCredentials;
-use crack_core::EventLogAsync;
-pub use crack_core::PhoneCodeData;
-use std::collections::HashMap;
+use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
 use std::env;
 use tokio::runtime::Handle;
 
@@ -65,9 +59,6 @@ fn main() -> Result<(), Error> {
 
     Ok(())
 }
-
-use crack_core::config;
-use crack_core::guild::operations::GuildSettingsOperations;
 
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]

@@ -2,7 +2,7 @@ use crate::{
     // commands::queue_aux_metadata,
     db::GuildEntity,
     errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap, DEFAULT_ACTIVITY},
+    guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig,

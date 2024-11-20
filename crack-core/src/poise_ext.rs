@@ -15,13 +15,13 @@ use crate::{
     MessageOrReplyHandle,
 };
 use colored::Colorize;
+use core::panic;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
 use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
-use core::panic;
 use std::{future::Future, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -204,7 +204,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
 
     /// Gets the channel id that the bot is currently playing in for a given guild.
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<ChannelId> {
-        let serenity_context = self.serenity_context();
+        //let serenity_context = self.serenity_context();
         let manager = self.data().songbird.clone();
         let call_lock = manager.get(guild_id)?;
         let call = call_lock.lock().await;
@@ -229,6 +229,8 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
 
     // ----------- DB Write functions ----------- //
 
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     async fn check_and_record_vote(self) -> Result<bool, CrackedError> {
         let user_id: UserId = self.author().id;
         let bot_id: UserId = http_utils::get_bot_id(self).await?;

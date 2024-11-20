@@ -1,4 +1,3 @@
-use crate::utils::TrackData;
 use crate::{
     db::PgPoolExtPlayLog,
     errors::{verify, CrackedError},
@@ -24,7 +23,6 @@ use ::serenity::{
     model::id::GuildId,
 };
 use crack_types::NewAuxMetadata;
-use crack_types::RequestingUser;
 use serenity::all::{CacheHttp, UserId};
 use songbird::input::AuxMetadata;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
@@ -250,7 +248,6 @@ pub async fn add_metadata_to_track(
     track: &mut TrackHandle,
     metadata: AuxMetadata,
 ) -> CrackedResult<()> {
-    let data = track.data::<TrackData>();
     set_track_handle_metadata(track, metadata).await?;
     set_track_handle_requesting_user(track, UserId::new(1)).await?;
     Ok(())

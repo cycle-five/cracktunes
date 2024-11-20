@@ -40,7 +40,7 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
-use songbird::{Call, Songbird};
+use songbird::{Songbird};
 // use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{

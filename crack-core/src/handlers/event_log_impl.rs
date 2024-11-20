@@ -19,6 +19,15 @@ use serenity::{
 };
 use std::{collections::VecDeque, str::FromStr, sync::Arc};
 
+#[macro_export]
+macro_rules! guild_ids_match {
+    ($guild_id:expr, $guild_id2:expr) => {{
+        if $guild_id != $guild_id2 {
+            tracing::warn!("Guild ID mismatch: {} != {}", $guild_id, $guild_id2);
+        }
+    }};
+}
+
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     channel_id: ChannelId,
@@ -110,7 +119,8 @@ pub async fn log_integration_create(
     log_data: &Integration,
 ) -> Result<(), Error> {
     let integration = log_data.clone();
-    let guild_id = integration.guild_id.unwrap_or_default();
+    let guild_id2 = integration.guild_id.unwrap_or_default();
+    guild_ids_match!(guild_id, guild_id2);
     let title = format!("Integration Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -128,6 +138,7 @@ pub async fn log_integration_create(
     .map(|_| ())
 }
 
+use crate::utils::interaction_to_guild_id;
 /// Log Interaction Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_interaction_create(
@@ -136,11 +147,10 @@ pub async fn log_interaction_create(
     cache_http: &impl CacheHttp,
     log_data: &Interaction,
 ) -> Result<(), Error> {
-    use crate::utils::interaction_to_guild_id;
-
     let interaction = log_data.clone();
     // let guild_id = invite_create_event.guild_id.unwrap_or_default();
-    let guild_id = interaction_to_guild_id(&interaction).unwrap_or(GuildId::new(1));
+    let guild_id2 = interaction_to_guild_id(&interaction).unwrap_or(GuildId::new(1));
+    guild_ids_match!(guild_id, guild_id2);
     let title = format!("Interaction Create Event {}", channel_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -167,7 +177,8 @@ pub async fn log_invite_delete(
     log_data: &InviteDeleteEvent,
 ) -> Result<(), Error> {
     let invite_create_event = log_data.clone();
-    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let guild_id2 = invite_create_event.guild_id.unwrap_or_default();
+    guild_ids_match!(guild_id, guild_id2);
     let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -194,7 +205,8 @@ pub async fn log_invite_create(
     log_data: &InviteCreateEvent,
 ) -> Result<(), Error> {
     let invite_create_event = log_data.clone();
-    let guild_id = invite_create_event.guild_id.unwrap_or_default();
+    let guild_id2 = invite_create_event.guild_id.unwrap_or_default();
+    guild_ids_match!(guild_id, guild_id2);
     let title = format!("Guild Invite Create {}", guild_id);
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
@@ -504,7 +516,8 @@ pub async fn log_guild_role_delete(
     http: &impl CacheHttp,
     log_data: &(&GuildId, &RoleId, &Option<Role>),
 ) -> Result<(), Error> {
-    let (&guild_id, &role_id, role) = log_data;
+    let (&guild_id2, &role_id, role) = log_data;
+    guild_ids_match!(guild_id, guild_id2);
     let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
     let default_role = Role::default();
     let role = role.as_ref().unwrap_or(&default_role);
@@ -716,10 +729,11 @@ pub async fn log_message_delete(
     http: &impl CacheHttp,
     log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
 ) -> Result<(), Error> {
-    let &(del_channel_id, message_id, guild_id) = log_data;
+    let &(del_channel_id, message_id, guild_id_opt) = log_data;
     let id = message_id.to_string();
     let title = format!("Message Deleted: {}", id);
-    let guild_id = guild_id.unwrap_or_default();
+    let guild_id2 = guild_id_opt.unwrap_or_default();
+    guild_ids_match!(guild_id, guild_id2);
     let description = format!("ChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -1358,10 +1372,11 @@ pub async fn log_typing_start(
     http: &impl CacheHttp,
     event: &serenity::model::prelude::TypingStartEvent,
 ) -> Result<serenity::model::prelude::Message, Error> {
-    let guild_id = event.guild_id; //.ok_or(CrackedError::NoGuildId)?;
-    let guild_id_no_opt = guild_id.ok_or(CrackedError::NoGuildId)?;
+    let guild_id_opt = event.guild_id; //.ok_or(CrackedError::NoGuildId)?;
+    let guild_id_no_opt = guild_id_opt.ok_or(CrackedError::NoGuildId)?;
+    guild_ids_match!(guild_id_no_opt, guild_id);
     let user = event.user_id.to_user(http).await?;
-    let channel_name = channel_id.to_channel(http, guild_id).await?.to_string();
+    let channel_name = channel_id.to_channel(http, guild_id_opt).await?.to_string();
     let name = user.name.clone();
     let guild = event
         .guild_id
