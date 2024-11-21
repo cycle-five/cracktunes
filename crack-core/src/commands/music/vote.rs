@@ -110,15 +110,6 @@ mod test {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[ctor::ctor]
-    fn set_env() {
-        use std::env;
-
-        if env::var("TOPGG_TOKEN").is_err() {
-            env::set_var("TOPGG_TOKEN", "FAKE_TOKEN");
-        }
-    }
-
     #[tokio::test]
     async fn test_fail() {
         let bot_id = 1115229568006103122;
