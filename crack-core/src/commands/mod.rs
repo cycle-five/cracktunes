@@ -3,7 +3,7 @@ pub mod admin;
 pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
-// pub mod help;
+pub mod help;
 // pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
@@ -19,7 +19,7 @@ pub mod utility;
 pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
-// pub use help::sub_help;
+pub use help::sub_help;
 // pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]

@@ -1,17 +1,84 @@
+//----------------------------------------------------
+//! Contains the help command and related functions.
+//! This file contains much code originally written by gnomeddev
+//! for the poise crate. I've adapted it to work here now that it
+//! was removed from poise.
+//! cycle.five
+//---------------------------------------------------
+
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use crate::poise_ext::PoiseContextExt;
 use crate::utils::{create_paged_embed, send_reply};
 use crate::{require, Context, Data, Error};
+use ::serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
 use itertools::Itertools;
-use poise::builtins::HelpConfiguration;
+
+/// Optional configuration for how the help message from [`help()`] looks
+pub struct HelpConfiguration<'a> {
+    /// Extra text displayed at the bottom of your message. Can be used for help and tips specific
+    /// to your bot
+    pub extra_text_at_bottom: &'a str,
+    /// Whether to make the response ephemeral if possible. Can be nice to reduce clutter
+    pub ephemeral: bool,
+    /// Whether to list context menu commands as well
+    pub show_context_menu_commands: bool,
+    /// Whether to list context menu commands as well
+    pub show_subcommands: bool,
+    /// Whether to include [`crate::Command::description`] (above [`crate::Command::help_text`]).
+    pub include_description: bool,
+    #[doc(hidden)]
+    pub __non_exhaustive: (),
+}
+
+impl Default for HelpConfiguration<'_> {
+    fn default() -> Self {
+        Self {
+            extra_text_at_bottom: "",
+            ephemeral: true,
+            show_context_menu_commands: false,
+            show_subcommands: false,
+            include_description: true,
+            __non_exhaustive: (),
+        }
+    }
+}
+
+#[allow(clippy::unused_async)]
+pub async fn autocomplete2<'a>(
+    ctx: poise::ApplicationContext<'_, Data, Error>,
+    searching: &str,
+) -> CreateAutocompleteResponse<'a> {
+    let commands = ctx.framework.options().commands.as_slice();
+    // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
+    let choices = autocomplete(commands, searching).await.unwrap_or_default();
+    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+}
 
 #[allow(clippy::unused_async)]
 pub async fn autocomplete(
-    ctx: poise::ApplicationContext<'_, Data, Error>,
+    //ctx: poise::ApplicationContext<'_, Data, Error>,
+    commands: &[poise::Command<Data, Error>],
     searching: &str,
-) -> Vec<String> {
+) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
+    let result = autocomplete3(commands, searching).await?;
+
+    let result: Vec<AutocompleteChoice<'static>> = result
+        .into_iter()
+        .map(|command| AutocompleteChoice {
+            name: command.clone(),
+            name_localizations: None,
+            value: serenity::AutocompleteValue::String(command),
+        })
+        .collect::<Vec<AutocompleteChoice<'static>>>();
+    Ok(result)
+}
+
+pub async fn autocomplete3(
+    commands: &[poise::Command<Data, Error>],
+    searching: &str,
+) -> Result<Vec<Cow<'static, str>>, Error> {
     fn flatten_commands(
         result: &mut Vec<String>,
         commands: &[poise::Command<Data, Error>],
@@ -24,7 +91,7 @@ pub async fn autocomplete(
 
             if command.subcommands.is_empty() {
                 if command.qualified_name.starts_with(searching) {
-                    result.push(command.qualified_name.clone());
+                    result.push(command.qualified_name.to_string());
                 }
             } else {
                 flatten_commands(result, &command.subcommands, searching);
@@ -32,14 +99,19 @@ pub async fn autocomplete(
         }
     }
 
-    let commands = &ctx.framework.options().commands;
     let mut result = Vec::with_capacity(commands.len());
 
     flatten_commands(&mut result, commands, searching);
 
+    let mut result = result
+        .into_iter()
+        .map(|s| Cow::Owned(s.to_owned()))
+        .collect::<Vec<_>>();
     result.sort_by_key(|a| strsim::levenshtein(a, searching));
-    result
+    Ok(result)
 }
+
+// CreateAutocompleteResponse::new().set_choices(Cow::Owned(&result.as_slice()))
 
 /// The help function from builtins copied.
 pub async fn builtin_help(
@@ -86,7 +158,7 @@ async fn help(
     ctx: Context<'_>,
     #[rest]
     #[description = "The command to get help with"]
-    #[autocomplete = "autocomplete"]
+    #[autocomplete = "autocomplete2"]
     command: Option<String>,
 ) -> Result<(), Error> {
     command_func(ctx, command.as_deref()).await
@@ -96,8 +168,8 @@ async fn help(
 pub async fn wrapper(ctx: Context<'_>) -> Result<(), Error> {
     builtin_help(
         ctx,
-        Some(ctx.command().name.as_str()),
-        poise::builtins::HelpConfiguration {
+        Some(ctx.command().name.as_ref()),
+        HelpConfiguration {
             show_context_menu_commands: false,
             show_subcommands: false,
             extra_text_at_bottom: EXTRA_TEXT_AT_BOTTOM,
@@ -229,8 +301,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
     //         },
     //     }));
 
-    use poise::builtins::HelpConfiguration;
-
     builtin_help(
         ctx,
         command,
@@ -324,6 +394,7 @@ pub fn help_commands() -> [Command; 1] {
 // Contains the built-in help command and surrounding infrastructure
 
 use poise::{serenity_prelude as serenity, CreateReply};
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 /// Convenience function to align descriptions behind commands
@@ -379,14 +450,16 @@ impl TwoColumnList {
 }
 
 /// Get the prefix from options
-pub(super) async fn get_prefix_from_options<U, E>(ctx: poise::Context<'_, U, E>) -> Option<String> {
+pub(super) async fn get_prefix_from_options<U: Sync + Send + 'static, E>(
+    ctx: poise::Context<'_, U, E>,
+) -> Option<String> {
     let options = &ctx.framework().options().prefix_options;
     match &options.prefix {
-        Some(fixed_prefix) => Some(fixed_prefix.clone()),
+        Some(fixed_prefix) => Some(fixed_prefix.to_string()),
         None => match options.dynamic_prefix {
             Some(dynamic_prefix_callback) => {
                 match dynamic_prefix_callback(poise::PartialContext::from(ctx)).await {
-                    Ok(Some(dynamic_prefix)) => Some(dynamic_prefix),
+                    Ok(Some(dynamic_prefix)) => Some(dynamic_prefix.to_string()),
                     _ => None,
                 }
             },
@@ -468,17 +541,18 @@ async fn help_single_command(
         assert!(!invocations.is_empty());
         let invocations = invocations.join("\n");
 
-        let mut text = match (&command.description, &command.help_text) {
+        let mut text: String = match (&command.description, &command.help_text) {
             (Some(description), Some(help_text)) => {
                 if config.include_description {
-                    format!("{}\n\n{}", description, help_text)
+                    //Cow::Borrowed(format!("{}\n\n{}", description, help_text).as_str())
+                    format!("{}\n\n{}", description, help_text).to_owned()
                 } else {
-                    help_text.clone()
+                    help_text.to_string()
                 }
             },
-            (Some(description), None) => description.to_owned(),
-            (None, Some(help_text)) => help_text.clone(),
-            (None, None) => "No help available".to_string(),
+            (Some(description), None) => description.to_string(),
+            (None, Some(help_text)) => help_text.to_string(),
+            (None, None) => String::from("No help available"),
         };
         if !command.parameters.is_empty() {
             text += "\n\n```\nParameters:\n";
@@ -495,7 +569,7 @@ async fn help_single_command(
                     },
                     description,
                 );
-                parameterlist.push_two_colums(name, description);
+                parameterlist.push_two_colums(name.to_string(), description);
             }
             text += &parameterlist.into_string();
             text += "```";

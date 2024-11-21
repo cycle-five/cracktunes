@@ -9,15 +9,15 @@ use crack_core::guild::settings::get_log_prefix;
 use std::sync::Arc;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
-#[cfg(feature = "crack-metrics")]
-use {
-    crack_core::metrics::REGISTRY,
-    opentelemetry::global::set_text_map_propagator,
-    opentelemetry_sdk::propagation::TraceContextPropagator,
-    poise::serenity_prelude as serenity,
-    prometheus::{Encoder, TextEncoder},
-    warp::Filter,
-};
+// #[cfg(feature = "crack-metrics")]
+// use {
+//     crack_core::metrics::REGISTRY,
+//     opentelemetry::global::set_text_map_propagator,
+//     opentelemetry_sdk::propagation::TraceContextPropagator,
+//     poise::serenity_prelude as serenity,
+//     prometheus::{Encoder, TextEncoder},
+//     warp::Filter,
+// };
 
 // #[cfg(feature = "crack-telemetry")]
 // const SERVICE_NAME: &str = "cracktunes";
@@ -65,7 +65,7 @@ fn main() -> Result<(), Error> {
 async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
-    init_metrics();
+    // init_metrics();
     let config = load_bot_config()
         .await
         .expect("Error: Failed to load bot config");
@@ -87,41 +87,41 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     // let bot = client.start_shards(2);
     let bot = client.start_autosharded();
 
-    #[cfg(feature = "crack-metrics")]
-    {
-        let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+    // #[cfg(feature = "crack-metrics")]
+    // {
+    //     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
-        let server = async {
-            warp::serve(metrics_route)
-                .run(([127, 0, 0, 1], WARP_PORT))
-                .await;
-            Ok::<(), serenity::Error>(())
-        };
-        tokio::try_join!(bot, server)?;
-    };
-    #[cfg(not(feature = "crack-metrics"))]
+    //     let server = async {
+    //         warp::serve(metrics_route)
+    //             .run(([127, 0, 0, 1], WARP_PORT))
+    //             .await;
+    //         Ok::<(), serenity::Error>(())
+    //     };
+    //     tokio::try_join!(bot, server)?;
+    // };
+    // #[cfg(not(feature = "crack-metrics"))]
     bot.await?;
 
     Ok(())
 }
 
-/// Prometheus handler
-#[cfg(feature = "crack-metrics")]
-#[cfg(not(tarpaulin_include))]
-async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
-    let encoder = TextEncoder::new();
-    let mut metric_families = prometheus::gather();
-    metric_families.extend(REGISTRY.gather());
-    // tracing::info!("Metrics: {:?}", metric_families);
-    let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+// /// Prometheus handler
+// #[cfg(feature = "crack-metrics")]
+// #[cfg(not(tarpaulin_include))]
+// async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
+//     let encoder = TextEncoder::new();
+//     let mut metric_families = prometheus::gather();
+//     metric_families.extend(REGISTRY.gather());
+//     // tracing::info!("Metrics: {:?}", metric_families);
+//     let mut buffer = vec![];
+//     encoder.encode(&metric_families, &mut buffer).unwrap();
 
-    Ok(warp::reply::with_header(
-        buffer,
-        "content-type",
-        encoder.format_type(),
-    ))
-}
+//     Ok(warp::reply::with_header(
+//         buffer,
+//         "content-type",
+//         encoder.format_type(),
+//     ))
+// }
 
 /// Load an environment variable
 fn load_key(k: String) -> Result<String, Error> {
@@ -224,19 +224,19 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     combine_log_layers(stdout_log, debug_log)
 }
 
-#[tracing::instrument]
-/// Initialize metrics.
-fn init_metrics() {
-    #[cfg(feature = "crack-metrics")]
-    {
-        tracing::info!("Initializing metrics");
-        crack_core::metrics::register_custom_metrics();
-    }
-    #[cfg(not(feature = "crack-metrics"))]
-    {
-        tracing::info!("Metrics not enabled");
-    }
-}
+// #[tracing::instrument]
+// /// Initialize metrics.
+// fn init_metrics() {
+//     #[cfg(feature = "crack-metrics")]
+//     {
+//         tracing::info!("Initializing metrics");
+//         crack_core::metrics::register_custom_metrics();
+//     }
+//     #[cfg(not(feature = "crack-metrics"))]
+//     {
+//         tracing::info!("Metrics not enabled");
+//     }
+// }
 
 #[tracing::instrument]
 /// Initialize logging and tracing.
@@ -336,10 +336,10 @@ mod test {
         let _layer = combine_log_layers(stdout_log, debug_log);
     }
 
-    #[test]
-    fn test_init_metrics() {
-        init_metrics();
-    }
+    // #[test]
+    // fn test_init_metrics() {
+    //     init_metrics();
+    // }
 
     #[test]
     fn test_load_key() {
