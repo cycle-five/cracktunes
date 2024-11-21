@@ -11,7 +11,7 @@ pub mod http_utils;
 #[macro_use]
 pub mod macros;
 pub mod messaging;
-pub mod metrics;
+// pub mod metrics;
 #[cfg(feature = "crack-music")]
 pub mod music;
 pub mod poise_ext;
@@ -40,7 +40,7 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
-use songbird::{Songbird};
+use songbird::Songbird;
 // use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{

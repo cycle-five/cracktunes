@@ -1,8 +1,8 @@
 use crate::db::to_fixed;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
-#[cfg(feature = "crack-metrics")]
-use crate::metrics::COMMAND_ERRORS;
+// #[cfg(feature = "crack-metrics")]
+// use crate::metrics::COMMAND_ERRORS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
@@ -47,10 +47,10 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             let myerr = CrackedError::Poise(error);
             let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
             check_reply(ctx.send_message(params).await.map_err(Into::into));
-            #[cfg(feature = "crack-metrics")]
-            COMMAND_ERRORS
-                .with_label_values(&[&ctx.command().qualified_name])
-                .inc();
+            // #[cfg(feature = "crack-metrics")]
+            // COMMAND_ERRORS
+            //     .with_label_values(&[&ctx.command().qualified_name])
+            //     .inc();
         },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {

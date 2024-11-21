@@ -1,6 +1,6 @@
 [package]
 name = "crack-types"
-version = "0.3.14"
+version = "0.3.16-alpha.1"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -23,9 +23,9 @@ workspace = ".."
 poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
-tokio = { version = "1.34", features = ["rt-multi-thread"] }
+tokio = { workspace = true }
 typemap_rev = "0.3.0"
-reqwest = { version = "0.12.4", default-features = false, features = [
+reqwest = { version = "0.12.9", default-features = false, features = [
     "blocking",
     "json",
     "multipart",
