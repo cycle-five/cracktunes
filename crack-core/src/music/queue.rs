@@ -6,8 +6,8 @@ use crate::{
     http_utils::CacheHttpExt,
     Context as CrackContext, Error,
 };
-use crack_types::Mode;
 use crack_types::NewAuxMetadata;
+use crack_types::{Mode, TrackResolveError};
 use serenity::all::{CreateEmbed, EditMessage, Message, UserId};
 use songbird::{
     input::Input as SongbirdInput,
@@ -118,13 +118,27 @@ pub async fn queue_track_back(
     let user_id = ctx.author().id;
 
     let begin = std::time::Instant::now();
-    //let ready_track = ready_query(ctx, query_type.clone()).await?;
-    let resolved = ctx
+    let resolved = match ctx
         .data()
         .ct_client
         .resolve_track(query_type.clone().into())
-        .await?
-        .with_user_id(user_id);
+        .await
+    {
+        Ok(resolved) => resolved.with_user_id(user_id),
+        Err(e1) => {
+            match e1.into() {
+                Some(_e) => {
+                    let ready_track = ready_query(ctx, query_type.clone()).await?;
+                    return _queue_track_ready_back(call, ready_track).await;
+                },
+                None => {
+                    return Err(CrackedError::TrackResolveError(
+                        TrackResolveError::UnknownQueryType,
+                    ));
+                },
+            };
+        },
+    };
     let after_ready = std::time::Instant::now();
     // FIXME:
     //ctx.async_send_track_metadata_write_msg(&ready_track);

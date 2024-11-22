@@ -45,6 +45,8 @@ pub enum TrackResolveError {
     Other(String),
     #[error("Unknown resolve error")]
     Unknown,
+    #[error("Unknown query type")]
+    UnknownQueryType,
 }
 
 /// play Mode enum.

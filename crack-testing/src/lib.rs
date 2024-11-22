@@ -197,7 +197,10 @@ impl CrackTrackClient {
                 let video_url = video.url.clone();
                 self.resolve_url(&video_url).await
             },
-            _ => unimplemented!(),
+            _ => {
+                tracing::error!("Query type not implemented: {query:?}");
+                Err(TrackResolveError::UnknownQueryType.into())
+            },
         }
     }
 

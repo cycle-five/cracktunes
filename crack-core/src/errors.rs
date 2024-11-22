@@ -12,6 +12,7 @@ pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
 use audiopus::error::Error as AudiopusError;
+use crack_types::TrackResolveError;
 use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
@@ -90,6 +91,7 @@ pub enum CrackedError {
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
+    TrackResolveError(crack_types::TrackResolveError),
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
@@ -201,6 +203,7 @@ impl Display for CrackedError {
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
+            Self::TrackResolveError(err) => f.write_str(&format!("{err}")),
             Self::TrackFail(err) => f.write_str(&format!("{err}")),
             Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::UrlParse(err) => f.write_str(&format!("{err}")),
@@ -232,6 +235,13 @@ impl PartialEq for CrackedError {
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+/// Provides an implementation to convert a [`TrackResovleError`] to a [`CrackedError`].
+impl From<TrackResolveError> for CrackedError {
+    fn from(err: TrackResolveError) -> Self {
+        Self::TrackResolveError(err)
     }
 }
 

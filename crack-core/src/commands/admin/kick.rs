@@ -55,7 +55,7 @@ fn read_lines(filename: &str) -> Vec<String> {
 
 /// Changes all nicknames in the server to a random name from a file.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(prefix_command, ephemeral, owners_only)]
+#[poise::command(prefix_command, slash_command, ephemeral, owners_only)]
 pub async fn changenicks(
     ctx: Context<'_>,
     #[flag]
