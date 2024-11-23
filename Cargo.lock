@@ -1019,14 +1019,14 @@ dependencies = [
 
 [[package]]
 name = "crack-bf"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "crack-core"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "async-openai",
  "const_format",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "crack-types",
  "ipinfo",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.3.14"
+version = "0.3.15-alpha.2"
 dependencies = [
  "humantime",
  "poise",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.3.14"
+version = "0.3.15-alpha.2"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1159,13 +1159,13 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "config-file",
  "crack-core",
  "crack-types",
  "dotenvy",
- "opentelemetry",
+ "opentelemetry 0.25.0",
  "opentelemetry_sdk",
  "poise",
  "prometheus",
@@ -3199,10 +3199,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry_sdk"
-version = "0.25.0"
+name = "opentelemetry"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0da0d6b47a3dbc6e9c9e36a0520e25cf943e046843818faaa3f87365a548c82"
+checksum = "0f3cebff57f7dbd1255b44d8bddc2cebeb0ea677dbaa2e25a3070a91b318f660"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "once_cell",
+ "pin-project-lite",
+ "thiserror",
+]
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27b742c1cae4693792cc564e58d75a2a0ba29421a34a85b50da92efa89ecb2bc"
 dependencies = [
  "async-trait",
  "futures-channel",
@@ -3210,11 +3224,12 @@ dependencies = [
  "futures-util",
  "glob",
  "once_cell",
- "opentelemetry",
+ "opentelemetry 0.27.0",
  "percent-encoding",
  "rand",
  "serde_json",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
