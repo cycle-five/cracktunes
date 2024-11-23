@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -16,13 +16,13 @@ workspace = "../"
 
 [features]
 default = [
-    "crack-playlist",
-    "crack-music",
-    "crack-tracing",
-    "crack-testing",
-    "crack-types",
-    "ignore-presence-log",
-    "cache",
+  "crack-playlist",
+  "crack-music",
+  "crack-tracing",
+  "crack-testing",
+  "crack-types",
+  "ignore-presence-log",
+  "cache",
 ]
 cache = ["serenity/cache", "poise/cache"]
 crack-activity = []
@@ -108,13 +108,13 @@ ctor = "0.2"
 tungstenite = "0.24.0"
 async-tungstenite = "0.28.0"
 sqlx = { version = "0.8.2", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "macros",
-    "postgres",
-    "chrono",
-    "migrate",
-    "json",
+  "runtime-tokio",
+  "tls-rustls",
+  "macros",
+  "postgres",
+  "chrono",
+  "migrate",
+  "json",
 ] }
 
 [build-dependencies]

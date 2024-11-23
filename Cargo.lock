@@ -1019,14 +1019,14 @@ dependencies = [
 
 [[package]]
 name = "crack-bf"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "crack-core"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "async-openai",
  "const_format",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "crack-types",
  "ipinfo",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 dependencies = [
  "config-file",
  "crack-core",

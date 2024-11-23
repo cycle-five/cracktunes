@@ -1,19 +1,19 @@
 [package]
 name = "crack-bf"
-version = "0.3.14"
+version = "0.3.15-alpha.1"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
 description = "Brainfuck interpreter for cracktunes. v0.1.0"
 keywords = [
-    "music",
-    "discord",
-    "bot",
-    "crack",
-    "tunes",
-    "brainfuck",
-    "programming language",
+  "music",
+  "discord",
+  "bot",
+  "crack",
+  "tunes",
+  "brainfuck",
+  "programming language",
 ]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
