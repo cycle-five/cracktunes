@@ -34,7 +34,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 serenity = { workspace = true }
 tracing = "0.1.40"
-tokio = { version = "1.40", features = ["rt-multi-thread"] }
+tokio = { version = "1.41", features = ["rt-multi-thread"] }
 thiserror = "1.0"
 poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
 url = "2.5"

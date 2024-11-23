@@ -1019,14 +1019,14 @@ dependencies = [
 
 [[package]]
 name = "crack-bf"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "crack-core"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "async-openai",
  "const_format",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "crack-types",
  "ipinfo",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.3.14"
+version = "0.3.15-alpha.2"
 dependencies = [
  "humantime",
  "poise",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.3.14"
+version = "0.3.15-alpha.2"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.3.15-alpha.1"
+version = "0.3.15-alpha.2"
 dependencies = [
  "config-file",
  "crack-core",
@@ -5794,9 +5794,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.41.0"
+version = "1.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "145f3413504347a2be84393cc8a7d2fb4d863b375909ea59f2158261aa258bbb"
+checksum = "22cfb5bee7a6a52939ca9224d6ac897bb669134078daa8735560897f69de4d33"
 dependencies = [
  "backtrace",
  "bytes",
