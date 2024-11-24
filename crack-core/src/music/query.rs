@@ -827,6 +827,9 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
     Ok((output, metadata))
 }
 
+// This should not be permenant, but just to get it working
+// with the port before re-enabling all the other modules.
+#[allow(dead_code)]
 /// Returns the QueryType for a given URL (or query string, or file attachment)
 pub async fn query_type_from_url(
     ctx: Context<'_>,

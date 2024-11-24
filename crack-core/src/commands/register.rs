@@ -17,7 +17,7 @@ use poise::serenity_prelude as serenity;
 /// let commands = &ctx.framework().options().commands;
 /// let create_commands = poise::builtins::create_application_commands(commands);
 ///
-/// serenity::Command::set_global_commands(ctx, create_commands).await?;
+/// serenity::Command::set_global_commands(ctx.http(), &create_commands).await?;
 /// # Ok(()) }
 /// ```
 pub fn create_application_commands_cracked<U, E>(
