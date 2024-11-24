@@ -166,7 +166,9 @@ mod tests {
         // let message = Message::default();
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
         let x = wrapper
-            .delete(Http::new(DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")))
+            .delete(Http::new(
+                DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token"),
+            ))
             .await;
 
         assert!(x.is_ok());
