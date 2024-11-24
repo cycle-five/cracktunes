@@ -24,12 +24,9 @@ eula = false
 [features]
 default = ["crack-tracing"]
 
-# crack-telemetry = ["crack-metrics", "opentelemetry", "opentelemetry_sdk"]
-# crack-telemetry = ["opentelemetry", "opentelemetry_sdk"]
 crack-tracing = ["tracing-subscriber"]
 crack-metrics = []
 crack-telemetry = []
-# crack-metrics = ["prometheus", "warp"]
 
 [dependencies]
 crack-core = { path = "../crack-core/" }
@@ -41,22 +38,13 @@ tracing-subscriber = { version = "0.3", features = [
   "env-filter",
 ], optional = true }
 
-# # crack-metrics
-# prometheus = { version = "0.13", features = ["process"], optional = true }
-# warp = { version = "0.3.7", default-features = false, features = [
-#     "tls",
-# ], optional = true }
-# opentelemetry = { version = "0.25.0", optional = true }
-# opentelemetry_sdk = { version = "0.25.0", optional = true }
-
-# crack-core = { workspace = true }
 # Core's dependencies
 poise = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
-# Figure this one out better
 
 tracing = { workspace = true }
+
 # # Is this even needed? What did I add it for?
 # This is needed for the tests to run in the IDE
 [dev-dependencies]
