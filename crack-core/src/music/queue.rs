@@ -109,20 +109,20 @@ pub async fn queue_track_ready_front(
     Ok(new_q)
 }
 
-// /// Pushes a track to the back of the queue, after readying it.
-// pub async fn _queue_track_ready_back(
-//     call: &Arc<Mutex<Call>>,
-//     ready_track: TrackReadyData,
-// ) -> Result<Vec<TrackHandle>, CrackedError> {
-//     let mut handler = call.lock().await;
-//     let track_handle = handler.enqueue_input(ready_track.source).await;
-//     let new_q = handler.queue().current_queue();
-//     drop(handler);
-//     let mut map = track_handle.typemap().write().await;
-//     map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
-//     map.insert::<RequestingUser>(RequestingUser::from(ready_track.user_id));
-//     Ok(new_q)
-// }
+/// Pushes a track to the back of the queue, after readying it.
+pub async fn _queue_track_ready_back(
+    call: &Arc<Mutex<Call>>,
+    ready_track: TrackReadyData,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+
+    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
+    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
+    Ok(new_q)
+}
 
 /// Pushes a track to the front of the queue.
 pub async fn queue_track_front(
@@ -137,6 +137,7 @@ pub async fn queue_track_front(
     Ok(q)
 }
 
+use crack_types::TrackResolveError;
 /// Pushes a track to the front of the queue.
 #[tracing::instrument(skip(ctx, call, query_type))]
 pub async fn queue_track_back(

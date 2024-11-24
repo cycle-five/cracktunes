@@ -54,7 +54,7 @@ features = [
 # Broken? try self-hosted?
 git = "https://github.com/serenity-rs/songbird"
 branch = "serenity-next"
-version = "0.4.4"
+version = "0.4.5"
 features = [
   "driver",
   "gateway",
