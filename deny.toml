@@ -4,10 +4,7 @@ all-features = true
 [bans]
 multiple-versions = "deny"
 deny = [{ name = "hyper-tls" }, { name = "openssl" }]
-skip-tree = [
-    { name = "windows_x86_64_gnullvm" },
-    { name = "windows-sys" },
-]
+skip-tree = [{ name = "windows_x86_64_gnullvm" }, { name = "windows-sys" }]
 
 [licenses]
 # We want really high confidence when inferring licenses from text
@@ -18,10 +15,10 @@ allow = [
     "MIT",
     "OpenSSL",
     "Zlib",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "MPL-2.0",
     "BSD-3-Clause",
+    "BSD-2-Clause",
     "CC0-1.0",
 ]
 

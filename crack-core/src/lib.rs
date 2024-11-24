@@ -334,7 +334,7 @@ pub struct DataInner {
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
-    pub ct_client: CrackTrackClient,
+    pub ct_client: CrackTrackClient<'static>,
     pub songbird: Arc<Songbird>,
 }
 
@@ -402,7 +402,7 @@ impl DataInner {
         }
     }
 
-    pub fn with_ct_client(&self, ct_client: CrackTrackClient) -> Self {
+    pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
         Self {
             ct_client,
             ..self.clone()

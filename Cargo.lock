@@ -4432,7 +4432,7 @@ dependencies = [
 [[package]]
 name = "rusty_ytdl"
 version = "0.7.4"
-source = "git+https://github.com/cycle-five/rusty_ytdl?branch=main#dd7655b68451a450bbea02c28188dfe97f1c20d0"
+source = "git+https://github.com/cycle-five/rusty_ytdl?branch=main#86452a412c22e4cd3371e38e616250b454a0c5e3"
 dependencies = [
  "aes",
  "async-trait",

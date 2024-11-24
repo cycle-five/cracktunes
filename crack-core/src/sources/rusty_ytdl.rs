@@ -23,23 +23,23 @@ use tokio::sync::RwLock;
 use super::ytdl::HANDLE;
 
 #[derive(Clone, Debug)]
-pub struct RustyYoutubeSearch {
+pub struct RustyYoutubeSearch<'a> {
     pub rusty_ytdl: YouTube,
     pub metadata: Option<AuxMetadata>,
     pub url: Option<String>,
-    pub video: Option<Video>,
+    pub video: Option<Video<'a>>,
     pub query: QueryType,
 }
 
 #[derive(Clone, Debug)]
-pub struct NewRustyRequest {
+pub struct NewRustyRequest<'a> {
     // required in param
     pub query: QueryType,
     // optional in param
     pub url: Option<String>,
     // out params
     pub metadata: Option<AuxMetadata>,
-    pub video: Option<Video>,
+    pub video: Option<Video<'a>>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +50,7 @@ pub struct NewRustyClient {
     pub vid_opts: VideoOptions,
 }
 
-impl Display for RustyYoutubeSearch {
+impl Display for RustyYoutubeSearch<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -120,7 +120,7 @@ pub async fn get_video_info(
     video.get_basic_info().await.map_err(|e| e.into())
 }
 
-impl RustyYoutubeSearch {
+impl RustyYoutubeSearch<'_> {
     pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
         let request_options = RequestOptions {
             client: Some(client.clone()),
@@ -148,8 +148,8 @@ impl RustyYoutubeSearch {
     }
 }
 
-impl From<RustyYoutubeSearch> for Input {
-    fn from(val: RustyYoutubeSearch) -> Self {
+impl From<RustyYoutubeSearch<'static>> for Input {
+    fn from(val: RustyYoutubeSearch<'static>) -> Self {
         Input::Lazy(Box::new(val))
     }
 }
@@ -157,7 +157,7 @@ impl From<RustyYoutubeSearch> for Input {
 use rusty_ytdl::VideoError;
 
 #[async_trait]
-impl Compose for RustyYoutubeSearch {
+impl Compose for RustyYoutubeSearch<'_> {
     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
         Err(AudioStreamError::Unsupported)
     }

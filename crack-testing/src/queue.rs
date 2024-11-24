@@ -17,7 +17,7 @@ pub struct CrackTrackQueue<'a> {
 }
 
 /// Implement [`Default`] for [`CrackTrackQueue`].
-impl<'a> Default for CrackTrackQueue<'a> {
+impl Default for CrackTrackQueue<'_> {
     fn default() -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(VecDeque::new())),
