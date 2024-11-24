@@ -11,7 +11,7 @@ use std::{
 /// [`ResolvedTrack`] struct for holding resolved track information, this
 /// should be enough to play the track or enqueue it with the bot.
 #[derive(Clone, Debug)]
-pub struct ResolvedTrack {
+pub struct ResolvedTrack<'a> {
     // FIXME One of these three has the possibility of returning
     // the video id instead of the full URL. Need to figure out
     // which one and document why.
@@ -19,7 +19,7 @@ pub struct ResolvedTrack {
     pub metadata: Option<AuxMetadata>,
     pub search_video: Option<rusty_ytdl::search::Video>,
     pub query: QueryType,
-    pub video: Option<rusty_ytdl::Video>,
+    pub video: Option<rusty_ytdl::Video<'a>>,
     #[allow(dead_code)]
     pub queued: bool,
     #[allow(dead_code)]
@@ -27,7 +27,7 @@ pub struct ResolvedTrack {
     pub user_id: UserId,
 }
 
-impl Default for ResolvedTrack {
+impl Default for ResolvedTrack<'_> {
     fn default() -> Self {
         ResolvedTrack {
             query: QueryType::None,
@@ -41,7 +41,7 @@ impl Default for ResolvedTrack {
     }
 }
 
-impl ResolvedTrack {
+impl ResolvedTrack<'_> {
     /// Create a new ResolvedTrack
     pub fn new(query: QueryType) -> Self {
         ResolvedTrack {
@@ -90,7 +90,7 @@ impl ResolvedTrack {
     }
 
     /// Set the video of the track.
-    pub fn with_video(mut self, video: rusty_ytdl::Video) -> Self {
+    pub fn with_video(mut self, video: rusty_ytdl::Video<'static>) -> Self {
         self.video = Some(video);
         self
     }
@@ -197,7 +197,7 @@ impl ResolvedTrack {
 // }
 
 /// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
-impl From<search::Video> for ResolvedTrack {
+impl From<search::Video> for ResolvedTrack<'_> {
     fn from(video: search::Video) -> Self {
         ResolvedTrack {
             query: QueryType::VideoLink(video.url.clone()),
@@ -208,9 +208,9 @@ impl From<search::Video> for ResolvedTrack {
 }
 
 /// Implement [`From`] for ([`rusty_ytdl::Video`], [`VideoDetails`], [`AuxMetadata`]) to [`ResolvedTrack`].
-impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
+impl<'a> From<(rusty_ytdl::Video<'a>, VideoDetails, AuxMetadata)> for ResolvedTrack<'a> {
     fn from(
-        (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
+        (video, video_details, aux_metadata): (rusty_ytdl::Video<'a>, VideoDetails, AuxMetadata),
     ) -> Self {
         ResolvedTrack {
             query: QueryType::VideoLink(video.get_video_url()),
@@ -223,7 +223,7 @@ impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
 }
 
 /// Implement [`Display`] for [`ResolvedTrack`].
-impl Display for ResolvedTrack {
+impl Display for ResolvedTrack<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let title = self.get_title();
         let url = self.get_url();
