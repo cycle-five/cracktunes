@@ -27,6 +27,8 @@ default = ["crack-tracing"]
 # crack-telemetry = ["crack-metrics", "opentelemetry", "opentelemetry_sdk"]
 # crack-telemetry = ["opentelemetry", "opentelemetry_sdk"]
 crack-tracing = ["tracing-subscriber"]
+crack-metrics = []
+crack-telemetry = []
 # crack-metrics = ["prometheus", "warp"]
 
 [dependencies]
@@ -63,3 +65,6 @@ sqlx = { workspace = true }
 [build-dependencies]
 # All features enabled
 vergen-gitcl = { version = "1.0.1", features = ["build"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
