@@ -15,6 +15,7 @@ use crate::{
     utils::{check_reply, count_command},
     BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
+use ::serenity::secrets::Token;
 use colored::Colorize;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
@@ -227,11 +228,7 @@ pub async fn poise_framework(
         Some(c) => Some(c.await),
         None => None,
     };
-    // let rt = tokio::runtime::Builder::new_multi_thread()
-    //     .enable_all()
-    //     .build()
-    //     .unwrap();
-    // let handle = rt.handle();
+
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::default(),
@@ -243,30 +240,18 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
-    //| GatewayIntents::GUILD_PRESENCES
-    //| GatewayIntents::GUILDS
-    //| GatewayIntents::MESSAGE_CONTENT
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_TYPING
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
-    // | GatewayIntents::DIRECT_MESSAGES
-    // | GatewayIntents::DIRECT_MESSAGE_TYPING
-    // | GatewayIntents::DIRECT_MESSAGE_REACTIONS;
-    // | GatewayIntents::GUILD_SCHEDULED_EVENTS
-    // | GatewayIntents::GUILD_EMOJIS_AND_STICKERS
-    // | GatewayIntents::GUILD_INTEGRATIONS
-    // | GatewayIntents::GUILD_WEBHOOKS
-    // | GatewayIntents::GUILD_INVITES
-    // | GatewayIntents::AUTO_MODERATION_CONFIGURATION
-    // | GatewayIntents::AUTO_MODERATION_EXECUTION
 
     let token = config
         .credentials
         .expect("Error getting discord token")
-        .discord_token;
+        .discord_token
+        .parse::<Token>()?;
     let data2 = data.clone();
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
     let framework = poise::Framework::new(options);
@@ -299,7 +284,7 @@ pub async fn poise_framework(
         data: data2.clone(),
     };
 
-    let client = Client::builder(&token, intents)
+    let client = Client::builder(token, intents)
         .voice_manager::<Songbird>(manager.clone())
         .event_handler(serenity_handler)
         .data(data2.clone().into())

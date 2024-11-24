@@ -1,4 +1,4 @@
-use crack_types::Duration;
+use crack_types::{get_valid_token, Duration};
 use serenity::all::{
     Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions, TransportCompression,
 };
@@ -14,6 +14,7 @@ impl ShardManagerOptionsBuilder {
     pub fn new() -> Self {
         let ws_url = "ws://localhost:3030".to_string();
         let ws_url: Arc<str> = Arc::from(ws_url);
+        let token = get_valid_token();
         Self(ShardManagerOptions {
             compression: TransportCompression::None,
             data: Arc::new(crate::Data::default()),
@@ -24,33 +25,14 @@ impl ShardManagerOptionsBuilder {
             shard_total: NonZeroU16::new(1).unwrap(),
             wait_time_between_shard_start: Duration::from_secs(1),
             cache: Arc::new(Cache::new()),
-            http: Arc::new(Http::new("")),
+            http: Arc::new(Http::new(token.clone())),
+            token,
             intents: GatewayIntents::all(),
             presence: None,
             voice_manager: None,
             ws_url,
         })
     }
-
-    // pub fn shard_index(mut self, shard_index: u32) -> Self {
-    //     self.0.shard_index = shard_index;
-    //     self
-    // }
-
-    // pub fn shard_init(mut self, shard_init: u32) -> Self {
-    //     self.0.shard_init = shard_init;
-    //     self
-    // }
-
-    // pub fn shard_total(mut self, shard_total: u32) -> Self {
-    //     self.0.shard_total = shard_total;
-    //     self
-    // }
-
-    // pub fn ws_url(mut self, ws_url: String) -> Self {
-    //     self.0.ws_url = Arc::new(Mutex::new(ws_url));
-    //     self
-    // }
 
     pub fn build(self) -> ShardManagerOptions {
         self.0

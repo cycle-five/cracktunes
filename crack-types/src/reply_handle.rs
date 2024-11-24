@@ -149,6 +149,8 @@ pub async fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DEFAULT_VALID_TOKEN;
+    use ::serenity::secrets::Token;
 
     #[tokio::test]
     async fn test_into_message() {
@@ -163,7 +165,9 @@ mod tests {
     async fn test_delete() {
         // let message = Message::default();
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
-        let x = wrapper.delete(Http::new(&"".to_string())).await;
+        let x = wrapper
+            .delete(Http::new(DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")))
+            .await;
 
         assert!(x.is_ok());
     }
