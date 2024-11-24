@@ -56,7 +56,7 @@ pub async fn create_skip_response(
 ) -> Result<Message, CrackedError> {
     let send_msg = match handler.queue().current() {
         Some(track) => {
-            let metadata = get_track_handle_metadata(&track).await;
+            let metadata = get_track_handle_metadata(&track).await?;
             CrackedMessage::SkipTo {
                 title: metadata.title.as_ref().unwrap().to_owned(),
                 url: metadata.source_url.as_ref().unwrap().to_owned(),
@@ -93,7 +93,7 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
 
     let handler = call.lock().await;
     let queue = handler.queue();
-    let metadata = get_track_handle_metadata(&queue.current().unwrap()).await;
+    let metadata = get_track_handle_metadata(&queue.current().unwrap()).await?;
 
     let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
     let res1 = ctx.data().downvote_track(guild_id, source_url).await?;

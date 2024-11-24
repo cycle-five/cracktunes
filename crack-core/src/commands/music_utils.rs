@@ -67,10 +67,7 @@ pub async fn set_global_handlers(
 #[tracing::instrument(skip(ctx))]
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
-
+    let manager = ctx.data().songbird.clone();
     // Return the call if it already exists.
     // Otherwise, try to join the channel of the user who sent the message.
     if let Some(call) = manager.get(guild_id) {
@@ -111,7 +108,7 @@ pub async fn do_join(
 ) -> Result<Arc<Mutex<Call>>, Error> {
     // let ctx_owned = ctx.clone();
     let guild = guild_id
-        .to_guild_cached(&ctx)
+        .to_guild_cached(ctx.cache())
         .ok_or(CrackedError::NoGuildCached)?
         .clone();
     let guild_name = guild.name;

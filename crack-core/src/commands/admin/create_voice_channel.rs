@@ -13,7 +13,6 @@ use crate::Error;
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral
 )]
 pub async fn create_voice_channel(
     ctx: Context<'_>,
@@ -23,9 +22,9 @@ pub async fn create_voice_channel(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = guild_id.to_partial_guild(&ctx).await?;
-    if let Err(e) = guild
+    if let Err(e) = guild.id
         .create_channel(
-            &ctx,
+            ctx.http(),
             CreateChannel::new(channel_name.clone())
                 .kind(serenity::model::channel::ChannelType::Voice),
         )

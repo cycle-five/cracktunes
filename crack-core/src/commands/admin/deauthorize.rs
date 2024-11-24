@@ -4,6 +4,7 @@ use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
+use std::str::FromStr;
 
 /// Deauthorize a user from using the bot.
 #[cfg(not(tarpaulin_include))]
@@ -18,6 +19,8 @@ pub async fn deauthorize(
     ctx: Context<'_>,
     #[description = "The user id to remove from the authorized list"] user: serenity::all::User,
 ) -> Result<(), Error> {
+    use serenity::small_fixed_array::FixedString;
+
     let user_id = user.id;
     let id = user_id;
     let guild_id = ctx.guild_id().unwrap();
@@ -28,7 +31,7 @@ pub async fn deauthorize(
         .to_partial_guild(ctx)
         .await
         .map(|g| g.name)
-        .unwrap_or_else(|_| UNKNOWN.to_string());
+        .unwrap_or_else(|_| <FixedString>::from_str(UNKNOWN).expect(""));
 
     let res = ctx
         .data()
@@ -57,7 +60,7 @@ pub async fn deauthorize(
             id,
             mention,
             guild_id,
-            guild_name,
+            guild_name: guild_name.clone(),
         },
         true,
     )

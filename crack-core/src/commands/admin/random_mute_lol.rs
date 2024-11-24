@@ -28,8 +28,7 @@ pub async fn random_mute(
     // and then it is deleted.
 
     let guild_id = ctx.guild_id().unwrap();
-
-    let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
+    let songbird = ctx.data().songbird.clone();
     let call = songbird
         .get(guild_id)
         .ok_or(CrackedError::WrongVoiceChannel)?;

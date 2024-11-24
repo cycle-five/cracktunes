@@ -53,7 +53,7 @@ pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 pub async fn debug_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = ctx.data().songbird.clone();
     let _guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
     let user_id = ctx.get_user_id();
     let mention_caller = user_id.mention().to_string();
@@ -72,7 +72,7 @@ pub async fn debug_internal(ctx: Context<'_>) -> Result<(), Error> {
             match track {
                 Some(track) => BotStatus {
                     play_mode: track.get_info().await.unwrap_or_default().playing,
-                    current_channel: channel_id.map(|id| serenity::ChannelId::new(id.0.into())),
+                    current_channel: channel_id.map(|id| serenity::ChannelId::new(id.get())),
                     queue_len: queue.clone().len(),
                     ..Default::default()
                 },

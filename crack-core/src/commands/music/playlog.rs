@@ -24,7 +24,7 @@ pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     create_paged_embed(
         ctx,
-        ctx.author().name.clone(),
+        ctx.author().name,
         "Playlog".to_string(),
         last_played_str,
         756,

@@ -25,7 +25,7 @@ use songbird::error::JoinError;
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        let manager = songbird::get(&self.serenity_ctx.to_owned()).await?;
+        let manager = &self.serenity_ctx.data::<crate::Data>().songbird;
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
@@ -61,7 +61,11 @@ impl EventHandler for IdleHandler {
         {
             match manager.remove(self.guild_id).await {
                 Ok(_) => {
-                    match self.channel_id.say(&self.serenity_ctx, IDLE_ALERT).await {
+                    match self
+                        .channel_id
+                        .say(&self.serenity_ctx.http, IDLE_ALERT)
+                        .await
+                    {
                         Ok(_) => {},
                         Err(e) => {
                             tracing::error!("Error sending idle alert: {:?}", e);

@@ -29,10 +29,8 @@ pub async fn repeat(
 #[cfg(not(tarpaulin_include))]
 pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let songbird = ctx.data().songbird.clone();
+    let call = songbird.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
     let track = match handler.queue().current() {

@@ -1,18 +1,20 @@
 use once_cell::sync::Lazy;
+use reqwest as reqwest_old;
 use reqwest::Client;
-use reqwest_old;
 use std::future::Future;
 
 use crate::errors::CrackedError;
+use crate::guild::settings::GuildSettings;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::music::QueryType;
 use crate::serenity::Color;
-use serenity::all::{
-    CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Http, Message, UserId,
-};
+use crate::CrackedResult;
+use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
+use serenity::small_fixed_array::FixedString;
 
+#[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
-#[derive(Debug, PartialEq)]
-pub struct SendMessageParams {
+pub struct SendMessageParams<'a> {
     pub channel: ChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
@@ -20,10 +22,24 @@ pub struct SendMessageParams {
     pub color: Color,
     pub cache_msg: bool,
     pub msg: CrackedMessage,
-    pub embed: Option<CreateEmbed>,
+    pub embed: Option<CreateEmbed<'a>>,
 }
 
-impl Default for SendMessageParams {
+/// Implement [`PartialEq`] for [`SendMessageParams`].
+impl PartialEq for SendMessageParams<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.channel == other.channel
+            && self.as_embed == other.as_embed
+            && self.ephemeral == other.ephemeral
+            && self.reply == other.reply
+            && self.color == other.color
+            && self.cache_msg == other.cache_msg
+            && self.msg == other.msg
+        // Note: We don't compare `embed` here
+    }
+}
+
+impl Default for SendMessageParams<'_> {
     fn default() -> Self {
         SendMessageParams {
             channel: ChannelId::new(1),
@@ -38,7 +54,7 @@ impl Default for SendMessageParams {
     }
 }
 
-impl SendMessageParams {
+impl<'a> SendMessageParams<'a> {
     pub fn new(msg: CrackedMessage) -> Self {
         Self {
             msg,
@@ -74,21 +90,25 @@ impl SendMessageParams {
         Self { cache_msg, ..self }
     }
 
-    pub fn with_embed(self, embed: Option<CreateEmbed>) -> Self {
+    pub fn with_embed(self, embed: Option<CreateEmbed<'a>>) -> Self {
         Self { embed, ..self }
     }
 }
 
 /// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
-    fn cache(&self) -> Option<impl CacheHttp>;
-    fn http(&self) -> Option<&Http>;
+    // fn cache(&self) -> Option<impl CacheHttp>;
+    // fn http(&self) -> Option<&Http>;
     fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
-    fn user_id_to_username_or_default(&self, user_id: UserId) -> String;
+    fn user_id_to_username_or_default(
+        &self,
+        user_id: UserId,
+    ) -> impl Future<Output = String> + Send;
     fn channel_id_to_guild_name(
         &self,
         channel_id: ChannelId,
-    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
     fn send_channel_message(
         &self,
         params: SendMessageParams,
@@ -96,39 +116,32 @@ pub trait CacheHttpExt {
     fn guild_name_from_guild_id(
         &self,
         guild_id: GuildId,
-    ) -> impl Future<Output = Result<String, CrackedError>> + Send;
+    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
 }
 
 /// Implement the CacheHttpExt trait for any type that implements CacheHttp.
 impl<T: CacheHttp> CacheHttpExt for T {
-    fn cache(&self) -> Option<impl CacheHttp> {
-        Some(self)
-    }
-
-    fn http(&self) -> Option<&Http> {
-        Some(self.http())
-    }
-
     async fn get_bot_id(&self) -> Result<UserId, CrackedError> {
         get_bot_id(self).await
     }
 
-    fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
-        cache_to_username_or_default(self, user_id)
+    async fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
+        cache_to_username_or_default(self, user_id).await
     }
 
     async fn channel_id_to_guild_name(
         &self,
         channel_id: ChannelId,
-    ) -> Result<String, CrackedError> {
-        get_guild_name(self, channel_id).await
+        guild_id: GuildId,
+    ) -> Result<FixedString, CrackedError> {
+        get_guild_name(self, channel_id, guild_id).await
     }
 
     /// Sends a message to a channel.
     #[cfg(not(tarpaulin_include))]
     async fn send_channel_message(
         &self,
-        params: SendMessageParams,
+        params: SendMessageParams<'_>,
     ) -> Result<Message, CrackedError> {
         let channel = params.channel;
         let content = format!("{}", params.msg);
@@ -138,10 +151,16 @@ impl<T: CacheHttp> CacheHttpExt for T {
         } else {
             CreateMessage::new().content(content)
         };
-        channel.send_message(self, msg).await.map_err(Into::into)
+        channel
+            .send_message(self.http(), msg)
+            .await
+            .map_err(Into::into)
     }
 
-    async fn guild_name_from_guild_id(&self, guild_id: GuildId) -> Result<String, CrackedError> {
+    async fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> Result<FixedString, CrackedError> {
         guild_name_from_guild_id(self, guild_id).await
     }
 }
@@ -230,19 +249,11 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
-pub fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
-    // let asdf = cache.cache()?.user(user_id);
-
-    match cache_http.cache() {
-        Some(cache) => match cache.user(user_id) {
-            Some(x) => x.name.clone(),
-            None => {
-                tracing::warn!("cache.user returned None");
-                UNKNOWN.to_string()
-            },
-        },
-        None => {
-            tracing::warn!("cache_http.cache() returned None");
+pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
+    match user_id.to_user(cache_http).await {
+        Ok(x) => x.name.to_string(),
+        Err(_) => {
+            tracing::warn!("cache.user returned None");
             UNKNOWN.to_string()
         },
     }
@@ -272,9 +283,10 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,
     channel_id: ChannelId,
-) -> Result<String, CrackedError> {
+    guild_id: GuildId,
+) -> Result<FixedString, CrackedError> {
     channel_id
-        .to_channel(cache_http)
+        .to_channel(cache_http, Some(guild_id))
         .await?
         .guild()
         .map(|x| x.guild_id)
@@ -290,12 +302,33 @@ pub async fn get_guild_name(
 pub async fn guild_name_from_guild_id(
     cache_http: impl CacheHttp,
     guild_id: GuildId,
-) -> Result<String, CrackedError> {
+) -> Result<FixedString, CrackedError> {
     guild_id
         .to_partial_guild(cache_http)
         .await
         .map(|x| x.name)
         .map_err(Into::into)
+}
+
+/// Check if the domain that we're playing from is banned.
+// FIXME: This is borked.
+pub fn check_banned_domains(
+    guild_settings: &GuildSettings,
+    query_type: Option<QueryType>,
+) -> CrackedResult<Option<QueryType>> {
+    if let Some(QueryType::Keywords(_)) = query_type {
+        if !guild_settings.allow_all_domains.unwrap_or(true)
+            && (guild_settings.banned_domains.contains("youtube.com")
+                || (guild_settings.banned_domains.is_empty()
+                    && !guild_settings.allowed_domains.contains("youtube.com")))
+        {
+            Err(CrackedError::Other("youtube.com is banned"))
+        } else {
+            Ok(query_type)
+        }
+    } else {
+        Ok(query_type)
+    }
 }
 
 #[cfg(test)]
@@ -337,6 +370,6 @@ mod test {
             params.msg,
             CrackedMessage::Other("Hello, world!".to_string())
         );
-        assert_eq!(params.embed, None);
+        assert_eq!(params.embed.is_none(), true);
     }
 }

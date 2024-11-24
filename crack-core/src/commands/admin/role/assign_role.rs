@@ -24,7 +24,7 @@ pub async fn assign(
         return help::wrapper(ctx).await;
     }
     member
-        .add_role(&ctx, role)
+        .add_role(ctx.http(), role.id, None)
         .await
         .map(|_| ())
         .map_err(|e| e.into())
@@ -54,7 +54,7 @@ pub async fn assign_ids(
 
     let member = guild_id.member(&ctx, user_id).await?;
     member
-        .add_role(&ctx, role_id)
+        .add_role(ctx.http(), role_id, None)
         .await
         .map(|_| ())
         .map_err(|e| e.into())

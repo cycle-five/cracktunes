@@ -5,9 +5,9 @@ use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    commands::check_banned_domains,
     errors::{verify, CrackedError},
     http_utils,
+    http_utils::check_banned_domains,
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
@@ -51,7 +51,7 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(serenity::Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
@@ -161,8 +161,8 @@ impl QueryType {
                     .collect::<Vec<String>>()
                     .join(" "),
             ),
-            QueryType::PlaylistLink(url) => Some(url.clone()),
-            QueryType::File(file) => Some(file.url.clone()),
+            QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::File(file) => Some(file.url.to_string()),
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
@@ -301,7 +301,7 @@ impl QueryType {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         ctx.channel_id()
             .send_message(
-                ctx,
+                ctx.http(),
                 CreateMessage::new()
                     .content(format!("Download status {}", status))
                     .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
@@ -348,7 +348,9 @@ impl QueryType {
         //let reqwest_client = ctx.data().http_client.clone();
         let search_results = YoutubeDl::new_search(http_utils::get_client_old().clone(), keywords)
             .search(None)
-            .await?;
+            .await?
+            .collect::<Vec<_>>();
+
         // let user_id = ctx.author().id;
         let qt = yt_search_select(
             ctx.serenity_context().clone(),
@@ -432,7 +434,8 @@ impl QueryType {
                 let res =
                     YoutubeDl::new_search(http_utils::get_client_old().clone(), query.clone())
                         .search(None)
-                        .await?;
+                        .await?
+                        .collect();
                 let user_id = ctx.author().id;
                 create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
@@ -519,7 +522,7 @@ impl QueryType {
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(&ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }
@@ -628,7 +631,7 @@ impl QueryType {
     /// Get the source (playable track) for this query.
     pub async fn get_track_source(
         &self,
-        client_old: reqwest_old::Client,
+        client_old: reqwest::Client,
     ) -> CrackedResult<songbird::input::Input> {
         match self {
             QueryType::YoutubeSearch(query) => {
@@ -645,7 +648,7 @@ impl QueryType {
                 let ytdl = YoutubeDl::new(client_old, query.clone());
                 Ok(ytdl.into())
             },
-            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_owned()).into()),
+            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
             QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
             QueryType::PlaylistLink(_)
             | QueryType::SpotifyTracks(_)
@@ -708,7 +711,7 @@ impl QueryType {
             QueryType::File(file) => {
                 tracing::warn!("In File");
                 Ok((
-                    HttpRequest::new(client_old, file.url.to_owned()).into(),
+                    HttpRequest::new(client_old, file.url.to_string()).into(),
                     vec![NewAuxMetadata::default()],
                 ))
             },
@@ -824,6 +827,9 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
     Ok((output, metadata))
 }
 
+// This should not be permenant, but just to get it working
+// with the port before re-enabling all the other modules.
+#[allow(dead_code)]
 /// Returns the QueryType for a given URL (or query string, or file attachment)
 pub async fn query_type_from_url(
     ctx: Context<'_>,

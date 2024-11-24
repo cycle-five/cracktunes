@@ -26,9 +26,7 @@ pub async fn add_to_playlist(
     playlist: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     let queue = call.lock().await.queue().clone();
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;

@@ -31,9 +31,7 @@ pub async fn clear(
 /// Clear the queue, internal.
 pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;

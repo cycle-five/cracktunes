@@ -1,4 +1,5 @@
-use crate::commands::help;
+//use crate::commands::help;
+use crate::errors::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
 use serenity::all::{ChannelId, GuildId};
@@ -66,7 +67,8 @@ pub async fn smoketest(
     help: bool,
 ) -> Result<(), Error> {
     if help {
-        return help::wrapper(ctx).await;
+        //return help::wrapper(ctx).await;
+        panic!("Help not implemented");
     }
 
     smoketest_internal(ctx).await
@@ -125,7 +127,13 @@ pub fn get_all_test_messages() -> Vec<String> {
 
 /// Run a smoke test.
 pub async fn run_smoke_test(test: SmokeTest<'_>) -> CrackedResult<()> {
-    test.chan.say(&test.ctx, test.say_msg).await?;
+    match test.chan.say(test.ctx.http(), test.say_msg).await {
+        Ok(_) => (),
+        Err(e) => {
+            tracing::error!("Error sending message: {e:?}");
+            return Err(CrackedError::Other("Error sending message"));
+        },
+    }
     if let Some(wait_secs) = test.wait_secs {
         tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
     }

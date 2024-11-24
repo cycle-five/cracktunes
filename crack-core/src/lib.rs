@@ -1,5 +1,25 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
+pub mod commands;
+pub mod config;
+pub mod connection;
+pub mod db;
+pub mod errors;
+pub mod guild;
+pub mod handlers;
+pub mod http_utils;
+#[macro_use]
+pub mod macros;
+pub mod messaging;
+// pub mod metrics;
+#[cfg(feature = "crack-music")]
+pub mod music;
+pub mod poise_ext;
+pub mod sources;
+#[cfg(test)]
+pub mod test;
+pub mod utils;
+
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
@@ -20,6 +40,8 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
+use songbird::Songbird;
+// use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -32,28 +54,9 @@ use std::{
 };
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
-pub mod commands;
-pub mod config;
-pub mod connection;
-pub mod db;
-pub mod errors;
-pub mod guild;
-pub mod handlers;
-pub mod http_utils;
-#[macro_use]
-pub mod macros;
-pub mod messaging;
-pub mod metrics;
-#[cfg(feature = "crack-music")]
-pub mod music;
-pub mod poise_ext;
-pub mod sources;
-#[cfg(test)]
-pub mod test;
-pub mod utils;
-
 // ------------------------------------------------------------------
-// Public types we use to simplify return and parameter types.
+// Our public types used throughout cracktunes.
+// Probably want to move these to crack-types...
 // ------------------------------------------------------------------
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -76,15 +79,8 @@ pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
-use crate::serenity::prelude::SerenityError;
+// use crate::serenity::prelude::SerenityError;
 use crack_types::reply_handle::MessageOrReplyHandle;
-
-impl From<CrackedError> for SerenityError {
-    fn from(_e: CrackedError) -> Self {
-        //let bs = Box::new(e.to_string());
-        SerenityError::Other("CrackedError")
-    }
-}
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -105,6 +101,7 @@ impl Default for CamKickConfig {
             timeout: 0,
             guild_id: 0,
             chan_id: 0,
+            // FIXME: This should be a const or a static
             dc_msg: "You have been violated for being cammed down for too long.".to_string(),
             msg_on_deafen: false,
             msg_on_mute: false,
@@ -334,9 +331,11 @@ pub struct DataInner {
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
+    pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
-    pub ct_client: CrackTrackClient,
+    pub ct_client: CrackTrackClient<'static>,
+    pub songbird: Arc<Songbird>,
 }
 
 // /// Get the default topgg client
@@ -399,6 +398,20 @@ impl DataInner {
     pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
         Self {
             gpt_ctx: Arc::new(RwLock::new(Some(gpt_ctx))),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
+        Self {
+            ct_client,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
+        Self {
+            songbird,
             ..self.clone()
         }
     }
@@ -515,6 +528,7 @@ impl Default for DataInner {
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
+            songbird: songbird::Songbird::serenity(),
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
@@ -523,6 +537,7 @@ impl Default for DataInner {
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
             guild_command_msg_queue: Default::default(),
+            guild_cnt_map: Default::default(),
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
@@ -541,7 +556,7 @@ impl Default for Data {
 #[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
-/// Impl [`Default`] for our custom [`Data`] struct
+/// Impl [`Deref`] for our custom [`Data`] struct
 impl std::ops::Deref for Data {
     type Target = DataInner;
 
@@ -673,6 +688,34 @@ impl Data {
             .or_default()
             .push(msg);
         Ok(())
+    }
+
+    /// Forget all skip votes for a guild
+    // This is used when a track ends, or when a user leaves the voice channel.
+    // This is to prevent users from voting to skip a track, then leaving the voice channel.
+    // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
+    pub async fn forget_skip_votes(&self, guild_id: GuildId) -> Result<(), Error> {
+        let _res = self
+            .guild_cache_map
+            .lock()
+            .await
+            .entry(guild_id)
+            .and_modify(|cache| cache.current_skip_votes = HashSet::new())
+            .or_default();
+
+        Ok(())
+    }
+
+    pub async fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+        Self(Arc::new(self.0.with_bot_settings(bot_settings)))
+    }
+
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
+        Self(self.arc_inner().with_songbird(songbird).into())
+    }
+
+    pub fn arc_inner(&self) -> Arc<DataInner> {
+        Into::into(self.0.clone())
     }
 }
 

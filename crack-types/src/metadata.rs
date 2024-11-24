@@ -4,10 +4,10 @@
 pub use rspotify::model::FullTrack;
 pub use rusty_ytdl::search::SearchResult;
 pub use rusty_ytdl::{VideoDetails, VideoInfo};
-pub use serenity::prelude::TypeMapKey;
 pub use songbird::input::AuxMetadata;
 pub use songbird::input::YoutubeDl;
 pub use std::time::Duration;
+pub use typemap_rev::TypeMapKey;
 
 // ------------------------------------------------------------------
 // Non-public imports

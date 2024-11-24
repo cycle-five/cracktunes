@@ -7,9 +7,11 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+use serenity::all::Token;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
+use songbird::Call;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::sync::Arc;
@@ -26,13 +28,21 @@ pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 // pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
 // pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
+pub type SongbirdCall = Arc<Mutex<Call>>;
 
 // ------------------------------------------------------------------
 // Public Re-exports
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
-pub use serenity::prelude::TypeMapKey;
+pub use serenity::all::UserId;
 pub use thiserror::Error as ThisError;
+pub use typemap_rev::TypeMapKey;
+
+// ------------------------------------------------------------------
+// Constants and Enums
+// ------------------------------------------------------------------
+pub(crate) const DEFAULT_VALID_TOKEN: &str =
+    "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
@@ -86,7 +96,7 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
@@ -95,6 +105,42 @@ pub enum QueryType {
 impl Default for QueryType {
     fn default() -> Self {
         QueryType::None
+    }
+}
+
+/// Enum for the requesting user of a track.
+#[derive(Debug, Clone)]
+pub enum RequestingUser {
+    UserId(UserId),
+}
+
+/// Convert [`Option<UserId>`] to [`RequestingUser`].
+impl From<Option<UserId>> for RequestingUser {
+    fn from(user_id: Option<UserId>) -> Self {
+        match user_id {
+            Some(user_id) => RequestingUser::UserId(user_id),
+            None => RequestingUser::default(),
+        }
+    }
+}
+
+/// Convert [`UserId`] to [`RequestingUser`].
+impl From<UserId> for RequestingUser {
+    fn from(user_id: UserId) -> Self {
+        RequestingUser::UserId(user_id)
+    }
+}
+
+/// We implement TypeMapKey for RequestingUser.
+impl TypeMapKey for RequestingUser {
+    type Value = RequestingUser;
+}
+
+/// Default implementation for RequestingUser.
+impl Default for RequestingUser {
+    fn default() -> Self {
+        let user = UserId::new(1);
+        RequestingUser::UserId(user)
     }
 }
 
@@ -136,6 +182,7 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
 }
 
 /// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
+#[must_use]
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     rusty_ytdl::Author {
         id: "id".to_string(),
@@ -150,7 +197,7 @@ pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     }
 }
 
-/// Builds a fake [rusty_ytdl::Embed] for testing purposes.
+/// Builds a fake [`rusty_ytdl::Embed`] for testing purposes.
 #[must_use]
 pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     rusty_ytdl::Embed {
@@ -202,6 +249,11 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
             height: 0,
         }],
     }
+}
+
+/// Builds a fake but valid [`Token`] for testing purposes.
+pub fn get_valid_token() -> Token {
+    DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
 }
 
 #[cfg(test)]

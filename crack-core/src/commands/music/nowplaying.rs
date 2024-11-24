@@ -38,7 +38,7 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         .current()
         .ok_or(CrackedError::NothingPlaying)?;
 
-    let embed = create_now_playing_embed(&track).await;
+    let embed = create_now_playing_embed(track).await;
     let _ = ctx.send_embed_response(embed).await?;
     Ok(())
 }

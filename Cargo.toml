@@ -31,30 +31,30 @@ features = [
 
 [workspace.dependencies.serenity]
 # Broken? try self-host.
-version = "0.12"
+#version = "0.12"
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
 default-features = false
 features = [
+  #  "typesize",
   "builder",
   "cache",
   "temp_cache",
   "collector",
-  "client",
   "framework",
-  "standard_framework",
   "http",
   "gateway",
   "model",
   "utils",
   "rustls_backend",
-  "unstable_discord_api",
   "voice",
 ]
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
 git = "https://github.com/serenity-rs/songbird"
-branch = "current"
-version = "0.4.3"
+branch = "serenity-next"
+version = "0.4.5"
 features = [
   "driver",
   "gateway",
@@ -72,7 +72,7 @@ features = ["all-formats", "all-codecs", "opt-simd"]
 version = "0.5.4"
 
 [workspace.dependencies.tokio]
-version = "1.41"
+version = "1.41.1"
 features = ["full"]
 
 [workspace.dependencies]
@@ -81,18 +81,11 @@ features = ["full"]
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-# poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
-reqwest_old = { version = "=0.11", default-features = false, package = "reqwest", features = [
-  "blocking",
-  "json",
-  "multipart",
-  "rustls-tls",
-  "cookies",
-] }
+# # poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
 
-poise = { branch = "current", git = "https://github.com/serenity-rs/poise", default-features = true }
-tracing = "0.1"
-reqwest = { version = "0.12", default-features = false, features = [
+poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
+tracing = "0.1.40"
+reqwest = { version = "0.12.9", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
@@ -105,7 +98,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 
 [patch.crates-io.serenity-voice-model]
 git = "https://github.com/serenity-rs/serenity"
-branch = "current"
+branch = "next"
 
 [profile.release]
 incremental = true
@@ -125,3 +118,8 @@ opt-level = 3
 [profile.dist]
 inherits = "release-with-performance"
 lto = "thin"
+
+[patch.crates-io]
+backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
+async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
+rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }

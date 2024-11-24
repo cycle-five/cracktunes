@@ -28,7 +28,11 @@ pub async fn user(
     // #[description = "Show the help menu."]
     // help: bool,
 ) -> Result<(), Error> {
-    crate::commands::help::wrapper(ctx).await
+    //crate::commands::help::wrapper(ctx).await
+    ctx.say("We're porting!")
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
 }
 
 pub fn user_commands() -> [Command; 4] {

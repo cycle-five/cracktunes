@@ -55,7 +55,7 @@ pub async fn summon_internal(
     channel_id_str: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = ctx.data().songbird.clone();
     let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
     let user_id = ctx.get_user_id();
 

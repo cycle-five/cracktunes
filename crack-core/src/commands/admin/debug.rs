@@ -14,8 +14,8 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let data_str = format!("{:#?}", data);
 
     let mut old_data_str = String::new();
-    let lock = ctx.serenity_context().data.read().await;
-    let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+    // let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+    let guild_settings_map = data.guild_settings_map.write().await;
     guild_settings_map.iter().for_each(|(k, v)| {
         old_data_str.push_str(&format!("k: {:?}, v: {:?}", k, v));
     });
@@ -27,13 +27,13 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
         .guild(guild_id)
         .unwrap()
         .clone();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = data.songbird.clone();
     let call = match manager.get(guild.id) {
         Some(call) => call,
         None => {
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(&ctx, embed).await?;
+            send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         },
     };
@@ -47,7 +47,7 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
         "data: {}old_data_str{}\nqueue: {}",
         data_str, old_data_str, queue_str
     ));
-    send_embed_response_poise(&ctx, embed).await?;
+    send_embed_response_poise(ctx, embed).await?;
 
     Ok(())
 }

@@ -1,6 +1,10 @@
 use crate::{
-    commands::sub_help as help, errors::CrackedError, messaging::message::CrackedMessage,
-    utils::send_reply, Context, Error,
+    //commands::sub_help as help,
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    utils::send_reply,
+    Context,
+    Error,
 };
 
 const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
@@ -14,7 +18,7 @@ const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
     guild_only,
     required_permissions = "MANAGE_MESSAGES",
     required_bot_permissions = "MANAGE_MESSAGES",
-    subcommands("help")
+    //subcommands("help")
 )]
 pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
     clean_internal(ctx).await
@@ -23,8 +27,9 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
 /// Clean up old messages from the bot, internal fucntion.
 pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
+    let data = ctx.data();
     let time_ordered_messages = {
-        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await;
+        let mut message_cache = data.guild_msg_cache_ordered.lock().await;
         &mut message_cache
             .get_mut(&guild_id)
             .ok_or(CrackedError::Other("No messages in cache"))?
@@ -53,14 +58,14 @@ pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
                 )
                 .await?;
             tracing::warn!("Deleting message {}", msg.1.id);
-            msg.1.delete(&ctx.serenity_context()).await?;
+            msg.1.delete(ctx.http(), None).await?;
         } else {
             time_ordered_messages.insert(msg.0, msg.1);
             break;
         }
     }
 
-    status_msg.delete(&ctx.serenity_context()).await?;
+    status_msg.delete(ctx.http(), None).await?;
     send_reply(&ctx, CrackedMessage::Clean(deleted), true).await?;
     Ok(())
 }

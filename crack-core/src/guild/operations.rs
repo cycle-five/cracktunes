@@ -1,5 +1,9 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
-use serenity::all::{ChannelId, Context as SerenityContext, GuildId};
+use serenity::{
+    all::{ChannelId, Context as SerenityContext, GuildId},
+    small_fixed_array::FixedString,
+};
+use std::str::FromStr;
 use std::{future::Future, sync::Arc};
 
 use super::settings::DEFAULT_VOLUME_LEVEL;
@@ -65,6 +69,7 @@ impl GuildSettingsOperations for Data {
         name: Option<String>,
         prefix: Option<&str>,
     ) -> GuildSettings {
+        let name = name.map(|x| FixedString::from_str(x.as_str()).expect("wtf?"));
         self.get_guild_settings(guild_id).await.unwrap_or({
             let settings = GuildSettings::new(guild_id, prefix, name);
             self.set_guild_settings(guild_id, settings.clone()).await;

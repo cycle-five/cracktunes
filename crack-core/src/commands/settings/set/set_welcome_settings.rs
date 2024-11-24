@@ -5,6 +5,7 @@ use crate::{
     Context, Data, Error,
 };
 use serenity::all::{Channel, GuildId, Role};
+use std::sync::Arc;
 
 /// Set password verification for the server.
 #[poise::command(
@@ -36,7 +37,7 @@ pub async fn password_verify(
     let msg = set_welcome_settings(
         ctx.data().clone(),
         guild_id,
-        guild_name,
+        guild_name.map(|s| s.to_string()),
         prefix.to_string(),
         welcome_settings,
     )
@@ -71,9 +72,9 @@ pub async fn welcome_settings(
         password: None,
     };
     let msg = set_welcome_settings(
-        ctx.data().clone(),
+        ctx.data(),
         guild_id,
-        guild_name,
+        guild_name.map(|s| s.to_string()),
         prefix.to_string(),
         welcome_settings,
     )
@@ -85,7 +86,7 @@ pub async fn welcome_settings(
 /// Set the welcome settings for a given guild.
 #[cfg(not(tarpaulin_include))]
 pub async fn set_welcome_settings(
-    data: Data,
+    data: Arc<Data>,
     guild_id: GuildId,
     guild_name: Option<String>,
     prefix: String,

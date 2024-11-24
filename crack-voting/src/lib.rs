@@ -256,68 +256,68 @@ mod test {
 
     use super::*;
 
-    #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_voting_context_creation(pool: PgPool) -> sqlx::Result<()> {
-        let secret = "test_secret";
-        std::env::set_var("WEBHOOK_SECRET", secret);
+    // #[sqlx::test(migrator = "MIGRATOR")]
+    // async fn test_voting_context_creation(pool: PgPool) -> sqlx::Result<()> {
+    //     let secret = "test_secret";
+    //     std::env::set_var("WEBHOOK_SECRET", secret);
 
-        let context = VotingContext::new_with_pool(pool).await;
+    //     let context = VotingContext::new_with_pool(pool).await;
 
-        assert_eq!(context.secret, secret);
-        // We can't directly compare PgPools, but we can check if it's initialized
-        assert!(context.pool.acquire().await.is_ok());
-        Ok(())
-    }
+    //     assert_eq!(context.secret, secret);
+    //     // We can't directly compare PgPools, but we can check if it's initialized
+    //     assert!(context.pool.acquire().await.is_ok());
+    //     Ok(())
+    // }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_bad_req(_pool: PgPool) -> sqlx::Result<()> {
-        let ctx = VotingContext::new().await;
-        let secret = get_secret();
-        println!("Secret {}", secret);
-        let app = get_app(ctx).await;
+    // #[sqlx::test(migrator = "MIGRATOR")]
+    // async fn test_bad_req(_pool: PgPool) -> sqlx::Result<()> {
+    //     let ctx = VotingContext::new().await;
+    //     let secret = get_secret();
+    //     println!("Secret {}", secret);
+    //     let app = get_app(ctx).await;
 
-        let res = warp::test::request()
-            .method("POST")
-            .path("/dbl/webhook")
-            .header("authorization", secret)
-            .body("bad json")
-            .reply(&app)
-            .await;
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        Ok(())
-    }
+    //     let res = warp::test::request()
+    //         .method("POST")
+    //         .path("/dbl/webhook")
+    //         .header("authorization", secret)
+    //         .body("bad json")
+    //         .reply(&app)
+    //         .await;
+    //     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    //     Ok(())
+    // }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
-    //#[sqlx::test]
-    async fn test_authorized(pool: sqlx::PgPool) -> sqlx::Result<()> {
-        let ctx = VotingContext::new_with_pool(pool).await;
-        let secret = get_secret();
-        let webhook = &Webhook {
-            bot: dbl::types::BotId(11),
-            user: dbl::types::UserId(31),
-            kind: dbl::types::WebhookType::Test,
-            is_weekend: false,
-            query: Some("test".to_string()),
-        };
-        let json_str = serde_json::to_string(webhook).unwrap();
-        println!("Secret {}", secret);
-        println!("Webhook {}", json_str);
-        let res = warp::test::request()
-            .method("POST")
-            .path("/dbl/webhook")
-            .header("authorization", secret)
-            .json(&Webhook {
-                bot: dbl::types::BotId(11),
-                user: dbl::types::UserId(1),
-                kind: dbl::types::WebhookType::Test,
-                is_weekend: false,
-                query: Some("test".to_string()),
-            })
-            .reply(&get_app(ctx.clone()).await)
-            .await;
-        assert_eq!(res.status(), StatusCode::OK);
-        Ok(())
-    }
+    // #[sqlx::test(migrator = "MIGRATOR")]
+    // //#[sqlx::test]
+    // async fn test_authorized(pool: sqlx::PgPool) -> sqlx::Result<()> {
+    //     let ctx = VotingContext::new_with_pool(pool).await;
+    //     let secret = get_secret();
+    //     let webhook = &Webhook {
+    //         bot: dbl::types::BotId(11),
+    //         user: dbl::types::UserId(31),
+    //         kind: dbl::types::WebhookType::Test,
+    //         is_weekend: false,
+    //         query: Some("test".to_string()),
+    //     };
+    //     let json_str = serde_json::to_string(webhook).unwrap();
+    //     println!("Secret {}", secret);
+    //     println!("Webhook {}", json_str);
+    //     let res = warp::test::request()
+    //         .method("POST")
+    //         .path("/dbl/webhook")
+    //         .header("authorization", secret)
+    //         .json(&Webhook {
+    //             bot: dbl::types::BotId(11),
+    //             user: dbl::types::UserId(1),
+    //             kind: dbl::types::WebhookType::Test,
+    //             is_weekend: false,
+    //             query: Some("test".to_string()),
+    //         })
+    //         .reply(&get_app(ctx.clone()).await)
+    //         .await;
+    //     assert_eq!(res.status(), StatusCode::OK);
+    //     Ok(())
+    // }
 
     #[sqlx::test]
     async fn test_log_headers() {

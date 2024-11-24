@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 /// Public function to check if the user is authorized to use the music commands.
 pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
-    if ctx.author().bot {
+    if ctx.author().bot() {
         return Ok(false);
     };
 

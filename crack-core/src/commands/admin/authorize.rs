@@ -6,6 +6,7 @@ use crate::Context;
 use crate::Error;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::User;
+use std::str::FromStr;
 
 /// Utilizes the permissions v2 `required_permissions` field
 #[poise::command(
@@ -33,6 +34,8 @@ pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user to add to authorized list"] user: User,
 ) -> Result<(), Error> {
+    use serenity::small_fixed_array::FixedString;
+
     let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -65,7 +68,7 @@ pub async fn authorize(
         .to_partial_guild(ctx.http())
         .await
         .map(|g| g.name)
-        .unwrap_or_else(|_| UNKNOWN.to_string());
+        .unwrap_or_else(|_| <FixedString>::from_str(UNKNOWN).expect(""));
     let _ = send_reply(
         &ctx,
         CrackedMessage::UserAuthorized {

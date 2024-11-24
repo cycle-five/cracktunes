@@ -33,9 +33,7 @@ pub async fn leave(
 /// Leave a voice channel. Actually impl.
 pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NotConnected)?;
+    let manager = ctx.data().songbird.clone();
     // check if we're actually in a call
     let crack_msg = match manager.remove(guild_id).await {
         Ok(()) => {
