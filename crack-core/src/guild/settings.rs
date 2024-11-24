@@ -42,6 +42,7 @@ pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
 ];
 pub(crate) const MOD_VAL: u64 = 1 << 1;
 pub(crate) const ADMIN_VAL: u64 = 2 << 1;
+pub(crate) const DEFAULT_VALID_TOKEN: &str = "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
 lazy_static! {
     static ref SETTINGS_PATH: String =

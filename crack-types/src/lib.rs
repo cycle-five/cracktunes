@@ -7,6 +7,7 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+use serenity::all::Token;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
@@ -36,6 +37,12 @@ pub use serenity::all::Attachment;
 pub use serenity::all::UserId;
 pub use thiserror::Error as ThisError;
 pub use typemap_rev::TypeMapKey;
+
+// ------------------------------------------------------------------
+// Constants and Enums
+// ------------------------------------------------------------------
+pub(crate) const DEFAULT_VALID_TOKEN: &str =
+    "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
@@ -240,6 +247,11 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
             height: 0,
         }],
     }
+}
+
+/// Builds a fake but valid [`Token`] for testing purposes.
+pub fn get_valid_token() -> Token {
+    DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
 }
 
 #[cfg(test)]

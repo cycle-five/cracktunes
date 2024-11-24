@@ -318,6 +318,8 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
+    use ::serenity::all::Token;
+    use crack_types::get_valid_token;
 
     #[test]
     fn test_cam_status() {
@@ -371,7 +373,7 @@ mod test {
         };
         let mut cam_states = HashMap::<(UserId, ChannelId), CamPollEvent>::new();
         let config_map = HashMap::<u64, &CamKickConfig>::new();
-        let http = poise::serenity_prelude::http::Http::new("");
+        let http = poise::serenity_prelude::http::Http::new(get_valid_token());
         let cache = Arc::new(poise::serenity_prelude::Cache::new());
         let cache_http = (Some(&cache), &http);
         // let ctx = Arc::new(SerenityContext::new());

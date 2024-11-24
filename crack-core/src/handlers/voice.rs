@@ -1,8 +1,10 @@
+use crate::guild::settings::DEFAULT_VALID_TOKEN;
 use crate::serenity::client::{Context as SerenityContext, EventHandler};
 use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
-use serenity::prelude::RwLock;
 use serenity::model::gateway::Ready;
+use serenity::prelude::RwLock;
+use serenity::secrets::Token;
 use songbird::tracks::PlayMode;
 use songbird::{
     model::payload::{ClientDisconnect, Speaking},
@@ -46,11 +48,11 @@ impl Receiver {
     pub fn new(data: Arc<RwLock<Vec<u8>>>, ctx: Option<SerenityContext>) -> Self {
         Self {
             data,
-            cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
-            http: ctx
-                .map(|x| x.http.clone())
-                .unwrap_or(Arc::new(Http::new(""))),
             buf_size: DEFAULT_BUFFER_SIZE,
+            cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
+            http: ctx.map(|x| x.http.clone()).unwrap_or(Arc::new(Http::new(
+                DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token"),
+            ))),
         }
     }
 
