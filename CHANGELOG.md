@@ -11,7 +11,7 @@
 - [ ] Decide on whether to use ephemeral for admin messages.
 
 
-## v0.3.16-alpha.1 (2024/12/12)
+## v0.3.16-alpha.2 (2024/12/12)
 - [ ] update to serenity-next branch
 
 ## v0.3.15-alpha.2 (2024/11/23)

@@ -1,6 +1,6 @@
 [package]
 name = "crack-types"
-version = "0.3.16-alpha.1"
+version = "0.3.16-alpha.2"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -26,14 +26,14 @@ serenity = { workspace = true }
 tokio = { workspace = true }
 typemap_rev = "0.3.0"
 reqwest = { version = "0.12.9", default-features = false, features = [
-    "blocking",
-    "json",
-    "multipart",
-    "rustls-tls",
-    "cookies",
-    "charset",
-    "http2",
-    "macos-system-configuration",
+  "blocking",
+  "json",
+  "multipart",
+  "rustls-tls",
+  "cookies",
+  "charset",
+  "http2",
+  "macos-system-configuration",
 ] }
 url = "2.5"
 thiserror = "1.0.69"
