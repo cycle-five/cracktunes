@@ -28,7 +28,7 @@ use tokio::sync::Mutex;
 ///
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
-    track: ResolvedTrack,
+    track: ResolvedTrack<'_>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;

@@ -120,7 +120,7 @@ impl Display for CrackTrackClient<'_> {
     }
 }
 
-impl<'a, 'b> CrackTrackClient<'_> {
+impl<'a> CrackTrackClient<'a> {
     /// Create a new [CrackTrackClient].
     pub fn new() -> Self {
         Default::default()
@@ -301,16 +301,19 @@ impl<'a, 'b> CrackTrackClient<'_> {
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
-    pub async fn resolve_playlist(&self, url: &str) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist<'b>(
+        &self,
+        url: &'b str,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
 
     /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
     /// a helper method in the CrackTrackClient.
-    pub async fn resolve_playlist_limit(
+    pub async fn resolve_playlist_limit<'b>(
         &self,
-        url: &str,
+        url: &'b str,
         limit: u64,
     ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let req_options = RequestOptions {
@@ -346,7 +349,7 @@ impl<'a, 'b> CrackTrackClient<'_> {
         if let Some(q) = self.q.get(&guild) {
             q.clone()
         } else {
-            let mut q: &mut CrackTrackQueue<'static> = Box::leak(Box::new(CrackTrackQueue::new()));
+            let q: &mut CrackTrackQueue<'a> = Box::leak(Box::new(CrackTrackQueue::new()));
             //let q = *q;
             self.q.insert(guild, q.clone());
             q.clone()
@@ -482,7 +485,7 @@ async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
 #[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let guild = GuildId::new(1);
-    let mut client = CrackTrackClient::new();
+    let client = Box::leak(Box::new(CrackTrackClient::new()));
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
@@ -497,7 +500,10 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
                 QueryType::VideoLink(url) => {
                     vec![client.resolve_track(QueryType::VideoLink(url)).await?]
                 },
-                QueryType::PlaylistLink(url) => client.resolve_playlist(url.as_str()).await?,
+                QueryType::PlaylistLink(url) => {
+                    let url = url.clone();
+                    client.resolve_playlist(url.as_str()).await?
+                },
                 _ => {
                     tracing::error!("Unknown URL type: {url}");
                     Vec::new()

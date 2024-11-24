@@ -16,7 +16,7 @@ use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 pub async fn get_rusty_search(
     client: reqwest::Client,
     url: String,
-) -> CrackedResult<RustyYoutubeSearch> {
+) -> CrackedResult<RustyYoutubeSearch<'static>> {
     let request_options = RequestOptions {
         client: Some(client.clone()),
         ..Default::default()
