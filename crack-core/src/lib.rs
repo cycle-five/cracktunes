@@ -39,9 +39,9 @@ use guild::settings::{
 };
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serenity::all::{GuildId, Message, UserId};
 use songbird::Songbird;
-// use std::sync::atomic::AtomicU16;
 use std::time::SystemTime;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -615,6 +615,16 @@ impl Data {
             .insert(ts, msg)
     }
 
+    pub async fn add_reply_handle_to_cache(
+        &self,
+        guild_id: GuildId,
+        handle: MessageOrReplyHandle,
+    ) -> Option<MessageOrReplyHandle> {
+        let mut guild_msg_cache = self.guild_command_msg_queue.entry(guild_id).or_default();
+        guild_msg_cache.push(handle.clone());
+        Some(handle)
+    }
+
     /// Remove and return a message from the cache based on the guild_id and timestamp.
     pub async fn remove_msg_from_cache(
         &self,
@@ -762,17 +772,11 @@ msg_on_dc:     false
         assert_eq!(cam_kick.to_string(), want);
     }
 
-    use serde_json::json;
     #[tokio::test]
     async fn test_with_data_inner() {
         let data = DataInner::default();
         let new_data = data.with_bot_settings(BotConfig::default());
         assert_eq!(json!(new_data.bot_settings), json!(BotConfig::default()));
-
-        // let pool = sqlx::PgPool::connect_lazy("postgres://");
-        // let new_data = new_data.with_database_pool(pool);
-        // let want = sqlx::PgPool::connect_lazy("postgres://");
-        // assert_eq!(new_data.database_pool.is_some(), want.is_some());
 
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
