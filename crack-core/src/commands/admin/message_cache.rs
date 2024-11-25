@@ -10,7 +10,7 @@ use crate::Error;
 pub async fn message_cache(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let cache_str = {
-        let mut message_cache = ctx.data().guild_msg_cache_ordered.lock().await.clone();
+        let mut message_cache = ctx.data().id_cache_map.lock().await.clone();
         message_cache
             .entry(guild_id)
             .or_default()

@@ -15,6 +15,8 @@ use poise::{
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
+pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> = Some(ChannelId::new(1191633527763116039));
+
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
     pub name: String,
@@ -48,6 +50,15 @@ pub async fn get_log_channel(
         .unwrap()
 }
 
+// .unwrap_or_else(|| {
+//     tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
+//     Err(CrackedError::LogChannelWarning(
+//         event.snake_case_name(),
+//         guild_id,
+//     ))
+// })?
+// .clone();
+
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
     guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
@@ -56,28 +67,23 @@ pub async fn get_channel_id(
 ) -> Result<ChannelId, CrackedError> {
     let guild_settings_map = guild_settings_map.read().await;
 
-    let guild_settings = guild_settings_map
-        .get(&guild_id)
-        .map(Ok)
-        .unwrap_or_else(|| {
-            tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
-            Err(CrackedError::LogChannelWarning(
+    match guild_settings_map.get(&guild_id) {
+        Some(guild_settings) => match guild_settings.get_log_channel_type_fe(event) {
+            Some(channel_id) => {
+                if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                    return Err(CrackedError::LogChannelWarning(
+                        event.snake_case_name(),
+                        guild_id,
+                    ));
+                }
+                Ok(channel_id)
+            },
+            None => Err(CrackedError::LogChannelWarning(
                 event.snake_case_name(),
                 guild_id,
-            ))
-        })?
-        .clone();
-    match guild_settings.get_log_channel_type_fe(event) {
-        Some(channel_id) => {
-            if guild_settings.ignored_channels.contains(&channel_id.get()) {
-                return Err(CrackedError::LogChannelWarning(
-                    event.snake_case_name(),
-                    guild_id,
-                ));
-            }
-            Ok(channel_id)
+            )),
         },
-        None => Err(CrackedError::LogChannelWarning(
+        None => DEFAULT_GLOBAL_LOG_CHANNEL.ok_or(CrackedError::LogChannelWarning(
             event.snake_case_name(),
             guild_id,
         )),

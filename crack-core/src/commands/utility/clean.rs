@@ -29,9 +29,9 @@ pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
     let time_ordered_messages = {
-        let mut message_cache = data.guild_msg_cache_ordered.lock().await;
-        &mut message_cache
-            .get_mut(&guild_id)
+        &mut data
+            .id_cache_map
+            .get_mut(&guild_id.into())
             .ok_or(CrackedError::Other("No messages in cache"))?
             .time_ordered_messages
             .clone()

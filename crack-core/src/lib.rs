@@ -329,7 +329,7 @@ pub struct DataInner {
     pub http_client: reqwest::Client,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+    pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     #[cfg(feature = "crack-gpt")]
@@ -353,10 +353,7 @@ impl std::fmt::Debug for DataInner {
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
         ));
-        result.push_str(&format!(
-            "guild_msg_cache_ordered: {:?}\n",
-            self.guild_msg_cache_ordered
-        ));
+        result.push_str(&format!("id_cache_map: {:?}\n", self.id_cache_map));
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log_async));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
@@ -535,7 +532,7 @@ impl Default for DataInner {
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
-            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            id_cache_map: dashmap::DashMap::default(),
             guild_command_msg_queue: Default::default(),
             guild_cnt_map: Default::default(),
             http_client: http_utils::get_client().clone(),
@@ -607,9 +604,8 @@ impl Data {
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
-        guild_msg_cache_ordered
-            .entry(guild_id)
+        self.id_cache_map
+            .entry(guild_id.into())
             .or_default()
             .time_ordered_messages
             .insert(ts, msg)
@@ -631,9 +627,8 @@ impl Data {
         guild_id: GuildId,
         ts: DateTime<Utc>,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
-        guild_msg_cache_ordered
-            .get_mut(&guild_id)
+        self.id_cache_map
+            .get_mut(&guild_id.into())
             .unwrap()
             .time_ordered_messages
             .remove(&ts)
