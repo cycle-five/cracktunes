@@ -27,7 +27,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
 /// Internal vote function without the #command macro
 #[cfg(not(tarpaulin_include))]
 pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id: Option<GuildId> = ctx.guild_id();
+    let guild_id: GuildId = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let user_id: UserId = ctx.author().id;
     let bot_id: UserId = http_utils::get_bot_id(ctx).await?;
 
@@ -51,7 +51,7 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let msg = reply_handle.into_message().await?;
 
-    guild_id.map(|id| ctx.data().add_msg_to_cache(id, msg));
+    ctx.data().add_msg_to_cache(guild_id, msg);
 
     Ok(())
 }

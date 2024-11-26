@@ -100,7 +100,7 @@ use crack_testing::{suggestion2, ResolvedTrack};
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete<'a>(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
-    searching: &str,
+    searching: &'a str,
 ) -> CreateAutocompleteResponse<'a> {
     // let choices = match suggestion2(searching).await {
     //     Ok(x) => {
@@ -112,8 +112,9 @@ pub async fn autocomplete<'a>(
     //         vec![]
     //     },
     // };
-    let choices = suggestion2(searching).await.unwrap_or_default().as_slice();
-    CreateAutocompleteResponse::new().set_choices(choices.clone())
+    let choices = suggestion2(searching).await.unwrap_or_default();
+    let res = CreateAutocompleteResponse::new();
+    res.set_choices(Cow::Owned(choices.clone()))
 }
 
 /// Play a song.
@@ -190,7 +191,7 @@ use songbird::input::{Input as SongbirdInput, YoutubeDl};
 /// for the bot in songbird.
 pub async fn enqueue_resolved_tracks(
     call: Arc<Mutex<Call>>,
-    tracks: Vec<ResolvedTrack>,
+    tracks: Vec<ResolvedTrack<'_>>,
     mode: crack_types::Mode,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
@@ -243,8 +244,6 @@ pub async fn enqueue_resolved_tracks(
 //     Ok(new_q)
 // }
 
-
-
 /// Play a youtube playlist.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
@@ -285,6 +284,7 @@ pub async fn playytplaylist(
 
 use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
+use crate::{commands::resume_internal, db::to_fixed};
 
 /// Does the actual playing of the song, all the other commands use this.
 //#[tracing::instrument(skip(ctx))]
@@ -298,12 +298,11 @@ pub async fn play_internal(
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
 
-    use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
     let is_prefix = ctx.is_prefix();
 
-    let msg = get_msg(mode.clone(), query_or_url, is_prefix);
+    let msg = get_msg(mode.clone(), query_or_url, is_prefix).map(|x| to_fixed(x));
 
     if msg.is_none() && file.is_none() {
         if ctx.is_paused().await.unwrap_or_default() {
@@ -320,6 +319,7 @@ pub async fn play_internal(
 
     let _after_msg_parse = std::time::Instant::now();
 
+    let mode = mode.map(|x| to_fixed(x));
     let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
 
     let _after_get_mode = std::time::Instant::now();
@@ -603,8 +603,6 @@ async fn match_mode(
 //     tracing::info!("mode: {:?}", mode);
 // }
 
-
-
 /// Calculate the time until the next track plays.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
     if queue.is_empty() {
@@ -618,7 +616,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         .await
         .map(|i| i.position)
         .unwrap_or(zero_duration);
-    let metadata = get_track_handle_metadata(top_track).await;
+    let metadata = get_track_handle_metadata(top_track).await.ok()?;
 
     let top_track_duration = match metadata.duration {
         Some(duration) => duration,
@@ -659,7 +657,7 @@ async fn build_queued_embed<'att>(
         // match my_metadata {
         //     NewAuxMetadata(metadata) => metadata.clone(),
         // }
-        get_track_handle_metadata(track).await?
+        get_track_handle_metadata(track).await.unwrap_or_default()
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
     let meta_title = metadata.title.clone().unwrap_or(QUEUE_NO_TITLE.to_string());
@@ -685,7 +683,7 @@ async fn build_queued_embed<'att>(
         .title(meta_title)
         .url(source_url)
         .thumbnail(thumbnail)
-        .footer(CreateEmbedFooter::new(footer_text))
+        .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;

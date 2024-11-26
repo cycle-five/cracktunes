@@ -47,6 +47,8 @@ pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<
 /// Get the current track name as either the query or the title of the current track.
 #[cfg(not(tarpaulin_include))]
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
+    use crate::utils::TrackData;
+
     match query {
         Some(query) => Ok(query),
         None => {
@@ -57,12 +59,13 @@ pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<S
                 .current()
                 .ok_or(CrackedError::NothingPlaying)?;
 
-            let lock = track_handle.typemap().read().await;
-            let NewAuxMetadata(data) = lock.get::<NewAuxMetadata>().unwrap();
-            tracing::info!("data: {:?}", data);
-            data.track
+            let data = track_handle.data::<TrackData>();
+            let metadata = data.aux_metadata.read().await.clone().unwrap_or_default();
+            tracing::info!("metadata: {:?}", metadata);
+            metadata
+                .track
                 .clone()
-                .or(data.title.clone())
+                .or(metadata.title.clone())
                 .ok_or(CrackedError::NoTrackName.into())
         },
     }

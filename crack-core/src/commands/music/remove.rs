@@ -85,7 +85,7 @@ pub async fn remove_internal(
     if remove_until == remove_index {
         let embed = create_remove_enqueued_embed(track).await;
         //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
-        send_embed_response_poise(&ctx, embed).await?;
+        send_embed_response_poise(ctx, embed).await?;
     } else {
         send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
@@ -95,7 +95,7 @@ pub async fn remove_internal(
 }
 
 async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
-    let metadata = get_track_handle_metadata(track).await;
+    let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     CreateEmbed::default()
         .field(
             REMOVED_QUEUE,

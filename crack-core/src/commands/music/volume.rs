@@ -52,16 +52,7 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
     tracing::error!("guild_id: {:?}", guild_id);
     let embed = {
         tracing::error!("embed");
-        let manager = match ctx.data().songbird {
-            Some(manager) => manager,
-            None => {
-                tracing::error!("Can't get manager.");
-                let embed =
-                    CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let _ = send_embed_response_poise(ctx, embed).await?;
-                return Ok(());
-            },
-        };
+        let manager = ctx.data().songbird.clone();
         let call = match manager.get(guild_id) {
             Some(call) => call,
             None => {
@@ -85,7 +76,9 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
                     None => 0.1,
                 };
                 let prefix = Some(&prefix).map(|s| s.as_str());
-                let name = get_guild_name(ctx.serenity_context(), guild_id).await;
+                let name = get_guild_name(ctx.serenity_context(), guild_id)
+                    .await
+                    .map(|s| s.to_string());
                 ctx.data()
                     .get_or_create_guild_settings(guild_id, name, prefix)
                     .await;
@@ -115,7 +108,8 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
         let name = get_guild_name(ctx.serenity_context(), guild_id).await;
         let new_vol = (to_set.unwrap() as f32) / 100.0;
         let old_vol = {
-            let mut guild_settings_guard = ctx.data().guild_settings_map.write().await;
+            let data = ctx.data().clone();
+            let mut guild_settings_guard = data.guild_settings_map.write().await;
             let guild_settings = guild_settings_guard
                 .entry(guild_id)
                 .and_modify(|guild_settings| {
@@ -156,7 +150,7 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
     Ok(())
 }
 
-pub fn create_volume_embed(old: f32, new: f32) -> CreateEmbed<'_> {
+pub fn create_volume_embed<'a>(old: f32, new: f32) -> CreateEmbed<'a> {
     CreateEmbed::default().description(create_volume_desc(old, new))
 }
 

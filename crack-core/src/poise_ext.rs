@@ -291,6 +291,7 @@ pub trait PoiseContextExt<'ctx> {
     fn author_permissions(&'ctx self)
         -> impl Future<Output = CrackedResult<serenity::Permissions>>;
     fn is_prefix(&'ctx self) -> bool;
+    fn get_cache_id(&self) -> u64;
     fn send_reply_owned(
         self,
         message: CrackedMessage,
@@ -332,6 +333,13 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
             .voice_states
             .get(&self.author().id)
             .and_then(|vc| vc.channel_id)
+    }
+
+    /// Gets the primary id used for the message cache for that guild or user.
+    fn get_cache_id(&self) -> u64 {
+        self.guild_id()
+            .map(|x| x.get())
+            .unwrap_or_else(|| self.author().id.get())
     }
 
     /// Creates an embed from a CrackedMessage and sends it as an embed.
@@ -400,16 +408,10 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
         let handle = self.send(reply).await?;
-        let user_id = self.get_user_id();
-        let id = match self.guild_id() {
-            Some(guild_id) => guild_id.get(),
-            None => user_id.get(),
-        };
+        let id = self.get_cache_id();
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
-            self.data()
-                .add_msg_to_cache_int(id, msg)
-                .await;
+            self.data().add_msg_to_cache_int(id, msg).await;
         }
         Ok(handle)
     }
@@ -441,9 +443,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let handle = self.send(reply).await?;
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
-            self.data()
-                .add_msg_to_cache(self.guild_id().unwrap(), msg)
-                .await;
+            let id = self.get_cache_id();
+            self.data().add_msg_to_cache_int(id, msg).await;
         }
         Ok(handle)
     }

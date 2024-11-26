@@ -16,7 +16,7 @@ use serenity::{CacheHttp, EditMember, Mentionable};
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral
+    guild_only
 )]
 pub async fn mute(
     ctx: Context<'_>,
@@ -36,7 +36,7 @@ pub async fn mute(
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral
+    guild_only
 )]
 pub async fn mute_others(
     ctx: Context<'_>,
@@ -71,7 +71,7 @@ pub async fn mute_others(
     .map_err(Into::into)
 }
 
-/// All over users in a voice channel.
+/// Mute all other users in a voice channel.
 pub async fn mute_others_internal(
     ctx: impl AsRef<serenity::Cache> + CacheHttp,
     guild_id: GuildId,
@@ -128,7 +128,6 @@ pub async fn mute_internal(
     prefix_command,
     required_permissions = "ADMINISTRATOR",
     guild_only,
-    ephemeral
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn unmute(

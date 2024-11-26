@@ -58,8 +58,9 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
-    let mut data = ctx.serenity_context().data.write().await;
-    let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
+    let mut data = ctx.data();
+    let mut cache_map = data.guild_cache_map.lock().await;
+    // let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
     let cache = cache_map.entry(guild_id).or_default();
     let user_id = ctx.get_user_id();
@@ -70,10 +71,11 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .cache
         .guild(guild_id)
         .unwrap()
-        .voice_states
-        .clone();
+        .clone()
+        .voice_states;
     let channel_guild_users = guild_users
-        .into_values()
+        .iter()
+
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
     let skip_threshold = channel_guild_users.count() / 2;
 
@@ -102,4 +104,3 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     }?;
     Ok(())
 }
-

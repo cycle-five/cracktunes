@@ -4,7 +4,7 @@ pub mod bf;
 #[cfg(feature = "crack-gpt")]
 pub mod chatgpt;
 pub mod help;
-// pub mod music;
+pub mod music;
 pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
@@ -20,7 +20,7 @@ pub use bf::*;
 #[cfg(feature = "crack-gpt")]
 pub use chatgpt::*;
 pub use help::sub_help;
-// pub use music::*;
+pub use music::*;
 pub use music_utils::*;
 #[cfg(feature = "crack-osint")]
 pub use osint::*;
@@ -62,7 +62,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     ]
     .into_iter()
     //.chain(help::help_commands())
-    // .chain(music::music_commands())
+    .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
     //.chain(settings::commands())
@@ -84,7 +84,7 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     ]
     .into_iter()
     //.chain(help::help_commands())
-    // .chain(music::music_commands())
+    .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
     //.chain(settings::commands())
@@ -153,6 +153,7 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
 /// Interactively register bot commands.
 #[poise::command(
     category = "Admin",
+    guild_only,
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR"

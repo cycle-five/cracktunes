@@ -64,26 +64,32 @@ pub async fn summon_internal(
         None => get_voice_channel_for_user_summon(&guild, &user_id)?,
     };
 
-    let _call: Arc<Mutex<Call>> = match manager.get(guild_id) {
+    let call: Arc<Mutex<Call>> = match manager.get(guild_id) {
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
+            let chan_id = handler.current_channel().map(|c| ChannelId::new(c.get()));
 
-            if has_current_connection {
-                // bot is in another channel
-                let bot_channel_id: ChannelId = handler.current_channel().unwrap().0.into();
-                Err(CrackedError::AlreadyConnected(bot_channel_id.mention()))
-            } else {
-                Ok(call.clone())
+            match (has_current_connection, chan_id) {
+                (true, Some(chan_id)) => {
+                    // bot is in another channel
+                    return Err(CrackedError::AlreadyConnected(chan_id.mention()).into());
+                },
+                _ => call.clone(),
             }
         },
-        None => do_join(ctx, &manager, guild_id, channel_id)
-            .await
-            .map_err(Into::into),
-    }?;
-
-    // set_global_handlers(ctx, call, guild_id, channel_id).await?;
-
+        None => do_join(ctx, &manager, guild_id, channel_id).await?,
+    };
+    let chan_id = call
+        .lock()
+        .await
+        .current_channel()
+        .map(|c| ChannelId::new(c.get()));
+    if let Some(c) = chan_id {
+        tracing::info!("joined channel: {c}");
+    } else {
+        tracing::warn!("Not in channel after join?!?");
+    }
     Ok(())
 }
 
