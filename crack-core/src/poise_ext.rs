@@ -400,10 +400,15 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
         let handle = self.send(reply).await?;
+        let user_id = self.get_user_id();
+        let id = match self.guild_id() {
+            Some(guild_id) => guild_id.get(),
+            None => user_id.get(),
+        };
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
             self.data()
-                .add_msg_to_cache(self.guild_id().unwrap(), msg)
+                .add_msg_to_cache_int(id, msg)
                 .await;
         }
         Ok(handle)

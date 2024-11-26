@@ -594,18 +594,24 @@ impl Data {
     /// Add a message to the cache
     pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(guild_id, now, msg).await
+        self.add_msg_to_cache_ts(guild_id.into(), now, msg).await
+    }
+
+    /// Add a message to the cache
+    pub async fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
+        let now = chrono::Utc::now();
+        self.add_msg_to_cache_ts(id, now, msg).await
     }
 
     /// Add msg to the cache with a timestamp.
     pub async fn add_msg_to_cache_ts(
         &self,
-        guild_id: GuildId,
+        id: u64,
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
         self.id_cache_map
-            .entry(guild_id.into())
+            .entry(id)
             .or_default()
             .time_ordered_messages
             .insert(ts, msg)

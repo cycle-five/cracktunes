@@ -7,7 +7,6 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
-use serenity::all::Token;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
@@ -71,6 +70,54 @@ pub enum Mode {
     DownloadMKV,
     DownloadMP3,
     Search,
+}
+
+use serenity::all::Token;
+use serenity::model::id::{ChannelId, GuildId};
+/// Enum for 64 bit integer Ids.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DiscId {
+    U64(u64),
+    SBGuildId(GuildId),
+    GuildId(GuildId),
+    ChannelId(ChannelId),
+    UserId(UserId),
+}
+
+impl From<GuildId> for DiscId {
+    fn from(id: GuildId) -> Self {
+        DiscId::GuildId(id)
+    }
+}
+
+impl From<ChannelId> for DiscId {
+    fn from(id: ChannelId) -> Self {
+        DiscId::ChannelId(id)
+    }
+}
+
+impl From<UserId> for DiscId {
+    fn from(id: UserId) -> Self {
+        DiscId::UserId(id)
+    }
+}
+
+impl From<u64> for DiscId {
+    fn from(id: u64) -> Self {
+        DiscId::U64(id)
+    }
+}
+
+impl From<DiscId> for u64 {
+    fn from(id: DiscId) -> Self {
+        match id {
+            DiscId::U64(id) => id,
+            DiscId::GuildId(id) => id.get(),
+            DiscId::ChannelId(id) => id.get(),
+            DiscId::UserId(id) => id.get(),
+            DiscId::SBGuildId(id) => id.get(),
+        }
+    }
 }
 
 /// New struct pattern to wrap the spotify track.
