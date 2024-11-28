@@ -6,7 +6,6 @@ use crate::utils::edit_embed_response2;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
-    guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     messaging::interface::create_now_playing_embed,
     messaging::{
@@ -21,9 +20,9 @@ use crate::{
     Context, Data, Error,
 };
 use crate::{http_utils, CrackedResult};
-use ::serenity::all::{AutoModRuleCreateEvent, AutocompleteChoice, CreateAutocompleteResponse};
+use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
-    all::{CommandInteraction, Message, UserId},
+    all::{CommandInteraction, Message},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
 use crack_types::{
@@ -34,7 +33,6 @@ use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
-use typemap_rev::TypeMapKey;
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -282,9 +280,10 @@ pub async fn playytplaylist(
     Ok(())
 }
 
+use crate::commands::resume_internal;
 use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
-use crate::{commands::resume_internal, db::to_fixed};
+use crack_types::to_fixed;
 
 /// Does the actual playing of the song, all the other commands use this.
 //#[tracing::instrument(skip(ctx))]
@@ -302,7 +301,7 @@ pub async fn play_internal(
 
     let is_prefix = ctx.is_prefix();
 
-    let msg = get_msg(mode.clone(), query_or_url, is_prefix).map(|x| to_fixed(x));
+    let msg = get_msg(mode.clone(), query_or_url, is_prefix).map(to_fixed);
 
     if msg.is_none() && file.is_none() {
         if ctx.is_paused().await.unwrap_or_default() {
@@ -319,7 +318,7 @@ pub async fn play_internal(
 
     let _after_msg_parse = std::time::Instant::now();
 
-    let mode = mode.map(|x| to_fixed(x));
+    let mode = mode.map(to_fixed);
     let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
 
     let _after_get_mode = std::time::Instant::now();

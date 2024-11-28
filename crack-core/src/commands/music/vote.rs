@@ -51,7 +51,7 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let msg = reply_handle.into_message().await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg);
+    ctx.data().add_msg_to_cache(guild_id, msg).await;
 
     Ok(())
 }

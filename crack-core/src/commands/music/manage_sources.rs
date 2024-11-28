@@ -1,21 +1,4 @@
-use self::serenity::{
-    builder::CreateInputText,
-    collector::ModalInteractionCollector,
-    futures::StreamExt,
-    model::prelude::{ActionRowComponent, InputTextStyle},
-};
-use crate::{
-    errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap},
-    messaging::messages::{
-        DOMAIN_FORM_ALLOWED_PLACEHOLDER, DOMAIN_FORM_ALLOWED_TITLE, DOMAIN_FORM_BANNED_PLACEHOLDER,
-        DOMAIN_FORM_BANNED_TITLE, DOMAIN_FORM_TITLE,
-    },
-    utils::get_interaction,
-    Context, Error,
-};
-use ::serenity::builder::CreateActionRow;
-use poise::serenity_prelude as serenity;
+use crate::{Context, Error};
 
 /// Manage the domains that are allowed or banned.
 #[cfg(not(tarpaulin_include))]

@@ -849,7 +849,8 @@ mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
 
-    use crate::{db::to_fixed, messaging::interface::create_single_nav_btn};
+    use crate::messaging::interface::create_single_nav_btn;
+    use crack_types::to_fixed;
 
     use super::*;
 

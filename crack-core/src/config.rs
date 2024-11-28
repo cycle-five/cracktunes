@@ -1,6 +1,6 @@
-use crate::db::to_fixed;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
+use crack_types::to_fixed;
 // #[cfg(feature = "crack-metrics")]
 // use crate::metrics::COMMAND_ERRORS;
 use crate::poise_ext::PoiseContextExt;

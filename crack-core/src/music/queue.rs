@@ -459,7 +459,7 @@ pub fn get_msg(
 
 #[cfg(test)]
 mod test {
-    use crate::db::to_fixed;
+    use crack_types::to_fixed;
 
     use super::*;
 

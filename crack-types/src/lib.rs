@@ -7,24 +7,28 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
+use serenity::small_fixed_array::FixedString;
+use serenity::small_fixed_array::ValidLength;
 use songbird::Call;
 use std::collections::HashMap;
 use std::error::Error as StdError;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 // ------------------------------------------------------------------
 // Public types we use to simplify return and parameter types.
 // ------------------------------------------------------------------
 
-pub type Error = Box<dyn StdError + Send + Sync>;
 pub type ArcTRwLock<T> = Arc<RwLock<T>>;
 pub type ArcTMutex<T> = Arc<Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
+pub type Error = Box<dyn StdError + Send + Sync>;
 // pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
 // pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
 pub type SongbirdCall = Arc<Mutex<Call>>;
@@ -303,8 +307,15 @@ pub fn get_valid_token() -> Token {
     DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
 }
 
+/// Convert a string to a fixed string.
+pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
+    FixedString::from_str(&s.into()).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
+    use serenity::small_fixed_array::FixedString;
+
     use super::*;
 
     #[test]
@@ -374,5 +385,11 @@ mod tests {
         assert_eq!(metadata.duration, Some(Duration::from_secs(60)));
         assert_eq!(metadata.date, Some("publish_date".to_string()));
         assert_eq!(metadata.thumbnail, Some("thumbnail_url".to_string()));
+    }
+
+    #[test]
+    fn test_to_fixed() {
+        let fixed: FixedString<u8> = to_fixed("12345");
+        assert_eq!(fixed, FixedString::from_str("12345").unwrap());
     }
 }

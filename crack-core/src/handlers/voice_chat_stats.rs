@@ -1,10 +1,10 @@
 use crate::{
     commands::admin::{deafen::deafen_internal, mute::mute_internal},
-    db::to_fixed,
     errors::CrackedError,
     messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,
 };
+use crack_types::to_fixed;
 use poise::serenity_prelude as serenity;
 
 use ::serenity::all::CacheHttp;

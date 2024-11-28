@@ -39,12 +39,11 @@ use guild::settings::{
 };
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use serenity::all::{GuildId, Message, UserId};
 use songbird::Songbird;
 use std::time::SystemTime;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Display,
     fs,
     fs::File,
@@ -737,6 +736,7 @@ impl Data {
 #[cfg(test)]
 mod lib_test {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_phone_code_data() {

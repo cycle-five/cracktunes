@@ -6,7 +6,6 @@ use crate::{
     poise_ext::ContextExt,
     Context, Error,
 };
-use crack_types::NewAuxMetadata;
 
 /// Search for song lyrics.
 #[cfg(not(tarpaulin_include))]

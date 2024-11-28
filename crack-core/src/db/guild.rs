@@ -8,10 +8,9 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use serenity::small_fixed_array::{FixedString, ValidLength};
+use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 pub struct GuildPermissionPivot {
     pub guild_id: i64,
@@ -476,18 +475,13 @@ impl GuildEntity {
     }
 }
 
-/// Convert a string to a fixed string.
-pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
-    FixedString::from_str(&s.into()).unwrap()
-}
-
 #[cfg(test)]
 mod test {
+    use super::*;
+    use crack_types::to_fixed;
+    use sqlx::PgPool;
     use std::collections::HashSet;
     use std::str::FromStr;
-
-    use super::*;
-    use sqlx::PgPool;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 

@@ -23,3 +23,5 @@ cargo test \
 	-- sources::youtube::test::test_get_track_source_and_metadata \
 	--exact \
 	--show-output
+
+cargo test --package crack-types --lib -- tests::test_to_fixed --exact --show-output

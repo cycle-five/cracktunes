@@ -5,14 +5,12 @@ use crate::{
     },
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
-    guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
     poise_ext::{ContextExt, PoiseContextExt},
-    Context, Data, Error,
+    Context, Error,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{model::id::GuildId, Mentionable};
-use std::collections::HashSet;
+use serenity::Mentionable;
 
 /// Vote to skip the current track
 #[cfg(not(tarpaulin_include))]
@@ -58,7 +56,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
-    let mut data = ctx.data();
+    let data = ctx.data();
     let mut cache_map = data.guild_cache_map.lock().await;
     // let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
@@ -75,7 +73,6 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .voice_states;
     let channel_guild_users = guild_users
         .iter()
-
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
     let skip_threshold = channel_guild_users.count() / 2;
 
