@@ -67,7 +67,6 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
     // init_metrics();
     let config = load_bot_config()
-        .await
         .expect("Error: Failed to load bot config");
     tracing::warn!("Using config: {:?}", config);
 
@@ -135,7 +134,7 @@ fn load_key(k: String) -> Result<String, Error> {
 }
 
 /// Load the bot's config
-async fn load_bot_config() -> Result<BotConfig, Error> {
+fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN".to_string())?;
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
@@ -321,7 +320,6 @@ mod test {
     #[test]
     fn test_get_current_log_layer() {
         let _layer = get_current_log_layer();
-        //assert!(layer.h(&tracing::Level::INFO));
     }
 
     #[test]
@@ -336,11 +334,6 @@ mod test {
         let _layer = combine_log_layers(stdout_log, debug_log);
     }
 
-    // #[test]
-    // fn test_init_metrics() {
-    //     init_metrics();
-    // }
-
     #[test]
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
@@ -351,9 +344,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_load_bot_config() {
-        let result = load_bot_config().await;
+    #[test]
+    fn test_load_bot_config() {
+        let result = load_bot_config();
         assert!(result.is_ok() || result.is_err());
     }
 }

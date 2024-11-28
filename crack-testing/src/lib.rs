@@ -144,7 +144,6 @@ impl<'a> CrackTrackClient<'a> {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 
@@ -165,30 +164,13 @@ impl<'a> CrackTrackClient<'a> {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 
     /// Resolve a track from a query. This does not start or ready the track for playback.
     pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack<'a>, Error> {
-        // Do we need the original query in the resolved track?
-        //let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
         match query {
-            QueryType::VideoLink(ref url) => {
-                // let request_options = RequestOptions {
-                //     client: Some(self.req_client.clone()),
-                //     ..Default::default()
-                // };
-                // let video_options = VideoOptions {
-                //     request_options: request_options.clone(),
-                //     ..Default::default()
-                // };
-                // let video = rusty_ytdl::Video::new_with_options(url, video_options)?;
-                // let info = video.get_info().await?;
-                // let metadata = video_info_to_aux_metadata(&info);
-
-                self.resolve_url(url).await
-            },
+            QueryType::VideoLink(ref url) => self.resolve_url(url).await,
             QueryType::Keywords(ref keywords) => {
                 let search_results = self.yt_client.search_one(keywords, None).await?;
                 let video = match search_results {
@@ -277,8 +259,6 @@ impl<'a> CrackTrackClient<'a> {
             let query = QueryType::VideoLink(video_url);
             let track = self.resolve_track(query);
             tasks.push(Box::pin(track));
-            // let track = self.resolve_track(query).await?;
-            // queue.push(track);
         }
         while let Some(res) = tasks.next().await {
             let track = res?;
@@ -388,7 +368,6 @@ impl<'a> CrackTrackClient<'a> {
     ) -> Result<(), Error> {
         for track in tracks {
             let _ = self.ensure_queue(guild).push_back(track).await;
-            //let _ = self.q.push_back(track).await;
         }
         Ok(())
     }
@@ -414,13 +393,11 @@ impl<'a> CrackTrackClient<'a> {
 /// Get a suggestion from a query. Use the global static client.
 pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice<'_>>, Error> {
     let client = CRACK_TRACK_CLIENT.clone();
-    //let client = YOUTUBE_CLIENT.clone();
     client.resolve_suggestion_search(query).await
 }
 
 /// Get a suggestion from a query. Use the global static client.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
-    //let client = CrackTrackClient::new();
     let client = YOUTUBE_CLIENT.clone();
     suggestion_yt(client, query).await
 }

@@ -316,32 +316,36 @@ impl PhoneCodeData {
 pub struct DataInner {
     pub bot_settings: BotConfig,
     pub start_time: SystemTime,
+    // Why is Arc needed? Why dashmap instead of Mutex<HashMap>?
     #[cfg(feature = "crack-activity")]
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
+    // Why not Arc here?
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
+    // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
+    // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
+    // or worse than using an Option?
     pub db_channel: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
+    //RwLock, then Mutex, why?
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
     pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
+    // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
+    // No arc, but we need a lifetime?
+    // What fundemental limitation comes up that must be solved by this?
     pub ct_client: CrackTrackClient<'static>,
     pub songbird: Arc<Songbird>,
 }
-
-// /// Get the default topgg client
-// fn default_topgg_client() -> topgg::Client {
-//     topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
-// }
 
 impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -451,7 +455,7 @@ impl Default for EventLogAsync {
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
                 File::create("/dev/null")
-                    .expect("Should be able to have a file object to write too.")
+                    .expect("Should have a file object to write too??? (three bcz real confused).")
             },
         };
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))
@@ -525,7 +529,7 @@ impl Default for DataInner {
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
-            songbird: songbird::Songbird::serenity(),
+            songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),

@@ -54,6 +54,8 @@ impl Default for SendMessageParams<'_> {
     }
 }
 
+/// Builder methods for [`SendMessageParams`].
+// TODO: Do we want to use this pattern or the mutable one here?
 impl<'a> SendMessageParams<'a> {
     pub fn new(msg: CrackedMessage) -> Self {
         Self {
@@ -97,8 +99,6 @@ impl<'a> SendMessageParams<'a> {
 
 /// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
-    // fn cache(&self) -> Option<impl CacheHttp>;
-    // fn http(&self) -> Option<&Http>;
     fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
     fn user_id_to_username_or_default(
         &self,
