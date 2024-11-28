@@ -46,23 +46,26 @@ impl Default for HelpConfiguration<'_> {
 }
 
 #[allow(clippy::unused_async)]
-pub async fn autocomplete2<'a>(
+pub async fn autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
 ) -> CreateAutocompleteResponse<'a> {
     let commands = ctx.framework.options().commands.as_slice();
     // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
-    let choices = autocomplete(commands, searching).await.unwrap_or_default();
+    let choices = get_matching_commands(commands, searching)
+        .await
+        .unwrap_or_default();
     CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
 }
 
+/// Gets takes the given str and returns the top matching autocomplete choices.
 #[allow(clippy::unused_async)]
-pub async fn autocomplete(
+pub async fn get_matching_commands(
     //ctx: poise::ApplicationContext<'_, Data, Error>,
     commands: &[poise::Command<Data, Error>],
     searching: &str,
 ) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
-    let result = autocomplete3(commands, searching).await?;
+    let result = get_matching_command_strs(commands, searching).await?;
 
     let result: Vec<AutocompleteChoice<'static>> = result
         .into_iter()
@@ -75,10 +78,18 @@ pub async fn autocomplete(
     Ok(result)
 }
 
-pub async fn autocomplete3(
+/// Get the matching commands for the searching string.
+/// N.B. This allocates memory for the results.
+///      Results are sorted by the levenshtein distance from the searching string.
+/// TODO: Is there a way to avoid the 'static return lifetime?
+pub async fn get_matching_command_strs(
     commands: &[poise::Command<Data, Error>],
     searching: &str,
 ) -> Result<Vec<Cow<'static, str>>, Error> {
+    /// Flatten the commands list into the full qualified names of the commands,
+    /// which start with the searching string. This means all the the subcommands
+    /// are included for each command, unless they are tagged as owners_only or
+    /// hide_in_help.
     fn flatten_commands(
         result: &mut Vec<String>,
         commands: &[poise::Command<Data, Error>],
@@ -158,7 +169,7 @@ async fn help(
     ctx: Context<'_>,
     #[rest]
     #[description = "The command to get help with"]
-    #[autocomplete = "autocomplete2"]
+    #[autocomplete = "autocomplete"]
     command: Option<String>,
 ) -> Result<(), Error> {
     command_func(ctx, command.as_deref()).await

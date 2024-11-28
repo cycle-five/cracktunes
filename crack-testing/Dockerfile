@@ -10,17 +10,19 @@ WORKDIR /app
 
 # Copy over the Cargo.toml files to the shell project
 COPY ./Cargo.toml ./Cargo.lock ./
-RUN mkdir -p /app/crack-{cli,voting,bf,core,gpt,osint}
+RUN mkdir -p /app/crack-{cli,voting,bf,core,gpt,osint,testing}
 COPY ./crack-voting/Cargo.toml ./crack-voting/
 COPY ./crack-bf/Cargo.toml ./crack-bf/
 COPY ./crack-core/Cargo.toml ./crack-core/
 COPY ./crack-gpt/Cargo.toml ./crack-gpt/
 COPY ./crack-osint/Cargo.toml ./crack-osint/
 COPY ./crack-cli/Cargo.toml ./crack-cli/
+COPY ./crack-testing/Cargo.toml ./crack-testing/
 
 # # Build and cache the dependencies
 RUN mkdir -p crack-voting/src && echo "fn main() {}" > crack-voting/src/main.rs
 RUN mkdir -p crack-cli/src && echo "fn main() {}" > crack-cli/src/main.rs
+RUN mkdir -p crack-testing/src && echo "fn main() {}" > crack-testing/src/main.rs
 RUN mkdir -p crack-bf/src && echo "" > crack-bf/src/lib.rs
 RUN mkdir -p crack-core/src && echo "" > crack-core/src/lib.rs
 RUN mkdir -p crack-gpt/src && echo "" > crack-gpt/src/lib.rs
