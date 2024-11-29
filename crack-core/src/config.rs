@@ -202,7 +202,7 @@ pub async fn poise_framework(
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
-        initialize_owners: false,
+        initialize_owners: true,
         ..Default::default()
     };
     let config_ref = &config;
@@ -229,11 +229,15 @@ pub async fn poise_framework(
         None => None,
     };
 
+    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
+    let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
+
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::default(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
+        songbird: manager.clone(),
         event_log_async,
         database_pool,
         db_channel,
@@ -270,8 +274,7 @@ pub async fn poise_framework(
     //         Ok(data.clone())
     //     })
     // });
-    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
-    let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
+
     // songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
 
