@@ -2,9 +2,9 @@
 //! It would be nice to be able to not maintain these functions for ourselves.
 //! Utilities for registering application commands
 
-use std::borrow::Cow;
-
 use poise::serenity_prelude as serenity;
+use serenity::CollectComponentInteractions;
+use std::borrow::Cow;
 
 /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
 /// to register the commands on Discord
@@ -204,7 +204,7 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         .await?
         .into_owned()
         .id
-        .await_component_interaction(ctx.serenity_context().shard.clone())
+        .collect_component_interactions(ctx.serenity_context().shard.clone())
         .author_id(ctx.author().id)
         .await;
 
@@ -225,7 +225,8 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         },
     };
 
-    let (register, global) = match &**pressed_button_id {
+    let id_str = pressed_button_id.as_str();
+    let (register, global) = match id_str {
         "register.global" => (true, true),
         "unregister.global" => (false, true),
         "register.guild" => (true, false),

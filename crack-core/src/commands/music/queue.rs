@@ -43,6 +43,8 @@ pub async fn queue(
     queue_internal(ctx).await
 }
 
+use poise::serenity_prelude::CollectComponentInteractions;
+
 /// Internal queue function.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
@@ -113,7 +115,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut cib = message
         .id
-        .await_component_interactions(ctx.serenity_context().shard.clone())
+        .collect_component_interactions(ctx.serenity_context().shard.clone())
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
         .stream();
 

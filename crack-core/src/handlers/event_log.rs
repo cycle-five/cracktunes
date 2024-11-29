@@ -15,7 +15,8 @@ use poise::{
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
-pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> = Some(ChannelId::new(1191633527763116039));
+pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> =
+    Some(ChannelId::new(1191633527763116039));
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -964,9 +965,10 @@ pub async fn handle_event(
         FullEvent::ReactionRemoveAll {
             channel_id,
             removed_from_message_id,
+            guild_id,
         } => {
             event_log
-                .write_log_obj_async(event_name, &(channel_id, removed_from_message_id))
+                .write_log_obj_async(event_name, &(channel_id, removed_from_message_id, guild_id))
                 .await
         },
         FullEvent::Ready { data_about_bot } => {

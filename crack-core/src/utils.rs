@@ -152,6 +152,8 @@ pub async fn edit_response_text(
     edit_embed_response(http, interaction, embed).await
 }
 
+use poise::serenity_prelude::CollectComponentInteractions;
+
 #[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
@@ -197,7 +199,7 @@ pub async fn yt_search_select(
     // manually in the EventHandler.
     let interaction = match m
         .id
-        .await_component_interaction(ctx.shard.clone())
+        .collect_component_interactions(ctx.shard.clone())
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
@@ -595,7 +597,7 @@ pub async fn create_paged_embed(
             .into_message()
             .await?
             .id
-            .await_component_interactions(shard_messanger.clone())
+            .collect_component_interactions(shard_messanger.clone())
             .timeout(Duration::from_secs(60 * 10))
             .stream();
 

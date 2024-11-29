@@ -10,11 +10,15 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## v0.3.16-alpha.3 (2024/12/12)
+- [ ] re-enable the commands that were disabled in the last release
+      for the serenity-next branch.
+- [ ] Make sure appropriate commands work in dms as well as guilds.
 
 ## v0.3.16-alpha.2 (2024/12/12)
-- [ ] update to serenity-next branch
+- [x] update to serenity-next branch
 
-## v0.3.15-alpha.2 (2024/11/23)
+## v0.3.15-alpha.1 (2024/11/23)
 - [x] bug fix patch 
 
 ## v0.3.14 (2024/11/05)
