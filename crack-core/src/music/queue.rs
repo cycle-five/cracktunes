@@ -44,9 +44,10 @@ pub async fn queue_resolved_track_back(
         track2.metadata,
         track2.video,
     )?;
+    let resolved_clone = &track_resolved.clone();
     let track_data = TrackData {
-        user_id: Arc::new(RwLock::new(Some(track_resolved.clone().user_id))),
-        aux_metadata: Arc::new(RwLock::new(track_resolved.clone().metadata)),
+        user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+        aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
     };
     let track = Track::new_with_data(ytdl.clone().into(), Arc::new(track_data));
     let mut track_handle = handler
