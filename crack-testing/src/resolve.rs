@@ -232,3 +232,91 @@ impl Display for ResolvedTrack<'_> {
         write!(f, "[{}]({}) • `{}`", title, url, duration)
     }
 }
+
+// use rusty_ytdl::VideoError;
+// use songbird::input::Input;
+
+// impl From<ResolvedTrack<'static>> for Input {
+//     fn from(val: ResolvedTrack<'static>) -> Self {
+//         Input::Lazy(Box::new(val))
+//     }
+// }
+
+// #[async_trait]
+// impl Compose for RustyYoutubeSearch<'_> {
+//     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+//         Err(AudioStreamError::Unsupported)
+//     }
+
+//     async fn create_async(
+//         &mut self,
+//     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+//         // We may or may not have the metadata, so we need to check.
+//         if self.metadata.is_none() {
+//             self.aux_metadata().await?;
+//         }
+//         let vid_options = VideoOptions {
+//             request_options: RequestOptions {
+//                 client: Some(http_utils::get_client().clone()),
+//                 ..Default::default()
+//             },
+//             ..Default::default()
+//         };
+//         let url = self.url.as_ref().unwrap();
+//         Video::new_with_options(url.clone(), vid_options)
+//             .map_err(CrackedError::from)?
+//             .stream()
+//             .await
+//             .map(|input| {
+//                 // let stream = AsyncAdapterStream::new(input, 64 * 1024);
+//                 let stream = Box::into_pin(input).into_media_source();
+
+//                 AudioStream {
+//                     input: Box::new(stream) as Box<dyn MediaSource>,
+//                     hint: None,
+//                 }
+//             })
+//             .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
+//     }
+
+//     fn should_create_async(&self) -> bool {
+//         true
+//     }
+
+//     /// Returns, and caches if isn't already, the metadata for the search.
+//     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
+//         if let Some(meta) = self.metadata.as_ref() {
+//             return Ok(meta.clone());
+//         }
+
+//         // If we have a url, we can get the metadata from that directory so no need to search.
+//         if let Some(url) = self.url.as_ref() {
+//             let video =
+//                 Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+//             let video_info = video
+//                 .get_basic_info()
+//                 .await
+//                 .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+//             let metadata = video_info_to_aux_metadata(&video_info);
+//             self.metadata = Some(metadata.clone());
+//             return Ok(metadata);
+//         }
+
+//         let res: SearchResult = self
+//             .rusty_ytdl
+//             .search_one(self.query.build_query().unwrap(), None)
+//             .await
+//             .map_err(|e| {
+//                 <CrackedError as Into<AudioStreamError>>::into(
+//                     <VideoError as Into<CrackedError>>::into(e),
+//                 )
+//             })?
+//             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
+//         let metadata = search_result_to_aux_metadata(&res);
+
+//         self.metadata = Some(metadata.clone());
+//         self.url = Some(metadata.source_url.clone().unwrap());
+
+//         Ok(metadata)
+//     }
+// }

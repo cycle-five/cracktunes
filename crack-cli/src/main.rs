@@ -26,6 +26,7 @@ const WARP_PORT: u16 = 8833;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+use std::time::Duration;
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
@@ -36,7 +37,8 @@ fn main() -> Result<(), Error> {
 
     dotenvy::dotenv().ok();
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(5)
+        .worker_threads(4)
+        .thread_keep_alive(Duration::from_millis(100))
         .enable_all()
         .build()
         .unwrap();
@@ -66,8 +68,7 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
     // init_metrics();
-    let config = load_bot_config()
-        .expect("Error: Failed to load bot config");
+    let config = load_bot_config().expect("Error: Failed to load bot config");
     tracing::warn!("Using config: {:?}", config);
 
     let mut client = config::poise_framework(config, event_log_async).await?;

@@ -402,6 +402,7 @@ impl DataInner {
         }
     }
 
+    /// Set the CrackTrack client for the data.
     pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
         Self {
             ct_client,
@@ -409,6 +410,7 @@ impl DataInner {
         }
     }
 
+    /// Set the Songbird instance for the data.
     pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self {
             songbird,

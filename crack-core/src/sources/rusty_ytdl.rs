@@ -3,6 +3,7 @@ use crate::http_utils;
 use crate::music::QueryType;
 use bytes::Buf;
 use bytes::BytesMut;
+use crack_testing::ResolvedTrack;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
@@ -120,7 +121,7 @@ pub async fn get_video_info(
     video.get_basic_info().await.map_err(|e| e.into())
 }
 
-impl RustyYoutubeSearch<'_> {
+impl<'a> RustyYoutubeSearch<'a> {
     pub fn new(query: QueryType, client: reqwest::Client) -> Result<Self, CrackedError> {
         let request_options = RequestOptions {
             client: Some(client.clone()),
@@ -137,6 +138,30 @@ impl RustyYoutubeSearch<'_> {
             query,
             metadata: None,
             video: None,
+        })
+    }
+
+    pub fn new_with_stuff(
+        client: reqwest::Client,
+        query: QueryType,
+        metadata: Option<AuxMetadata>,
+        video: Option<rusty_ytdl::Video<'a>>,
+    ) -> Result<Self, CrackedError> {
+        let request_options = RequestOptions {
+            client: Some(client.clone()),
+            ..Default::default()
+        };
+        let rusty_ytdl = rusty_ytdl::search::YouTube::new_with_options(&request_options)?;
+        let url = match query {
+            QueryType::VideoLink(ref url) => Some(url.clone()),
+            _ => None,
+        };
+        Ok(Self {
+            rusty_ytdl,
+            url,
+            query,
+            metadata,
+            video,
         })
     }
 

@@ -3,24 +3,27 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    utils::{set_track_handle_metadata, set_track_handle_requesting_user},
+    sources::{rusty_ytdl::RustyYoutubeSearch, ytdl},
+    utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
     Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
-use crack_types::Mode;
 use crack_types::NewAuxMetadata;
+use crack_types::{metadata, Mode};
+use rspotify::model::track;
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
 };
 use songbird::{
     input::Input as SongbirdInput,
-    tracks::{Queued, TrackHandle},
+    tracks::{Queued, Track, TrackHandle},
     Call,
 };
 use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
@@ -28,22 +31,53 @@ use tokio::sync::Mutex;
 ///
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
-    track: ResolvedTrack<'_>,
+    track_resolved: ResolvedTrack<'static>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+    //let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+    let query = QueryType::VideoLink(track_resolved.get_url());
+    let track2 = track_resolved.clone();
+    let ytdl = RustyYoutubeSearch::new_with_stuff(
+        http_client.clone(),
+        query,
+        track2.metadata,
+        track2.video,
+    )?;
+    let track_data = TrackData {
+        user_id: Arc::new(RwLock::new(Some(track_resolved.clone().user_id))),
+        aux_metadata: Arc::new(RwLock::new(track_resolved.clone().metadata)),
+    };
+    let track = Track::new_with_data(ytdl.clone().into(), Arc::new(track_data));
     let mut track_handle = handler
         .enqueue_input(Into::<SongbirdInput>::into(ytdl))
         .await;
     let new_q = handler.queue().current_queue();
     drop(handler);
-    set_track_handle_metadata(
-        &mut track_handle,
-        track.metadata.ok_or(CrackedError::NoMetadata)?,
-    )
-    .await?;
+    if let Some(metadata) = track_resolved.metadata {
+        set_track_handle_metadata(&mut track_handle, metadata.clone()).await?;
+    }
+    set_track_handle_requesting_user(&mut track_handle, track_resolved.user_id).await?;
+
+    Ok(new_q)
+}
+
+pub async fn queue_resolved_track_back_old(
+    call: &Arc<Mutex<Call>>,
+    track: ResolvedTrack<'static>,
+    http_client: reqwest::Client,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    let mut handler = call.lock().await;
+    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+
+    let mut track_handle = handler
+        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
+        .await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+    set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
     set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
+
     Ok(new_q)
 }
 
