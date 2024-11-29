@@ -39,7 +39,7 @@ impl VotingContext {
         }
     }
 
-    /// Create a new [VotingContext] with a given pool.
+    /// Create a new [`VotingContext`] with a given pool.
     #[allow(clippy::unused_async)]
     pub async fn new_with_pool(pool: sqlx::PgPool) -> Self {
         let secret = get_secret();
@@ -89,7 +89,8 @@ fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
 }
 
-fn webhook_type_to_string(kind: dbl::types::WebhookType) -> String {
+/// Convert the webhook type to a string.
+fn webhook_type_to_string(kind: &dbl::types::WebhookType) -> String {
     match kind {
         dbl::types::WebhookType::Upvote => "upvote".to_string(),
         dbl::types::WebhookType::Test => "test".to_string(),
@@ -125,7 +126,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
         "#,
         webhook.bot.0 as i64,
         webhook.user.0 as i64,
-        webhook_type_to_string(webhook.kind) as _,
+        webhook_type_to_string(&webhook.kind) as _,
         webhook.is_weekend,
         webhook.query,
     )

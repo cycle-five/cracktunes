@@ -116,10 +116,9 @@ impl From<DiscId> for u64 {
     fn from(id: DiscId) -> Self {
         match id {
             DiscId::U64(id) => id,
-            DiscId::GuildId(id) => id.get(),
+            DiscId::GuildId(id) | DiscId::SBGuildId(id) => id.get(),
             DiscId::ChannelId(id) => id.get(),
             DiscId::UserId(id) => id.get(),
-            DiscId::SBGuildId(id) => id.get(),
         }
     }
 }
@@ -182,12 +181,12 @@ impl From<UserId> for RequestingUser {
     }
 }
 
-/// We implement TypeMapKey for RequestingUser.
+/// We implement `TypeMapKey` for `RequestingUser`.
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
 }
 
-/// Default implementation for RequestingUser.
+/// `Default` implementation for `RequestingUser`.
 impl Default for RequestingUser {
     fn default() -> Self {
         let user = UserId::new(1);
@@ -196,6 +195,7 @@ impl Default for RequestingUser {
 }
 
 /// Function to get the full artist name from a [`FullTrack`].
+#[must_use]
 pub fn full_track_artist_str(track: &FullTrack) -> String {
     track
         .artists
@@ -207,6 +207,7 @@ pub fn full_track_artist_str(track: &FullTrack) -> String {
 
 // use humantime::format_duration;
 /// Converts a duration into a human readable timestamp
+#[must_use]
 pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     // let duration = match duration {
     //     Some(duration) if duration == Duration::MAX => return "∞".to_string(),
@@ -261,6 +262,7 @@ pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
 }
 
 /// Builds a fake [`VideoDetails`] for testing purposes.
+#[must_use]
 pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
     rusty_ytdl::VideoDetails {
         author: Some(build_fake_rusty_author()),
@@ -303,11 +305,16 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
 }
 
 /// Builds a fake but valid [`Token`] for testing purposes.
+/// # Panics
+/// * If the token is invalid.
+#[must_use]
 pub fn get_valid_token() -> Token {
     DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
 }
 
 /// Convert a string to a fixed string.
+/// # Panics
+/// * If the string is not a valid length.
 pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
     FixedString::from_str(&s.into()).unwrap()
 }
