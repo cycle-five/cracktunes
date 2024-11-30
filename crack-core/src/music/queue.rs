@@ -1,16 +1,14 @@
-use super::QueryType;
 use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    sources::{rusty_ytdl::RustyYoutubeSearch, ytdl},
+    music::NewQueryType,
+    sources::rusty_ytdl::RustyYoutubeSearch,
     utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
     Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
-use crack_types::NewAuxMetadata;
-use crack_types::{metadata, Mode};
-use rspotify::model::track;
+use crack_types::{Mode, NewAuxMetadata, QueryType};
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
@@ -22,13 +20,14 @@ use songbird::{
 };
 use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::Mutex;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
 /// # Errors
-///
+/// Returns a [`CrackedError`] if the track cannot be queued.
+/// Can fail during the search itself, or when adding the metadata to the track,
+/// or when adding the track to the internal queue.
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
     track_resolved: ResolvedTrack<'static>,
@@ -50,9 +49,8 @@ pub async fn queue_resolved_track_back(
         aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
     };
     let track = Track::new_with_data(ytdl.clone().into(), Arc::new(track_data));
-    let mut track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
+    let mut track_handle = handler.enqueue(track).await;
+    // .enqueue_input(Into::<SongbirdInput>::into(track))
     let new_q = handler.queue().current_queue();
     drop(handler);
     if let Some(metadata) = track_resolved.metadata {
@@ -63,6 +61,11 @@ pub async fn queue_resolved_track_back(
     Ok(new_q)
 }
 
+/// Takes a resolved track and queues it to the back of the queue.
+/// Old version.
+/// # Errors
+/// Returns a [`CrackedError`] if the track cannot be queued.
+#[allow(dead_code)]
 pub async fn queue_resolved_track_back_old(
     call: &Arc<Mutex<Call>>,
     track: ResolvedTrack<'static>,
@@ -97,8 +100,9 @@ pub async fn ready_query(
     query_type: QueryType,
 ) -> Result<TrackReadyData, CrackedError> {
     let user_id = Some(ctx.author().id);
+    let qt = NewQueryType(query_type);
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) =
-        query_type.get_track_source_and_metadata(None).await?;
+        qt.get_track_source_and_metadata(None).await?;
     let metadata = match metadata_vec.first() {
         Some(x) => x.clone(),
         None => {

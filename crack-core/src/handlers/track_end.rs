@@ -6,7 +6,7 @@ use crate::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
         messages::SPOTIFY_AUTH_FAILED,
     },
-    music::query::QueryType,
+    music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
         calculate_num_pages, forget_queue_message, set_track_handle_metadata,
@@ -23,6 +23,7 @@ use ::serenity::{
     model::id::GuildId,
 };
 use crack_types::NewAuxMetadata;
+use crack_types::QueryType;
 use serenity::all::{CacheHttp, UserId};
 use songbird::input::AuxMetadata;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
@@ -211,7 +212,8 @@ pub async fn queue_query(
     // let metadata = input.aux_metadata().await.ok()?;
     // let track = call.as_ref().lock().await.enqueue_input(input).await;
     // add_metadata_to_track(&track, metadata).await;
-    let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = query
+    let qt = NewQueryType(query);
+    let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
     let mut track = call.as_ref().lock().await.enqueue_input(source).await;

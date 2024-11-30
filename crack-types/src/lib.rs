@@ -8,6 +8,9 @@ pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
 
+use rspotify::model::SimplifiedAlbum;
+use rspotify::model::SimplifiedArtist;
+use rspotify::model::TrackId;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
@@ -44,6 +47,8 @@ pub use typemap_rev::TypeMapKey;
 // ------------------------------------------------------------------
 // Constants and Enums
 // ------------------------------------------------------------------
+pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
+
 pub(crate) const DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
@@ -129,6 +134,103 @@ pub struct SpotifyTrack {
     pub full_track: FullTrack,
 }
 
+pub trait SpotifyTrackTrait {
+    fn new(full_track: rspotify::model::FullTrack) -> Self;
+    fn id(&self) -> TrackId<'static>;
+    fn name(&self) -> String;
+    fn artists(&self) -> Vec<SimplifiedArtist>;
+    fn artists_str(&self) -> String;
+    fn album(&self) -> SimplifiedAlbum;
+    fn album_name(&self) -> String;
+    fn duration_seconds(&self) -> i32;
+    fn duration(&self) -> Duration;
+    fn join_artist_names(&self) -> String;
+    fn build_query_lyric(&self) -> String;
+    fn build_query(&self) -> String;
+}
+
+/// Implementation of our SpotifyTrackTrait.
+impl SpotifyTrackTrait for SpotifyTrack {
+    /// Create a new SpotifyTrack.
+    fn new(full_track: rspotify::model::FullTrack) -> Self {
+        Self { full_track }
+    }
+
+    /// Get the ID of the track
+    fn id(&self) -> TrackId<'static> {
+        self.full_track.id.clone().unwrap()
+    }
+
+    /// Get the name of the track.
+    fn name(&self) -> String {
+        self.full_track.name.clone()
+    }
+
+    /// Get the artists of the track.
+    fn artists(&self) -> Vec<SimplifiedArtist> {
+        self.full_track.artists.clone()
+    }
+
+    /// Get the artists of the track as a string.
+    fn artists_str(&self) -> String {
+        self.full_track
+            .artists
+            .iter()
+            .map(|artist| artist.name.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+
+    /// Get the album of the track.
+    fn album(&self) -> rspotify::model::SimplifiedAlbum {
+        self.full_track.album.clone()
+    }
+
+    /// Get the album name of the track.
+    fn album_name(&self) -> String {
+        self.full_track.album.name.clone()
+    }
+
+    /// Get the duration of the track.
+    fn duration_seconds(&self) -> i32 {
+        self.full_track.duration.num_seconds() as i32
+    }
+
+    /// Get the duration of the track as a Duration.
+    fn duration(&self) -> Duration {
+        let track_secs = self.full_track.duration.num_seconds();
+        let nanos = self.full_track.duration.subsec_nanos();
+        let secs = if track_secs < 0 { 0 } else { track_secs };
+        Duration::new(secs as u64, nanos as u32)
+    }
+
+    /// Join the artist names into a single string.
+    fn join_artist_names(&self) -> String {
+        let artist_names: Vec<String> = self
+            .full_track
+            .artists
+            .iter()
+            .map(|artist| artist.name.clone())
+            .collect();
+        artist_names.join(" ")
+    }
+
+    /// Build a query for searching, from the artist names and the track name.
+    fn build_query_lyric(&self) -> String {
+        format!(
+            "{} {} {}",
+            &self.name(),
+            &self.join_artist_names(),
+            MUSIC_SEARCH_SUFFIX
+        )
+    }
+
+    /// Build a query for searching, from the artist names and the track name.
+    fn build_query(&self) -> String {
+        format!("{} {}", &self.name(), &self.join_artist_names())
+    }
+}
+
 /// Enum for type of possible queries we have to handle.
 // QueryType -> Keywords       -> ResolvedTrack
 //           -> VideoLink      -> ResolvedTrack
@@ -149,6 +251,48 @@ pub enum QueryType {
     NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
+}
+
+impl QueryType {
+    /// Get the query type from a string.
+    pub fn from_str(s: &str) -> Self {
+        if s.starts_with("https://") || s.starts_with("http://") {
+            QueryType::VideoLink(s.to_string())
+        } else {
+            QueryType::Keywords(s.to_string())
+        }
+    }
+    /// Build a query string from the query type.
+    pub fn build_query(&self) -> Option<String> {
+        let base = self.build_query_base();
+        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+    }
+
+    /// Build a query string from the query type.
+    pub fn build_query_base(&self) -> Option<String> {
+        match self {
+            QueryType::Keywords(keywords) => Some(keywords.clone()),
+            QueryType::KeywordList(keywords_list) => Some(keywords_list.join(" ")),
+            QueryType::VideoLink(url) => Some(url.clone()),
+            QueryType::SpotifyTracks(tracks) => Some(
+                tracks
+                    .iter()
+                    .map(|x| x.build_query())
+                    .collect::<Vec<String>>()
+                    .join(" "),
+            ),
+            QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::File(file) => Some(file.url.to_string()),
+            QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
+            QueryType::YoutubeSearch(query) => Some(query.clone()),
+            QueryType::None => None,
+        }
+    }
+}
+
+/// Build a query for searching, from the artist names and the track name.
+fn build_query_spotify(artists: &str, track_name: &str) -> String {
+    format!("{} {}", artists, track_name)
 }
 
 /// [`Default`] implementation for [`QueryType`].

@@ -1,10 +1,11 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
-use crate::music::QueryType;
+use crate::music::NewQueryType;
 use bytes::Buf;
 use bytes::BytesMut;
-use crack_testing::ResolvedTrack;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
+use crack_types::QueryType;
+use rustls::client;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::VideoOptions;
@@ -381,11 +382,12 @@ impl MediaSource for MediaSourceStream {
     }
 }
 
-pub struct NewSearchSource(pub QueryType, pub reqwest::Client);
+pub struct NewSearchSource(pub NewQueryType, pub reqwest::Client);
 
 impl From<NewSearchSource> for Input {
     fn from(val: NewSearchSource) -> Self {
-        let search = RustyYoutubeSearch::new(val.0, val.1).unwrap();
+        let NewSearchSource(NewQueryType(qt), client) = val;
+        let search = RustyYoutubeSearch::new(qt, client).unwrap();
         search.into()
     }
 }
@@ -394,12 +396,13 @@ impl From<NewSearchSource> for Input {
 mod test {
     use crate::{
         http_utils,
-        music::QueryType,
+        music::NewQueryType,
         sources::{
             rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
             youtube::search_query_to_source_and_metadata_rusty,
         },
     };
+    use crack_types::QueryType;
     use rusty_ytdl::search::YouTube;
     use rusty_ytdl::RequestOptions;
     use songbird::input::{Input, YoutubeDl};
@@ -433,7 +436,8 @@ mod test {
     #[test]
     fn test_new_search_source() {
         let search_term = "The Night Chicago Died";
-        let query = QueryType::Keywords(search_term.to_string());
+        let query = crack_types::QueryType::Keywords(search_term.to_string());
+        let query = NewQueryType(query);
         let reqwest_client = http_utils::get_client().clone();
         let new_search = NewSearchSource(query, reqwest_client);
         let input: Input = new_search.into();

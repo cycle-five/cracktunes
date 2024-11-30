@@ -13,7 +13,6 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
-    music::query::QueryType,
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::small_fixed_array::FixedString;
@@ -32,6 +31,7 @@ use ::serenity::{
 use anyhow::Result;
 use crack_types::get_human_readable_timestamp;
 use crack_types::NewAuxMetadata;
+use crack_types::QueryType;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,

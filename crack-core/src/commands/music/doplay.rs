@@ -1,7 +1,7 @@
 use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
-use crate::music::query::QueryType;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
+use crate::music::NewQueryType;
 use crate::utils::edit_embed_response2;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
@@ -25,6 +25,7 @@ use ::serenity::{
     all::{CommandInteraction, Message},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
+use crack_types::QueryType;
 use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
@@ -389,7 +390,7 @@ pub async fn play_internal(
             let estimated_time = calculate_time_until_play(&queue, mode)
                 .await
                 .unwrap_or_default();
-
+            let NewQueryType(query_type) = query_type;
             match (query_type, mode) {
                 (
                     QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
@@ -509,7 +510,7 @@ async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
-    query_type: QueryType,
+    query_type: NewQueryType,
     //search_msg: &'a mut ReplyHandle<'a>,
     search_msg: ReplyHandle<'_>,
 ) -> CrackedResult<bool> {
