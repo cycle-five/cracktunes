@@ -440,20 +440,20 @@ pub async fn handle_event(
                 event_name
             )
         },
-        #[cfg(not(feature = "cache"))]
-        FullEvent::GuildDelete { incomplete, full } => {
-            let log_data = (event_name, incomplete, full);
-            log_event!(
-                log_unimplemented_event,
-                guild_settings,
-                event_in,
-                &log_data,
-                &incomplete.id,
-                &ctx,
-                event_log,
-                event_name
-            )
-        },
+        // #[cfg(not(feature = "cache"))]
+        // FullEvent::GuildDelete { incomplete, full } => {
+        //     let log_data = (event_name, incomplete, full);
+        //     log_event!(
+        //         log_unimplemented_event,
+        //         guild_settings,
+        //         event_in,
+        //         &log_data,
+        //         &incomplete.id,
+        //         &ctx,
+        //         event_log,
+        //         event_name
+        //     )
+        // },
         FullEvent::GuildEmojisUpdate {
             guild_id,
             current_state,
