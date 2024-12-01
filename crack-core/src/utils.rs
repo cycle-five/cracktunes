@@ -403,6 +403,24 @@ pub struct TrackData {
     pub user_id: Arc<RwLock<Option<serenity::UserId>>>,
     pub aux_metadata: Arc<RwLock<Option<AuxMetadata>>>,
 }
+
+unsafe impl Send for TrackData {}
+unsafe impl Sync for TrackData {}
+
+impl TrackData {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::new(RwLock::new(None)),
+            aux_metadata: Arc::new(RwLock::new(None)),
+        })
+    }
+}
+
+// impl Default for TrackData {
+//     fn default() -> Self {
+//         *Self::new().clone()
+//     }
+// }
 // pub type ArcTrackData = Arc<TrackDataInner>;
 
 // impl std::ops::DerefMut for TrackData {
@@ -413,14 +431,14 @@ pub struct TrackData {
 
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
-    let data: Arc<TrackData> = track.data();
+    let data: Arc<TrackData> = track.data::<TrackData>();
     let lock = data.user_id.read().await;
     lock.ok_or(CrackedError::NoUserAutoplay)
 }
 
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
-    let data: Arc<TrackData> = track.data();
+    let data: Arc<TrackData> = track.data::<TrackData>();
     let lock = data.aux_metadata.read().await;
     lock.clone().ok_or(CrackedError::NoMetadata)
 }
@@ -430,7 +448,7 @@ pub async fn set_track_handle_metadata(
     track: &mut TrackHandle,
     metadata: AuxMetadata,
 ) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data();
+    let data: Arc<TrackData> = track.data::<TrackData>();
     let mut lock = data.aux_metadata.write().await;
     *lock = Some(metadata);
     Ok(())
@@ -441,7 +459,7 @@ pub async fn set_track_handle_requesting_user(
     track: &mut TrackHandle,
     user_id: serenity::UserId,
 ) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data();
+    let data: Arc<TrackData> = track.data::<TrackData>();
     let mut lock = data.user_id.write().await;
     *lock = Some(user_id);
     Ok(())
