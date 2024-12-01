@@ -253,15 +253,19 @@ pub enum QueryType {
     None,
 }
 
-impl QueryType {
+impl std::str::FromStr for QueryType {
+    type Err = TrackResolveError;
     /// Get the query type from a string.
-    pub fn from_str(s: &str) -> Self {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.starts_with("https://") || s.starts_with("http://") {
-            QueryType::VideoLink(s.to_string())
+            Ok(QueryType::VideoLink(s.to_string()))
         } else {
-            QueryType::Keywords(s.to_string())
+            Ok(QueryType::Keywords(s.to_string()))
         }
     }
+}
+
+impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
@@ -290,10 +294,10 @@ impl QueryType {
     }
 }
 
-/// Build a query for searching, from the artist names and the track name.
-fn build_query_spotify(artists: &str, track_name: &str) -> String {
-    format!("{} {}", artists, track_name)
-}
+// /// Build a query for searching, from the artist names and the track name.
+// fn build_query_spotify(artists: &str, track_name: &str) -> String {
+//     format!("{} {}", artists, track_name)
+// }
 
 /// [`Default`] implementation for [`QueryType`].
 impl Default for QueryType {

@@ -187,12 +187,7 @@ pub async fn queue_track_back(
     let user_id = ctx.author().id;
 
     let begin = std::time::Instant::now();
-    let resolved = match ctx
-        .data()
-        .ct_client
-        .resolve_track(query_type.clone().into())
-        .await
-    {
+    let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
         Ok(resolved) => resolved.with_user_id(user_id),
         Err(e1) => {
             match e1.into() {
