@@ -1,4 +1,3 @@
-use crack_types::QueryType;
 use once_cell::sync::Lazy;
 use reqwest as reqwest_old;
 use reqwest::Client;

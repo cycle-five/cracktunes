@@ -354,7 +354,7 @@ pub async fn queue_query_list_offset(
 
     let mut tracks = Vec::new();
     for query in queries {
-        let resolved = ctx.data().ct_client.resolve_track(query.into()).await?;
+        let resolved = ctx.data().ct_client.resolve_track(query).await?;
         tracks.push(resolved)
     }
     // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;

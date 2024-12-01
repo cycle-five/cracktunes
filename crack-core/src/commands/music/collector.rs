@@ -26,12 +26,13 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     .await?;
 
     let mut boop_count = 0;
-    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context().clone().shard)
-        .author_id(ctx.author().id)
-        .channel_id(ctx.channel_id())
-        .timeout(std::time::Duration::from_secs(120))
-        .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
-        .await
+    while let Some(mci) =
+        serenity::ComponentInteractionCollector::new(ctx.serenity_context().clone().shard)
+            .author_id(ctx.author().id)
+            .channel_id(ctx.channel_id())
+            .timeout(std::time::Duration::from_secs(120))
+            .filter(move |mci| mci.data.custom_id == uuid_boop.to_string())
+            .await
     {
         boop_count += 1;
 

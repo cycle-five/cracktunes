@@ -5,7 +5,6 @@ use bytes::Buf;
 use bytes::BytesMut;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::QueryType;
-use rustls::client;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::VideoOptions;

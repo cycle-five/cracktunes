@@ -342,7 +342,7 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .map_or(true, |x| x.reply_with_embed)
+            .is_none_or(|x| x.reply_with_embed)
     }
 
     /// Set the reply with embed setting.

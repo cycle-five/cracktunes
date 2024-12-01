@@ -3,6 +3,7 @@ use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::NewSearchSource;
+use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     errors::{verify, CrackedError},
@@ -19,11 +20,12 @@ use crate::{
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
+use crack_testing::queue;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
-use poise::{serenity_prelude as serenity, ReplyHandle};
+use poise::ReplyHandle;
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType, YouTube};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::{
@@ -205,7 +207,7 @@ impl NewQueryType {
             ))),
             QueryType::VideoLink(url) => {
                 tracing::warn!("Mode::Download, QueryType::VideoLink");
-                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let (output, metadata) = download_file_ytdlp(url, mp3).await?;
                 let status = output.status.success();
                 let url = metadata.source_url.unwrap();
                 let file_name = format!(
@@ -258,7 +260,7 @@ impl NewQueryType {
             },
             QueryType::PlaylistLink(url) => {
                 tracing::warn!("In PlaylistLink");
-                let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
+                let (output, metadata) = download_file_ytdlp(url, mp3).await?;
                 let file_name = format!(
                     "{}/{} [{}].{}",
                     prefix,
@@ -431,6 +433,23 @@ impl NewQueryType {
                 return Ok(false);
             },
         }
+        Ok(true)
+    }
+
+    pub async fn mode_end2<'ctx>(
+        &self,
+        ctx: Context<'ctx>,
+        call: Arc<Mutex<Call>>,
+        search_reply: ReplyHandle<'ctx>,
+    ) -> CrackedResult<bool> {
+        let NewQueryType(qt) = self;
+        match queue_track_back(ctx, &call, qt).await {
+            Ok(_) => (),
+            Err(e) => {
+                tracing::error!("queue_track_back error: {:?}", e);
+                return Err(e);
+            },
+        };
         Ok(true)
     }
 
@@ -722,7 +741,7 @@ impl NewQueryType {
                 tracing::warn!("In Keywords");
                 //get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =
-                    search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
+                    search_query_to_source_and_metadata_rusty(client.clone(), qt.clone()).await?;
                 Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;

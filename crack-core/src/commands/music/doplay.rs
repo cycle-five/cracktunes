@@ -363,14 +363,9 @@ pub async fn play_internal(
         query_type.clone(),
         search_msg.clone(),
     )
-    .await;
+    .await?;
 
     let _after_move_on = std::time::Instant::now();
-
-    // // FIXME: Yeah, this is terrible, fix this.
-    // if !move_on {
-    //     return Ok(());
-    // }
 
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
@@ -524,7 +519,7 @@ async fn match_mode(
             .map(|x| !x.is_empty()),
         Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
         Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
-        Mode::End => query_type.mode_end(ctx, call, search_msg.clone()).await,
+        Mode::End => query_type.mode_end2(ctx, call, search_msg.clone()).await,
         Mode::Next => query_type.mode_next(ctx, call, search_msg.clone()).await,
         Mode::Jump => query_type.mode_jump(ctx, call).await,
         Mode::All | Mode::Reverse | Mode::Shuffle => {

@@ -127,7 +127,7 @@ pub async fn mute_internal(
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    guild_only,
+    guild_only
 )]
 #[cfg(not(tarpaulin_include))]
 pub async fn unmute(
