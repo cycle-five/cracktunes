@@ -269,10 +269,11 @@ impl QueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
-        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+        base.map(|x| format!("{x} {MUSIC_SEARCH_SUFFIX}"))
     }
 
     /// Build a query string from the query type.
+    #[must_use]
     pub fn build_query_base(&self) -> Option<String> {
         match self {
             QueryType::Keywords(keywords) => Some(keywords.clone()),
@@ -281,7 +282,7 @@ impl QueryType {
             QueryType::SpotifyTracks(tracks) => Some(
                 tracks
                     .iter()
-                    .map(|x| x.build_query())
+                    .map(SpotifyTrackTrait::build_query)
                     .collect::<Vec<String>>()
                     .join(" "),
             ),

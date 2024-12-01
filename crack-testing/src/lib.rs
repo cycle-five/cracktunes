@@ -167,6 +167,15 @@ impl<'a> CrackTrackClient<'a> {
         }
     }
 
+    pub async fn resolve_track_many(&self, queries: Vec<QueryType>) -> Result<Vec<ResolvedTrack<'a>>, Error> {
+        let mut queue = Vec::new();
+        for query in queries {
+            let track = self.resolve_track(query).await?;
+            queue.push(track);
+        }
+        Ok(queue)
+    }
+
     /// Resolve a track from a query. This does not start or ready the track for playback.
     pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack<'a>, Error> {
         match query {

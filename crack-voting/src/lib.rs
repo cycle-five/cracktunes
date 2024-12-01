@@ -98,6 +98,7 @@ fn webhook_type_to_string(kind: &dbl::types::WebhookType) -> String {
 }
 
 /// Write the received webhook to the database.
+#[allow(clippy::cast_possible_wrap)]
 async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
     // Check for the user in the database, since we have a foreign key constraint.
     // Create the user if they don't exist.

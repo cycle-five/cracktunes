@@ -20,7 +20,6 @@ use crate::{
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
-use crack_testing::queue;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
@@ -154,7 +153,6 @@ impl From<Queries> for Vec<QueryType> {
     }
 }
 use crate::sources::spotify::SpotifyTrackTrait;
-use crate::sources::youtube::search_query_to_source_and_metadata;
 impl NewQueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
@@ -440,7 +438,7 @@ impl NewQueryType {
         &self,
         ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,
-        search_reply: ReplyHandle<'ctx>,
+        _search_reply: ReplyHandle<'ctx>,
     ) -> CrackedResult<bool> {
         let NewQueryType(qt) = self;
         match queue_track_back(ctx, &call, qt).await {
@@ -512,7 +510,10 @@ impl NewQueryType {
                     .iter()
                     .map(|x| QueryType::Keywords(x.clone()))
                     .collect::<Vec<QueryType>>();
-                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
+                // queue_keyword_list_back(ctx, call, queries, search_msg).await?;
+                for query in queries {
+                    queue_track_back(ctx, &call, &query).await?;
+                }
                 Ok(true)
             },
             QueryType::File(file) => {
@@ -737,7 +738,7 @@ impl NewQueryType {
                 let my_metadata = NewAuxMetadata(metadata);
                 Ok((input, vec![my_metadata]))
             },
-            QueryType::Keywords(query) => {
+            QueryType::Keywords(_query) => {
                 tracing::warn!("In Keywords");
                 //get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =

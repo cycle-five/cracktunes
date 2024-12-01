@@ -286,19 +286,18 @@ use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
 use crack_types::to_fixed;
 
-pub async fn send_play_embed<'a>(
-    ctx: Context<'_>,
-    queue: &'a [TrackHandle],
+pub async fn build_play_embed(
+    queue: &[TrackHandle],
     mode: Mode,
     query_type: NewQueryType,
-) -> Result<CreateEmbed<'a>, Error> {
+) -> Result<CreateEmbed<'_>, Error> {
     // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
     // let track = queue.first().unwrap();
     // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
     // Ok(embed)
     let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(&queue, mode)
+            let estimated_time = calculate_time_until_play(queue, mode)
                 .await
                 .unwrap_or_default();
             let NewQueryType(query_type) = query_type;
@@ -429,7 +428,7 @@ pub async fn play_internal(
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
-    let _move_on = match_mode(
+    match_mode(
         ctx,
         call.clone(),
         mode,
@@ -454,7 +453,7 @@ pub async fn play_internal(
     // Ah! Also, sometimes after a long queue process the now playing message says that it's already
     // X seconds into the song, so this is definitely after the section of the code that
     // takes a long time.
-    let embed = send_play_embed(ctx, &queue, mode, query_type).await?;
+    let embed = build_play_embed(&queue, mode, query_type).await?;
 
     let _after_embed = std::time::Instant::now();
 
@@ -531,15 +530,15 @@ async fn match_mode(
         Mode::Search => {
             let res = query_type.mode_search(ctx, call).await?;
             if res.is_empty() {
-                return Err(CrackedError::Other("No results found!"));
+                Err(CrackedError::Other("No results found!"))
             } else {
-                return Ok(());
+                Ok(())
             }
         },
         Mode::DownloadMKV => query_type.mode_download(ctx, false).await.map(|_| ()),
         Mode::DownloadMP3 => query_type.mode_download(ctx, true).await.map(|_| ()),
         Mode::End => query_type
-            .mode_end2(ctx, call, search_msg.clone())
+            .mode_end(ctx, call, search_msg.clone())
             .await
             .map(|_| ()),
         Mode::Next => query_type
