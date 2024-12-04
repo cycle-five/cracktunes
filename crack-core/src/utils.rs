@@ -15,6 +15,7 @@ use crate::{
     },
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
+use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
@@ -39,7 +40,6 @@ use poise::{
     CreateReply, ReplyHandle,
 };
 #[allow(deprecated)]
-use serenity::MessageInteraction;
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
@@ -340,18 +340,18 @@ pub async fn edit_embed_response(
     }
 }
 
-#[allow(deprecated)]
-pub enum ApplicationCommandOrMessageInteraction {
-    Command(CommandInteraction),
-    Message(MessageInteraction),
-}
+// #[allow(deprecated)]
+// pub enum ApplicationCommandOrMessageInteraction {
+//     Command(CommandInteraction),
+//     Message(MessageReaction),
+// }
 
-#[allow(deprecated)]
-impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-    fn from(message: MessageInteraction) -> Self {
-        Self::Message(message)
-    }
-}
+// #[allow(deprecated)]
+// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
+//     fn from(message: MessageReaction) -> Self {
+//         Self::Message(message)
+//     }
+// }
 
 // impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 //     fn from(message: MessageInteraction) -> Self {
@@ -782,7 +782,8 @@ pub fn check_interaction(result: Result<(), Error>) {
 #[allow(deprecated)]
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
-    Message(Option<Box<MessageInteraction>>),
+    Message(Option<Box<MessageInteractionMetadata>>),
+    //Message(Option<Box<MessageInteraction>>),
 }
 
 pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
@@ -804,7 +805,7 @@ pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInt
             app_ctx.interaction.clone(),
         )),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
-            ctx.msg.interaction.clone(),
+            ctx.msg.interaction_metadata.clone(),
         )),
     }
 }

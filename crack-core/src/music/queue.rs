@@ -49,7 +49,7 @@ pub async fn queue_resolved_track_back(
         aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
     });
     let track = Track::new_with_data(ytdl.clone().into(), track_data);
-    let mut track_handle = handler.enqueue(track).await;
+    let _track_handle = handler.enqueue(track).await;
     // .enqueue_input(Into::<SongbirdInput>::into(track))
     let new_q = handler.queue().current_queue();
     drop(handler);

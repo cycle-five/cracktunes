@@ -20,7 +20,7 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [dependencies]
-poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
+poise = { workspace = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
 tokio = { workspace = true }

@@ -36,7 +36,7 @@ serenity = { workspace = true }
 tracing = "0.1.40"
 tokio = { workspace = true }
 thiserror = "1.0.69"
-poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true }
+poise = { workspace = true }
 url = "2.5"
 
 

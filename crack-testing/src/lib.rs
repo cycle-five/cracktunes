@@ -6,6 +6,7 @@ pub use resolve::*;
 //------------------------------------
 // crack_types imports
 //------------------------------------
+use crack_types::SpotifyTrackTrait;
 use crack_types::TrackResolveError;
 use crack_types::{parse_url, video_info_to_aux_metadata};
 use crack_types::{Error, QueryType, SearchResult};
@@ -85,7 +86,7 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct CrackTrackClient<'a> {
-    req_client: reqwest::Client,
+    pub req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
     video_opts: VideoOptions,
     q: Arc<DashMap<GuildId, CrackTrackQueue<'a>>>,
@@ -109,7 +110,6 @@ impl Default for CrackTrackClient<'_> {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 }
@@ -167,7 +167,64 @@ impl<'a> CrackTrackClient<'a> {
         }
     }
 
-    pub async fn resolve_track_many(&self, queries: Vec<QueryType>) -> Result<Vec<ResolvedTrack<'a>>, Error> {
+    pub async fn resolve_query_to_tracks(
+        &self,
+        query: QueryType,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
+        match query {
+            QueryType::VideoLink(_) | QueryType::Keywords(_) => {
+                self.resolve_track_many(vec![query]).await
+            },
+            QueryType::PlaylistLink(_) => {
+                self.resolve_playlist(&query.build_query().unwrap_or_default())
+                    .await
+            },
+            QueryType::KeywordList(keywords_list) => {
+                let queries = keywords_list
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.clone()))
+                    .collect::<Vec<QueryType>>();
+                self.resolve_track_many(queries).await
+            },
+            QueryType::NewYoutubeDl((_ytdl, opts)) => {
+                let req_options = RequestOptions {
+                    client: Some(self.req_client.clone()),
+                    ..Default::default()
+                };
+                let video_options = VideoOptions {
+                    request_options: req_options.clone(),
+                    ..Default::default()
+                };
+                let video = rusty_ytdl::Video::new_with_options(
+                    opts.clone().source_url.unwrap_or_default(),
+                    video_options,
+                )?;
+                let info = video.get_info().await?;
+
+                Ok(vec![ResolvedTrack::default()
+                    .with_details(info.video_details)
+                    .with_metadata(opts)
+                    .with_video(video)])
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let queries = tracks
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.build_query()))
+                    .collect::<Vec<QueryType>>();
+
+                self.resolve_track_many(queries).await
+            },
+            _ => {
+                tracing::error!("Query type not implemented: {query:?}");
+                Err(TrackResolveError::UnknownQueryType.into())
+            },
+        }
+    }
+
+    pub async fn resolve_track_many(
+        &self,
+        queries: Vec<QueryType>,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let mut queue = Vec::new();
         for query in queries {
             let track = self.resolve_track(query).await?;

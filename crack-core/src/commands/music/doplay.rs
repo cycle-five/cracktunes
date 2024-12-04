@@ -2,7 +2,7 @@ use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
-use crate::utils::edit_embed_response2;
+use crate::utils::{edit_embed_response2, TrackData};
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
@@ -30,10 +30,11 @@ use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
+use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -512,6 +513,51 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
     }
 }
 
+/// This function takes a [`NewQueryType`] and resolves it to zero or more tracks in [`Vec<Track>`].
+pub async fn resolve_query_to_tracks(
+    ctx: Context<'_>,
+    _call: Arc<Mutex<Call>>,
+    query_type: NewQueryType,
+) -> CrackedResult<Vec<Track>> {
+    let client = ctx.data().ct_client.clone();
+    let NewQueryType(query_type) = query_type;
+    let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;
+    //let tracks = client.resolve_track(query_type).await?;
+    let mut track_handles = Vec::new();
+    for track in tracks.iter() {
+        let ytdl = RustyYoutubeSearch::new_with_stuff(
+            client.req_client.clone(),
+            query_type.clone(),
+            track.metadata.clone(),
+            track.video.clone(),
+        )?;
+        let resolved_clone = &track.clone();
+        let track_data = Arc::new(TrackData {
+            user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+            aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+        });
+        let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
+        track_handles.push(track2);
+    }
+    Ok(track_handles)
+}
+
+// let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
+//         Ok(resolved) => resolved.with_user_id(user_id),
+//         Err(e1) => {
+//             match e1.into() {
+//                 Some(_e) => {
+//                     let ready_track = ready_query(ctx, query_type.clone()).await?;
+//                     return _queue_track_ready_back(call, ready_track).await;
+//                 },
+//                 None => {
+//                     return Err(CrackedError::TrackResolveError(
+//                         TrackResolveError::UnknownQueryType,
+//                     ));
+//                 },
+//             };
+//         },
+//     }
 /// This is what actually does the majority of the work of the function.
 /// It finds the track that the user wants to play and then actually
 /// does the process of queuing it. This needs to be optimized.
@@ -524,6 +570,8 @@ async fn match_mode(
     search_msg: ReplyHandle<'_>,
 ) -> CrackedResult<()> {
     tracing::info!("mode: {:?}", mode);
+
+    // ctx.data().ct_client.resolve_query(&query_type).await?;
 
     // let ctx = Arc::new(ctx.clone());
     match mode {
@@ -706,7 +754,7 @@ async fn build_queued_embed<'att>(
         .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
-use crate::sources::rusty_ytdl::RequestOptionsBuilder;
+use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
 use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
