@@ -1,5 +1,4 @@
 use once_cell::sync::Lazy;
-use reqwest as reqwest_old;
 use reqwest::Client;
 use std::future::Future;
 
@@ -39,6 +38,7 @@ impl PartialEq for SendMessageParams<'_> {
     }
 }
 
+/// Default implementation for [`SendMessageParams`].
 impl Default for SendMessageParams<'_> {
     fn default() -> Self {
         SendMessageParams {
@@ -99,7 +99,7 @@ impl<'a> SendMessageParams<'a> {
 
 /// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
-    fn get_bot_id(&self) -> impl Future<Output = Result<UserId, CrackedError>> + Send;
+    fn get_bot_id(&self) -> impl Future<Output = CrackedResult<UserId>> + Send;
     fn user_id_to_username_or_default(
         &self,
         user_id: UserId,
@@ -108,20 +108,20 @@ pub trait CacheHttpExt {
         &self,
         channel_id: ChannelId,
         guild_id: GuildId,
-    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
+    ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
     fn send_channel_message(
         &self,
         params: SendMessageParams,
-    ) -> impl Future<Output = Result<serenity::model::channel::Message, CrackedError>> + Send;
+    ) -> impl Future<Output = CrackedResult<Message>> + Send;
     fn guild_name_from_guild_id(
         &self,
         guild_id: GuildId,
-    ) -> impl Future<Output = Result<FixedString, CrackedError>> + Send;
+    ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
 }
 
 /// Implement the CacheHttpExt trait for any type that implements CacheHttp.
 impl<T: CacheHttp> CacheHttpExt for T {
-    async fn get_bot_id(&self) -> Result<UserId, CrackedError> {
+    async fn get_bot_id(&self) -> CrackedResult<UserId> {
         get_bot_id(self).await
     }
 
@@ -133,16 +133,13 @@ impl<T: CacheHttp> CacheHttpExt for T {
         &self,
         channel_id: ChannelId,
         guild_id: GuildId,
-    ) -> Result<FixedString, CrackedError> {
+    ) -> CrackedResult<FixedString> {
         get_guild_name(self, channel_id, guild_id).await
     }
 
     /// Sends a message to a channel.
     #[cfg(not(tarpaulin_include))]
-    async fn send_channel_message(
-        &self,
-        params: SendMessageParams<'_>,
-    ) -> Result<Message, CrackedError> {
+    async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
         let channel = params.channel;
         let content = format!("{}", params.msg);
         let msg = if params.as_embed {

@@ -13,6 +13,7 @@ fn test_verify_bools() {
 
 #[test]
 fn test_verify_options() {
+    // This par0t is named crackie and he smokes crack.
     let x = Some("🦜");
     let x = verify(x, CrackedError::Other("not something"));
     assert_eq!(x, Ok("🦜"));

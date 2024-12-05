@@ -39,6 +39,7 @@ use poise::{
     },
     CreateReply, ReplyHandle,
 };
+use serenity::all::UserId;
 #[allow(deprecated)]
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
@@ -55,8 +56,10 @@ use url::Url;
 pub const EMBED_PAGE_SIZE: usize = 6;
 // This term gets appended to search queries in the default mode to try to find the album version of a song.
 // pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
+// FIXME: Whether we use this or not it doesnt' go here.
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
+/// FIXME: What is "cold"? And mustrify it.
 #[cold]
 fn create_err(line: u32, file: &str) -> anyhow::Error {
     anyhow::anyhow!("Unexpected None value on line {line} in {file}",)
@@ -383,24 +386,11 @@ pub async fn edit_embed_response_poise(
     reply_handle?.into_message().await.map_err(Into::into)
 }
 
-// /// Data struct for the bot, which is stored and accessible in all command invocations
-// #[derive(Clone, Debug)]
-// pub struct TrackData(pub ArcTrackData);
-
-// /// Impl [`Deref`] for our custom [`Data`] struct
-// impl std::ops::Deref for TrackData {
-//     type Target = TrackDataInner;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
 //use tokio::sync::RwLock;
 /// Modifiable data struct for the track information.
 #[derive(Clone, Debug, Default)]
 pub struct TrackData {
-    pub user_id: Arc<RwLock<Option<serenity::UserId>>>,
+    pub user_id: Arc<RwLock<Option<UserId>>>,
     pub aux_metadata: Arc<RwLock<Option<AuxMetadata>>>,
 }
 
@@ -410,8 +400,22 @@ unsafe impl Sync for TrackData {}
 impl TrackData {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            user_id: Arc::new(RwLock::new(None)),
+            user_id: Arc::new(RwLock::new(Some(UserId::new(1)))),
             aux_metadata: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    pub fn with_user_id(self: Arc<Self>, user_id: UserId) -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::new(RwLock::new(Some(user_id))),
+            aux_metadata: Arc::clone(&self.aux_metadata),
+        })
+    }
+
+    pub fn with_metadata(self: Arc<Self>, md: AuxMetadata) -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::clone(&self.user_id),
+            aux_metadata: Arc::new(RwLock::new(Some(md))),
         })
     }
 }

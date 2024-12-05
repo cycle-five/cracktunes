@@ -1,5 +1,5 @@
-use crate::errors::CrackedError;
 use crate::messaging::messages::TEST;
+use crate::{errors::CrackedError, CrackedResult};
 use ::chrono::Duration;
 use sqlx::{
     types::chrono::{self},
@@ -38,22 +38,23 @@ pub struct UserVote {
 /// Implementations for the User struct.
 impl User {
     /// Insert a test user into the database.
-    pub async fn insert_test_user(pool: &PgPool, user_id: Option<i64>, username: Option<String>) {
+    pub async fn insert_test_user(
+        pool: &PgPool,
+        user_id: Option<i64>,
+        username: Option<String>,
+    ) -> CrackedResult<()> {
         let user = username.unwrap_or(TEST.to_string());
         let user_id = user_id.unwrap_or(1);
-        let result = sqlx::query!(
+        sqlx::query!(
             r#"insert into public.user
             (id, username, avatar_url, bot, created_at, updated_at, last_seen) values ($1, $2, '', false, now(), now(), now())"#,
             user_id,
             user,
         )
         .execute(pool)
-        .await;
-
-        match result {
-            Ok(_) => println!("User inserted successfully."),
-            Err(e) => println!("Failed to insert user: {}", e),
-        }
+        .await
+        .map_err(CrackedError::from)
+        .map(|_| ())
     }
 
     /// Get a user from the database by user_id.
@@ -192,6 +193,14 @@ mod test {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user(pool: PgPool) {
         User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
+        let user = User::get_user(&pool, 1).await.unwrap();
+        assert_eq!(user.username, TEST);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_insert_user_failed(pool: PgPool) {
+        let res = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
+        let res2 = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
         assert_eq!(user.username, TEST);
     }

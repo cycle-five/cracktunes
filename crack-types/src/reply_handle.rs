@@ -129,6 +129,8 @@ impl Container {
     }
 }
 
+/// async run function where different front ends hook into the system to run things.
+#[allow(clippy::unused_async)]
 pub async fn run() {
     let message = Message::default();
     let handle = MessageOrReplyHandle::Message(message);

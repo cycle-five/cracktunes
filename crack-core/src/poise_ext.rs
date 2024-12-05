@@ -2,16 +2,8 @@ use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::music::TrackReadyData;
 use crate::{
-    // commands::has_voted_bot_id
-    commands::CrackedError,
-    db,
-    http_utils,
-    http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
-    utils::OptionTryUnwrap,
-    CrackedResult,
-    Data,
-    Error,
+    commands::CrackedError, db, http_utils, http_utils::SendMessageParams,
+    messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Data, Error,
     MessageOrReplyHandle,
 };
 use colored::Colorize;

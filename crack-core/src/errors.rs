@@ -82,13 +82,11 @@ pub enum CrackedError {
     Poise(Error),
     QueueEmpty,
     Reqwest(reqwest::Error),
-    //ReqwestOld(reqwest_old::Error),
     RoleNotFound(serenity::RoleId),
     RSpotify(RSpotifyClientError),
     RSpotifyLockError(String),
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
-    // SerdeStream(serde_stream::Error),
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
@@ -510,6 +508,7 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
+        /// WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()
