@@ -26,7 +26,7 @@ const GPT_PROMPT: &str = concatcp!(
     " and you are using the GPT-4o model.\n",
     "Here is a menu of commands you can use:\n"
 );
-const HELP_STR: &str = r#"
+const HELP_STR: &str = r"
     Commands:
         /autopause    Toggle autopause.
         /autoplay     Toggle music autoplay.
@@ -64,7 +64,7 @@ const HELP_STR: &str = r#"
 
         Utility:
         /help         Show the help menu.
-"#;
+";
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -97,8 +97,9 @@ impl Debug for GptContext {
 }
 
 impl GptContext {
+    #[must_use]
     pub fn new() -> Self {
-        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| String::new());
         GptContext {
             msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
             key: Some(api_key.clone()),

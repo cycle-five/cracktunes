@@ -149,9 +149,9 @@ pub trait SpotifyTrackTrait {
     fn build_query(&self) -> String;
 }
 
-/// Implementation of our SpotifyTrackTrait.
+/// Implementation of our `[SpotifyTrackTrait]`.
 impl SpotifyTrackTrait for SpotifyTrack {
-    /// Create a new SpotifyTrack.
+    /// Create a new `SpotifyTrack`.
     fn new(full_track: rspotify::model::FullTrack) -> Self {
         Self { full_track }
     }

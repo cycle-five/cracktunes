@@ -154,12 +154,29 @@ pub async fn _queue_track_ready_back(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let mut track_handle = handler.enqueue_input(ready_track.source).await;
+
+    let TrackReadyData {
+        source,
+        metadata,
+        user_id,
+        ..
+    } = ready_track;
+
+    let NewAuxMetadata(metadata) = metadata;
+
+    let track_data = Arc::new(TrackData {
+        user_id: Arc::new(RwLock::new(user_id)),
+        aux_metadata: Arc::new(RwLock::new(Some(metadata))),
+    });
+    let track = Track::new_with_data(source.into(), track_data);
+
+    // let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let mut track_handle = handler.enqueue(track).await;
     let new_q = handler.queue().current_queue();
     drop(handler);
 
-    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
-    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
+    // set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
+    // set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
     Ok(new_q)
 }
 
@@ -178,7 +195,7 @@ pub async fn queue_track_front(
 
 use crack_types::TrackResolveError;
 /// Pushes a track to the front of the queue.
-#[tracing::instrument(skip(ctx, call, query_type))]
+#[tracing::instrument(skip(ctx, call))]
 pub async fn queue_track_back(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,

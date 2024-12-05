@@ -175,15 +175,15 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to build reqwest client")
 });
 
-/// This is a hack to get around the fact that we can't use async in statics. Is it?
-static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
-    println!("Creating a new (old) reqwest client...");
-    reqwest_old::ClientBuilder::new()
-        .use_rustls_tls()
-        .cookie_store(true)
-        .build()
-        .expect("Failed to build reqwest client")
-});
+// /// This is a hack to get around the fact that we can't use async in statics. Is it?
+// static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
+//     println!("Creating a new (old) reqwest client...");
+//     reqwest_old::ClientBuilder::new()
+//         .use_rustls_tls()
+//         .cookie_store(true)
+//         .build()
+//         .expect("Failed to build reqwest client")
+// });
 
 /// Build a reqwest client with rustls.
 pub fn build_client() -> Client {
@@ -200,8 +200,8 @@ pub fn get_client() -> &'static Client {
 }
 
 /// Get a reference to an old version client.
-pub fn get_client_old() -> &'static reqwest_old::Client {
-    &CLIENT_OLD
+pub fn get_client_old() -> &'static reqwest::Client {
+    &CLIENT
 }
 
 /// Initialize the static, global reqwest client.

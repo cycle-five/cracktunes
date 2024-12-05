@@ -14,8 +14,10 @@ pub struct BrainfuckProgram {
 }
 
 /// Implementation of the representation and execution of a brainfuck program.
+#[allow(clippy::large_stack_arrays)]
 impl BrainfuckProgram {
-    pub fn new(program: String) -> Self {
+    #[must_use]
+    pub fn new(program: &str) -> Self {
         let program = program
             .chars()
             .filter(|c| matches!(c, '+' | '-' | '<' | '>' | '[' | ']' | '.' | ','))
@@ -30,7 +32,7 @@ impl BrainfuckProgram {
         }
     }
 
-    /// Match a bracket b'[' to the matching b']' on the same level of
+    /// Match a bracket 0b`[` to the matching 0b`]` on the same level of
     /// precedence. Returns the new PC pointer.
     /// TODO: Add some error handling.
     fn match_bracket_forward(cells: &[u8], ptr: usize, code: &[u8], pc: usize) -> usize {
@@ -87,6 +89,8 @@ impl BrainfuckProgram {
     // }
 
     /// Run the brainfuck program.
+    /// # Errors
+    /// * `Error` - Can error if there is an issue reading from the reader or writing to the writer.
     #[allow(clippy::match_on_vec_items)]
     pub async fn run_async<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<usize, Error>
     where
@@ -139,6 +143,13 @@ impl BrainfuckProgram {
     }
 
     /// Run the brainfuck program.
+    /// # Arguments
+    /// * `reader` - A reader to read input (program source) from.
+    /// * `writer` - A writer to write (program) output to.
+    /// # Returns
+    /// * `Result<(), Error>` - A result indicating success or failure.
+    /// # Errors
+    /// * `Error` - Can error if there is an issue reading from the reader or writing to the writer.
     pub fn run<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<(), Error>
     where
         R: BufRead,
@@ -198,7 +209,7 @@ mod tests {
     #[test]
     fn test_hello_world_cursor() {
         let program = String::from("++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.");
-        let mut bf = BrainfuckProgram::new(program);
+        let mut bf = BrainfuckProgram::new(&program);
 
         let input = Cursor::new(vec![]);
         let mut output = Cursor::new(vec![]);
@@ -211,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_input_output() {
-        let program = String::from(",[.,]");
+        let program = ",[.,]";
         let mut bf = BrainfuckProgram::new(program);
 
         let input_data = b"Brainfuck\n".to_vec();
@@ -227,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_output_async() {
-        let program = String::from(",[.,]");
+        let program = ",[.,]";
         let mut bf = BrainfuckProgram::new(program);
 
         let input_data = b"Brainfuck\n".to_vec();
@@ -249,13 +260,13 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        let program = r#"
+        let program = r"
             ++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.
-        "#;
+        ";
         let stdio = std::io::stdin();
         let stdin = stdio.lock();
         let stdout = std::io::stdout();
-        let mut bf = BrainfuckProgram::new(program.to_string());
+        let mut bf = BrainfuckProgram::new(program);
         if let Err(_) = bf.run(stdin, stdout) {
             assert!(false)
         }
@@ -263,27 +274,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_calculator() {
-        let program = r#"
+        let program = r"
             +>+>+>+>>>,.>++++[<---------->-]<-------[-<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],.>++++[<---------->-]<--[>+<-]>[<<<<<<<->>>>>>>-[<<<<<<->>>>>>--[<<<<<->>>>>--[<<<<<<<+>+>+>>>>>[<+>-]]]]]<]>,.>++++[<---------->-]<-------[-<[>>+<<-]>>[<<++++++++++>>-]<[<+>-],.>++++[<---------->-]<-------[>+>+<<-]>>[<<+>>-]<-[-[-[-[-[-[-[-[-[-[<[-]>[-]]]]]]]]]]]<]<<<<<<<[->->->->>[>>+<<-]>[>[<<+>>>+<-]>[<+>-]<<-]>[-]<<<<<<<]>[->->->>>[<+>-]<<<<<]>[->->+>>[>+<-]>>+<[>-<[<+>-]]>[-<<<<->[>+<-]>>>]<<<[->-[>+<-]>>+<[>-<[<+>-]]>[-<<<<->[>+<-]>>>]<<<]>[<+>-]<<<<]>[->>>>>+[-<<<[>>>+>+<<<<-]>>>[<<<+>>>-]<<[>>+>>+<<<<-]>>[<<+>>-]>[->->>+<<[>+<-]>[>-<[<+>-]]>[-<<<<+<+<<[-]>>>>[<<<<+>>>>-]>>>]<<<]>[-]<<]<<[-]<[>+<-]>>[<<+>>-]<<<<]>>>[>>+[<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]+<[-[-[-[-[-[-[-[-[-[>-<<<<---------->+>>[-]]]]]]]]]]]>[->[>]>++++[<++++++++++>-]<++++++++[<]<<<<[>>>>>[>]<+[<]<<<<-]>>-<[>+<[<+>-]]>>>]<<]>>>[>]>++++[<++++++++++>-]<++++++>>++++[<++++++++++>-]<++++++>>++++[<++++++++++>-]<++++++[<]<<<<]>+[<<[>>>+>+<<<<-]>>>>[<<<<+>>>>-]+<[-[-[-[-[-[-[-[-[-[>-<<<<---------->+>>[-]]]]]]]]]]]>[->>[>]>++++[<++++++++++>-]<++++++++[<]<<<<<[>>>>>>[>]<+[<]<<<<<-]>>-<[>+<[<+>-]]>>>]<<]<<<[->>>>>>>[>]>++++[<++++++++++>-]<+++++[<]<<<<<<]>>>>>>>[>]<[.<]
-        "#;
+        ";
         let input = BufReader::new(&b"2+100\n"[..]);
         let stdout = std::io::stdout();
-        let mut bf = BrainfuckProgram::new(program.to_string());
+        let mut bf = BrainfuckProgram::new(program);
         let _ = bf.run(input, stdout);
     }
 
     #[tokio::test]
     async fn test_async() {
-        let program = r#"
+        let program = r"
             >+++++++++++[-<+++++++++++++++>] # initialize 165 at first cell
             >++++++++++<<[->+>-[>+>>]>[+[-<+>]>+>>]<<<<<<]>>[-]>>>++++++++++<[->-[>+>>]>[+[-
             <+>]>+>>]<<<<<]>[-]>>[>++++++[-<++++++++>]<.<<+>+>[-]]<[<[->-<]++++++[->++++++++
             <]>.[-]]<<++++++[-<++++++++>]<.[-]<<[-<+>]
-        "#;
+        ";
         let input = Cursor::new(&b"100\n"[..]);
         let output = Cursor::new(vec![]);
 
-        let mut bf = BrainfuckProgram::new(program.to_string());
+        let mut bf = BrainfuckProgram::new(program);
         if let Err(_) = bf.run_async(input, output).await {
             assert!(false)
         }
