@@ -71,7 +71,7 @@ impl MyYoutubeDl {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             return Err(CrackedError::CommandFailed(
-                &self.program,
+                self.program,
                 output.status,
                 stderr.into(),
             ));

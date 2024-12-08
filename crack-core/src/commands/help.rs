@@ -209,17 +209,17 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         // Mode is Root
         // None => HelpCommandMode::Root,
     }
-    let mut cmd_str: String = command.unwrap().clone().to_owned();
+    let mut cmd_str: String = command.unwrap().to_owned();
     // We just checked that command is not None, so this unwrap is safe
     let (mut command_obj, remaining_args) = {
         let n = cmd_str.find(' ').unwrap_or(cmd_str.len());
-        let mut remainder = cmd_str.split_off(n);
+        let remainder = cmd_str.split_off(n);
 
         let opt_find_cmd = poise::find_command(commands, &cmd_str, true, &mut Vec::new());
         let command_obj = match opt_find_cmd {
             Some((cmd, _, _)) => cmd,
             None => {
-                let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone().into()));
+                let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone()));
                 let _ = send_reply_owned(ctx, msg.into(), true).await?;
                 return Ok(());
             },
@@ -229,16 +229,16 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
     };
 
     if !remaining_args.is_empty() {
-        let mut command_obj_copy = command_obj.clone();
-        (command_obj_copy, _, _) = require!(
+        //let mut command_obj_copy = command_obj.clone();
+        (command_obj, _, _) = require!(
             poise::find_command(
-                &command_obj_copy.subcommands,
+                &command_obj.subcommands,
                 &remaining_args,
                 true,
                 &mut Vec::new()
             ),
             {
-                let group_name = command_obj_copy.name.clone();
+                let group_name = command_obj.name.clone();
                 let subcommand_name = remaining_args;
                 let msg = CrackedMessage::SubcommandNotFound {
                     group: Cow::Owned(group_name.to_string().clone()),

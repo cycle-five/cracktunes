@@ -1,5 +1,6 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
+#![feature(formatting_options)]
 pub mod commands;
 pub mod config;
 pub mod connection;

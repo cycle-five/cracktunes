@@ -31,7 +31,8 @@ use serenity::{
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::borrow::Cow;
-use std::fmt::Write;
+use std::fmt::FormattingOptions;
+use std::fmt::{Formatter, Write};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -500,8 +501,9 @@ mod test {
         assert!(embed.is_ok());
         let embed = embed.unwrap();
         let mut output = String::new();
+        let opts = FormattingOptions::default();
 
-        let mut formatter = Formatter::new(&mut output);
+        let mut formatter = Formatter::new(&mut output, opts);
         // let writer = StringWriter::new();
         // let fmt = std::fmt::Formatter::new(writer);
         embed.fmt(&mut formatter).unwrap();
