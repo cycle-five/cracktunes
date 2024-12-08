@@ -36,6 +36,8 @@ pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId)
 }
 
 /// Get the voice channel a user is in within a guild.
+/// # Errors
+/// * If the user is not in a voice channel in the guild.
 pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<ChannelId, Error> {
     guild
         .voice_states
@@ -80,5 +82,21 @@ mod test {
             check_voice_connections(&guild, &user_id, &bot_id),
             Connection::Neither
         );
+    }
+
+    #[test]
+    fn test_get_voice_channel_for_user() {
+        let guild = Guild::default();
+        let user_id = UserId::new(1);
+
+        assert!(super::get_voice_channel_for_user(&guild, &user_id).is_err());
+    }
+
+    #[test]
+    fn test_get_voice_channel_for_user_summon() {
+        let guild = Guild::default();
+        let user_id = UserId::new(1);
+
+        assert!(super::get_voice_channel_for_user_summon(&guild, &user_id).is_err());
     }
 }

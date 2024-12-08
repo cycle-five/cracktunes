@@ -9,8 +9,7 @@
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
-use crate::poise_ext::PoiseContextExt;
-use crate::utils::{create_paged_embed, send_reply};
+use crate::utils::{create_paged_embed, send_reply_owned};
 use crate::{require, Context, Data, Error};
 use ::serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
 use itertools::Itertools;
@@ -122,8 +121,6 @@ pub async fn get_matching_command_strs(
     Ok(result)
 }
 
-// CreateAutocompleteResponse::new().set_choices(Cow::Owned(&result.as_slice()))
-
 /// The help function from builtins copied.
 pub async fn builtin_help(
     ctx: crate::Context<'_>,
@@ -196,121 +193,75 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
     let framework_options = ctx.framework().options();
     let commands = &framework_options.commands;
 
-    let remaining_args: String;
-    let _mode = match command {
-        None => HelpCommandMode::Root,
-        Some(command) => {
-            let mut subcommand_iterator = command.split(' ');
+    if command.is_none() {
+        builtin_help(
+            ctx,
+            None,
+            HelpConfiguration {
+                show_context_menu_commands: false,
+                show_subcommands: false,
+                extra_text_at_bottom: EXTRA_TEXT_AT_BOTTOM,
+                ..Default::default()
+            },
+        )
+        .await?;
+        return Ok(());
+        // Mode is Root
+        // None => HelpCommandMode::Root,
+    }
+    let mut cmd_str: String = command.unwrap().clone().to_owned();
+    // We just checked that command is not None, so this unwrap is safe
+    let (mut command_obj, remaining_args) = {
+        let n = cmd_str.find(' ').unwrap_or(cmd_str.len());
+        let mut remainder = cmd_str.split_off(n);
 
-            let top_level_command = subcommand_iterator.next().unwrap();
-            let (mut command_obj, _, _) = require!(
-                poise::find_command(commands, top_level_command, true, &mut Vec::new()),
-                {
-                    let msg = CrackedError::CommandNotFound(top_level_command.to_string());
-                    let _ = ctx.send_reply(msg.into(), true).await?;
-                    Ok(())
-                }
-            );
-
-            remaining_args = subcommand_iterator.collect();
-            if !remaining_args.is_empty() {
-                (command_obj, _, _) = require!(
-                    poise::find_command(
-                        &command_obj.subcommands,
-                        &remaining_args,
-                        true,
-                        &mut Vec::new()
-                    ),
-                    {
-                        let group_name = command_obj.name.clone();
-                        let subcommand_name = remaining_args;
-                        let msg = CrackedMessage::SubcommandNotFound {
-                            group: group_name.to_string(),
-                            subcommand: subcommand_name,
-                        };
-
-                        let _ = send_reply(&ctx, msg, true).await?;
-                        Ok(())
-                    }
-                );
-            };
-
-            if command_obj.owners_only && !framework_options.owners.contains(&ctx.author().id) {
-                let msg = CrackedMessage::OwnersOnly;
-                let _ = send_reply(&ctx, msg, true).await?;
+        let opt_find_cmd = poise::find_command(commands, &cmd_str, true, &mut Vec::new());
+        let command_obj = match opt_find_cmd {
+            Some((cmd, _, _)) => cmd,
+            None => {
+                let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone().into()));
+                let _ = send_reply_owned(ctx, msg.into(), true).await?;
                 return Ok(());
-            }
+            },
+        };
 
-            if command_obj.subcommands.is_empty() {
-                HelpCommandMode::Command(command_obj)
-            } else {
-                HelpCommandMode::Group(command_obj)
-            }
-        },
+        (command_obj, remainder)
     };
 
-    // // let neutral_colour = Colour::from_rgb(0x00, 0x00, 0x00);
-    // let neutral_colour = Colour::BLURPLE;
-    // let embed = CreateEmbed::default()
-    //     .title("{command_name} Help!".to_string().replace(
-    //         "{command_name}",
-    //         &match &mode {
-    //             HelpCommandMode::Root => ctx.cache().current_user().name.to_string(),
-    //             HelpCommandMode::Group(c) | HelpCommandMode::Command(c) => {
-    //                 format!("`{}`", c.qualified_name)
-    //             },
-    //         },
-    //     ))
-    //     .description(match &mode {
-    //         HelpCommandMode::Root => show_group_description(&get_command_mapping(commands)),
-    //         HelpCommandMode::Command(command_obj) => {
-    //             let mut msg = format!(
-    //                 "{}\n```/{}",
-    //                 command_obj
-    //                     .description
-    //                     .as_deref()
-    //                     .unwrap_or_else(|| "Command description not found!"),
-    //                 command_obj.qualified_name
-    //             );
+    if !remaining_args.is_empty() {
+        let mut command_obj_copy = command_obj.clone();
+        (command_obj_copy, _, _) = require!(
+            poise::find_command(
+                &command_obj_copy.subcommands,
+                &remaining_args,
+                true,
+                &mut Vec::new()
+            ),
+            {
+                let group_name = command_obj_copy.name.clone();
+                let subcommand_name = remaining_args;
+                let msg = CrackedMessage::SubcommandNotFound {
+                    group: Cow::Owned(group_name.to_string().clone()),
+                    subcommand: Cow::Owned(subcommand_name.to_string().clone()),
+                };
 
-    //             format_params(&mut msg, command_obj);
-    //             msg.push_str("```\n");
+                let _ = send_reply_owned(ctx, msg, true).await?;
+                Ok(())
+            }
+        );
+    };
 
-    //             if !command_obj.parameters.is_empty() {
-    //                 msg.push_str("__**Parameter Descriptions**__\n");
-    //                 command_obj.parameters.iter().for_each(|p| {
-    //                     let name = &p.name;
-    //                     let description =
-    //                         p.description.as_deref().unwrap_or_else(|| "no description");
-    //                     writeln!(msg, "`{name}`: {description}").unwrap();
-    //                 });
-    //             };
+    if command_obj.owners_only && !framework_options.owners.contains(&ctx.author().id) {
+        let msg = CrackedMessage::OwnersOnly;
+        let _ = send_reply_owned(ctx, msg, true).await?;
+        return Ok(());
+    }
 
-    //             msg
-    //         },
-    //         HelpCommandMode::Group(group) => show_group_description(&{
-    //             let mut map = IndexMap::new();
-    //             map.insert(
-    //                 group.qualified_name.as_ref(),
-    //                 group.subcommands.iter().collect(),
-    //             );
-    //             map
-    //         }),
-    //     })
-    //     .colour(neutral_colour)
-    //     .author(
-    //         serenity::CreateEmbedAuthor::new(ctx.author().name.as_str())
-    //             .icon_url(ctx.author().face()),
-    //     )
-    //     .footer(serenity::CreateEmbedFooter::new(match mode {
-    //         HelpCommandMode::Group(c) => Cow::Owned(
-    //             ctx.gettext("Use `/help {command_name} [command]` for more info on a command")
-    //                 .replace("{command_name}", &c.qualified_name),
-    //         ),
-    //         HelpCommandMode::Command(_) | HelpCommandMode::Root => {
-    //             Cow::Borrowed(ctx.gettext("Use `/help [command]` for more info on a command"))
-    //         },
-    //     }));
+    // if command_obj.subcommands.is_empty() {
+    //     HelpCommandMode::Command(command_obj)
+    // } else {
+    //     HelpCommandMode::Group(command_obj)
+    // }
 
     builtin_help(
         ctx,
@@ -325,76 +276,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
     .await?;
     Ok(())
 }
-
-//     Ok(())
-
-// let neutral_colour = ctx.neutral_colour().await;
-// let embed = CreateEmbed::default()
-//     .title(ctx.gettext("{command_name} Help!").replace(
-//         "{command_name}",
-//         &match &mode {
-//             HelpCommandMode::Root => ctx.cache().current_user().name.to_string(),
-//             HelpCommandMode::Group(c) | HelpCommandMode::Command(c) => {
-//                 format!("`{}`", c.qualified_name)
-//             },
-//         },
-//     ))
-//     .description(match &mode {
-//         HelpCommandMode::Root => show_group_description(&get_command_mapping(commands)),
-//         HelpCommandMode::Command(command_obj) => {
-//             let mut msg = format!(
-//                 "{}\n```/{}",
-//                 command_obj
-//                     .description
-//                     .as_deref()
-//                     .unwrap_or_else(|| ctx.gettext("Command description not found!")),
-//                 command_obj.qualified_name
-//             );
-
-//             format_params(&mut msg, command_obj);
-//             msg.push_str("```\n");
-
-//             if !command_obj.parameters.is_empty() {
-//                 msg.push_str(ctx.gettext("__**Parameter Descriptions**__\n"));
-//                 command_obj.parameters.iter().for_each(|p| {
-//                     let name = &p.name;
-//                     let description = p
-//                         .description
-//                         .as_deref()
-//                         .unwrap_or_else(|| ctx.gettext("no description"));
-//                     writeln!(msg, "`{name}`: {description}").unwrap();
-//                 });
-//             };
-
-//             msg
-//         },
-//         HelpCommandMode::Group(group) => show_group_description(&{
-//             let mut map = IndexMap::new();
-//             map.insert(
-//                 group.qualified_name.as_ref(),
-//                 group.subcommands.iter().collect(),
-//             );
-//             map
-//         }),
-//     })
-//     .colour(neutral_colour)
-//     .author(
-//         serenity::CreateEmbedAuthor::new(ctx.author().name.as_str())
-//             .icon_url(ctx.author().face()),
-//     )
-//     .footer(serenity::CreateEmbedFooter::new(match mode {
-//         HelpCommandMode::Group(c) => Cow::Owned(
-//             ctx.gettext("Use `/help {command_name} [command]` for more info on a command")
-//                 .replace("{command_name}", &c.qualified_name),
-//         ),
-//         HelpCommandMode::Command(_) | HelpCommandMode::Root => {
-//             Cow::Borrowed(ctx.gettext("Use `/help [command]` for more info on a command"))
-//         },
-//     }));
-
-// ctx.send(poise::CreateReply::default().embed(embed)).await?;
-// Ok(())
-//}
 
 // /set calls /help set
 pub use command_func as command;

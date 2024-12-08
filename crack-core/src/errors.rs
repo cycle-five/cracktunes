@@ -8,6 +8,7 @@ use crate::messaging::messages::{
     NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
+use std::borrow::Cow;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
@@ -40,19 +41,19 @@ pub enum CrackedError {
     Anyhow(anyhow::Error),
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
-    CommandFailed(String, ExitStatus, String),
-    CommandNotFound(String),
+    CommandFailed(&'static str, ExitStatus, Cow<'static, str>),
+    CommandNotFound(Cow<'static, str>),
     Control(ControlError),
-    DurationParseError(String, String),
+    DurationParseError(&'static str, &'static str),
     EmptySearchResult,
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
-    FailedToSetChannelSize(String, ChannelId, u32, Error),
+    FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
-    InvalidIP(String),
+    InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
     IO(std::io::Error),
@@ -84,7 +85,7 @@ pub enum CrackedError {
     Reqwest(reqwest::Error),
     RoleNotFound(serenity::RoleId),
     RSpotify(RSpotifyClientError),
-    RSpotifyLockError(String),
+    RSpotifyLockError(&'static str),
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
     Songbird(Error),

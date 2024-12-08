@@ -118,8 +118,8 @@ pub enum CrackedMessage {
     },
     Stop,
     SubcommandNotFound {
-        group: String,
-        subcommand: String,
+        group: Cow<'static, String>,
+        subcommand: Cow<'static, String>,
     },
     SocialMediaResponse {
         response: String,
