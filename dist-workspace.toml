@@ -1,12 +1,12 @@
 [workspace]
 members = ["cargo:crack-cli"]
 
-# Config for 'cargo dist'
+# Config for 'dist'
 [dist]
 # Skip checking whether the specified configuration files are up to date
 allow-dirty = ["ci"]
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.21.0"
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.25.1"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
