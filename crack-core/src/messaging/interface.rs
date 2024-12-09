@@ -31,8 +31,7 @@ use serenity::{
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::borrow::Cow;
-use std::fmt::FormattingOptions;
-use std::fmt::{Formatter, Write};
+use std::fmt::Write;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -481,7 +480,7 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 #[cfg(test)]
 mod test {
     use std::fmt::Debug;
-    use std::fmt::Formatter;
+    use std::fmt::{Formatter, FormattingOptions};
 
     #[test]
     fn test_requesting_user_to_string() {
