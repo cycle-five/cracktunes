@@ -10,14 +10,15 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
-## v0.3.16-alpha.3 (2024/12/12)
+## v0.3.16 (2024/12/12)
 - Commands each show up and work only where they are supposed to (guilds, dms, etc).
 
-## v0.3.16-alpha.3 (2024/12/05)
+## v0.3.16-alpha.3 (2024/12/09)
 - re-enable the commands that were disabled in the last release
   for the serenity-next branch.
 - Got the rusty_ytdl library with the compose to an Input working.
-  The result is the bot starts up and responds and queues songs must faster.
+  The result is the bot starts up and responds and queues songs much faster.
+- Youtube suggestions are now working again.
 
 ## v0.3.16-alpha.2 (2024/12/01)
 - [x] update to serenity-next branch

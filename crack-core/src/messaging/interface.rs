@@ -66,7 +66,7 @@ pub async fn build_log_embed_thumb<'a>(
     id: &'a str,
     description: &'a str,
     avatar_url: &'a str,
-) -> Result<CreateEmbed<'a>, CrackedError> {
+) -> CrackedResult<CreateEmbed<'a>> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
     let footer = CreateEmbedFooter::new(footer_str);
