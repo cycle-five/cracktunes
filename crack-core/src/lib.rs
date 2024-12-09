@@ -1,5 +1,26 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
+#![feature(formatting_options)]
+pub mod commands;
+pub mod config;
+pub mod connection;
+pub mod db;
+pub mod errors;
+pub mod guild;
+pub mod handlers;
+pub mod http_utils;
+#[macro_use]
+pub mod macros;
+pub mod messaging;
+// pub mod metrics;
+#[cfg(feature = "crack-music")]
+pub mod music;
+pub mod poise_ext;
+pub mod sources;
+#[cfg(test)]
+pub mod test;
+pub mod utils;
+
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
@@ -20,9 +41,10 @@ use guild::settings::{
 use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
+use songbird::Songbird;
 use std::time::SystemTime;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Display,
     fs,
     fs::File,
@@ -32,28 +54,9 @@ use std::{
 };
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
-pub mod commands;
-pub mod config;
-pub mod connection;
-pub mod db;
-pub mod errors;
-pub mod guild;
-pub mod handlers;
-pub mod http_utils;
-#[macro_use]
-pub mod macros;
-pub mod messaging;
-pub mod metrics;
-#[cfg(feature = "crack-music")]
-pub mod music;
-pub mod poise_ext;
-pub mod sources;
-#[cfg(test)]
-pub mod test;
-pub mod utils;
-
 // ------------------------------------------------------------------
-// Public types we use to simplify return and parameter types.
+// Our public types used throughout cracktunes.
+// Probably want to move these to crack-types...
 // ------------------------------------------------------------------
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -76,15 +79,8 @@ pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
-use crate::serenity::prelude::SerenityError;
+// use crate::serenity::prelude::SerenityError;
 use crack_types::reply_handle::MessageOrReplyHandle;
-
-impl From<CrackedError> for SerenityError {
-    fn from(_e: CrackedError) -> Self {
-        //let bs = Box::new(e.to_string());
-        SerenityError::Other("CrackedError")
-    }
-}
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -105,6 +101,7 @@ impl Default for CamKickConfig {
             timeout: 0,
             guild_id: 0,
             chan_id: 0,
+            // FIXME: This should be a const or a static
             dc_msg: "You have been violated for being cammed down for too long.".to_string(),
             msg_on_deafen: false,
             msg_on_mute: false,
@@ -319,30 +316,36 @@ impl PhoneCodeData {
 pub struct DataInner {
     pub bot_settings: BotConfig,
     pub start_time: SystemTime,
+    // Why is Arc needed? Why dashmap instead of Mutex<HashMap>?
     #[cfg(feature = "crack-activity")]
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
+    // Why not Arc here?
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
+    // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
+    // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
+    // or worse than using an Option?
     pub db_channel: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
+    //RwLock, then Mutex, why?
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    pub guild_msg_cache_ordered: Arc<Mutex<BTreeMap<GuildId, guild::cache::GuildCache>>>,
+    pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
+    pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
+    // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
-    pub ct_client: CrackTrackClient,
+    // No arc, but we need a lifetime?
+    // What fundemental limitation comes up that must be solved by this?
+    pub ct_client: CrackTrackClient<'static>,
+    pub songbird: Arc<Songbird>,
 }
-
-// /// Get the default topgg client
-// fn default_topgg_client() -> topgg::Client {
-//     topgg::Client::new(std::env::var("TOPGG_TOKEN").unwrap_or_default())
-// }
 
 impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -354,10 +357,7 @@ impl std::fmt::Debug for DataInner {
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
         ));
-        result.push_str(&format!(
-            "guild_msg_cache_ordered: {:?}\n",
-            self.guild_msg_cache_ordered
-        ));
+        result.push_str(&format!("id_cache_map: {:?}\n", self.id_cache_map));
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log_async));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
@@ -403,6 +403,22 @@ impl DataInner {
         }
     }
 
+    /// Set the CrackTrack client for the data.
+    pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
+        Self {
+            ct_client,
+            ..self.clone()
+        }
+    }
+
+    /// Set the Songbird instance for the data.
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
+        Self {
+            songbird,
+            ..self.clone()
+        }
+    }
+
     /// Set the guild settings map for the data.
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {
@@ -441,7 +457,7 @@ impl Default for EventLogAsync {
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
                 File::create("/dev/null")
-                    .expect("Should be able to have a file object to write too.")
+                    .expect("Should have a file object to write too??? (three bcz real confused).")
             },
         };
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))
@@ -515,14 +531,16 @@ impl Default for DataInner {
             #[cfg(feature = "crack-gpt")]
             gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
+            songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
-            guild_msg_cache_ordered: Arc::new(Mutex::new(BTreeMap::new())),
+            id_cache_map: dashmap::DashMap::default(),
             guild_command_msg_queue: Default::default(),
+            guild_cnt_map: Default::default(),
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
@@ -541,7 +559,7 @@ impl Default for Data {
 #[derive(Clone, Debug)]
 pub struct Data(pub Arc<DataInner>);
 
-/// Impl [`Default`] for our custom [`Data`] struct
+/// Impl [`Deref`] for our custom [`Data`] struct
 impl std::ops::Deref for Data {
     type Target = DataInner;
 
@@ -582,22 +600,37 @@ impl Data {
     /// Add a message to the cache
     pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(guild_id, now, msg).await
+        self.add_msg_to_cache_ts(guild_id.into(), now, msg).await
+    }
+
+    /// Add a message to the cache
+    pub async fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
+        let now = chrono::Utc::now();
+        self.add_msg_to_cache_ts(id, now, msg).await
     }
 
     /// Add msg to the cache with a timestamp.
     pub async fn add_msg_to_cache_ts(
         &self,
-        guild_id: GuildId,
+        id: u64,
         ts: DateTime<Utc>,
         msg: Message,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
-        guild_msg_cache_ordered
-            .entry(guild_id)
+        self.id_cache_map
+            .entry(id)
             .or_default()
             .time_ordered_messages
             .insert(ts, msg)
+    }
+
+    pub async fn add_reply_handle_to_cache(
+        &self,
+        guild_id: GuildId,
+        handle: MessageOrReplyHandle,
+    ) -> Option<MessageOrReplyHandle> {
+        let mut guild_msg_cache = self.guild_command_msg_queue.entry(guild_id).or_default();
+        guild_msg_cache.push(handle.clone());
+        Some(handle)
     }
 
     /// Remove and return a message from the cache based on the guild_id and timestamp.
@@ -606,9 +639,8 @@ impl Data {
         guild_id: GuildId,
         ts: DateTime<Utc>,
     ) -> Option<Message> {
-        let mut guild_msg_cache_ordered = self.guild_msg_cache_ordered.lock().await;
-        guild_msg_cache_ordered
-            .get_mut(&guild_id)
+        self.id_cache_map
+            .get_mut(&guild_id.into())
             .unwrap()
             .time_ordered_messages
             .remove(&ts)
@@ -674,11 +706,40 @@ impl Data {
             .push(msg);
         Ok(())
     }
+
+    /// Forget all skip votes for a guild
+    // This is used when a track ends, or when a user leaves the voice channel.
+    // This is to prevent users from voting to skip a track, then leaving the voice channel.
+    // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
+    pub async fn forget_skip_votes(&self, guild_id: GuildId) -> Result<(), Error> {
+        let _res = self
+            .guild_cache_map
+            .lock()
+            .await
+            .entry(guild_id)
+            .and_modify(|cache| cache.current_skip_votes = HashSet::new())
+            .or_default();
+
+        Ok(())
+    }
+
+    pub async fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+        Self(Arc::new(self.0.with_bot_settings(bot_settings)))
+    }
+
+    pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
+        Self(self.arc_inner().with_songbird(songbird).into())
+    }
+
+    pub fn arc_inner(&self) -> Arc<DataInner> {
+        Into::into(self.0.clone())
+    }
 }
 
 #[cfg(test)]
 mod lib_test {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_phone_code_data() {
@@ -719,17 +780,11 @@ msg_on_dc:     false
         assert_eq!(cam_kick.to_string(), want);
     }
 
-    use serde_json::json;
     #[tokio::test]
     async fn test_with_data_inner() {
         let data = DataInner::default();
         let new_data = data.with_bot_settings(BotConfig::default());
         assert_eq!(json!(new_data.bot_settings), json!(BotConfig::default()));
-
-        // let pool = sqlx::PgPool::connect_lazy("postgres://");
-        // let new_data = new_data.with_database_pool(pool);
-        // let want = sqlx::PgPool::connect_lazy("postgres://");
-        // assert_eq!(new_data.database_pool.is_some(), want.is_some());
 
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);

@@ -1,32 +1,23 @@
 use config_file::FromConfigFile;
-use crack_core::guild::{cache::GuildCacheMap, settings::GuildSettingsMap};
-use crack_core::sources::ytdl::HANDLE;
-use crack_core::BotConfig;
-use crack_core::BotCredentials;
-use crack_core::EventLogAsync;
-pub use crack_core::PhoneCodeData;
-use std::collections::HashMap;
+use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
 use std::env;
 use tokio::runtime::Handle;
 
 #[cfg(feature = "crack-tracing")]
 use crack_core::guild::settings::get_log_prefix;
+#[cfg(feature = "crack-telemetry")]
+use std::sync::Arc;
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
-#[cfg(feature = "crack-metrics")]
-use {
-    crack_core::metrics::REGISTRY,
-    opentelemetry::global::set_text_map_propagator,
-    opentelemetry_sdk::propagation::TraceContextPropagator,
-    poise::serenity_prelude as serenity,
-    prometheus::{Encoder, TextEncoder},
-    warp::Filter,
-};
-#[cfg(feature = "crack-telemetry")]
-use {
-    std::sync::Arc,
-    tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer},
-};
+// #[cfg(feature = "crack-metrics")]
+// use {
+//     crack_core::metrics::REGISTRY,
+//     opentelemetry::global::set_text_map_propagator,
+//     opentelemetry_sdk::propagation::TraceContextPropagator,
+//     poise::serenity_prelude as serenity,
+//     prometheus::{Encoder, TextEncoder},
+//     warp::Filter,
+// };
 
 // #[cfg(feature = "crack-telemetry")]
 // const SERVICE_NAME: &str = "cracktunes";
@@ -35,6 +26,7 @@ const WARP_PORT: u16 = 8833;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+use std::time::Duration;
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
@@ -45,7 +37,8 @@ fn main() -> Result<(), Error> {
 
     dotenvy::dotenv().ok();
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(5)
+        .worker_threads(4)
+        .thread_keep_alive(Duration::from_millis(100))
         .enable_all()
         .build()
         .unwrap();
@@ -69,17 +62,13 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-use crack_core::config;
-
 /// Main async function, needed so we can  initialize everything.
 #[cfg(not(tarpaulin_include))]
 async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
-    init_metrics();
-    let config = load_bot_config()
-        .await
-        .expect("Error: Failed to load bot config");
+    // init_metrics();
+    let config = load_bot_config().expect("Error: Failed to load bot config");
     tracing::warn!("Using config: {:?}", config);
 
     let mut client = config::poise_framework(config, event_log_async).await?;
@@ -88,61 +77,51 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     http_utils::init_http_client().await?;
 
     // let client = framework.client();
-    let data_ro = client.data.clone();
-    let mut data_global = data_ro.write().await;
-    match data_global.get::<GuildSettingsMap>() {
-        Some(guild_settings_map) => {
-            for (guild_id, guild_settings) in guild_settings_map.iter() {
-                tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
-            }
-        },
-        None => {
-            tracing::info!("No guild settings found");
-            data_global.insert::<GuildSettingsMap>(HashMap::default());
-        },
-    }
-    data_global.insert::<GuildCacheMap>(HashMap::default());
+    let data_arc = client.data::<crack_core::Data>().clone();
+    let guild_settings_map = data_arc.guild_settings_map.read().await.clone();
 
-    drop(data_global);
+    for (guild_id, guild_settings) in guild_settings_map.iter() {
+        tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
+    }
 
     // let bot = client.start_shards(2);
     let bot = client.start_autosharded();
 
-    #[cfg(feature = "crack-metrics")]
-    {
-        let metrics_route = warp::path!("metrics").and_then(metrics_handler);
+    // #[cfg(feature = "crack-metrics")]
+    // {
+    //     let metrics_route = warp::path!("metrics").and_then(metrics_handler);
 
-        let server = async {
-            warp::serve(metrics_route)
-                .run(([127, 0, 0, 1], WARP_PORT))
-                .await;
-            Ok::<(), serenity::Error>(())
-        };
-        tokio::try_join!(bot, server)?;
-    };
-    #[cfg(not(feature = "crack-metrics"))]
+    //     let server = async {
+    //         warp::serve(metrics_route)
+    //             .run(([127, 0, 0, 1], WARP_PORT))
+    //             .await;
+    //         Ok::<(), serenity::Error>(())
+    //     };
+    //     tokio::try_join!(bot, server)?;
+    // };
+    // #[cfg(not(feature = "crack-metrics"))]
     bot.await?;
 
     Ok(())
 }
 
-/// Prometheus handler
-#[cfg(feature = "crack-metrics")]
-#[cfg(not(tarpaulin_include))]
-async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
-    let encoder = TextEncoder::new();
-    let mut metric_families = prometheus::gather();
-    metric_families.extend(REGISTRY.gather());
-    // tracing::info!("Metrics: {:?}", metric_families);
-    let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+// /// Prometheus handler
+// #[cfg(feature = "crack-metrics")]
+// #[cfg(not(tarpaulin_include))]
+// async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
+//     let encoder = TextEncoder::new();
+//     let mut metric_families = prometheus::gather();
+//     metric_families.extend(REGISTRY.gather());
+//     // tracing::info!("Metrics: {:?}", metric_families);
+//     let mut buffer = vec![];
+//     encoder.encode(&metric_families, &mut buffer).unwrap();
 
-    Ok(warp::reply::with_header(
-        buffer,
-        "content-type",
-        encoder.format_type(),
-    ))
-}
+//     Ok(warp::reply::with_header(
+//         buffer,
+//         "content-type",
+//         encoder.format_type(),
+//     ))
+// }
 
 /// Load an environment variable
 fn load_key(k: String) -> Result<String, Error> {
@@ -156,7 +135,7 @@ fn load_key(k: String) -> Result<String, Error> {
 }
 
 /// Load the bot's config
-async fn load_bot_config() -> Result<BotConfig, Error> {
+fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN".to_string())?;
     let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
@@ -233,27 +212,6 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     }
 }
 
-// fn get_bunyan_writer() -> Arc<std::io::BufWriter<_>> {
-//     let log_path = &format!("{}/bunyan.log", get_log_prefix());
-//     let debug_file = std::fs::File::create(log_path);
-//     let debug_file = match debug_file {
-//         Ok(file) => std::io::BufWriter::new(file),
-//         Err(error) => std::io::BufWriter::new(std::io::sink()), //panic!("Error: {:?}", error),
-//     };
-//     Arc::new(debug_file)
-// }
-
-#[cfg(feature = "crack-telemetry")]
-fn get_bunyan_writer() -> Arc<std::fs::File> {
-    let log_path = &format!("{}/bunyan.log", get_log_prefix());
-    let debug_file = std::fs::File::create(log_path);
-    let debug_file = match debug_file {
-        Ok(file) => file,
-        Err(_) => std::fs::File::open("/dev/null").unwrap(), // panic!("Error: {:?}", error),
-    };
-    Arc::new(debug_file)
-}
-
 /// Get the current log layer
 #[cfg(feature = "crack-tracing")]
 fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
@@ -266,19 +224,19 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
     combine_log_layers(stdout_log, debug_log)
 }
 
-#[tracing::instrument]
-/// Initialize metrics.
-fn init_metrics() {
-    #[cfg(feature = "crack-metrics")]
-    {
-        tracing::info!("Initializing metrics");
-        crack_core::metrics::register_custom_metrics();
-    }
-    #[cfg(not(feature = "crack-metrics"))]
-    {
-        tracing::info!("Metrics not enabled");
-    }
-}
+// #[tracing::instrument]
+// /// Initialize metrics.
+// fn init_metrics() {
+//     #[cfg(feature = "crack-metrics")]
+//     {
+//         tracing::info!("Initializing metrics");
+//         crack_core::metrics::register_custom_metrics();
+//     }
+//     #[cfg(not(feature = "crack-metrics"))]
+//     {
+//         tracing::info!("Metrics not enabled");
+//     }
+// }
 
 #[tracing::instrument]
 /// Initialize logging and tracing.
@@ -329,8 +287,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
     // Layer for printing spans to a file.
     #[cfg(feature = "crack-telemetry")]
-    let formatting_layer =
-        BunyanFormattingLayer::new(SERVICE_NAME.to_string(), get_bunyan_writer());
+    let stdout_formatting_layer = get_current_log_layer();
 
     // Layer for printing to stdout.
     #[cfg(feature = "crack-tracing")]
@@ -364,7 +321,6 @@ mod test {
     #[test]
     fn test_get_current_log_layer() {
         let _layer = get_current_log_layer();
-        //assert!(layer.h(&tracing::Level::INFO));
     }
 
     #[test]
@@ -380,11 +336,6 @@ mod test {
     }
 
     #[test]
-    fn test_init_metrics() {
-        init_metrics();
-    }
-
-    #[test]
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
         let result = load_key(key);
@@ -394,9 +345,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_load_bot_config() {
-        let result = load_bot_config().await;
+    #[test]
+    fn test_load_bot_config() {
+        let result = load_bot_config();
         assert!(result.is_ok() || result.is_err());
     }
 }

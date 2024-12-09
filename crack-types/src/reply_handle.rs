@@ -20,13 +20,12 @@ pub trait ReplyHandleTrait: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = serenity::Result<()>> + Send + 'static>>;
 }
 
-/// Wrapper around poise::ReplyHandle<'a> that implements ReplyHandleTrait.
+/// Wrapper around `poise::ReplyHandle`<'a> that implements [`ReplyHandleTrait`].
 pub struct ReplyHandleWrapper {
     pub handle: Arc<ReplyHandle<'static>>,
 }
 
 impl ReplyHandleTrait for ReplyHandleWrapper {
-    // fn into_message(self: Arc<Self>) -> Pin<Box<dyn Future<Output = Pin<Box<Option<Message>>>> + Send>> {
     fn into_message(
         self: Arc<Self>,
     ) -> Pin<Box<dyn Future<Output = Option<Message>> + Send + 'static>> {
@@ -54,14 +53,14 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
                 .into_message()
                 .await
             {
-                Ok(x) => x.delete(ctx).await,
+                Ok(x) => x.delete(&ctx, Some("bye")).await,
                 Err(_) => Ok(()),
             }
         })
     }
 }
 
-/// Empty "wrapper" that implements ReplyHandleTrait for testing purposes.
+/// Empty "wrapper" that implements [`ReplyHandleTrait`] for testing purposes.
 struct ReplyHandleWrapperSimple;
 
 impl ReplyHandleTrait for ReplyHandleWrapperSimple {
@@ -89,7 +88,7 @@ pub enum MessageOrReplyHandle {
 impl std::fmt::Debug for MessageOrReplyHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MessageOrReplyHandle::Message(message) => write!(f, "Message: {:?}", message),
+            MessageOrReplyHandle::Message(message) => write!(f, "Message: {message:?}"),
             MessageOrReplyHandle::ReplyHandle(_) => write!(f, "ReplyHandle"),
         }
     }
@@ -130,6 +129,8 @@ impl Container {
     }
 }
 
+/// async run function where different front ends hook into the system to run things.
+#[allow(clippy::unused_async)]
 pub async fn run() {
     let message = Message::default();
     let handle = MessageOrReplyHandle::Message(message);
@@ -137,19 +138,21 @@ pub async fn run() {
 
     let _ = container.get_handle();
 
-    println!("{:?}", container);
+    println!("{container:?}");
     // To use ReplyHandle:
     // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
     let wrapped_handle = ReplyHandleWrapperSimple;
     let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
     let container = Container::new(handle);
 
-    println!("{:?}", container);
+    println!("{container:?}");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DEFAULT_VALID_TOKEN;
+    use ::serenity::secrets::Token;
 
     #[tokio::test]
     async fn test_into_message() {
@@ -164,7 +167,11 @@ mod tests {
     async fn test_delete() {
         // let message = Message::default();
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
-        let x = wrapper.delete(Http::new(&"".to_string())).await;
+        let x = wrapper
+            .delete(Http::new(
+                DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token"),
+            ))
+            .await;
 
         assert!(x.is_ok());
     }

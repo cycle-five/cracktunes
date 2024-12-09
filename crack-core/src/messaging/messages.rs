@@ -103,6 +103,7 @@ pub const NO_GUILD_CACHED: &str = "⚠️ No Cached Guild Found!";
 pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
 pub const NO_USER_AUTOPLAY: &str = "(auto)";
+pub const NO_METADATA: &str = "⚠️ No metadata found!";
 pub const NOT_IN_MUSIC_CHANNEL: &str = "⚠️ You are not in the music channel! Use";
 pub const ONETWOFT: &str = "https://12ft.io/";
 pub const OWNERS_ONLY: &str = "⚠️ This command can only be used by bot owners!";

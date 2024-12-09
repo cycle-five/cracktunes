@@ -37,8 +37,7 @@ pub async fn defend(
     #[description = "Role to defend against"] role: serenity::all::Role,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
-
-    let songbird = songbird::get(ctx.serenity_context()).await.unwrap();
+    let songbird = ctx.data().songbird.clone();
     let call = songbird
         .get(guild_id)
         .ok_or(CrackedError::WrongVoiceChannel)?;
@@ -46,7 +45,7 @@ pub async fn defend(
     let next_action = Arc::new(atomic::AtomicU16::new(0));
     let handler = DefendHandler {
         ctx: Arc::new(ctx.serenity_context().clone()),
-        http: ctx.serenity_context().http.clone(),
+        http: Arc::new(ctx.http().clone()),
         manager: songbird.clone(),
         role: role.clone(),
         guild_id: Some(guild_id),
@@ -57,7 +56,7 @@ pub async fn defend(
         .await
         .add_global_event(Event::Periodic(Duration::from_secs(N), None), handler);
 
-    let mut type_map = ctx.serenity_context().data.write().await;
+    let data = ctx.data();
     type_map.insert::<AtomicU16Key>(next_action);
 
     poise::say_reply(ctx, format!("Tag attackers with role {}", role.name)).await?;
@@ -73,10 +72,7 @@ pub async fn defend(
 pub async fn cancel(ctx: Context<'_>) -> Result<(), Error> {
     // let guild_id = ctx.guild_id().unwrap();
 
-    ctx.serenity_context()
-        .data
-        .write()
-        .await
+    ctx.data()
         .get_mut::<AtomicU16Key>()
         .unwrap()
         .store(u16::MAX, atomic::Ordering::Relaxed);
@@ -103,7 +99,7 @@ impl EventHandler for DefendHandler {
                 if TEMP_CHANNEL_NAMES.len() > 1 {
                     #[allow(static_mut_refs)]
                     let next_chan: GuildChannel = TEMP_CHANNEL_NAMES.pop().unwrap();
-                    let _ = next_chan.delete(&self.http).await;
+                    let _ = next_chan.delete(self.http.as_ref(), None).await;
                 } else {
                     break;
                 }
@@ -121,7 +117,7 @@ impl EventHandler for DefendHandler {
                 if !TEMP_CHANNEL_NAMES.is_empty() {
                     #[allow(static_mut_refs)]
                     let next_chan: GuildChannel = TEMP_CHANNEL_NAMES.pop().unwrap();
-                    let _ = next_chan.delete(&self.http).await;
+                    let _ = next_chan.delete(self.http.as_ref(), None).await;
                 }
             }
         }
@@ -161,8 +157,9 @@ impl EventHandler for DefendHandler {
             tracing::warn!("Creating channel {}", channel_name);
             // Now create the channel
             let channel = guild
+                .id
                 .create_channel(
-                    &self.http,
+                    self.http.as_ref(),
                     CreateChannel::new(channel_name.clone()).kind(ChannelType::Voice),
                 )
                 .await
@@ -172,7 +169,7 @@ impl EventHandler for DefendHandler {
             for mut attacker in active_attackers.clone() {
                 let _ = attacker
                     .edit(
-                        self.http.clone(),
+                        self.http.as_ref(),
                         EditMember::default().voice_channel(channel.id),
                     )
                     .await;

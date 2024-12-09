@@ -511,7 +511,7 @@ impl CommandChannel {
 }
 
 pub async fn command_check_music(ctx: Context<'_>) -> Result<bool, Error> {
-    if ctx.author().bot {
+    if ctx.author().bot() {
         return Ok(false);
     };
 

@@ -1,8 +1,9 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
 use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
 use rusty_ytdl::{search, VideoDetails};
-use serenity::all::UserId;
+use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
+    borrow::Cow,
     fmt::{self, Display, Formatter},
     time::Duration,
 };
@@ -10,7 +11,7 @@ use std::{
 /// [`ResolvedTrack`] struct for holding resolved track information, this
 /// should be enough to play the track or enqueue it with the bot.
 #[derive(Clone, Debug)]
-pub struct ResolvedTrack {
+pub struct ResolvedTrack<'a> {
     // FIXME One of these three has the possibility of returning
     // the video id instead of the full URL. Need to figure out
     // which one and document why.
@@ -18,7 +19,7 @@ pub struct ResolvedTrack {
     pub metadata: Option<AuxMetadata>,
     pub search_video: Option<rusty_ytdl::search::Video>,
     pub query: QueryType,
-    pub video: Option<rusty_ytdl::Video>,
+    pub video: Option<rusty_ytdl::Video<'a>>,
     #[allow(dead_code)]
     pub queued: bool,
     #[allow(dead_code)]
@@ -26,7 +27,7 @@ pub struct ResolvedTrack {
     pub user_id: UserId,
 }
 
-impl Default for ResolvedTrack {
+impl Default for ResolvedTrack<'_> {
     fn default() -> Self {
         ResolvedTrack {
             query: QueryType::None,
@@ -40,7 +41,7 @@ impl Default for ResolvedTrack {
     }
 }
 
-impl ResolvedTrack {
+impl ResolvedTrack<'_> {
     /// Create a new ResolvedTrack
     pub fn new(query: QueryType) -> Self {
         ResolvedTrack {
@@ -89,7 +90,7 @@ impl ResolvedTrack {
     }
 
     /// Set the video of the track.
-    pub fn with_video(mut self, video: rusty_ytdl::Video) -> Self {
+    pub fn with_video(mut self, video: rusty_ytdl::Video<'static>) -> Self {
         self.video = Some(video);
         self
     }
@@ -176,6 +177,15 @@ impl ResolvedTrack {
         }
         str
     }
+
+    /// autocomplete option for the track.
+    pub fn autocomplete_option(&self) -> AutocompleteChoice<'static> {
+        AutocompleteChoice {
+            name: Cow::Owned(self.suggest_string()),
+            value: AutocompleteValue::String(Cow::Owned(self.get_url())),
+            name_localizations: Default::default(),
+        }
+    }
 }
 
 // impl From<ResolvedTrack> for songbird::Input {
@@ -187,7 +197,7 @@ impl ResolvedTrack {
 // }
 
 /// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
-impl From<search::Video> for ResolvedTrack {
+impl From<search::Video> for ResolvedTrack<'_> {
     fn from(video: search::Video) -> Self {
         ResolvedTrack {
             query: QueryType::VideoLink(video.url.clone()),
@@ -198,9 +208,9 @@ impl From<search::Video> for ResolvedTrack {
 }
 
 /// Implement [`From`] for ([`rusty_ytdl::Video`], [`VideoDetails`], [`AuxMetadata`]) to [`ResolvedTrack`].
-impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
+impl<'a> From<(rusty_ytdl::Video<'a>, VideoDetails, AuxMetadata)> for ResolvedTrack<'a> {
     fn from(
-        (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
+        (video, video_details, aux_metadata): (rusty_ytdl::Video<'a>, VideoDetails, AuxMetadata),
     ) -> Self {
         ResolvedTrack {
             query: QueryType::VideoLink(video.get_video_url()),
@@ -213,7 +223,7 @@ impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
 }
 
 /// Implement [`Display`] for [`ResolvedTrack`].
-impl Display for ResolvedTrack {
+impl Display for ResolvedTrack<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let title = self.get_title();
         let url = self.get_url();
@@ -222,3 +232,91 @@ impl Display for ResolvedTrack {
         write!(f, "[{}]({}) • `{}`", title, url, duration)
     }
 }
+
+// use rusty_ytdl::VideoError;
+// use songbird::input::Input;
+
+// impl From<ResolvedTrack<'static>> for Input {
+//     fn from(val: ResolvedTrack<'static>) -> Self {
+//         Input::Lazy(Box::new(val))
+//     }
+// }
+
+// #[async_trait]
+// impl Compose for RustyYoutubeSearch<'_> {
+//     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+//         Err(AudioStreamError::Unsupported)
+//     }
+
+//     async fn create_async(
+//         &mut self,
+//     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
+//         // We may or may not have the metadata, so we need to check.
+//         if self.metadata.is_none() {
+//             self.aux_metadata().await?;
+//         }
+//         let vid_options = VideoOptions {
+//             request_options: RequestOptions {
+//                 client: Some(http_utils::get_client().clone()),
+//                 ..Default::default()
+//             },
+//             ..Default::default()
+//         };
+//         let url = self.url.as_ref().unwrap();
+//         Video::new_with_options(url.clone(), vid_options)
+//             .map_err(CrackedError::from)?
+//             .stream()
+//             .await
+//             .map(|input| {
+//                 // let stream = AsyncAdapterStream::new(input, 64 * 1024);
+//                 let stream = Box::into_pin(input).into_media_source();
+
+//                 AudioStream {
+//                     input: Box::new(stream) as Box<dyn MediaSource>,
+//                     hint: None,
+//                 }
+//             })
+//             .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
+//     }
+
+//     fn should_create_async(&self) -> bool {
+//         true
+//     }
+
+//     /// Returns, and caches if isn't already, the metadata for the search.
+//     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
+//         if let Some(meta) = self.metadata.as_ref() {
+//             return Ok(meta.clone());
+//         }
+
+//         // If we have a url, we can get the metadata from that directory so no need to search.
+//         if let Some(url) = self.url.as_ref() {
+//             let video =
+//                 Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+//             let video_info = video
+//                 .get_basic_info()
+//                 .await
+//                 .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
+//             let metadata = video_info_to_aux_metadata(&video_info);
+//             self.metadata = Some(metadata.clone());
+//             return Ok(metadata);
+//         }
+
+//         let res: SearchResult = self
+//             .rusty_ytdl
+//             .search_one(self.query.build_query().unwrap(), None)
+//             .await
+//             .map_err(|e| {
+//                 <CrackedError as Into<AudioStreamError>>::into(
+//                     <VideoError as Into<CrackedError>>::into(e),
+//                 )
+//             })?
+//             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
+//         let metadata = search_result_to_aux_metadata(&res);
+
+//         self.metadata = Some(metadata.clone());
+//         self.url = Some(metadata.source_url.clone().unwrap());
+
+//         Ok(metadata)
+//     }
+// }

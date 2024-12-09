@@ -3,11 +3,12 @@ use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::NewSearchSource;
+use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    commands::check_banned_domains,
     errors::{verify, CrackedError},
     http_utils,
+    http_utils::check_banned_domains,
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
@@ -20,10 +21,10 @@ use crate::{
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
-use crack_types::{NewAuxMetadata, SpotifyTrack};
+use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
-use poise::{serenity_prelude as serenity, ReplyHandle};
+use poise::ReplyHandle;
 use rusty_ytdl::search::{Playlist, SearchOptions, SearchType, YouTube};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::{
@@ -42,24 +43,35 @@ use url::Url;
 
 pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
 
+// #[derive(Clone, Debug)]
+// /// Enum for type of possible queries we have to handle
+// pub enum QueryType {
+//     Keywords(String),
+//     KeywordList(Vec<String>),
+//     VideoLink(String),
+//     SpotifyTracks(Vec<SpotifyTrack>),
+//     PlaylistLink(String),
+//     File(serenity::Attachment),
+//     NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
+//     YoutubeSearch(String),
+//     None,
+// }
+
 #[derive(Clone, Debug)]
-/// Enum for type of possible queries we have to handle
-pub enum QueryType {
-    Keywords(String),
-    KeywordList(Vec<String>),
-    VideoLink(String),
-    SpotifyTracks(Vec<SpotifyTrack>),
-    PlaylistLink(String),
-    File(serenity::Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
-    YoutubeSearch(String),
-    None,
+pub struct NewQueryType(pub crack_types::QueryType);
+
+/// Newtype for [`QueryType`] to implement From for [`QueryType`].
+impl From<crack_types::QueryType> for NewQueryType {
+    fn from(q: crack_types::QueryType) -> Self {
+        NewQueryType(q)
+    }
 }
 
 /// HACK
-impl From<QueryType> for crack_types::QueryType {
-    fn from(q: QueryType) -> Self {
-        match q {
+impl From<NewQueryType> for crack_types::QueryType {
+    fn from(q: NewQueryType) -> Self {
+        let NewQueryType(qt) = q;
+        match qt {
             QueryType::Keywords(keywords) => crack_types::QueryType::Keywords(keywords),
             QueryType::KeywordList(keywords_list) => {
                 crack_types::QueryType::KeywordList(keywords_list)
@@ -141,8 +153,7 @@ impl From<Queries> for Vec<QueryType> {
     }
 }
 use crate::sources::spotify::SpotifyTrackTrait;
-use crate::sources::youtube::search_query_to_source_and_metadata;
-impl QueryType {
+impl NewQueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
@@ -150,7 +161,8 @@ impl QueryType {
     }
 
     pub fn build_query_base(&self) -> Option<String> {
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::Keywords(keywords) => Some(keywords.clone()),
             QueryType::KeywordList(keywords_list) => Some(keywords_list.join(" ")),
             QueryType::VideoLink(url) => Some(url.clone()),
@@ -161,8 +173,8 @@ impl QueryType {
                     .collect::<Vec<String>>()
                     .join(" "),
             ),
-            QueryType::PlaylistLink(url) => Some(url.clone()),
-            QueryType::File(file) => Some(file.url.clone()),
+            QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::File(file) => Some(file.url.to_string()),
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
@@ -186,7 +198,8 @@ impl QueryType {
         let extension = if mp3 { "mp3" } else { "webm" };
         //let client = http_utils::get_client().clone();
         // tracing::warn!("query_type: {:?}", query_type);
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
                 "Download not valid with search results.",
             ))),
@@ -301,7 +314,7 @@ impl QueryType {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         ctx.channel_id()
             .send_message(
-                ctx,
+                ctx.http(),
                 CreateMessage::new()
                     .content(format!("Download status {}", status))
                     .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
@@ -316,7 +329,8 @@ impl QueryType {
         ctx: Context<'_>,
         call: Arc<Mutex<Call>>,
     ) -> Result<Vec<TrackHandle>, CrackedError> {
-        match self {
+        let NewQueryType(qt) = self;
+        match qt.clone() {
             QueryType::Keywords(keywords) => {
                 self.mode_search_keywords(ctx, call, keywords.clone()).await
             },
@@ -348,7 +362,9 @@ impl QueryType {
         //let reqwest_client = ctx.data().http_client.clone();
         let search_results = YoutubeDl::new_search(http_utils::get_client_old().clone(), keywords)
             .search(None)
-            .await?;
+            .await?
+            .collect::<Vec<_>>();
+
         // let user_id = ctx.author().id;
         let qt = yt_search_select(
             ctx.serenity_context().clone(),
@@ -367,13 +383,14 @@ impl QueryType {
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
         let search_msg = &mut search_reply.into_message().await?;
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)
             | QueryType::NewYoutubeDl(_) => {
                 tracing::info!("Mode::Next, QueryType::Keywords|VideoLink|File|NewYoutubeDl");
-                queue_track_front(ctx, &call, self).await?;
+                queue_track_front(ctx, &call, qt).await?;
             },
             // FIXME
             QueryType::PlaylistLink(url) => {
@@ -417,6 +434,23 @@ impl QueryType {
         Ok(true)
     }
 
+    pub async fn mode_end2<'ctx>(
+        &self,
+        ctx: Context<'ctx>,
+        call: Arc<Mutex<Call>>,
+        _search_reply: ReplyHandle<'ctx>,
+    ) -> CrackedResult<bool> {
+        let NewQueryType(qt) = self;
+        match queue_track_back(ctx, &call, qt).await {
+            Ok(_) => (),
+            Err(e) => {
+                tracing::error!("queue_track_back error: {:?}", e);
+                return Err(e);
+            },
+        };
+        Ok(true)
+    }
+
     pub async fn mode_end<'ctx>(
         &self,
         ctx: Context<'ctx>,
@@ -425,21 +459,24 @@ impl QueryType {
     ) -> Result<bool, CrackedError> {
         let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
         let search_msg = &mut search_reply.clone().into_message().await?;
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::End, QueryType::YoutubeSearch");
 
                 let res =
                     YoutubeDl::new_search(http_utils::get_client_old().clone(), query.clone())
                         .search(None)
-                        .await?;
+                        .await?
+                        .collect();
                 let user_id = ctx.author().id;
                 create_search_response(&ctx, guild_id, user_id, query.clone(), res).await?;
                 Ok(true)
             },
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
+                let NewQueryType(qt) = self;
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                match queue_track_back(ctx, &call, self).await {
+                match queue_track_back(ctx, &call, qt).await {
                     Ok(_) => (),
                     Err(e) => {
                         tracing::error!("queue_track_back error: {:?}", e);
@@ -473,7 +510,10 @@ impl QueryType {
                     .iter()
                     .map(|x| QueryType::Keywords(x.clone()))
                     .collect::<Vec<QueryType>>();
-                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
+                // queue_keyword_list_back(ctx, call, queries, search_msg).await?;
+                for query in queries {
+                    queue_track_back(ctx, &call, &query).await?;
+                }
                 Ok(true)
             },
             QueryType::File(file) => {
@@ -492,8 +532,9 @@ impl QueryType {
         call: Arc<Mutex<Call>>,
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
+        let NewQueryType(qt) = self;
         let search_msg = &mut search_reply.into_message().await?;
-        match self {
+        match qt {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME
                 let mut src = YoutubeDl::new(http_utils::get_client_old().clone(), url.clone());
@@ -519,7 +560,7 @@ impl QueryType {
             },
             _ => {
                 ctx.defer().await?; // Why did I do this?
-                edit_response_poise(&ctx, CrackedMessage::PlayAllFailed).await?;
+                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }
@@ -542,7 +583,8 @@ impl QueryType {
         ytclient: YouTube,
         reqclient: reqwest::Client,
     ) -> CrackedResult<Vec<NewAuxMetadata>> {
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let search_options = SearchOptions {
@@ -628,9 +670,10 @@ impl QueryType {
     /// Get the source (playable track) for this query.
     pub async fn get_track_source(
         &self,
-        client_old: reqwest_old::Client,
+        client_old: reqwest::Client,
     ) -> CrackedResult<songbird::input::Input> {
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let ytdl = YoutubeDl::new_search(client_old, query.clone());
@@ -645,7 +688,7 @@ impl QueryType {
                 let ytdl = YoutubeDl::new(client_old, query.clone());
                 Ok(ytdl.into())
             },
-            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_owned()).into()),
+            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
             QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
             QueryType::PlaylistLink(_)
             | QueryType::SpotifyTracks(_)
@@ -663,7 +706,8 @@ impl QueryType {
         let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         let client_old = http_utils::get_client_old().clone();
         tracing::warn!("{}", format!("query_type: {:?}", self).red());
-        match self {
+        let NewQueryType(qt) = self;
+        match qt {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let mut ytdl = YoutubeDl::new_search(client_old, query.clone());
@@ -694,11 +738,11 @@ impl QueryType {
                 let my_metadata = NewAuxMetadata(metadata);
                 Ok((input, vec![my_metadata]))
             },
-            QueryType::Keywords(query) => {
+            QueryType::Keywords(_query) => {
                 tracing::warn!("In Keywords");
                 //get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =
-                    search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
+                    search_query_to_source_and_metadata_rusty(client.clone(), qt.clone()).await?;
                 Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
@@ -708,7 +752,7 @@ impl QueryType {
             QueryType::File(file) => {
                 tracing::warn!("In File");
                 Ok((
-                    HttpRequest::new(client_old, file.url.to_owned()).into(),
+                    HttpRequest::new(client_old, file.url.to_string()).into(),
                     vec![NewAuxMetadata::default()],
                 ))
             },
@@ -824,12 +868,15 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
     Ok((output, metadata))
 }
 
+// This should not be permenant, but just to get it working
+// with the port before re-enabling all the other modules.
+#[allow(dead_code)]
 /// Returns the QueryType for a given URL (or query string, or file attachment)
 pub async fn query_type_from_url(
     ctx: Context<'_>,
     url: &str,
     file: Option<Attachment>,
-) -> Result<Option<QueryType>, Error> {
+) -> Result<Option<NewQueryType>, Error> {
     tracing::info!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
@@ -925,5 +972,5 @@ pub async fn query_type_from_url(
         .get_guild_settings(guild_id)
         .await
         .ok_or(CrackedError::NoGuildSettings)?;
-    check_banned_domains(&guild_settings, query_type).map_err(Into::into)
+    check_banned_domains(&guild_settings, query_type.map(NewQueryType)).map_err(Into::into)
 }

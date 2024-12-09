@@ -26,7 +26,7 @@ const GPT_PROMPT: &str = concatcp!(
     " and you are using the GPT-4o model.\n",
     "Here is a menu of commands you can use:\n"
 );
-const HELP_STR: &str = r#"
+const HELP_STR: &str = r"
     Commands:
         /autopause    Toggle autopause.
         /autoplay     Toggle music autoplay.
@@ -64,7 +64,7 @@ const HELP_STR: &str = r#"
 
         Utility:
         /help         Show the help menu.
-"#;
+";
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -97,8 +97,9 @@ impl Debug for GptContext {
 }
 
 impl GptContext {
+    #[must_use]
     pub fn new() -> Self {
-        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| String::new());
         GptContext {
             msg_cache: Arc::new(RwLock::new(TtlCache::new(10))),
             key: Some(api_key.clone()),
@@ -126,6 +127,10 @@ impl GptContext {
     }
 
     /// Load the key from environment variables if it is not already set.
+    /// # Returns
+    /// * The key as a string.
+    /// # Errors
+    /// * If the key cannot be loaded.
     pub fn load_key_if_empty(&mut self) -> Result<String, Error> {
         if let Some(key) = &self.key {
             return Ok(key.clone());
@@ -148,16 +153,25 @@ impl GptContext {
             match cache.get(&user_id) {
                 Some(messages) => {
                     let n = messages.len();
-                    format!("Cache has {} entries for user {}.", n, user_id)
+                    format!("Cache has {n} entries for user {user_id}.")
                 },
-                None => format!("Cache has {} entries.", n),
+                None => format!("Cache has {n} entries."),
             }
         } else {
-            format!("Cache has {} entries.", n)
+            format!("Cache has {n} entries.")
         }
     }
 
     /// Query openai via azure for a response to a prompt.
+    /// # Arguments
+    /// * `query` - The prompt to query the model with.
+    /// * `user_id` - The user id to associate with the query.
+    /// # Returns
+    /// * A string response from the model.
+    /// # Errors
+    /// * If the query fails.
+    /// # Panics
+    /// * If the message cannot be built.
     pub async fn openai_azure_response(
         &self,
         query: String,
@@ -176,10 +190,7 @@ impl GptContext {
                 asdf.clone()
             },
             ttl_cache::Entry::Vacant(messages) => messages
-                .insert(
-                    init_convo(self.help.clone(), query),
-                    Duration::from_secs(60 * 10),
-                )
+                .insert(init_convo(&self.help, query), Duration::from_secs(60 * 10))
                 .clone(),
         };
 
@@ -209,18 +220,24 @@ impl GptContext {
 }
 
 /// Create a user message for the chat completion request.
+/// # Panics
+/// * If the message cannot be built.
+#[must_use]
 pub fn make_user_message(query: String) -> ChatCompletionRequestMessage {
     ChatCompletionRequestUserMessageArgs::default()
         .content(query)
         .build()
-        .unwrap()
+        .expect("Failed to build user message.")
         .into()
 }
 
 /// Initial chat context arguments for the LLM based on the state of the context
 /// and the first query from the user.
-pub fn init_convo(help_msg: String, query: String) -> Vec<ChatCompletionRequestMessage> {
-    let prompt = format!("{}{}", GPT_PROMPT, help_msg);
+/// # Panics
+/// * If the message cannot be built.
+#[must_use]
+pub fn init_convo(help_msg: &str, query: String) -> Vec<ChatCompletionRequestMessage> {
+    let prompt = format!("{GPT_PROMPT}{help_msg}");
     vec![
         ChatCompletionRequestSystemMessageArgs::default()
             .content(prompt)

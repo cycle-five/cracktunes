@@ -5,14 +5,12 @@ use crate::{
     },
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
-    guild::cache::GuildCacheMap,
     messaging::message::CrackedMessage,
     poise_ext::{ContextExt, PoiseContextExt},
-    Context, Data, Error,
+    Context, Error,
 };
 use poise::serenity_prelude as serenity;
-use serenity::{model::id::GuildId, Mentionable};
-use std::collections::HashSet;
+use serenity::Mentionable;
 
 /// Vote to skip the current track
 #[cfg(not(tarpaulin_include))]
@@ -50,7 +48,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     let bot_channel_id =
         get_voice_channel_for_user(&guild, &ctx.serenity_context().cache.current_user().id)
             .unwrap();
-    let manager = songbird::get(ctx.serenity_context()).await.unwrap();
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).unwrap();
 
     let handler = call.lock().await;
@@ -58,8 +56,9 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
 
-    let mut data = ctx.serenity_context().data.write().await;
-    let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
+    let data = ctx.data();
+    let mut cache_map = data.guild_cache_map.lock().await;
+    // let cache_map = data.get_mut::<GuildCacheMap>().unwrap();
 
     let cache = cache_map.entry(guild_id).or_default();
     let user_id = ctx.get_user_id();
@@ -70,10 +69,10 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .cache
         .guild(guild_id)
         .unwrap()
-        .voice_states
-        .clone();
+        .clone()
+        .voice_states;
     let channel_guild_users = guild_users
-        .into_values()
+        .iter()
         .filter(|v| v.channel_id.unwrap() == bot_channel_id);
     let skip_threshold = channel_guild_users.count() / 2;
 
@@ -100,21 +99,5 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .map_err(|e| e.into())
     }?;
-    Ok(())
-}
-
-/// Forget all skip votes for a guild
-// This is used when a track ends, or when a user leaves the voice channel.
-// This is to prevent users from voting to skip a track, then leaving the voice channel.
-// TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
-pub async fn forget_skip_votes(data: &Data, guild_id: GuildId) -> Result<(), Error> {
-    let _res = data
-        .guild_cache_map
-        .lock()
-        .await
-        .entry(guild_id)
-        .and_modify(|cache| cache.current_skip_votes = HashSet::new())
-        .or_default();
-
     Ok(())
 }

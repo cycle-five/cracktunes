@@ -1,12 +1,11 @@
 use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
-use crate::music::query::QueryType;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
-use crate::utils::edit_embed_response2;
+use crate::music::NewQueryType;
+use crate::utils::{edit_embed_response2, TrackData};
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
-    guild::settings::GuildSettings,
     handlers::track_end::update_queue_messages,
     messaging::interface::create_now_playing_embed,
     messaging::{
@@ -21,18 +20,21 @@ use crate::{
     Context, Data, Error,
 };
 use crate::{http_utils, CrackedResult};
+use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
-    all::{CommandInteraction, Message, UserId},
+    all::{CommandInteraction, Message},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
+use crack_types::QueryType;
 use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
+use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call};
+use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
-use typemap_rev::TypeMapKey;
+use tokio::sync::{Mutex, RwLock};
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -96,17 +98,23 @@ pub async fn search(
 use crack_testing::{suggestion2, ResolvedTrack};
 
 /// Autocomplete to suggest a search query.
-pub async fn autocomplete(
+pub async fn autocomplete<'a>(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
-    searching: &str,
-) -> Vec<String> {
-    match suggestion2(searching).await {
-        Ok(x) => x,
-        Err(e) => {
-            tracing::error!("Error getting suggestions: {:?}", e);
-            vec![]
-        },
-    }
+    searching: &'a str,
+) -> CreateAutocompleteResponse<'a> {
+    // let choices = match suggestion2(searching).await {
+    //     Ok(x) => {
+    //         let choices = x.iter().map(|choice| choice).collect();
+    //         choices
+    //     },
+    //     Err(e) => {
+    //         tracing::error!("Error getting suggestions: {:?}", e);
+    //         vec![]
+    //     },
+    // };
+    let choices = suggestion2(searching).await.unwrap_or_default();
+    let res = CreateAutocompleteResponse::new();
+    res.set_choices(Cow::Owned(choices.clone()))
 }
 
 /// Play a song.
@@ -183,7 +191,7 @@ use songbird::input::{Input as SongbirdInput, YoutubeDl};
 /// for the bot in songbird.
 pub async fn enqueue_resolved_tracks(
     call: Arc<Mutex<Call>>,
-    tracks: Vec<ResolvedTrack>,
+    tracks: Vec<ResolvedTrack<'_>>,
     mode: crack_types::Mode,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
@@ -236,26 +244,6 @@ pub async fn enqueue_resolved_tracks(
 //     Ok(new_q)
 // }
 
-/// Pushes a track to the back of the queue, after readying it.
-pub async fn queue_resolved_track_back(
-    call: &Arc<Mutex<Call>>,
-    track: ResolvedTrack,
-    http_client: reqwest_old::Client,
-    //user_id: Option<UserId>,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let mut handler = call.lock().await;
-    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-    let track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
-    let new_q = handler.queue().current_queue();
-    drop(handler);
-    let mut map = track_handle.typemap().write().await;
-    map.insert::<NewAuxMetadata>(NewAuxMetadata(track.get_metadata().unwrap_or_default()));
-    map.insert::<RequestingUser>(RequestingUser::from(track.get_requesting_user()));
-    Ok(new_q)
-}
-
 /// Play a youtube playlist.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
@@ -294,8 +282,82 @@ pub async fn playytplaylist(
     Ok(())
 }
 
+use crate::commands::resume_internal;
 use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
+use crack_types::to_fixed;
+
+pub async fn build_play_embed(
+    queue: &[TrackHandle],
+    mode: Mode,
+    query_type: NewQueryType,
+) -> Result<CreateEmbed<'_>, Error> {
+    // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
+    // let track = queue.first().unwrap();
+    // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
+    // Ok(embed)
+    let embed = match queue.len().cmp(&1) {
+        Ordering::Greater => {
+            let estimated_time = calculate_time_until_play(queue, mode)
+                .await
+                .unwrap_or_default();
+            let NewQueryType(query_type) = query_type;
+            match (query_type, mode) {
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::Next,
+                ) => {
+                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::Next");
+                    let track = queue.get(1).unwrap();
+                    build_queued_embed(PLAY_TOP, track, estimated_time).await
+                },
+                (
+                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
+                    Mode::End,
+                ) => {
+                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::End");
+                    let track = queue.last().unwrap();
+                    build_queued_embed(PLAY_QUEUE, track, estimated_time).await
+                },
+                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), y) => {
+                    tracing::error!(
+                        "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
+                        y
+                    );
+                    CreateEmbed::default()
+                        .description(format!("{:?}", CrackedMessage::PlaylistQueued))
+                },
+                (QueryType::File(_x_), y) => {
+                    tracing::error!("QueryType::File, mode: {:?}", y);
+                    let track = queue.first().unwrap();
+                    create_now_playing_embed(track.clone()).await
+                },
+                (QueryType::YoutubeSearch(_x), y) => {
+                    tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
+                    let track = queue.first().unwrap();
+                    create_now_playing_embed(track.clone()).await
+                },
+                (x, y) => {
+                    tracing::error!("{:?} {:?} {:?}", x, y, mode);
+                    let track = queue.first().unwrap();
+                    create_now_playing_embed(track.clone()).await
+                },
+            }
+        },
+        Ordering::Equal => {
+            tracing::warn!("Only one track in queue, just playing it.");
+            let track = queue.first().unwrap();
+            create_now_playing_embed(track.clone()).await
+        },
+        Ordering::Less => {
+            tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
+            CreateEmbed::default()
+                .description("No tracks in queue!")
+                .footer(CreateEmbedFooter::new("No tracks in queue!"))
+        },
+    };
+    Ok(embed)
+}
 
 /// Does the actual playing of the song, all the other commands use this.
 //#[tracing::instrument(skip(ctx))]
@@ -309,12 +371,11 @@ pub async fn play_internal(
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
 
-    use crate::commands::resume_internal;
     let _start = std::time::Instant::now();
 
     let is_prefix = ctx.is_prefix();
 
-    let msg = get_msg(mode.clone(), query_or_url, is_prefix);
+    let msg = get_msg(mode.clone(), query_or_url, is_prefix).map(to_fixed);
 
     if msg.is_none() && file.is_none() {
         if ctx.is_paused().await.unwrap_or_default() {
@@ -331,6 +392,7 @@ pub async fn play_internal(
 
     let _after_msg_parse = std::time::Instant::now();
 
+    let mode = mode.map(to_fixed);
     let (mode, msg) = get_mode(is_prefix, msg.clone(), mode);
 
     let _after_get_mode = std::time::Instant::now();
@@ -367,27 +429,23 @@ pub async fn play_internal(
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
-    let _move_on = match_mode(
+    match_mode(
         ctx,
         call.clone(),
         mode,
         query_type.clone(),
         search_msg.clone(),
     )
-    .await;
+    .await?;
 
     let _after_move_on = std::time::Instant::now();
 
-    // // FIXME: Yeah, this is terrible, fix this.
-    // if !move_on {
-    //     return Ok(());
-    // }
-
     // refetch the queue after modification
     // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
-    let handler = call.lock().await;
-    let queue = handler.queue().current_queue();
-    drop(handler);
+    // let handler = call.lock().await;
+    // let queue = handler.queue().current_queue();
+    // drop(handler);
+    let queue = call.lock().await.queue().current_queue();
 
     let _after_refetch_queue = std::time::Instant::now();
 
@@ -396,66 +454,7 @@ pub async fn play_internal(
     // Ah! Also, sometimes after a long queue process the now playing message says that it's already
     // X seconds into the song, so this is definitely after the section of the code that
     // takes a long time.
-    let embed = match queue.len().cmp(&1) {
-        Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(&queue, mode)
-                .await
-                .unwrap_or_default();
-
-            match (query_type, mode) {
-                (
-                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
-                    Mode::Next,
-                ) => {
-                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::Next");
-                    let track = queue.get(1).unwrap();
-                    build_queued_embed(PLAY_TOP, track, estimated_time).await
-                },
-                (
-                    QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
-                    Mode::End,
-                ) => {
-                    tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::End");
-                    let track = queue.last().unwrap();
-                    build_queued_embed(PLAY_QUEUE, track, estimated_time).await
-                },
-                (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), y) => {
-                    tracing::error!(
-                        "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
-                        y
-                    );
-                    CreateEmbed::default()
-                        .description(format!("{:?}", CrackedMessage::PlaylistQueued))
-                },
-                (QueryType::File(_x_), y) => {
-                    tracing::error!("QueryType::File, mode: {:?}", y);
-                    let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
-                },
-                (QueryType::YoutubeSearch(_x), y) => {
-                    tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
-                    let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
-                },
-                (x, y) => {
-                    tracing::error!("{:?} {:?} {:?}", x, y, mode);
-                    let track = queue.first().unwrap();
-                    create_now_playing_embed(track).await
-                },
-            }
-        },
-        Ordering::Equal => {
-            tracing::warn!("Only one track in queue, just playing it.");
-            let track = queue.first().unwrap();
-            create_now_playing_embed(track).await
-        },
-        Ordering::Less => {
-            tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
-            CreateEmbed::default()
-                .description("No tracks in queue!")
-                .footer(CreateEmbedFooter::new("No tracks in queue!"))
-        },
-    };
+    let embed = build_play_embed(&queue, mode, query_type).await?;
 
     let _after_embed = std::time::Instant::now();
 
@@ -514,6 +513,51 @@ pub async fn get_user_message_if_prefix(ctx: Context<'_>) -> MessageOrInteractio
     }
 }
 
+/// This function takes a [`NewQueryType`] and resolves it to zero or more tracks in [`Vec<Track>`].
+pub async fn resolve_query_to_tracks(
+    ctx: Context<'_>,
+    _call: Arc<Mutex<Call>>,
+    query_type: NewQueryType,
+) -> CrackedResult<Vec<Track>> {
+    let client = ctx.data().ct_client.clone();
+    let NewQueryType(query_type) = query_type;
+    let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;
+    //let tracks = client.resolve_track(query_type).await?;
+    let mut track_handles = Vec::new();
+    for track in tracks.iter() {
+        let ytdl = RustyYoutubeSearch::new_with_stuff(
+            client.req_client.clone(),
+            query_type.clone(),
+            track.metadata.clone(),
+            track.video.clone(),
+        )?;
+        let resolved_clone = &track.clone();
+        let track_data = Arc::new(TrackData {
+            user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+            aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+        });
+        let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
+        track_handles.push(track2);
+    }
+    Ok(track_handles)
+}
+
+// let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
+//         Ok(resolved) => resolved.with_user_id(user_id),
+//         Err(e1) => {
+//             match e1.into() {
+//                 Some(_e) => {
+//                     let ready_track = ready_query(ctx, query_type.clone()).await?;
+//                     return _queue_track_ready_back(call, ready_track).await;
+//                 },
+//                 None => {
+//                     return Err(CrackedError::TrackResolveError(
+//                         TrackResolveError::UnknownQueryType,
+//                     ));
+//                 },
+//             };
+//         },
+//     }
 /// This is what actually does the majority of the work of the function.
 /// It finds the track that the user wants to play and then actually
 /// does the process of queuing it. This needs to be optimized.
@@ -521,26 +565,39 @@ async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
-    query_type: QueryType,
+    query_type: NewQueryType,
     //search_msg: &'a mut ReplyHandle<'a>,
     search_msg: ReplyHandle<'_>,
-) -> CrackedResult<bool> {
+) -> CrackedResult<()> {
     tracing::info!("mode: {:?}", mode);
+
+    // ctx.data().ct_client.resolve_query(&query_type).await?;
 
     // let ctx = Arc::new(ctx.clone());
     match mode {
-        Mode::Search => query_type
-            .mode_search(ctx, call)
-            .await
-            .map(|x| !x.is_empty()),
-        Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
-        Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
-        Mode::End => query_type.mode_end(ctx, call, search_msg.clone()).await,
-        Mode::Next => query_type.mode_next(ctx, call, search_msg.clone()).await,
-        Mode::Jump => query_type.mode_jump(ctx, call).await,
-        Mode::All | Mode::Reverse | Mode::Shuffle => {
-            query_type.mode_rest(ctx, call, search_msg).await
+        Mode::Search => {
+            let res = query_type.mode_search(ctx, call).await?;
+            if res.is_empty() {
+                Err(CrackedError::Other("No results found!"))
+            } else {
+                Ok(())
+            }
         },
+        Mode::DownloadMKV => query_type.mode_download(ctx, false).await.map(|_| ()),
+        Mode::DownloadMP3 => query_type.mode_download(ctx, true).await.map(|_| ()),
+        Mode::End => query_type
+            .mode_end(ctx, call, search_msg.clone())
+            .await
+            .map(|_| ()),
+        Mode::Next => query_type
+            .mode_next(ctx, call, search_msg.clone())
+            .await
+            .map(|_| ()),
+        Mode::Jump => query_type.mode_jump(ctx, call).await.map(|_| ()),
+        Mode::All | Mode::Reverse | Mode::Shuffle => query_type
+            .mode_rest(ctx, call, search_msg)
+            .await
+            .map(|_| ()),
     }
 }
 
@@ -614,33 +671,6 @@ async fn match_mode(
 //     tracing::info!("mode: {:?}", mode);
 // }
 
-/// Check if the domain that we're playing from is banned.
-// FIXME: This is borked.
-pub fn check_banned_domains(
-    guild_settings: &GuildSettings,
-    query_type: Option<QueryType>,
-) -> CrackedResult<Option<QueryType>> {
-    if let Some(QueryType::Keywords(_)) = query_type {
-        if !guild_settings.allow_all_domains.unwrap_or(true)
-            && (guild_settings.banned_domains.contains("youtube.com")
-                || (guild_settings.banned_domains.is_empty()
-                    && !guild_settings.allowed_domains.contains("youtube.com")))
-        {
-            // let message = CrackedMessage::PlayDomainBanned {
-            //     domain: "youtube.com".to_string(),
-            // };
-
-            // send_reply(&ctx, message).await?;
-            // Ok(None)
-            Err(CrackedError::Other("youtube.com is banned"))
-        } else {
-            Ok(query_type)
-        }
-    } else {
-        Ok(query_type)
-    }
-}
-
 /// Calculate the time until the next track plays.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
     if queue.is_empty() {
@@ -654,7 +684,7 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         .await
         .map(|i| i.position)
         .unwrap_or(zero_duration);
-    let metadata = get_track_handle_metadata(top_track).await;
+    let metadata = get_track_handle_metadata(top_track).await.ok()?;
 
     let top_track_duration = match metadata.duration {
         Some(duration) => duration,
@@ -682,57 +712,20 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
     }
 }
 
-/// Enum for the requesting user of a track.
-#[derive(Debug, Clone)]
-pub enum RequestingUser {
-    UserId(UserId),
-}
-
-/// Convert [`Option<UserId>`] to [`RequestingUser`].
-impl From<Option<UserId>> for RequestingUser {
-    fn from(user_id: Option<UserId>) -> Self {
-        match user_id {
-            Some(user_id) => RequestingUser::UserId(user_id),
-            None => RequestingUser::default(),
-        }
-    }
-}
-
-/// Convert [`UserId`] to [`RequestingUser`].
-impl From<UserId> for RequestingUser {
-    fn from(user_id: UserId) -> Self {
-        RequestingUser::UserId(user_id)
-    }
-}
-
-/// We implement TypeMapKey for RequestingUser.
-impl TypeMapKey for RequestingUser {
-    type Value = RequestingUser;
-}
-
-/// Default implementation for RequestingUser.
-impl Default for RequestingUser {
-    /// Defualt is UserId(1).
-    fn default() -> Self {
-        let user = UserId::new(1);
-        RequestingUser::UserId(user)
-    }
-}
-
 /// Build an embed for the cure
-async fn build_queued_embed(
-    author_title: &str,
-    track: &TrackHandle,
+async fn build_queued_embed<'att>(
+    author_title: &'att str,
+    track: &'att TrackHandle,
     estimated_time: Duration,
-) -> CreateEmbed {
-    // FIXME
+) -> CreateEmbed<'att> {
     let metadata = {
-        let map = track.typemap().read().await;
-        let my_metadata = map.get::<NewAuxMetadata>().unwrap();
+        // let map = track.typemap().read().await;
+        // let my_metadata = map.get::<NewAuxMetadata>().unwrap();
 
-        match my_metadata {
-            NewAuxMetadata(metadata) => metadata.clone(),
-        }
+        // match my_metadata {
+        //     NewAuxMetadata(metadata) => metadata.clone(),
+        // }
+        get_track_handle_metadata(track).await.unwrap_or_default()
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
     let meta_title = metadata.title.clone().unwrap_or(QUEUE_NO_TITLE.to_string());
@@ -758,10 +751,10 @@ async fn build_queued_embed(
         .title(meta_title)
         .url(source_url)
         .thumbnail(thumbnail)
-        .footer(CreateEmbedFooter::new(footer_text))
+        .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
-use crate::sources::rusty_ytdl::RequestOptionsBuilder;
+use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
 use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
@@ -776,9 +769,8 @@ pub async fn queue_aux_metadata(
     let search_results = aux_metadata;
 
     let client = &ctx.data().http_client;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NotConnected)?;
+    let manager = ctx.data().songbird.clone();
+
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let req = RequestOptionsBuilder::new()

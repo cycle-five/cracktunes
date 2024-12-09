@@ -3,10 +3,12 @@ use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
-use std::collections::HashMap;
 
+use extract_map::ExtractMap;
 use poise::serenity_prelude as serenity;
-use serenity::{CacheHttp, EditMember, GuildId, Mentionable};
+use serenity::model::id::{ChannelId, GuildId, UserId};
+use serenity::model::{user::User, voice::VoiceState};
+use serenity::{CacheHttp, EditMember, Mentionable};
 
 /// Mute a user.
 #[poise::command(
@@ -14,11 +16,11 @@ use serenity::{CacheHttp, EditMember, GuildId, Mentionable};
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral
+    guild_only
 )]
 pub async fn mute(
     ctx: Context<'_>,
-    #[description = "User to mute"] user: serenity::model::user::User,
+    #[description = "User to mute"] user: User,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let crack_msg = mute_internal(&ctx, user, guild_id, true).await?;
@@ -34,12 +36,12 @@ pub async fn mute(
     slash_command,
     prefix_command,
     required_permissions = "ADMINISTRATOR",
-    ephemeral
+    guild_only
 )]
 pub async fn mute_others(
     ctx: Context<'_>,
     #[flag]
-    #[description = "Unmute ratrher than mute."]
+    #[description = "Unmute rather than mute."]
     unmute: bool,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -48,7 +50,7 @@ pub async fn mute_others(
 
     let (voice_channel, voice_states) = {
         let guild = guild_id
-            .to_guild_cached(&ctx)
+            .to_guild_cached(ctx.cache())
             .ok_or(CrackedError::NoGuildCached)?;
         let voice_states = guild.voice_states.clone();
         (
@@ -67,42 +69,19 @@ pub async fn mute_others(
     .await
     .map(|_| ())
     .map_err(Into::into)
-    // match mute_others_internal(&ctx, guild_id, &guild, author.id, voice_channel, true).await {
-    //     Ok(crack_msg) => send_reply(&ctx, crack_msg, true)
-    //         .await
-    //         .map(|_| ())
-    //         .map_err(Into::into),
-    //     Err(e) => {
-    //         tracing::error!("Failed to mute others: {}", e);
-    //         send_reply(
-    //             &ctx,
-    //             CrackedMessage::Other(format!("Failed to mute others: {}", e)),
-    //             true,
-    //         )
-    //         .await
-    //         .map(|_| ())
-    //         .map_err(Into::into)
-    //     },
-    // }
 }
 
-/// All over users in a voice channel.
+/// Mute all other users in a voice channel.
 pub async fn mute_others_internal(
     ctx: impl AsRef<serenity::Cache> + CacheHttp,
     guild_id: GuildId,
-    voice_states: HashMap<serenity::all::UserId, serenity::all::VoiceState>,
-    user_id: serenity::model::id::UserId,
-    voice_channel: serenity::model::id::ChannelId,
+    voice_states: ExtractMap<UserId, VoiceState>,
+    user_id: UserId,
+    voice_channel: ChannelId,
     mute: bool,
 ) -> Result<CrackedMessage, Error> {
-    // let guild = guild_id
-    //     .to_guild_cached(&ctx)
-    //     .ok_or(CrackedError::NoGuildCached)?;
-    // // Get all members in the voice channel
-    // let members = guild
-    // .voice_states
     let members = voice_states
-        .values()
+        .iter()
         .filter(|vs| vs.channel_id == Some(voice_channel))
         .map(|vs| vs.user_id)
         .filter(|id| id != &user_id)
@@ -127,7 +106,11 @@ pub async fn mute_internal(
     let mention = user.mention();
     let id = user.id;
     if let Err(e) = guild_id
-        .edit_member(cache_http, user.clone().id, EditMember::new().mute(mute))
+        .edit_member(
+            cache_http.http(),
+            user.clone().id,
+            EditMember::new().mute(mute),
+        )
         .await
     {
         Ok(CrackedMessage::Other(format!("Failed to mute user: {}", e)))
@@ -135,4 +118,48 @@ pub async fn mute_internal(
         // Send success message
         Ok(CrackedMessage::UserMuted { mention, id })
     }
+}
+
+/// Unmute a user.
+/// TODO: Add a way to unmute a user by their ID.
+#[poise::command(
+    category = "Admin",
+    slash_command,
+    prefix_command,
+    required_permissions = "ADMINISTRATOR",
+    guild_only
+)]
+#[cfg(not(tarpaulin_include))]
+pub async fn unmute(
+    ctx: Context<'_>,
+    #[description = "User of unmute"] user: User,
+) -> Result<(), Error> {
+    unmute_impl(ctx, user).await.map(|_| ())
+}
+
+/// Unmute a user
+/// impl for other internal use.
+#[cfg(not(tarpaulin_include))]
+pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
+    let id = user.id;
+    let mention = user.mention();
+    let guild_id = ctx
+        .guild_id()
+        .ok_or(CrackedError::Other("Guild ID not found"))?;
+    if let Err(e) = guild_id
+        .edit_member(ctx.http(), user.clone().id, EditMember::new().mute(false))
+        .await
+    {
+        // Handle error, send error message
+        send_reply(
+            &ctx,
+            CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+            true,
+        )
+        .await
+    } else {
+        // Send success message
+        send_reply(&ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
+    }?;
+    Ok(())
 }

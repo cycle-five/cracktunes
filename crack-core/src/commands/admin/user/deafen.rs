@@ -59,7 +59,7 @@ pub async fn deafen_internal(
     let id = user.clone().id;
     let msg = if let Err(e) = guild_id
         .edit_member(
-            cache_http,
+            cache_http.http(),
             user.clone().id,
             EditMember::new().deafen(deafen),
         )

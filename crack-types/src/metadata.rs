@@ -4,10 +4,10 @@
 pub use rspotify::model::FullTrack;
 pub use rusty_ytdl::search::SearchResult;
 pub use rusty_ytdl::{VideoDetails, VideoInfo};
-pub use serenity::prelude::TypeMapKey;
 pub use songbird::input::AuxMetadata;
 pub use songbird::input::YoutubeDl;
 pub use std::time::Duration;
+pub use typemap_rev::TypeMapKey;
 
 // ------------------------------------------------------------------
 // Non-public imports
@@ -15,16 +15,16 @@ pub use std::time::Duration;
 use crate::full_track_artist_str;
 use crate::SpotifyTrack;
 
-/// AuxMetadata wrapper and utility functions.
+/// [`AuxMetadata`] wrapper and utility functions.
 #[derive(Debug, Clone)]
 pub struct NewAuxMetadata(pub AuxMetadata);
 
-/// Implement [TypeMapKey] for [NewAuxMetadata].
+/// Implement [`TypeMapKey`] for [`NewAuxMetadata`].
 impl TypeMapKey for NewAuxMetadata {
     type Value = NewAuxMetadata;
 }
 
-/// Implement [AuxMetadata] for [NewAuxMetadata].
+/// Implement [`AuxMetadata`] for [`NewAuxMetadata`].
 impl From<NewAuxMetadata> for AuxMetadata {
     fn from(metadata: NewAuxMetadata) -> Self {
         let NewAuxMetadata(metadata) = metadata;
@@ -32,7 +32,7 @@ impl From<NewAuxMetadata> for AuxMetadata {
     }
 }
 
-/// Implement Default for NewAuxMetadata.
+/// Implement [`Default`] for [`NewAuxMetadata`].
 impl Default for NewAuxMetadata {
     fn default() -> Self {
         NewAuxMetadata(AuxMetadata::default())
@@ -42,6 +42,7 @@ impl Default for NewAuxMetadata {
 /// Implement NewAuxMetadata.
 impl NewAuxMetadata {
     /// Create a new NewAuxMetadata from AuxMetadata.
+    #[must_use]
     pub fn new(metadata: AuxMetadata) -> Self {
         NewAuxMetadata(metadata)
     }
@@ -75,6 +76,7 @@ impl NewAuxMetadata {
     }
 
     /// Set the source_url.
+    #[must_use]
     pub fn with_source_url(self, source_url: String) -> Self {
         NewAuxMetadata(AuxMetadata {
             source_url: Some(source_url),
@@ -87,18 +89,18 @@ impl NewAuxMetadata {
         let metadata = self.metadata();
         let title = metadata.title.clone().unwrap_or_default();
         let artist = metadata.artist.clone().unwrap_or_default();
-        format!("{} - {}", artist, title)
+        format!("{artist} - {title}")
     }
 }
 
-/// Convert [SpotifyTrack] to [NewAuxMetadata].
+/// Convert [`SpotifyTrack`] to [`NewAuxMetadata`].
 impl From<&SpotifyTrack> for NewAuxMetadata {
     fn from(track: &SpotifyTrack) -> Self {
         NewAuxMetadata::from_spotify_track(track)
     }
 }
 
-/// Convert [SpotifyTrack] to [NewAuxMetadata].
+/// Convert [`SpotifyTrack`] to [`NewAuxMetadata`].
 impl From<&SearchResult> for NewAuxMetadata {
     fn from(search_result: &SearchResult) -> Self {
         let mut metadata = AuxMetadata::default();
@@ -107,7 +109,7 @@ impl From<&SearchResult> for NewAuxMetadata {
                 metadata.track = Some(video.title.clone());
                 metadata.artist = None;
                 metadata.album = None;
-                metadata.date = video.uploaded_at.clone();
+                metadata.date.clone_from(&video.uploaded_at);
 
                 metadata.channels = Some(2);
                 metadata.channel = Some(video.channel.name);
@@ -123,32 +125,32 @@ impl From<&SearchResult> for NewAuxMetadata {
                 metadata.duration = None;
                 metadata.thumbnail = playlist.thumbnails.first().map(|x| x.url.clone());
             },
-            _ => {},
+            SearchResult::Channel(_) => {},
         };
         NewAuxMetadata(metadata)
     }
 }
 
-/// Implementation to convert [SearchResult] to [NewAuxMetadata].
+/// Implementation to convert [`SearchResult`] to [`NewAuxMetadata`].
 impl From<SearchResult> for NewAuxMetadata {
     fn from(search_result: SearchResult) -> Self {
         NewAuxMetadata::from(&search_result)
     }
 }
 
-/// Convert [VideoInfo] to [NewAuxMetadata].
+/// Convert [`VideoInfo`] to [`NewAuxMetadata`].
 impl From<&VideoInfo> for NewAuxMetadata {
     fn from(video: &VideoInfo) -> Self {
         NewAuxMetadata::from(&video.video_details)
     }
 }
 
-/// Convert [VideoInfo] to [AuxMetadata].
+/// Convert [`VideoInfo`] to [`AuxMetadata`].
 pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
     video_details_to_aux_metadata(&video.video_details)
 }
 
-/// Convert [VideoDetails] to [NewAuxMetadata].
+/// Convert [`VideoDetails`] to [`NewAuxMetadata`].
 impl From<&VideoDetails> for NewAuxMetadata {
     fn from(video_details: &VideoDetails) -> Self {
         NewAuxMetadata(video_details_to_aux_metadata(video_details))
@@ -176,6 +178,7 @@ pub fn video_details_to_aux_metadata(video_details: &VideoDetails) -> AuxMetadat
 }
 
 /// Convert a [`rusty_ytdl::search::Video`] to [`AuxMetadata`].
+#[must_use]
 pub fn search_video_to_aux_metadata(video: &rusty_ytdl::search::Video) -> AuxMetadata {
     AuxMetadata {
         artist: Some(video.channel.name.clone()),
@@ -191,7 +194,8 @@ pub fn search_video_to_aux_metadata(video: &rusty_ytdl::search::Video) -> AuxMet
     }
 }
 
-/// Convert [SearchResult] to [AuxMetadata].
+/// Convert [`SearchResult`] to [`AuxMetadata`].
+#[must_use]
 pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
     match res.clone() {
         SearchResult::Video(video) => search_video_to_aux_metadata(&video),
@@ -201,6 +205,6 @@ pub fn search_result_to_aux_metadata(res: &SearchResult) -> AuxMetadata {
             thumbnail: playlist.thumbnails.first().map(|x| x.url.clone()),
             ..Default::default()
         },
-        _ => Default::default(),
+        SearchResult::Channel(_) => AuxMetadata::default(),
     }
 }

@@ -4,7 +4,6 @@ use crate::http_utils::SendMessageParams;
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    commands::music::doplay::RequestingUser,
     db::Playlist,
     messaging::{
         interface::create_nav_btns,
@@ -14,9 +13,10 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
-    music::query::QueryType,
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
+use ::serenity::all::MessageInteractionMetadata;
+use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
@@ -24,22 +24,23 @@ use ::serenity::{
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage, EditInteractionResponse, EditMessage,
+        CreateInteractionResponseMessage, EditInteractionResponse,
     },
     futures::StreamExt,
     model::channel::Message,
 };
+use anyhow::Result;
 use crack_types::get_human_readable_timestamp;
-//use crack_types::MessageOrReplyHandle;
 use crack_types::NewAuxMetadata;
+use crack_types::QueryType;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
     },
     CreateReply, ReplyHandle,
 };
+use serenity::all::UserId;
 #[allow(deprecated)]
-use serenity::MessageInteraction;
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
 use std::{
@@ -55,10 +56,10 @@ use url::Url;
 pub const EMBED_PAGE_SIZE: usize = 6;
 // This term gets appended to search queries in the default mode to try to find the album version of a song.
 // pub const MUSIC_SEARCH_SUFFIX: &str = "album version";
+// FIXME: Whether we use this or not it doesnt' go here.
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
-use anyhow::Result;
-
+/// FIXME: What is "cold"? And mustrify it.
 #[cold]
 fn create_err(line: u32, file: &str) -> anyhow::Error {
     anyhow::anyhow!("Unexpected None value on line {line} in {file}",)
@@ -83,7 +84,7 @@ impl<T> OptionTryUnwrap<T> for Option<T> {
 
 /// FIXME: This really should just be used as the method on the struct.
 /// Leaving this out of convenience, eventually it should be removed.
-pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<String> {
+pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Option<FixedString> {
     cache_http.guild_name_from_guild_id(guild_id).await.ok()
 }
 
@@ -129,12 +130,12 @@ pub async fn send_nonembed_reply(
 #[cfg(not(tarpaulin_include))]
 /// Edit an embed response with a CrackedMessage.
 pub async fn edit_response_poise(
-    ctx: &CrackContext<'_>,
+    ctx: CrackContext<'_>,
     message: CrackedMessage,
 ) -> Result<Message, CrackedError> {
     let embed = CreateEmbed::default().description(format!("{message}"));
 
-    match get_interaction_new(ctx) {
+    match get_interaction_new(&ctx) {
         Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
         None => match send_embed_response_poise(ctx, embed).await {
             Ok(msg) => msg.into_message().await.map_err(Into::into),
@@ -153,6 +154,8 @@ pub async fn edit_response_text(
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
 }
+
+use poise::serenity_prelude::CollectComponentInteractions;
 
 #[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
@@ -178,7 +181,7 @@ pub async fn yt_search_select(
     // Ask the user for its favorite animal
     let m = channel_id
         .send_message(
-            &ctx,
+            ctx.http(),
             CreateMessage::new().content("Search results").select_menu(
                 CreateSelectMenu::new(
                     "song_select",
@@ -198,13 +201,14 @@ pub async fn yt_search_select(
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
     let interaction = match m
-        .await_component_interaction(&ctx.shard)
+        .id
+        .collect_component_interactions(ctx.shard.clone())
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
         Some(x) => x,
         None => {
-            m.reply(&ctx, "Timed out").await.unwrap();
+            m.reply(ctx.http(), "Timed out").await.unwrap();
             return Err(CrackedError::Other("Timed out").into());
         },
     };
@@ -224,7 +228,7 @@ pub async fn yt_search_select(
     // Acknowledge the interaction and edit the message
     let res = interaction
         .create_response(
-            &ctx,
+            ctx.http(),
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
                     title: rev_map.get(url).unwrap().to_string(),
@@ -236,15 +240,15 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    m.delete(&ctx).await.unwrap();
+    channel_id.delete_message(ctx.http(), m.id, None).await?;
     res
 }
 
 /// Sends a reply response with an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
-    ctx: &'ctx CrackContext<'_>,
-    embed: CreateEmbed,
+    ctx: CrackContext<'ctx>,
+    embed: CreateEmbed<'ctx>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
@@ -253,29 +257,38 @@ pub async fn send_embed_response_poise<'ctx>(
         .with_embed(Some(embed))
         .with_reply(is_reply);
 
-    ctx.send_message(params).await
+    ctx.send_message_owned(params).await
 }
 
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
     interaction: &Interaction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Component(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Modal(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             .map_err(Into::into),
         Interaction::Autocomplete(int) => int
-            .edit_response(http, EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(http.http(), EditInteractionResponse::new().embed(embed.clone()))
             .await
             //.map(|_| Message::default())
             .map_err(Into::into),
@@ -288,12 +301,12 @@ pub async fn edit_reponse_interaction(
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
         Some(interaction) => interaction
-            .edit_response(&ctx, EditInteractionResponse::new().add_embed(embed))
+            .edit_response(ctx.http(), EditInteractionResponse::new().add_embed(embed))
             .await
             .map_err(Into::into),
         None => {
@@ -312,7 +325,7 @@ pub async fn edit_embed_response2(
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
@@ -330,18 +343,18 @@ pub async fn edit_embed_response(
     }
 }
 
-#[allow(deprecated)]
-pub enum ApplicationCommandOrMessageInteraction {
-    Command(CommandInteraction),
-    Message(MessageInteraction),
-}
+// #[allow(deprecated)]
+// pub enum ApplicationCommandOrMessageInteraction {
+//     Command(CommandInteraction),
+//     Message(MessageReaction),
+// }
 
-#[allow(deprecated)]
-impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-    fn from(message: MessageInteraction) -> Self {
-        Self::Message(message)
-    }
-}
+// #[allow(deprecated)]
+// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
+//     fn from(message: MessageReaction) -> Self {
+//         Self::Message(message)
+//     }
+// }
 
 // impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 //     fn from(message: MessageInteraction) -> Self {
@@ -351,14 +364,11 @@ impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
 
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     let reply_handle = match get_interaction_new(&ctx) {
         Some(interaction1) => match interaction1 {
             CommandOrMessageInteraction::Command(interaction2) => {
-                // match interaction2 {
-                //     Interaction::Command(interaction3) => {
-                //         tracing::warn!("CommandInteraction");
                 return interaction2
                     .edit_response(
                         &ctx.serenity_context().http,
@@ -369,39 +379,94 @@ pub async fn edit_embed_response_poise(
                 //     },
                 //     _ => Err(CrackedError::Other("not implemented")),
             },
-            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(&ctx, embed).await,
+            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
         },
-        None => send_embed_response_poise(&ctx, embed).await,
+        None => send_embed_response_poise(ctx, embed).await,
     };
     reply_handle?.into_message().await.map_err(Into::into)
 }
 
+//use tokio::sync::RwLock;
+/// Modifiable data struct for the track information.
+#[derive(Clone, Debug, Default)]
+pub struct TrackData {
+    pub user_id: Arc<RwLock<Option<UserId>>>,
+    pub aux_metadata: Arc<RwLock<Option<AuxMetadata>>>,
+}
+
+unsafe impl Send for TrackData {}
+unsafe impl Sync for TrackData {}
+
+impl TrackData {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::new(RwLock::new(Some(UserId::new(1)))),
+            aux_metadata: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    pub fn with_user_id(self: Arc<Self>, user_id: UserId) -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::new(RwLock::new(Some(user_id))),
+            aux_metadata: Arc::clone(&self.aux_metadata),
+        })
+    }
+
+    pub fn with_metadata(self: Arc<Self>, md: AuxMetadata) -> Arc<Self> {
+        Arc::new(Self {
+            user_id: Arc::clone(&self.user_id),
+            aux_metadata: Arc::new(RwLock::new(Some(md))),
+        })
+    }
+}
+
+// impl Default for TrackData {
+//     fn default() -> Self {
+//         *Self::new().clone()
+//     }
+// }
+// pub type ArcTrackData = Arc<TrackDataInner>;
+
+// impl std::ops::DerefMut for TrackData {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         Arc::get_mut(self).unwrap()
+//     }
+// }
+
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
-    let user = match track.typemap().read().await.get::<RequestingUser>() {
-        Some(RequestingUser::UserId(user)) => *user,
-        None => {
-            tracing::warn!("No user found for track: {:?}", track);
-            return Err(CrackedError::NoUserAutoplay);
-        },
-    };
-    Ok(user)
+    let data: Arc<TrackData> = track.data::<TrackData>();
+    let lock = data.user_id.read().await;
+    lock.ok_or(CrackedError::NoUserAutoplay)
 }
 
 /// Gets the metadata from a track.
-pub async fn get_track_handle_metadata(track: &TrackHandle) -> AuxMetadata {
-    let NewAuxMetadata(metadata) = {
-        let map = track.typemap().read().await;
-        let metadata = match map.get::<NewAuxMetadata>() {
-            Some(my_metadata) => my_metadata,
-            None => {
-                tracing::warn!("No metadata found for track: {:?}", track);
-                return AuxMetadata::default();
-            },
-        };
-        metadata.clone()
-    };
-    metadata
+pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
+    let data: Arc<TrackData> = track.data::<TrackData>();
+    let lock = data.aux_metadata.read().await;
+    lock.clone().ok_or(CrackedError::NoMetadata)
+}
+
+/// Sets the metadata for a track.
+pub async fn set_track_handle_metadata(
+    track: &mut TrackHandle,
+    metadata: AuxMetadata,
+) -> Result<(), CrackedError> {
+    let data: Arc<TrackData> = track.data::<TrackData>();
+    let mut lock = data.aux_metadata.write().await;
+    *lock = Some(metadata);
+    Ok(())
+}
+
+/// Sets the requesting user for a track.
+pub async fn set_track_handle_requesting_user(
+    track: &mut TrackHandle,
+    user_id: serenity::UserId,
+) -> Result<(), CrackedError> {
+    let data: Arc<TrackData> = track.data::<TrackData>();
+    let mut lock = data.user_id.write().await;
+    *lock = Some(user_id);
+    Ok(())
 }
 
 /// Creates an embed for the first N metadata in the queue.
@@ -446,7 +511,7 @@ pub fn calculate_num_pages<T>(tracks: &[T]) -> usize {
 
 /// Forget the current cache of queue messages we need to update.
 pub async fn forget_queue_message(
-    data: &Data,
+    data: Arc<Data>,
     message: &Message,
     guild_id: GuildId,
 ) -> Result<(), CrackedError> {
@@ -517,18 +582,18 @@ pub async fn build_tracks_embed_metadata(
 /// Creates and sends a paged embed.
 pub async fn create_paged_embed(
     ctx: CrackContext<'_>,
-    author: String,
+    author: FixedString<u8>,
     title: String,
     content: String,
     page_size: usize,
-) -> Result<(), CrackedError> {
+) -> CrackedResult<()> {
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
-    let mut message = {
-        let reply = ctx
-            .send(
+    let _x: Result<(), CrackedError> = {
+        let reply_handle = {
+            ctx.send(
                 CreateReply::default()
                     .embed(
                         CreateEmbed::new()
@@ -539,55 +604,67 @@ pub async fn create_paged_embed(
                     )
                     .components(create_nav_btns(0, num_pages)),
             )
-            .await?;
-        reply.into_message().await?
-    };
-
-    let mut cib = message
-        .await_component_interactions(ctx)
-        .timeout(Duration::from_secs(60 * 10))
-        .stream();
-
-    while let Some(mci) = cib.next().await {
-        let btn_id = &mci.data.custom_id;
-
-        let mut page_wlock = page.write().await;
-
-        *page_wlock = match btn_id.as_str() {
-            "<<" => 0,
-            "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
-            ">" => min(page_wlock.add(1), num_pages - 1),
-            ">>" => num_pages - 1,
-            _ => continue,
+            .await?
         };
+        // let mut message = {
+        //     let reply = ctx.clone().send(create_reply).await?;
+        //     reply.into_message().await?
+        // };
+        // let reply_handle = ctx.clone().send(create_reply).await?;
+        // drop(create_reply);
+        let shard_messanger = ctx.serenity_context().clone().shard;
 
-        mci.create_response(
-            &ctx,
-            CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::new()
-                    .embeds(vec![CreateEmbed::new()
-                        .title(title.clone())
-                        .author(CreateEmbedAuthor::new(author.clone()))
-                        .description(page_getter(*page_wlock))
-                        .footer(CreateEmbedFooter::new(format!(
-                            "Page {}/{}",
-                            *page_wlock + 1,
-                            num_pages
-                        )))])
-                    .components(create_nav_btns(*page_wlock, num_pages)),
-            ),
-        )
-        .await?;
-    }
+        let mut cib = reply_handle
+            .clone()
+            .into_message()
+            .await?
+            .id
+            .collect_component_interactions(shard_messanger.clone())
+            .timeout(Duration::from_secs(60 * 10))
+            .stream();
 
-    message
-        .edit(
-            &ctx.serenity_context().http,
-            EditMessage::default()
-                .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
-        )
-        .await
-        .unwrap();
+        while let Some(mci) = cib.next().await {
+            let btn_id = &mci.data.custom_id;
+
+            let mut page_wlock = page.write().await;
+
+            *page_wlock = match btn_id.as_str() {
+                "<<" => 0,
+                "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
+                ">" => min(page_wlock.add(1), num_pages - 1),
+                ">>" => num_pages - 1,
+                _ => continue,
+            };
+
+            mci.create_response(
+                ctx.http(),
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embeds(vec![CreateEmbed::new()
+                            .title(title.clone())
+                            .author(CreateEmbedAuthor::new(author.clone()))
+                            .description(page_getter(*page_wlock))
+                            .footer(CreateEmbedFooter::new(format!(
+                                "Page {}/{}",
+                                *page_wlock + 1,
+                                num_pages
+                            )))])
+                        .components(create_nav_btns(*page_wlock, num_pages)),
+                ),
+            )
+            .await?;
+        }
+
+        reply_handle
+            .edit(
+                ctx,
+                CreateReply::default()
+                    .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
+            )
+            .await
+            .unwrap();
+        Ok(())
+    };
 
     Ok(())
 }
@@ -709,7 +786,8 @@ pub fn check_interaction(result: Result<(), Error>) {
 #[allow(deprecated)]
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
-    Message(Option<Box<MessageInteraction>>),
+    Message(Option<Box<MessageInteractionMetadata>>),
+    //Message(Option<Box<MessageInteraction>>),
 }
 
 pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
@@ -731,7 +809,7 @@ pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInt
             app_ctx.interaction.clone(),
         )),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
-            ctx.msg.interaction.clone(),
+            ctx.msg.interaction_metadata.clone(),
         )),
     }
 }
@@ -797,6 +875,7 @@ mod test {
     use ::serenity::{all::Button, builder::CreateActionRow};
 
     use crate::messaging::interface::create_single_nav_btn;
+    use crack_types::to_fixed;
 
     use super::*;
 
@@ -834,10 +913,9 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(&s).unwrap();
+        let btn = serde_json::from_str::<Button>(&*s).unwrap();
 
-        assert_eq!(btn.label, Some("<<".to_string()));
-        // assert_eq!(btn.style, ButtonStyle::Primary);
+        assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
         assert_eq!(btn.disabled, true);
     }
 
@@ -846,7 +924,7 @@ mod test {
         let nav_btns_vev = create_nav_btns(0, 1);
         if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
-            for btn in nav_btns {
+            for btn in nav_btns.iter() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
                 println!("s: {}", s);
                 let btn = serde_json::from_str::<Button>(&s).unwrap();

@@ -2,7 +2,7 @@ use crate::{
     // commands::queue_aux_metadata,
     db::GuildEntity,
     errors::CrackedError,
-    guild::settings::{GuildSettings, GuildSettingsMap, DEFAULT_ACTIVITY},
+    guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig,
@@ -17,14 +17,14 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 // use dashmap;
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
+use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{gateway::Ready, id::GuildId, prelude::VoiceState},
     ChannelId, {Context as SerenityContext, EventHandler},
 };
 use std::{
-    collections::HashMap,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
     time::SystemTime,
 };
 use tokio::time::Duration;
@@ -106,7 +106,7 @@ impl EventHandler for SerenityHandler {
                 let channel = serenity::ChannelId::new(channel);
                 let x = channel
                     .send_message(
-                        &ctx,
+                        ctx.http(),
                         CreateMessage::default().content({
                             if message.contains("{user}") {
                                 message.replace(
@@ -127,7 +127,7 @@ impl EventHandler for SerenityHandler {
         if let Some(role_id) = welcome.auto_role {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let role_id = serenity::RoleId::new(role_id);
-            match new_member.add_role(&ctx, role_id).await {
+            match new_member.add_role(ctx.http(), role_id, None).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
                 },
@@ -167,8 +167,8 @@ impl EventHandler for SerenityHandler {
             }
             return;
         }
+        let manager = ctx.data::<Data>().songbird.clone();
 
-        let manager = songbird::get(&ctx).await.unwrap();
         let guild_id = new.guild_id.unwrap();
 
         // This is a voice state update event for the bot
@@ -196,10 +196,14 @@ impl EventHandler for SerenityHandler {
     // case you have for this.
     async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
+        let cache = match ctx.cache() {
+            Some(cache) => cache.clone(),
+            None => return,
+        };
 
         let mut guilds_from_cache = String::new();
         for guild_id in guilds.iter() {
-            match guild_id.name(ctx.clone()) {
+            match guild_id.name(&cache) {
                 Some(name) => guilds_from_cache.push_str(&name),
                 None => guilds_from_cache.push_str(&guild_id.to_string()),
             }
@@ -220,21 +224,22 @@ impl EventHandler for SerenityHandler {
             .load_guilds_settings_cache_ready(&arc_ctx.clone(), &guilds)
             .await;
 
-        let num_inserted = {
-            let ctx1 = arc_ctx.clone();
-            let lock = ctx1.data.read().await;
-            let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
-            let mut data_write = self.data.guild_settings_map.write().await;
+        // let num_inserted = {
+        //     let ctx1 = arc_ctx.clone();
+        //     let guild_settings_map = ctx1.data::<Data>().guild_settings_map;
+        //     //let lock = ctx1.data.read().await;
+        //     //let guild_settings_map = lock.get::<GuildSettingsMap>().unwrap();
+        //     let mut data_write = guild_settings_map.write().await;
 
-            let mut x = 0;
-            for (key, value) in guild_settings_map.clone().iter() {
-                data_write.insert(*key, value.clone());
-                x += 1;
-            }
-            x
-        };
+        //     let mut x = 0;
+        //     for (key, value) in (*guild_settings_map.clone()).iter() {
+        //         data_write.insert(*key, value.clone());
+        //         x += 1;
+        //     }
+        //     x
+        // };
 
-        tracing::warn!("num_inserted: {}", num_inserted);
+        // tracing::warn!("num_inserted: {}", num_inserted);
 
         // We need to check that the loop is not already running when this event triggers,
         // as this event triggers every time the bot enters or leaves a guild, along every time the
@@ -295,37 +300,41 @@ impl EventHandler for SerenityHandler {
     }
 }
 
+// use crate::guild::operations::GuildSettingsOperations;
+
 impl SerenityHandler {
-    async fn _merge_guild_settings(
-        &self,
-        ctx: &SerenityContext,
-        _ready: &Ready,
-        new_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
-    ) {
-        tracing::warn!("in merge_guild_settings");
-        let mut data = ctx.data.write().await;
+    // async fn _merge_guild_settings(
+    //     &self,
+    //     ctx: &SerenityContext,
+    //     _ready: &Ready,
+    //     new_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
+    // ) {
+    //     tracing::warn!("in merge_guild_settings");
+    //     // let mut data = ctx.data.write().await;
 
-        let settings = data.get_mut::<GuildSettingsMap>().unwrap();
-        let mut new_settings = new_settings.lock().unwrap();
+    //     // let settings = data.get_mut::<GuildSettingsMap>().unwrap();
+    //     let data = ctx.data::<Data>();
+    //     let mut settings = data.get_guild_settings().await;
+    //     let mut new_settings = new_settings.lock().unwrap();
 
-        tracing::warn!("new_settings len: {:?}", new_settings.len());
+    //     tracing::warn!("new_settings len: {:?}", new_settings.len());
 
-        for (key, value) in new_settings.iter() {
-            match settings.insert(*key, value.clone()) {
-                Some(_) => tracing::info!("Guild {} settings overwritten", key),
-                None => tracing::info!("Guild {} settings did not exist", key),
-            }
-        }
+    //     for (key, value) in new_settings.iter() {
+    //         match settings.insert(*key, value.clone()) {
+    //             Some(_) => tracing::info!("Guild {} settings overwritten", key),
+    //             None => tracing::info!("Guild {} settings did not exist", key),
+    //         }
+    //     }
 
-        for (key, value) in settings.iter_mut() {
-            new_settings.insert(*key, value.clone());
-        }
-        tracing::warn!(
-            "settings len: {:?}, new_settings len: {:?}",
-            settings.len(),
-            new_settings.len()
-        );
-    }
+    //     for (key, value) in settings.iter_mut() {
+    //         new_settings.insert(*key, value.clone());
+    //     }
+    //     tracing::warn!(
+    //         "settings len: {:?}, new_settings len: {:?}",
+    //         settings.len(),
+    //         new_settings.len()
+    //     );
+    // }
 
     async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
@@ -340,13 +349,10 @@ impl SerenityHandler {
                     continue;
                 },
             };
-            tracing::info!(
-                "Loading guild settings for {}, {}",
-                guild_id,
-                guild_name.clone()
-            );
+            let to_write = guild_name.clone();
+            tracing::info!("Loading guild settings for {guild_id}, {to_write}");
 
-            let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name.clone()));
+            let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name));
 
             let pool = self.data.database_pool.clone().unwrap();
             let _ = default.load_if_exists(&pool).await.map_err(|err| {
@@ -362,8 +368,8 @@ impl SerenityHandler {
                 .insert(guild_id, default.clone());
 
             match default.save(&pool).await {
-                Ok(()) => tracing::info!("Saved guild {guild_name}..."),
-                Err(err) => tracing::error!("Failed to save guild {guild_name} due to {err}"),
+                Ok(()) => tracing::info!("Saved guild {to_write}..."),
+                Err(err) => tracing::error!("Failed to save guild {to_write} due to {err}"),
             }
         }
     }
@@ -435,10 +441,10 @@ impl SerenityHandler {
             return;
         };
 
-        if user.id == new.user_id && !new.deaf {
+        if user.id == new.user_id && !new.deaf() {
             guild
                 .unwrap()
-                .edit_member(&ctx, new.user_id, EditMember::default().deafen(true))
+                .edit_member(ctx.http(), new.user_id, EditMember::default().deafen(true))
                 .await
                 .unwrap();
         }
@@ -483,7 +489,7 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     if let Some(chan_id) = config.sys_log_channel_id {
         let message = ChannelId::new(chan_id)
             .send_message(
-                &ctx,
+                ctx.http(),
                 CreateMessage::new().embed({
                     CreateEmbed::new()
                         .title("System Resource Load")
@@ -523,8 +529,8 @@ async fn check_delete_old_messages(
     let mut to_delete = Vec::<Message>::new();
     for guild_id in guild_ids.iter() {
         tracing::warn!("Checking guild {}", guild_id);
-        data.guild_msg_cache_ordered.lock().await.get_mut(guild_id);
-        if let Some(guild_cache) = data.guild_msg_cache_ordered.lock().await.get_mut(guild_id) {
+        data.id_cache_map.get_mut(&(*guild_id).into());
+        if let Some(guild_cache) = data.id_cache_map.get_mut(&(*guild_id).into()) {
             let now = DateTime::<Utc>::from(SystemTime::now());
             for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
                 let delta = now.signed_duration_since(*creat_time);
@@ -537,7 +543,7 @@ async fn check_delete_old_messages(
     }
     for msg in to_delete {
         tracing::error!("Deleting old message: {:#?}", msg);
-        match msg.delete(ctx.clone()).await {
+        match msg.delete(ctx.http(), Some("delete old messages")).await {
             Ok(_) => {},
             Err(err) => {
                 tracing::error!("Error deleting message: {}", err);
@@ -554,8 +560,9 @@ pub async fn voice_state_diff_str(
     // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
     cache: Arc<impl serenity::CacheHttp>,
 ) -> Result<String, CrackedError> {
+    let guild_id = new.guild_id;
     let channel = match new.channel_id {
-        Some(channel_id) => channel_id.to_channel(cache.clone()).await.ok(),
+        Some(channel_id) => channel_id.to_channel(cache.clone(), guild_id).await.ok(),
         None => None,
     };
     let premium = true; //DEFAULT_PREMIUM;
@@ -594,7 +601,7 @@ pub async fn voice_state_diff_str(
             let user_name = &new.member.as_ref().unwrap().user.name;
             let user_mention = new.member.as_ref().unwrap().user.mention();
             let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache).await?.mention();
+            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
 
             let user = if premium {
                 user_mention.to_string()
@@ -615,7 +622,7 @@ pub async fn voice_state_diff_str(
         } else if old.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
             let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache).await?.mention();
+            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
 
             return Ok(format!(
                 "Member joined voice channel\n{} joined {}\n",
@@ -624,23 +631,29 @@ pub async fn voice_state_diff_str(
         } else {
             let old_channel_id = old.channel_id.unwrap();
             let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id.to_channel(cache.clone()).await?.mention();
-            let new_channel_mention = new_channel_id.to_channel(cache.clone()).await?.mention();
+            let old_channel_mention = old_channel_id
+                .to_channel(cache.clone(), guild_id)
+                .await?
+                .mention();
+            let new_channel_mention = new_channel_id
+                .to_channel(cache.clone(), guild_id)
+                .await?
+                .mention();
             result.push_str(&format!(
                 "Switched voice channels: {} -> {}\n",
                 old_channel_mention, new_channel_mention
             ));
         }
     }
-    if old.deaf != new.deaf {
-        if new.deaf {
+    if old.deaf() != new.deaf() {
+        if new.deaf() {
             result.push_str(&format!("{} was deafend\n", user));
         } else {
             result.push_str(&format!("{} was undeafend\n", user));
         }
     }
-    if old.mute != new.mute {
-        if new.mute {
+    if old.mute() != new.mute() {
+        if new.mute() {
             result.push_str(&format!("{} was muted\n", user));
         } else {
             result.push_str(&format!("{} was unmuted\n", user));
@@ -653,29 +666,29 @@ pub async fn voice_state_diff_str(
         ));
     }
 
-    if old.self_deaf != new.self_deaf {
-        if new.self_deaf {
+    if old.self_deaf() != new.self_deaf() {
+        if new.self_deaf() {
             result.push_str(&format!("{} deafened themselves\n", user));
         } else {
             result.push_str(&format!("{} undeafened themselves\n", user));
         }
     }
-    if old.self_mute != new.self_mute {
-        if new.self_mute {
+    if old.self_mute() != new.self_mute() {
+        if new.self_mute() {
             result.push_str(&format!("{} muted themselves\n", user));
         } else {
             result.push_str(&format!("{} unmuted themselves\n", user));
         }
     }
-    if old.self_stream != new.self_stream {
-        if new.self_stream.unwrap_or(false) {
+    if old.self_stream() != new.self_stream() {
+        if new.self_stream().unwrap_or(false) {
             result.push_str(&format!("{} started streaming\n", user));
         } else {
             result.push_str(&format!("{} stopped streaming\n", user));
         }
     }
-    if old.self_video != new.self_video {
-        if old.self_video {
+    if old.self_video() != new.self_video() {
+        if old.self_video() {
             result.push_str(&format!("{} turned off their camera\n", user));
         } else {
             result.push_str(&format!("{} turned on their camera\n", user));
@@ -687,10 +700,11 @@ pub async fn voice_state_diff_str(
             old.session_id, new.session_id
         ));
     }
-    if old.suppress != new.suppress {
+    if old.suppress() != new.suppress() {
         result.push_str(&format!(
             "suppress: {:?} -> {:?}\n",
-            old.suppress, new.suppress
+            old.suppress(),
+            new.suppress()
         ));
     }
     if old.user_id != new.user_id {

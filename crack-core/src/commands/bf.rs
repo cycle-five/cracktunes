@@ -14,7 +14,7 @@ pub async fn bf(
     #[description = "Optional input to feed to the program on stdin."]
     input: Option<String>,
 ) -> Result<(), Error> {
-    bf_internal(ctx, program, input.unwrap_or_default())
+    bf_internal(ctx, &program, &input.unwrap_or_default())
         .await
         .map(|_| ())
         .map_err(Into::into)
@@ -32,11 +32,7 @@ pub async fn bf(
 
 /// Run a brainfk program. Program and input string maybe empty,
 /// no handling is done for invalid programs.
-pub async fn bf_internal(
-    ctx: Context<'_>,
-    program: String,
-    input: String,
-) -> Result<(), CrackedError> {
+pub async fn bf_internal(ctx: Context<'_>, program: &str, input: &str) -> Result<(), CrackedError> {
     tracing::info!("program: {program}, input: {input}");
     let mut bf = BrainfuckProgram::new(program);
 

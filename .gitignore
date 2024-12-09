@@ -17,6 +17,7 @@ scratch
 Secrets.toml
 .env
 .env.old
+.env.fish
 cracktunes.env
 cracktunes.toml
 dotenv

@@ -5,9 +5,10 @@ use crate::messaging::messages::{
     FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
     FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
     FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL,
-    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
+    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
+use std::borrow::Cow;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
@@ -40,19 +41,19 @@ pub enum CrackedError {
     Anyhow(anyhow::Error),
     #[cfg(feature = "crack-gpt")]
     CrackGPT(Error),
-    CommandFailed(String, ExitStatus, String),
-    CommandNotFound(String),
+    CommandFailed(&'static str, ExitStatus, Cow<'static, str>),
+    CommandNotFound(Cow<'static, str>),
     Control(ControlError),
-    DurationParseError(String, String),
+    DurationParseError(&'static str, &'static str),
     EmptySearchResult,
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
-    FailedToSetChannelSize(String, ChannelId, u32, Error),
+    FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
-    InvalidIP(String),
+    InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
     IO(std::io::Error),
@@ -69,6 +70,7 @@ pub enum CrackedError {
     NoGuildForChannelId(ChannelId),
     NoGuildSettings,
     NoLogChannel,
+    NoMetadata,
     NoUserAutoplay,
     NothingPlaying,
     NoSongbird,
@@ -81,13 +83,11 @@ pub enum CrackedError {
     Poise(Error),
     QueueEmpty,
     Reqwest(reqwest::Error),
-    ReqwestOld(reqwest_old::Error),
     RoleNotFound(serenity::RoleId),
     RSpotify(RSpotifyClientError),
-    RSpotifyLockError(String),
+    RSpotifyLockError(&'static str),
     SQLX(sqlx::Error),
     Serde(serde_json::Error),
-    // SerdeStream(serde_stream::Error),
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
@@ -178,6 +178,7 @@ impl Display for CrackedError {
             },
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
+            Self::NoMetadata => f.write_str(NO_METADATA),
             Self::NoUserAutoplay => f.write_str(NO_USER_AUTOPLAY),
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),
@@ -191,7 +192,7 @@ impl Display for CrackedError {
             Self::PoisonError(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
-            Self::ReqwestOld(err) => f.write_str(&format!("{err}")),
+            //Self::ReqwestOld(err) => f.write_str(&format!("{err}")),
             Self::RoleNotFound(role_id) => {
                 f.write_fmt(format_args!("{} {}", ROLE_NOT_FOUND, role_id))
             },
@@ -325,13 +326,16 @@ impl From<serde_json::Error> for CrackedError {
 /// Provides an implementation to convert a [`SerenityError`] to a [`CrackedError`].
 impl From<SerenityError> for CrackedError {
     fn from(err: SerenityError) -> Self {
-        match err {
-            SerenityError::NotInRange(param, value, lower, upper) => {
-                Self::NotInRange(param, value as isize, lower as isize, upper as isize)
-            },
-            SerenityError::Other(msg) => Self::Other(msg),
-            _ => Self::Serenity(err),
-        }
+        Self::Serenity(err)
+    }
+}
+
+impl From<CrackedError> for SerenityError {
+    fn from(_x: CrackedError) -> Self {
+        SerenityError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "CrackedError",
+        ))
     }
 }
 
@@ -342,12 +346,12 @@ impl From<reqwest::Error> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`reqwest::Error`] to a [`CrackedError`].
-impl From<reqwest_old::Error> for CrackedError {
-    fn from(err: reqwest_old::Error) -> Self {
-        Self::ReqwestOld(err)
-    }
-}
+// /// Provides an implementation to convert a [`reqwest::Error`] to a [`CrackedError`].
+// impl From<reqwest_old::Error> for CrackedError {
+//     fn from(err: reqwest_old::Error) -> Self {
+//         Self::ReqwestOld(err)
+//     }
+// }
 
 /// Provides an implementation to convert a [`url::ParseError`] to a [`CrackedError`].
 impl From<url::ParseError> for CrackedError {
@@ -493,8 +497,8 @@ mod test {
         let err = CrackedError::TrackFail(err_err);
         assert_eq!(format!("{}", err), "test");
 
-        let err = CrackedError::Serenity(SerenityError::Other("test"));
-        assert_eq!(format!("{}", err), "test");
+        // let err = CrackedError::Serenity(SerenityError::Other("test"));
+        // assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
         assert_eq!(
@@ -505,6 +509,7 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
+        /// WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()
@@ -570,8 +575,8 @@ mod test {
         let err = CrackedError::TrackFail(Error::from("test"));
         assert_eq!(err, CrackedError::TrackFail(Error::from("test")));
 
-        let err = CrackedError::Serenity(SerenityError::Other("test"));
-        assert_eq!(err, CrackedError::Serenity(SerenityError::Other("test")));
+        // let err = CrackedError::Serenity(SerenityError::Other("test"));
+        // assert_eq!(err, CrackedError::Serenity(SerenityError::Other("test")));
 
         let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
         assert_eq!(err, CrackedError::SQLX(sqlx::Error::RowNotFound));

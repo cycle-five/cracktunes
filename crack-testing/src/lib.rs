@@ -6,6 +6,7 @@ pub use resolve::*;
 //------------------------------------
 // crack_types imports
 //------------------------------------
+use crack_types::SpotifyTrackTrait;
 use crack_types::TrackResolveError;
 use crack_types::{parse_url, video_info_to_aux_metadata};
 use crack_types::{Error, QueryType, SearchResult};
@@ -19,7 +20,8 @@ use futures::StreamExt;
 use once_cell::sync::Lazy;
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoOptions};
-use serenity::all::GuildId;
+use serenity::all::{AutocompleteChoice, GuildId};
+use std::borrow::Cow;
 //------------------------------------
 // Standard library imports
 //------------------------------------
@@ -66,7 +68,7 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
         .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
 });
 
-static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient> = Lazy::new(|| {
+static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient<'static>> = Lazy::new(|| {
     println!("{CREATING}: CrackTrackClient...");
     CrackTrackClient::new_with_clients(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone())
 });
@@ -83,15 +85,15 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
 /// Client for resolving tracks, mostly holds other clients like reqwest and rusty_ytdl.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct CrackTrackClient {
-    req_client: reqwest::Client,
+pub struct CrackTrackClient<'a> {
+    pub req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
     video_opts: VideoOptions,
-    q: Arc<DashMap<GuildId, CrackTrackQueue>>,
+    q: Arc<DashMap<GuildId, CrackTrackQueue<'a>>>,
 }
 
 /// Implement [Default] for [CrackTrackClient].
-impl Default for CrackTrackClient {
+impl Default for CrackTrackClient<'_> {
     fn default() -> Self {
         let req_client = REQ_CLIENT.clone();
         let yt_client = YOUTUBE_CLIENT.clone();
@@ -108,18 +110,17 @@ impl Default for CrackTrackClient {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 }
 
-impl Display for CrackTrackClient {
+impl Display for CrackTrackClient<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "CrackTrackClient")
     }
 }
 
-impl CrackTrackClient {
+impl<'a> CrackTrackClient<'a> {
     /// Create a new [CrackTrackClient].
     pub fn new() -> Self {
         Default::default()
@@ -143,7 +144,6 @@ impl CrackTrackClient {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 
@@ -164,30 +164,79 @@ impl CrackTrackClient {
             yt_client,
             video_opts,
             q: Arc::new(DashMap::new()),
-            //q: CrackTrackQueue::new(),
         }
     }
 
-    /// Resolve a track from a query. This does not start or ready the track for playback.
-    pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack, Error> {
-        // Do we need the original query in the resolved track?
-        //let vid_tuple: (rusty_ytdl::Video, VideoDetails, AuxMetadata) = match query {
+    pub async fn resolve_query_to_tracks(
+        &self,
+        query: QueryType,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         match query {
-            QueryType::VideoLink(ref url) => {
-                // let request_options = RequestOptions {
-                //     client: Some(self.req_client.clone()),
-                //     ..Default::default()
-                // };
-                // let video_options = VideoOptions {
-                //     request_options: request_options.clone(),
-                //     ..Default::default()
-                // };
-                // let video = rusty_ytdl::Video::new_with_options(url, video_options)?;
-                // let info = video.get_info().await?;
-                // let metadata = video_info_to_aux_metadata(&info);
-
-                self.resolve_url(url).await
+            QueryType::VideoLink(_) | QueryType::Keywords(_) => {
+                self.resolve_track_many(vec![query]).await
             },
+            QueryType::PlaylistLink(_) => {
+                self.resolve_playlist(&query.build_query().unwrap_or_default())
+                    .await
+            },
+            QueryType::KeywordList(keywords_list) => {
+                let queries = keywords_list
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.clone()))
+                    .collect::<Vec<QueryType>>();
+                self.resolve_track_many(queries).await
+            },
+            QueryType::NewYoutubeDl((_ytdl, opts)) => {
+                let req_options = RequestOptions {
+                    client: Some(self.req_client.clone()),
+                    ..Default::default()
+                };
+                let video_options = VideoOptions {
+                    request_options: req_options.clone(),
+                    ..Default::default()
+                };
+                let video = rusty_ytdl::Video::new_with_options(
+                    opts.clone().source_url.unwrap_or_default(),
+                    video_options,
+                )?;
+                let info = video.get_info().await?;
+
+                Ok(vec![ResolvedTrack::default()
+                    .with_details(info.video_details)
+                    .with_metadata(opts)
+                    .with_video(video)])
+            },
+            QueryType::SpotifyTracks(tracks) => {
+                let queries = tracks
+                    .iter()
+                    .map(|x| QueryType::Keywords(x.build_query()))
+                    .collect::<Vec<QueryType>>();
+
+                self.resolve_track_many(queries).await
+            },
+            _ => {
+                tracing::error!("Query type not implemented: {query:?}");
+                Err(TrackResolveError::UnknownQueryType.into())
+            },
+        }
+    }
+
+    pub async fn resolve_track_many(
+        &self,
+        queries: Vec<QueryType>,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
+        let mut queue = Vec::new();
+        for query in queries {
+            let track = self.resolve_track(query).await?;
+            queue.push(track);
+        }
+        Ok(queue)
+    }
+
+    /// Resolve a track from a query. This does not start or ready the track for playback.
+    pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack<'a>, Error> {
+        match query {
+            QueryType::VideoLink(ref url) => self.resolve_url(url).await,
             QueryType::Keywords(ref keywords) => {
                 let search_results = self.yt_client.search_one(keywords, None).await?;
                 let video = match search_results {
@@ -205,7 +254,7 @@ impl CrackTrackClient {
     }
 
     /// Resolve a URL and return a single track.
-    async fn resolve_url(&self, url: &str) -> Result<ResolvedTrack, Error> {
+    async fn resolve_url(&self, url: &str) -> Result<ResolvedTrack<'a>, Error> {
         let request_options = RequestOptions {
             client: Some(self.req_client.clone()),
             ..Default::default()
@@ -225,7 +274,7 @@ impl CrackTrackClient {
     }
 
     /// Resolve a search query and return a single track.
-    pub async fn resolve_search_one(&self, query: &str) -> Result<ResolvedTrack, Error> {
+    pub async fn resolve_search_one(&self, query: &str) -> Result<ResolvedTrack<'a>, Error> {
         let search_results = self.yt_client.search_one(query, None).await?;
         let video = match search_results {
             Some(SearchResult::Video(result)) => result,
@@ -237,7 +286,7 @@ impl CrackTrackClient {
     }
 
     /// Resolve a search query and return a queue of tracks.
-    pub async fn resolve_search(&self, query: &str) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_search(&self, query: &str) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let search_options = rusty_ytdl::search::SearchOptions {
             limit: 5,
             ..Default::default()
@@ -255,7 +304,10 @@ impl CrackTrackClient {
     }
 
     /// Resolve a search query and return a queue of tracks.
-    pub async fn resolve_search_faster(&self, query: &str) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_search_faster(
+        &self,
+        query: &str,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let search_options = rusty_ytdl::search::SearchOptions {
             limit: 5,
             ..Default::default()
@@ -273,8 +325,6 @@ impl CrackTrackClient {
             let query = QueryType::VideoLink(video_url);
             let track = self.resolve_track(query);
             tasks.push(Box::pin(track));
-            // let track = self.resolve_track(query).await?;
-            // queue.push(track);
         }
         while let Some(res) = tasks.next().await {
             let track = res?;
@@ -284,27 +334,37 @@ impl CrackTrackClient {
     }
 
     /// Get a suggestion autocomplete from a search instead of the suggestion api.
-    pub async fn resolve_suggestion_search(&self, query: &str) -> Result<Vec<String>, Error> {
+    pub async fn resolve_suggestion_search(
+        &self,
+        query: &str,
+    ) -> Result<Vec<AutocompleteChoice<'a>>, Error> {
         let tracks = self.resolve_search(query).await?;
-        Ok(tracks
+        let autocomplete_choices: Vec<AutocompleteChoice<'a>> = tracks
             .iter()
-            .map(|track| track.suggest_string())
-            .collect::<Vec<String>>())
+            .map(|track| Cow::Owned(track.clone()))
+            .collect::<Vec<Cow<'a, ResolvedTrack>>>()
+            .into_iter()
+            .map(|track| track.clone().autocomplete_option())
+            .collect::<Vec<AutocompleteChoice<'a>>>();
+        Ok(autocomplete_choices)
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
-    pub async fn resolve_playlist(&self, url: &str) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist<'b>(
+        &self,
+        url: &'b str,
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
 
     /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
     /// a helper method in the CrackTrackClient.
-    pub async fn resolve_playlist_limit(
+    pub async fn resolve_playlist_limit<'b>(
         &self,
-        url: &str,
+        url: &'b str,
         limit: u64,
-    ) -> Result<Vec<ResolvedTrack>, Error> {
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let req_options = RequestOptions {
             client: Some(self.req_client.clone()),
             ..Default::default()
@@ -334,13 +394,14 @@ impl CrackTrackClient {
         suggestion_yt(self.yt_client.clone(), query).await
     }
 
-    pub fn ensure_queue(&self, guild: GuildId) -> CrackTrackQueue {
+    pub fn ensure_queue(&self, guild: GuildId) -> CrackTrackQueue<'a> {
         if let Some(q) = self.q.get(&guild) {
             q.clone()
         } else {
-            let q = CrackTrackQueue::new();
+            let q: &mut CrackTrackQueue<'a> = Box::leak(Box::new(CrackTrackQueue::new()));
+            //let q = *q;
             self.q.insert(guild, q.clone());
-            q
+            q.clone()
         }
     }
 
@@ -349,7 +410,7 @@ impl CrackTrackClient {
         &mut self,
         guild: GuildId,
         query: QueryType,
-    ) -> Result<ResolvedTrack, Error> {
+    ) -> Result<ResolvedTrack<'a>, Error> {
         let track = self.resolve_track(query).await?;
         let _ = self.ensure_queue(guild).push_back(track.clone()).await;
         Ok(track)
@@ -359,8 +420,8 @@ impl CrackTrackClient {
     pub async fn enqueue_track(
         &mut self,
         guild: GuildId,
-        track: ResolvedTrack,
-    ) -> Result<ResolvedTrack, Error> {
+        track: ResolvedTrack<'a>,
+    ) -> Result<ResolvedTrack<'a>, Error> {
         let _ = self.ensure_queue(guild).push_back(track.clone()).await;
         Ok(track)
     }
@@ -369,11 +430,10 @@ impl CrackTrackClient {
     pub async fn append_queue(
         &mut self,
         guild: GuildId,
-        tracks: Vec<ResolvedTrack>,
+        tracks: Vec<ResolvedTrack<'a>>,
     ) -> Result<(), Error> {
         for track in tracks {
             let _ = self.ensure_queue(guild).push_back(track).await;
-            //let _ = self.q.push_back(track).await;
         }
         Ok(())
     }
@@ -391,21 +451,19 @@ impl CrackTrackClient {
     }
 
     /// Get the queue.
-    pub async fn get_queue(&self, guild: GuildId) -> VecDeque<ResolvedTrack> {
+    pub async fn get_queue(&self, guild: GuildId) -> VecDeque<ResolvedTrack<'a>> {
         self.ensure_queue(guild).get_queue().await
     }
 }
 
 /// Get a suggestion from a query. Use the global static client.
-pub async fn suggestion2(query: &str) -> Result<Vec<String>, Error> {
+pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice<'_>>, Error> {
     let client = CRACK_TRACK_CLIENT.clone();
-    //let client = YOUTUBE_CLIENT.clone();
     client.resolve_suggestion_search(query).await
 }
 
 /// Get a suggestion from a query. Use the global static client.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
-    //let client = CrackTrackClient::new();
     let client = YOUTUBE_CLIENT.clone();
     suggestion_yt(client, query).await
 }
@@ -473,7 +531,7 @@ async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
 #[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let guild = GuildId::new(1);
-    let mut client = CrackTrackClient::new();
+    let client = Box::leak(Box::new(CrackTrackClient::new()));
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
@@ -488,7 +546,10 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
                 QueryType::VideoLink(url) => {
                     vec![client.resolve_track(QueryType::VideoLink(url)).await?]
                 },
-                QueryType::PlaylistLink(url) => client.resolve_playlist(url.as_str()).await?,
+                QueryType::PlaylistLink(url) => {
+                    let url = url.clone();
+                    client.resolve_playlist(url.as_str()).await?
+                },
                 _ => {
                     tracing::error!("Unknown URL type: {url}");
                     Vec::new()
@@ -613,7 +674,7 @@ mod tests {
         println!("{res:?}");
         assert_eq!(
             res.iter()
-                .filter(|x| x.contains("Molly Nilsson"))
+                .filter(|&x| x.clone().name.contains("Molly Nilsson"))
                 .collect::<Vec<_>>()
                 .len(),
             5

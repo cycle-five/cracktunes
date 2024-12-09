@@ -69,10 +69,11 @@ impl MyYoutubeDl {
         let output = Command::new(self.program).args(ytdl_args).output().await?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             return Err(CrackedError::CommandFailed(
-                self.program.to_string(),
+                self.program,
                 output.status,
-                String::from_utf8_lossy(&output.stderr).to_string(),
+                stderr.into(),
             ));
         }
         Ok(output

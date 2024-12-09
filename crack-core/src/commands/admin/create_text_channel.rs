@@ -22,10 +22,9 @@ pub async fn create_text_channel(
     channel_name: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild = guild_id.to_partial_guild(&ctx).await?;
-    match guild
+    match guild_id
         .create_channel(
-            &ctx,
+            ctx.http(),
             CreateChannel::new(channel_name.clone())
                 .kind(serenity::model::channel::ChannelType::Text),
         )
@@ -45,7 +44,7 @@ pub async fn create_text_channel(
             send_reply(
                 &ctx,
                 CrackedMessage::TextChannelCreated {
-                    channel_name: channel.name.clone(),
+                    channel_name: channel.name,
                     channel_id: channel.id,
                 },
                 true,
@@ -70,10 +69,9 @@ pub async fn create_category(
     category_name: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild = guild_id.to_partial_guild(&ctx).await?;
-    match guild
+    match guild_id
         .create_channel(
-            &ctx,
+            ctx.http(),
             CreateChannel::new(category_name.clone())
                 .kind(serenity::model::channel::ChannelType::Category),
         )
@@ -93,7 +91,7 @@ pub async fn create_category(
             send_reply(
                 &ctx,
                 CrackedMessage::TextChannelCreated {
-                    channel_name: channel.name.clone(),
+                    channel_name: channel.name,
                     channel_id: channel.id,
                 },
                 true,

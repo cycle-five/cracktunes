@@ -8,6 +8,23 @@
       pre-curated and use in my own server.
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
+- [ ] Decide on whether to use ephemeral for admin messages.
+
+## v0.3.16 (2024/12/12)
+- Commands each show up and work only where they are supposed to (guilds, dms, etc).
+
+## v0.3.16-alpha.3 (2024/12/09)
+- re-enable the commands that were disabled in the last release
+  for the serenity-next branch.
+- Got the rusty_ytdl library with the compose to an Input working.
+  The result is the bot starts up and responds and queues songs much faster.
+- Youtube suggestions are now working again.
+
+## v0.3.16-alpha.2 (2024/12/01)
+- [x] update to serenity-next branch
+
+## v0.3.15-alpha.1 (2024/11/23)
+- [x] bug fix patch 
 
 ## v0.3.14 (2024/11/05)
 - [x] Big refactor, moving a lot of the code into modules.

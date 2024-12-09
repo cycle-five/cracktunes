@@ -1,15 +1,18 @@
 use crate::{
-    commands::sub_help as help,
+    //commands::sub_help as help,
     http_utils,
     http_utils::{CacheHttpExt, SendMessageParams},
     messaging::message::CrackedMessage,
     poise_ext::PoiseContextExt,
-    Context, Error,
+    Context,
+    Error,
 };
 use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
+use serenity::small_fixed_array::FixedString;
 use std::result::Result;
+use std::str::FromStr;
 
 /// Osint Commands
 #[poise::command(
@@ -28,14 +31,14 @@ use std::result::Result;
         "checkpass",
         "scan",
         "virustotal_result",
-        "help",
+        //"help",
     ),
 )]
 pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
     let guild_name = ctx
         .guild()
         .map(|x| x.name.clone())
-        .unwrap_or("DMs".to_string());
+        .unwrap_or(FixedString::from_str("DMs").expect("wtf?"));
 
     let msg_str = format!("Osint found in {guild_name}!");
     let msg = ctx

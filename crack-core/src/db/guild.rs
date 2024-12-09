@@ -8,6 +8,7 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
 use std::collections::HashMap;
 
@@ -188,6 +189,7 @@ impl GuildEntity {
             .into_iter()
             .map(|x| x as i64)
             .collect::<Vec<i64>>();
+        let to_write = settings.guild_name.to_string();
         sqlx::query!(
             r#"
             INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes)
@@ -196,7 +198,7 @@ impl GuildEntity {
             DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, ignored_channels = $9, old_volume = $10::FLOAT, volume = $11::FLOAT, self_deafen = $12, timeout_seconds = $13, additional_prefixes = $14
             "#,
             settings.guild_id.get() as i64,
-            settings.guild_name,
+            to_write,
             settings.prefix,
             settings.premium,
             settings.autopause,
@@ -368,9 +370,10 @@ impl GuildEntity {
     pub async fn get_or_create(
         pool: &PgPool,
         guild_id: i64,
-        name: String,
+        name: FixedString,
         prefix: String,
     ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
+        let name_str = name.to_string();
         let guild_entity = sqlx::query_as!(
             GuildEntity,
             r#"
@@ -381,7 +384,7 @@ impl GuildEntity {
                 RETURNING *
                 "#,
             guild_id,
-            name
+            name_str.clone()
         )
         .fetch_one(pool)
         .await?;
@@ -396,7 +399,7 @@ impl GuildEntity {
                     RETURNING *
                     "#,
             guild_id,
-            Some(name.clone()),
+            Some(name_str.clone()),
             prefix
         )
         .fetch_one(pool)
@@ -474,10 +477,11 @@ impl GuildEntity {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
     use super::*;
+    use crack_types::to_fixed;
     use sqlx::PgPool;
+    use std::collections::HashSet;
+    use std::str::FromStr;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -486,7 +490,7 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -503,7 +507,7 @@ mod test {
         let (mut guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            FixedString::from_str("test").unwrap(),
             "test".to_string(),
         )
         .await
@@ -527,7 +531,7 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -569,7 +573,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -595,7 +599,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await
@@ -621,7 +625,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            "test".to_string(),
+            to_fixed("test"),
             "test".to_string(),
         )
         .await

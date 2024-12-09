@@ -37,9 +37,7 @@ pub async fn remove_internal(
     e_index: Option<usize>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NoSongbird)?;
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     let remove_index = b_index;
@@ -87,7 +85,7 @@ pub async fn remove_internal(
     if remove_until == remove_index {
         let embed = create_remove_enqueued_embed(track).await;
         //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
-        send_embed_response_poise(&ctx, embed).await?;
+        send_embed_response_poise(ctx, embed).await?;
     } else {
         send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
@@ -97,7 +95,7 @@ pub async fn remove_internal(
 }
 
 async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
-    let metadata = get_track_handle_metadata(track).await;
+    let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     CreateEmbed::default()
         .field(
             REMOVED_QUEUE,

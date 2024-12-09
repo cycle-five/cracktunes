@@ -1,6 +1,7 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
-use crate::music::query::QueryType;
+use crate::music::query::NewQueryType;
+use crack_types::QueryType;
 
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
@@ -16,7 +17,7 @@ use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 pub async fn get_rusty_search(
     client: reqwest::Client,
     url: String,
-) -> CrackedResult<RustyYoutubeSearch> {
+) -> CrackedResult<RustyYoutubeSearch<'static>> {
     let request_options = RequestOptions {
         client: Some(client.clone()),
         ..Default::default()
@@ -101,7 +102,7 @@ pub async fn search_query_to_source_and_metadata_rusty(
         tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", rusty_yt);
         let results = rusty_yt
             .search_one(
-                query
+                NewQueryType(query.clone())
                     .build_query()
                     .ok_or(CrackedError::Other("No query given"))?,
                 None,
@@ -205,7 +206,8 @@ mod test {
         let reqclient = http_utils::get_client().clone();
         let ytclient = YouTube::new_with_options(&opts).unwrap();
         let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
+            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string()).into();
+        let query_type = NewQueryType(query_type);
         let res = query_type.get_track_metadata(ytclient, reqclient).await;
         if let Err(ref e) = res {
             // let phrase = "Sign in to confirm you’re not a bot";
@@ -219,6 +221,8 @@ mod test {
     async fn test_get_track_source_and_metadata() {
         let reqclient = http_utils::get_client().clone();
         let query_type = QueryType::Keywords("hello".to_string());
+        QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
+        let query_type = NewQueryType(query_type);
         let res = query_type
             .get_track_source_and_metadata(Some(reqclient))
             .await;
@@ -233,6 +237,7 @@ mod test {
     async fn test_get_track_source_and_metadata_video_link() {
         let query_type =
             QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
+        let query_type = NewQueryType(query_type);
         let client = http_utils::build_client();
         let res = query_type.get_track_source_and_metadata(Some(client)).await;
         if let Err(ref e) = res {
@@ -248,6 +253,7 @@ mod test {
         let query_type = QueryType::PlaylistLink(
             "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
         );
+        let query_type = NewQueryType(query_type);
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
         if let Err(ref e) = res {
@@ -259,7 +265,10 @@ mod test {
 
     #[tokio::test]
     async fn test_get_track_source_and_metadata_keyword_list() {
-        let query_type = QueryType::KeywordList(vec!["hello".to_string(), "world".to_string()]);
+        let query_type = NewQueryType(QueryType::KeywordList(vec![
+            "hello".to_string(),
+            "world".to_string(),
+        ]));
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
         match res {

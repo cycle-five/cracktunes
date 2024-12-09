@@ -3,6 +3,8 @@
 //! Utilities for registering application commands
 
 use poise::serenity_prelude as serenity;
+use serenity::CollectComponentInteractions;
+use std::borrow::Cow;
 
 /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
 /// to register the commands on Discord
@@ -15,18 +17,18 @@ use poise::serenity_prelude as serenity;
 /// let commands = &ctx.framework().options().commands;
 /// let create_commands = poise::builtins::create_application_commands(commands);
 ///
-/// serenity::Command::set_global_commands(ctx, create_commands).await?;
+/// serenity::Command::set_global_commands(ctx.http(), &create_commands).await?;
 /// # Ok(()) }
 /// ```
 pub fn create_application_commands_cracked<U, E>(
     commands: &[poise::Command<U, E>],
-) -> Vec<serenity::CreateCommand> {
+) -> Vec<serenity::CreateCommand<'static>> {
     /// We decided to extract context menu commands recursively, despite the subcommand hierarchy
     /// not being preserved. Because it's more confusing to just silently discard context menu
     /// commands if they're not top-level commands.
     /// https://discord.com/channels/381880193251409931/919310428344029265/947970605985189989
     fn recursively_add_context_menu_commands<U, E>(
-        builder: &mut Vec<serenity::CreateCommand>,
+        builder: &mut Vec<serenity::CreateCommand<'static>>,
         command: &poise::Command<U, E>,
     ) {
         if let Some(context_menu_command) = command.create_as_context_menu_command() {
@@ -59,7 +61,7 @@ pub async fn register_globally_cracked<U, E>(
     commands: &[poise::Command<U, E>],
 ) -> Result<(), serenity::Error> {
     let builder = create_application_commands_cracked(commands);
-    serenity::Command::set_global_commands(http, builder).await?;
+    serenity::Command::set_global_commands(http.as_ref(), builder.as_slice()).await?;
     Ok(())
 }
 
@@ -74,7 +76,9 @@ pub async fn register_in_guild_cracked<U, E>(
     guild_id: serenity::GuildId,
 ) -> Result<(), serenity::Error> {
     let builder = create_application_commands_cracked(commands);
-    guild_id.set_commands(http, builder).await?;
+    guild_id
+        .set_commands(http.as_ref(), builder.as_slice())
+        .await?;
     Ok(())
 }
 
@@ -92,7 +96,7 @@ pub async fn register_in_guild_cracked<U, E>(
 /// Run with no arguments to register in guild, run with argument "global" to register globally.
 /// ```
 #[allow(dead_code)]
-pub async fn register_application_commands_cracked<U, E>(
+pub async fn register_application_commands_cracked<U: Sync + Send + 'static, E>(
     ctx: poise::Context<'_, U, E>,
     global: bool,
 ) -> Result<(), serenity::Error> {
@@ -108,7 +112,7 @@ pub async fn register_application_commands_cracked<U, E>(
     if global {
         ctx.say(format!("Registering {num_commands} commands...",))
             .await?;
-        serenity::Command::set_global_commands(ctx, commands_builder).await?;
+        serenity::Command::set_global_commands(ctx.http(), commands_builder.as_slice()).await?;
     } else {
         let guild_id = match ctx.guild_id() {
             Some(x) => x,
@@ -120,7 +124,9 @@ pub async fn register_application_commands_cracked<U, E>(
 
         ctx.say(format!("Registering {num_commands} commands..."))
             .await?;
-        guild_id.set_commands(ctx, commands_builder).await?;
+        guild_id
+            .set_commands(ctx.http(), commands_builder.as_slice())
+            .await?;
     }
 
     ctx.say("Done!").await?;
@@ -155,7 +161,7 @@ pub async fn register_application_commands_cracked<U, E>(
 /// ```
 ///
 /// Which you can call like any prefix command, for example `@your_bot register`.
-pub async fn register_application_commands_buttons_cracked<U, E>(
+pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'static, E>(
     ctx: poise::Context<'_, U, E>,
 ) -> Result<(), serenity::Error> {
     let create_commands = create_application_commands_cracked(&ctx.framework().options().commands);
@@ -167,7 +173,7 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
         return Ok(());
     }
 
-    let components = serenity::CreateActionRow::Buttons(vec![
+    let buttons = vec![
         serenity::CreateButton::new("register.guild")
             .label("Register in guild")
             .style(serenity::ButtonStyle::Primary)
@@ -184,7 +190,8 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
             .label("Unregister globally")
             .style(serenity::ButtonStyle::Danger)
             .emoji('🗑'),
-    ]);
+    ];
+    let components = serenity::CreateActionRow::Buttons(Cow::Owned(buttons));
 
     let builder = poise::CreateReply::default()
         .content("Choose what to do with the commands:")
@@ -195,7 +202,9 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
     let interaction = reply
         .message()
         .await?
-        .await_component_interaction(ctx)
+        .into_owned()
+        .id
+        .collect_component_interactions(ctx.serenity_context().shard.clone())
         .author_id(ctx.author().id)
         .await;
 
@@ -216,7 +225,8 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
         },
     };
 
-    let (register, global) = match &**pressed_button_id {
+    let id_str = pressed_button_id.as_str();
+    let (register, global) = match id_str {
         "register.global" => (true, true),
         "unregister.global" => (false, true),
         "register.guild" => (true, false),
@@ -235,10 +245,10 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
                 ":gear: Registering {num_commands} global commands...",
             ))
             .await?;
-            serenity::Command::set_global_commands(ctx, create_commands).await?;
+            serenity::Command::set_global_commands(ctx.http(), create_commands.as_slice()).await?;
         } else {
             ctx.say(":gear: Unregistering global commands...").await?;
-            serenity::Command::set_global_commands(ctx, vec![]).await?;
+            serenity::Command::set_global_commands(ctx.http(), vec![].as_slice()).await?;
         }
     } else {
         let guild_id = match ctx.guild_id() {
@@ -253,10 +263,12 @@ pub async fn register_application_commands_buttons_cracked<U, E>(
                 ":gear: Registering {num_commands} guild commands...",
             ))
             .await?;
-            guild_id.set_commands(ctx, create_commands).await?;
+            guild_id
+                .set_commands(ctx.http(), create_commands.as_slice())
+                .await?;
         } else {
             ctx.say(":gear: Unregistering guild commands...").await?;
-            guild_id.set_commands(ctx, vec![]).await?;
+            guild_id.set_commands(ctx.http(), vec![].as_slice()).await?;
         }
     }
 

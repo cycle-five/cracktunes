@@ -43,13 +43,13 @@ pub async fn queue(
     queue_internal(ctx).await
 }
 
+use poise::serenity_prelude::CollectComponentInteractions;
+
 /// Internal queue function.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .ok_or(CrackedError::NotConnected)?;
+    let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
     // FIXME
@@ -65,7 +65,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
             interaction
                 .create_response(
-                    &ctx.serenity_context().http,
+                    ctx.http(),
                     CreateInteractionResponse::Message(
                         CreateInteractionResponseMessage::new()
                             .embed(create_queue_embed(&tracks, 0).await)
@@ -78,13 +78,11 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
                 .await?
         },
         _ => {
-            let reply = ctx
-                .send(
-                    CreateReply::default()
-                        .embed(create_queue_embed(&tracks, 0).await)
-                        .components(create_nav_btns(0, num_pages)),
-                )
-                .await?;
+            let create_reply = CreateReply::default()
+                .embed(create_queue_embed(&tracks, 0).await)
+                .components(create_nav_btns(0, num_pages));
+
+            let reply = ctx.send(create_reply).await?;
             reply.into_message().await?
         },
     };
@@ -116,7 +114,8 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     );
 
     let mut cib = message
-        .await_component_interactions(ctx)
+        .id
+        .collect_component_interactions(ctx.serenity_context().shard.clone())
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
         .stream();
 
@@ -140,7 +139,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         };
 
         mci.create_response(
-            &ctx,
+            ctx.http(),
             CreateInteractionResponse::UpdateMessage(
                 CreateInteractionResponseMessage::new()
                     .add_embed(create_queue_embed(&tracks, page_num).await)

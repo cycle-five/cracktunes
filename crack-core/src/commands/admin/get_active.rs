@@ -6,6 +6,7 @@ use serenity::all::GuildChannel;
 use serenity::all::GuildId;
 use serenity::all::UserId;
 use std::collections::HashMap;
+use extract_map::ExtractMap;
 
 /// Get list of VCs the bot is currently in.
 #[poise::command(prefix_command, owners_only, ephemeral)]
@@ -16,8 +17,8 @@ pub async fn get_active_vcs(ctx: Context<'_>) -> Result<(), Error> {
     let guilds = get_guilds(ctx).await?;
     let user_id = ctx.serenity_context().cache.current_user().id;
     for (guild_id, _, _) in guilds.iter() {
-        let guild_channels = guild_id.channels(ctx).await?;
-        let vcs = get_active_vcs_impl(ctx, guild_channels, user_id).await?;
+        let guild_channels = guild_id.channels(ctx.http().as_ref()).await?;
+        let vcs = get_active_vcs_impl(ctx, guild_channels, user_id)?;
         active_vcs.extend(vcs);
     }
     poise::say_reply(ctx, format!("Active VCs: {:?}", active_vcs)).await?;
@@ -31,7 +32,7 @@ pub async fn get_guilds(ctx: Context<'_>) -> Result<Vec<(GuildId, String, u64)>,
     let mut guilds = Vec::<(GuildId, String, u64)>::new();
     for guild_id in ctx.cache().guilds() {
         match ctx.cache().guild(guild_id) {
-            Some(guild) => guilds.push((guild.id, guild.name.clone(), guild.member_count)),
+            Some(guild) => guilds.push((guild.id, guild.name.to_string(), guild.member_count)),
             None => hidden_guilds += 1, // uncached guild
         }
     }
@@ -44,9 +45,9 @@ pub async fn get_guilds(ctx: Context<'_>) -> Result<Vec<(GuildId, String, u64)>,
 
 /// Get list of VCs the bot is currently in.
 #[cfg(not(tarpaulin_include))]
-pub async fn get_active_vcs_impl(
+pub fn get_active_vcs_impl(
     ctx: Context<'_>,
-    guild_channels: HashMap<ChannelId, GuildChannel>,
+    guild_channels: ExtractMap<ChannelId, GuildChannel>,
     bot_id: UserId,
 ) -> Result<Vec<(GuildId, String)>, Error> {
     let mut active_vcs = Vec::new();
