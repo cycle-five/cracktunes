@@ -169,14 +169,19 @@ pub async fn poise_framework(
         // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                tracing::info!(">>> {}...", ctx.command().qualified_name);
+                tracing::span!(
+                    tracing::Level::TRACE,
+                    "command",
+                    command = ctx.command().qualified_name.as_ref(),
+                    is_prefix = ctx.is_prefix()
+                );
                 count_command(ctx.command().qualified_name.as_ref(), ctx.is_prefix());
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("<<< {}!", ctx.command().qualified_name);
+                tracing::trace!("<<< {}!", ctx.command().qualified_name);
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -187,8 +192,8 @@ pub async fn poise_framework(
                     None => return Ok(true),
                     Some(guild_id) => ctx.guild_name_from_guild_id(guild_id).await,
                 }
-                .unwrap_or(to_fixed("Unknown"));
-                tracing::warn!("Guild: {}", name);
+                .unwrap_or_else(|_| to_fixed("Unknown"));
+                tracing::trace!("Guild: {}", name);
                 Ok(true)
             })
         }),

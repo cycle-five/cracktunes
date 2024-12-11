@@ -233,6 +233,30 @@ impl Display for ResolvedTrack<'_> {
     }
 }
 
+// pub struct ResolvedTrackWClient<'a> {
+//     client: &'a reqwest::Client,
+//     track: ResolvedTrack<'a>,
+// }
+
+// use songbird::tracks::Track as SongbirdTrack;
+// impl From<ResolvedTrackWClient<'_>> for SongbirdTrack {
+//     fn from(track_w_client: ResolvedTrackWClient) -> Self {
+//         let ResolvedTrackWClient { client, track } = track_w_client;
+//         let query = track.query.clone();
+//         let ytdl = RustyYoutubeSearch::new_with_stuff(
+//             client.clone(),
+//             query.clone(),
+//             track.metadata.clone(),
+//             track.video.clone(),
+//         )?;
+//         let resolved_clone = &track.clone();
+//         let track_data = Arc::new(TrackData {
+//             user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+//             aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+//         });
+//         SongbirdTrack::new_with_data(ytdl.clone().into(), track_data)
+//     }
+// }
 // use rusty_ytdl::VideoError;
 // use songbird::input::Input;
 

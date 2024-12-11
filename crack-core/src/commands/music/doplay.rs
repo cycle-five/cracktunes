@@ -2,6 +2,7 @@ use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
+use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
 use crate::utils::{edit_embed_response2, TrackData};
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
@@ -30,6 +31,8 @@ use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
+use rusty_ytdl::search::YouTube;
+use songbird::input::{Input as SongbirdInput, YoutubeDl};
 use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
@@ -102,16 +105,6 @@ pub async fn autocomplete<'a>(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &'a str,
 ) -> CreateAutocompleteResponse<'a> {
-    // let choices = match suggestion2(searching).await {
-    //     Ok(x) => {
-    //         let choices = x.iter().map(|choice| choice).collect();
-    //         choices
-    //     },
-    //     Err(e) => {
-    //         tracing::error!("Error getting suggestions: {:?}", e);
-    //         vec![]
-    //     },
-    // };
     let choices = suggestion2(searching).await.unwrap_or_default();
     let res = CreateAutocompleteResponse::new();
     res.set_choices(Cow::Owned(choices.clone()))
@@ -184,8 +177,6 @@ pub async fn playfile(
     }
     play_internal(ctx, None, Some(file), None).await
 }
-
-use songbird::input::{Input as SongbirdInput, YoutubeDl};
 
 /// Enqueue an extrernal queue of resolved tracks to the internal queue
 /// for the bot in songbird.
@@ -262,22 +253,41 @@ pub async fn playytplaylist(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut crack_client = ctx.data().ct_client.clone();
+    let req_client = ctx.data().http_client.clone();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
-    let _call = get_call_or_join_author(ctx).await?;
+    let call = get_call_or_join_author(ctx).await?;
     // This gets the metadata for all the tracks in the playlist.
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
-    let _tracks = crack_client.resolve_playlist(&query).await?;
+    let tracks = crack_client.resolve_playlist(&query).await?;
     let _ = crack_client.build_display(guild_id).await;
     let yt_playlist_str = crack_client.get_display(guild_id);
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
     let _ = ctx
         .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
         .await?;
-    // This enqueues the tracks into the internal queue for the bot.
-    //let _ = enqueue_resolved_tracks(call, tracks).await;
+
+    for track in tracks.iter() {
+        let query = track.query.clone();
+        let ytdl = RustyYoutubeSearch::new_with_stuff(
+            req_client.clone(),
+            query.clone(),
+            track.metadata.clone(),
+            track.video.clone(),
+        )?;
+        let resolved_clone = &track.clone();
+        let track_data = Arc::new(TrackData {
+            user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+            aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+        });
+        let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
+        // let q = call.lock().await;
+        // let _ = q.enqueue(track2);
+        call.lock().await.enqueue(track2);
+    }
+    //queue_resolved_track_back(call, tracks, req_client).await?;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
@@ -754,8 +764,6 @@ async fn build_queued_embed<'att>(
         .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
-use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
-use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
@@ -763,8 +771,6 @@ pub async fn queue_aux_metadata(
     aux_metadata: &[NewAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
-    // use crate::http_utils;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 

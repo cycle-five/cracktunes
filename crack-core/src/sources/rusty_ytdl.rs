@@ -3,6 +3,7 @@ use crate::http_utils;
 use crate::music::NewQueryType;
 use bytes::Buf;
 use bytes::BytesMut;
+use crack_testing::ResolvedTrack;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::QueryType;
 use rusty_ytdl::stream::Stream;
@@ -32,25 +33,16 @@ pub struct RustyYoutubeSearch<'a> {
     pub query: QueryType,
 }
 
-#[derive(Clone, Debug)]
-pub struct NewRustyRequest<'a> {
-    // required in param
-    pub query: QueryType,
-    // optional in param
-    pub url: Option<String>,
-    // out params
-    pub metadata: Option<AuxMetadata>,
-    pub video: Option<Video<'a>>,
-}
+// impl From<ResolvedTrack<'static>> for RustyYoutubeSearch<'static> {
+//     fn from(track: ResolvedTrack<'static>) -> Self {
+//         let query = QueryType::VideoLink(track.get_url());
+//         let client = http_utils::get_client().clone();
+//         RustyYoutubeSearch::new_with_stuff(client, query, track.metadata, track.video)
+//             .unwrap_or_default()
+//     }
+// }
 
-#[derive(Clone, Debug)]
-pub struct NewRustyClient {
-    pub req_client: reqwest::Client,
-    pub rusty_ytdl: YouTube,
-    pub req_opts: RequestOptions,
-    pub vid_opts: VideoOptions,
-}
-
+/// Display for the [`RustyYoutubeSearch`] struct.
 impl Display for RustyYoutubeSearch<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -393,6 +385,8 @@ impl From<NewSearchSource> for Input {
 
 #[cfg(test)]
 mod test {
+    use crate::sources::rusty_ytdl;
+    use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
     use crate::{
         http_utils,
         music::NewQueryType,
@@ -401,9 +395,9 @@ mod test {
             youtube::search_query_to_source_and_metadata_rusty,
         },
     };
+    use ::rusty_ytdl::search::YouTube;
+    use ::rusty_ytdl::RequestOptions;
     use crack_types::QueryType;
-    use rusty_ytdl::search::YouTube;
-    use rusty_ytdl::RequestOptions;
     use songbird::input::{Input, YoutubeDl};
 
     #[tokio::test]
@@ -412,13 +406,6 @@ mod test {
         let query = QueryType::Keywords(search_term.to_string());
         let reqwest_client = http_utils::get_client().clone();
         let rusty_search = RustyYoutubeSearch::new(query, reqwest_client).unwrap();
-        // let rusty_search = FastYoutubeSearch {
-        //     reqwest_client,
-        //     ytdl_client: either::Left(rusty_ytdl),
-        //     metadata: None,
-        //     url: None,
-        //     video: None,
-        // };
 
         let mut media_source: Input = rusty_search.into();
         let metadata = match media_source.aux_metadata().await {
@@ -463,20 +450,8 @@ mod test {
         }
     }
 
-    // #[tokio::test]
-    // async fn test_rusty_ytdl() {
-    //     let searches = vec!["the night chicago died", "Oh Shit I'm Feeling It"];
-
-    //     let rusty_ytdl = YouTube::new().unwrap();
-    //     for search in searches {
-    //         let res = rusty_ytdl.search_one(search.to_string(), None).await;
-    //         println!("{res:?}");
-    //     }
-    // }
-
     #[tokio::test]
     async fn test_rusty_ytdl_serial() {
-        // let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let searches = vec![
             "The Night Chicago Died",
             "The Devil Went Down to Georgia",
@@ -494,7 +469,7 @@ mod test {
             client: Some(client),
             ..Default::default()
         };
-        let rusty_yt = rusty_ytdl::search::YouTube::new_with_options(&req_opts).unwrap();
+        let rusty_yt = YouTube::new_with_options(&req_opts).unwrap();
         for search in searches {
             let res = rusty_yt.search_one(search.to_string(), None).await;
             assert!(
