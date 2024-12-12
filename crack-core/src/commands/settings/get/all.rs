@@ -30,7 +30,8 @@ pub async fn all(
 pub async fn get_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let settings_ro = {
-        let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
+        let data = ctx.data();
+        let mut guild_settings_map = data.guild_settings_map.write().await;
         let settings = guild_settings_map
             .entry(guild_id)
             .or_insert(GuildSettings::new(

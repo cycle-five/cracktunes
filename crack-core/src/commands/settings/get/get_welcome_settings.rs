@@ -14,7 +14,8 @@ use crate::{Context, Error};
 pub async fn welcome_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let welcome_settings = {
-        let mut guild_settings_map = ctx.data().guild_settings_map.write().await;
+        let data = ctx.data();
+        let mut guild_settings_map = data.guild_settings_map.write().await;
         let settings = guild_settings_map
             .entry(guild_id)
             .or_insert(GuildSettings::new(

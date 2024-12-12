@@ -374,7 +374,6 @@ pub async fn play_internal(
 ) -> Result<(), Error> {
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
-
     let _start = std::time::Instant::now();
 
     let is_prefix = ctx.is_prefix();

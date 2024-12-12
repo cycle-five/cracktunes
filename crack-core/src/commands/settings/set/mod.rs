@@ -57,26 +57,31 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
 pub fn commands() -> Vec<crate::Command> {
     vec![
         set(),
-        // auto_role(),
-        // all_log_channel(),
-        // join_leave_log_channel(),
-        // music_channel(),
-        // premium(),
-        // volume(),
-        // idle_timeout(),
-        // welcome_settings(),
+        auto_role(),
+        all_log_channel(),
+        join_leave_log_channel(),
+        music_channel(),
+        premium(),
+        volume(),
+        idle_timeout(),
+        welcome_settings(),
     ]
 }
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     #[test]
     fn test_commands() {
         let cmds = super::commands();
-        let names = cmds.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
-        assert!(!names.contains(&String::from("premium")));
-        assert!(!names.contains(&String::from("volume")));
-        assert!(!names.contains(&String::from("idle_timeout")));
-        assert!(names.contains(&String::from("set")));
+        let names = cmds
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<Cow<'_, str>>>();
+        assert!(!names.contains(&Cow::Owned("premium".to_string())));
+        assert!(!names.contains(&Cow::Owned("auto_role".to_string())));
+        assert!(!names.contains(&Cow::Owned("idle_timeout".to_string())));
+        assert!(names.contains(&Cow::Owned("set".to_string())));
     }
 }

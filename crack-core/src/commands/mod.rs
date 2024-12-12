@@ -11,7 +11,7 @@ pub mod osint;
 pub mod permissions;
 //pub mod playlist;
 pub mod register;
-//pub mod settings;
+pub mod settings;
 pub mod utility;
 
 //pub use admin::commands;

@@ -34,13 +34,15 @@ pub async fn selfdeafen(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+use serenity::small_fixed_array::FixedString;
+use std::sync::Arc;
 /// Toggle the self deafen for the bot.
 #[cfg(not(tarpaulin_include))]
 pub async fn toggle_self_deafen(
-    data: Data,
+    data: Arc<Data>,
     pool: PgPool,
     guild_id: GuildId,
-    guild_name: Option<String>,
+    guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
     let res = data
