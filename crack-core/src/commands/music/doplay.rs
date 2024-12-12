@@ -283,9 +283,7 @@ pub async fn playytplaylist(
             aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
         });
         let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
-        // let q = call.lock().await;
-        // let _ = q.enqueue(track2);
-        call.lock().await.enqueue(track2);
+        let _track_handle = call.lock().await.enqueue(track2).await;
     }
     //queue_resolved_track_back(call, tracks, req_client).await?;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
@@ -302,10 +300,6 @@ pub async fn build_play_embed(
     mode: Mode,
     query_type: NewQueryType,
 ) -> Result<CreateEmbed<'_>, Error> {
-    // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
-    // let track = queue.first().unwrap();
-    // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
-    // Ok(embed)
     let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
             let estimated_time = calculate_time_until_play(queue, mode)

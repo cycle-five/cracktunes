@@ -193,10 +193,11 @@ impl SpotifyTrackTrait for SpotifyTrack {
 
     /// Get the duration of the track.
     fn duration_seconds(&self) -> i32 {
-        self.full_track.duration.num_seconds() as i32
+        i32::try_from(self.full_track.duration.num_seconds()).unwrap_or(0)
     }
 
     /// Get the duration of the track as a Duration.
+    #[allow(clippy::cast_sign_loss)]
     fn duration(&self) -> Duration {
         let track_secs = self.full_track.duration.num_seconds();
         let nanos = self.full_track.duration.subsec_nanos();
@@ -267,6 +268,7 @@ impl std::str::FromStr for QueryType {
 
 impl QueryType {
     /// Build a query string from the query type.
+    #[must_use]
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
         base.map(|x| format!("{x} {MUSIC_SEARCH_SUFFIX}"))

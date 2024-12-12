@@ -221,6 +221,10 @@ impl<'a> CrackTrackClient<'a> {
         }
     }
 
+    /// Resolve many tracks from a `Vec` of queries.
+    /// # Errors
+    /// Returns an error if any track cannot be resolved.
+    /// # TODO: Fix this so it can deal with failures.
     pub async fn resolve_track_many(
         &self,
         queries: Vec<QueryType>,
@@ -234,6 +238,8 @@ impl<'a> CrackTrackClient<'a> {
     }
 
     /// Resolve a track from a query. This does not start or ready the track for playback.
+    /// # Errors
+    /// Returns an error if the track cannot be resolved.
     pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack<'a>, Error> {
         match query {
             QueryType::VideoLink(ref url) => self.resolve_url(url).await,
@@ -433,7 +439,7 @@ impl<'a> CrackTrackClient<'a> {
         tracks: Vec<ResolvedTrack<'a>>,
     ) -> Result<(), Error> {
         for track in tracks {
-            let _ = self.ensure_queue(guild).push_back(track).await;
+            let () = self.ensure_queue(guild).push_back(track).await;
         }
         Ok(())
     }
@@ -457,20 +463,26 @@ impl<'a> CrackTrackClient<'a> {
 }
 
 /// Get a suggestion from a query. Use the global static client.
+/// # Errors
+/// Returns an error if the query fails.
 pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice<'_>>, Error> {
     let client = CRACK_TRACK_CLIENT.clone();
     client.resolve_suggestion_search(query).await
 }
 
 /// Get a suggestion from a query. Use the global static client.
+/// # Errors
+/// Returns an error if the query fails.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
     let client = YOUTUBE_CLIENT.clone();
     suggestion_yt(client, query).await
 }
 
-/// Get a suggestion from a query. Passthrough to [rusty_ytdl::search::YouTube::suggestion].
+/// Get a suggestion from a query. Passthrough to [`rusty_ytdl::search::YouTube::suggestion`].
+/// # Errors
+/// Returns an error if the query fails.
 pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, Error> {
-    let query = query.replace("\"", "");
+    let query = query.replace('"', "");
     if query.is_empty() {
         return Ok(Vec::new());
     }
@@ -478,7 +490,7 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
         .suggestion(query, Some(search::LanguageTags::EN))
         .await
         .map_err(Into::into)
-        .map(|res| res.into_iter().map(|x| x.replace("\"", "")).collect())
+        .map(|res| res.into_iter().map(|x| x.replace('"', "")).collect())
 }
 
 /// Args struct for the CLI.
@@ -517,13 +529,13 @@ enum Commands {
 }
 
 /// Get the query type from a youtube URL. Video or playlist.
-async fn yt_url_type(url: &url::Url) -> Result<QueryType, Error> {
+fn yt_url_type(url: &url::Url) -> QueryType {
     if url.path().contains("playlist")
         || url.query_pairs().any(|(k, _)| k == "list") && url.path().contains("watch")
     {
-        Ok(QueryType::PlaylistLink(url.to_string()))
+        QueryType::PlaylistLink(url.to_string())
     } else {
-        Ok(QueryType::VideoLink(url.to_string()))
+        QueryType::VideoLink(url.to_string())
     }
 }
 
@@ -542,7 +554,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             tracing::info!("Suggestions: {res:?}");
         },
         Commands::Resolve { url } => {
-            let tracks = match yt_url_type(&url).await? {
+            let tracks = match yt_url_type(&url) {
                 QueryType::VideoLink(url) => {
                     vec![client.resolve_track(QueryType::VideoLink(url)).await?]
                 },
@@ -558,10 +570,10 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             client.append_queue(guild, tracks).await?;
         },
         Commands::Query { query } => {
-            let queries = query.split(",");
+            let queries = query.split(',');
             for query in queries {
                 let res = client.resolve_search_one(query).await?;
-                println!("Resolved: {}", res);
+                println!("Resolved: {res}");
                 let _ = client.enqueue_track(guild, res).await;
             }
         },
@@ -570,6 +582,8 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
 }
 
 /// Run the CLI.
+/// # Errors
+/// Returns an error if the CLI fails.
 #[cfg(not(tarpaulin_include))]
 pub async fn run() -> Result<(), Error> {
     let cli: Cli = Cli::parse();
@@ -779,7 +793,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         for (url, want) in urls.iter().zip(want_playlist) {
-            let res = yt_url_type(&url).await.expect("Failed to get URL type");
+            let res = yt_url_type(&url);
             match res {
                 QueryType::VideoLink(_) => assert!(!want),
                 QueryType::PlaylistLink(_) => assert!(want),

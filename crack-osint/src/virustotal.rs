@@ -197,7 +197,8 @@ impl VirusTotalClient {
             "Harmless": stats.harmless,
             "Timeout": stats.timeout,
         });
-        format!("{}\n{}", serde_json::to_string_pretty(&j2).unwrap(), j1)
+        let formatted = serde_json::to_string_pretty(&j2).unwrap_or("EMPTY".to_string());
+        format!("{formatted}\n{j1}")
     }
 }
 
