@@ -1,7 +1,4 @@
-use crate::{
-    guild::settings::GuildSettingsMap, messaging::message::CrackedMessage, utils::send_reply,
-    Context, Error,
-};
+use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use serenity::{
     all::{Channel, Message, User},
     http::MessagePagination,

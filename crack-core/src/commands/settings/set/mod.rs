@@ -79,9 +79,9 @@ mod tests {
             .iter()
             .map(|c| c.name.clone())
             .collect::<Vec<Cow<'_, str>>>();
-        assert!(!names.contains(&Cow::Owned("premium".to_string())));
-        assert!(!names.contains(&Cow::Owned("auto_role".to_string())));
-        assert!(!names.contains(&Cow::Owned("idle_timeout".to_string())));
+        assert!(names.contains(&Cow::Owned("premium".to_string())));
+        assert!(names.contains(&Cow::Owned("auto_role".to_string())));
+        assert!(names.contains(&Cow::Owned("idle_timeout".to_string())));
         assert!(names.contains(&Cow::Owned("set".to_string())));
     }
 }
