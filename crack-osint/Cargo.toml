@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
-description = "OSINT module for Cracktunes. v0.1.4."
+description = "OSINT module for Cracktunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
@@ -15,7 +15,7 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [dependencies]
-whois-rust = "1.6"
+whois-rs = "1.6.1"
 sha1 = "0.10"
 ipinfo = { git = "https://github.com/cycle-five/ipinfo-rs", version = "3.0.1" }
 serde = { version = "1.0", features = ["derive"] }
