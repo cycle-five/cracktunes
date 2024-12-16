@@ -304,21 +304,23 @@ pub async fn edit_embed_response2(
     embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
-    match get_interaction(ctx) {
-        Some(interaction) => interaction
-            .edit_response(ctx.http(), EditInteractionResponse::new().add_embed(embed))
-            .await
-            .map_err(Into::into),
-        None => {
-            msg.edit(ctx, CreateReply::default().embed(embed)).await?;
-            Ok(msg.into_message().await?)
-            // let msg = msg.into_message().await?;
-            // msg.edit(&ctx, EditMessage::new().embed(embed))
-            //     .await
-            //     .map(|_| msg)
-            //     .map_err(Into::into)
-        },
-    }
+    msg.edit(ctx, CreateReply::default().embed(embed)).await?;
+    Ok(msg.into_message().await?)
+    // match get_interaction(ctx) {
+    //     Some(interaction) => interaction
+    //         .edit_response(ctx.http(), EditInteractionResponse::new().add_embed(embed))
+    //         .await
+    //         .map_err(Into::into),
+    //     None => {
+    //         msg.edit(ctx, CreateReply::default().embed(embed)).await?;
+    //         Ok(msg.into_message().await?)
+    //         // let msg = msg.into_message().await?;
+    //         // msg.edit(&ctx, EditMessage::new().embed(embed))
+    //         //     .await
+    //         //     .map(|_| msg)
+    //         //     .map_err(Into::into)
+    //     },
+    // }
 }
 
 /// WHY ARE THERE TWO OF THESE?

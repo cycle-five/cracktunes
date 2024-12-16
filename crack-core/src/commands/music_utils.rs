@@ -99,7 +99,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
 /// Join a voice channel.
 #[cfg(not(tarpaulin_include))]
-#[tracing::instrument]
+#[tracing::instrument(skip(ctx, manager))]
 pub async fn do_join(
     ctx: Context<'_>,
     manager: &songbird::Songbird,

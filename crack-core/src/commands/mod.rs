@@ -26,7 +26,7 @@ pub use music_utils::*;
 pub use osint::*;
 pub use permissions::*;
 pub use register::*;
-//pub use settings::*;
+pub use settings::*;
 pub use utility::*;
 
 pub use crate::errors::CrackedError;
@@ -61,11 +61,11 @@ pub fn all_commands() -> Vec<crate::Command> {
         chat(),
     ]
     .into_iter()
-    //.chain(help::help_commands())
+    .chain(help::help_commands())
     .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    //.chain(settings::commands())
+    .chain(settings::commands())
     //.chain(admin::commands())
     //.chain(playlist::commands())
     .collect()
@@ -83,11 +83,11 @@ pub fn commands_to_register() -> Vec<crate::Command> {
         chat(),
     ]
     .into_iter()
-    //.chain(help::help_commands())
+    .chain(help::help_commands())
     .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    //.chain(settings::commands())
+    .chain(settings::commands())
     //.chain(admin::commands())
     //.chain(playlist::commands())
     .collect()
