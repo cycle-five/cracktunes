@@ -3,11 +3,6 @@ use lazy_static::lazy_static;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::{convert::Infallible, env};
-use warp::{
-    body::BodyDeserializeError,
-    http::{HeaderMap, StatusCode},
-    path, reject, Filter, Rejection, Reply,
-};
 
 const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -57,33 +52,33 @@ pub struct CrackedWebhook {
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Custom error type for unauthorized requests.
-#[derive(Debug)]
-struct Unauthorized;
+// /// Custom error type for unauthorized requests.
+// #[derive(Debug)]
+// struct Unauthorized;
 
-impl warp::reject::Reject for Unauthorized {}
+// impl warp::reject::Reject for Unauthorized {}
 
-impl std::fmt::Display for Unauthorized {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Unauthorized")
-    }
-}
+// impl std::fmt::Display for Unauthorized {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str("Unauthorized")
+//     }
+// }
 
-impl std::error::Error for Unauthorized {}
+// impl std::error::Error for Unauthorized {}
 
-/// Custom error type for unauthorized requests.
-#[derive(Debug)]
-struct Sqlx(sqlx::Error);
+// /// Custom error type for unauthorized requests.
+// #[derive(Debug)]
+// struct Sqlx(sqlx::Error);
 
-impl warp::reject::Reject for Sqlx {}
+// impl warp::reject::Reject for Sqlx {}
 
-impl std::fmt::Display for Sqlx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0.to_string())
-    }
-}
+// impl std::fmt::Display for Sqlx {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&self.0.to_string())
+//     }
+// }
 
-impl std::error::Error for Sqlx {}
+// impl std::error::Error for Sqlx {}
 /// Get the webhook secret from the environment.
 fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
@@ -143,108 +138,122 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
     Ok(())
 }
 
-/// Create a filter that checks the `Authorization` header against the secret.
-fn header(secret: &str) -> impl Filter<Extract = (), Error = Rejection> + Clone + '_ {
-    warp::header::<String>("authorization")
-        .and_then(move |val: String| async move {
-            if val == secret {
-                println!("Authorized");
-                Ok(())
-            } else {
-                println!("Not Authorized");
-                Err(reject::custom(Unauthorized))
-            }
-        })
-        .untuple_one()
-}
+// /// Create a filter that checks the `Authorization` header against the secret.
+// fn header(secret: &str) -> impl Filter<Extract = (), Error = Rejection> + Clone + '_ {
+//     warp::header::<String>("authorization")
+//         .and_then(move |val: String| async move {
+//             if val == secret {
+//                 println!("Authorized");
+//                 Ok(())
+//             } else {
+//                 println!("Not Authorized");
+//                 Err(reject::custom(Unauthorized))
+//             }
+//         })
+//         .untuple_one()
+// }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct ReplyBody {
     body: String,
 }
 
-/// Async function to process the received webhook.
-async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply, Rejection> {
-    write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
-    Ok(warp::reply::json(&ReplyBody {
-        body: "Success.".to_string(),
-    }))
-}
+// /// Async function to process the received webhook.
+// async fn process_webhook(ctx: VotingContext, hook: Webhook) -> Result<impl Reply, Rejection> {
+//     write_webhook_to_db(ctx, hook.clone()).await.map_err(Sqlx)?;
+//     Ok(warp::reply::json(&ReplyBody {
+//         body: "Success.".to_string(),
+//     }))
+// }
 
-/// Create a filter that handles the webhook.
-#[allow(clippy::unused_async)]
-async fn get_webhook(
-    ctx: VotingContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let secret = ctx.secret;
-    let context = warp::any()
-        .and(log_headers())
-        //.and(log_body())
-        .map(move || ctx.clone());
+// /// Create a filter that handles the webhook.
+// #[allow(clippy::unused_async)]
+// async fn get_webhook(
+//     ctx: VotingContext,
+// ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+//     let secret = ctx.secret;
+//     let context = warp::any()
+//         .and(log_headers())
+//         //.and(log_body())
+//         .map(move || ctx.clone());
 
-    warp::post()
-        .and(path!("dbl" / "webhook"))
-        .and(header(secret))
-        .and(warp::body::json())
-        .and(context)
-        .and_then(
-            |hook: Webhook, ctx: VotingContext| async move { process_webhook(ctx, hook).await },
-        )
-        .recover(custom_error)
-}
+//     warp::post()
+//         .and(path!("dbl" / "webhook"))
+//         .and(header(secret))
+//         .and(warp::body::json())
+//         .and(context)
+//         .and_then(
+//             |hook: Webhook, ctx: VotingContext| async move { process_webhook(ctx, hook).await },
+//         )
+//         .recover(custom_error)
+// }
 
 /// Get the routes for the server.
-async fn get_app(
-    ctx: VotingContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("get_app");
-    let webhook = get_webhook(ctx).await;
-    let health = warp::path!("health").map(|| "Hello, world!");
-    let log = warp::log("crack-voting");
-    webhook.or(health).with(log)
+// async fn get_app(
+//     ctx: VotingContext,
+// ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+//     println!("get_app");
+//     let webhook = get_webhook(ctx).await;
+//     let health = warp::path!("health").map(|| "Hello, world!");
+//     let log = warp::log("crack-voting");
+//     webhook.or(health).with(log)
+// }
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+
+// basic handler that responds with a static string
+async fn root() -> &'static str {
+    "Hello, World!"
 }
 
 /// Run the server.
 pub async fn run() {
     //-> Result<(), Box<dyn std::error::Error>> {
     let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
-    let app = get_app(ctx).await;
+    let app = Router::new().route("/", get(root));
+    // let app = get_app(ctx).await;
 
-    warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
+    // warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
+    // run our app with hyper, listening globally on port 3000
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
-/// Custom error handling for the server.
-async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
-    eprintln!("Error: {err:?}");
-    if err.find::<BodyDeserializeError>().is_some() {
-        Ok(warp::reply::with_status(
-            warp::reply(),
-            StatusCode::BAD_REQUEST,
-        ))
-    } else if err.find::<Unauthorized>().is_some() {
-        Ok(warp::reply::with_status(
-            warp::reply(),
-            StatusCode::UNAUTHORIZED,
-        ))
-    } else {
-        Err(err)
-    }
-}
+// /// Custom error handling for the server.
+// async fn custom_error(err: Rejection) -> Result<impl Reply, Rejection> {
+//     eprintln!("Error: {err:?}");
+//     if err.find::<BodyDeserializeError>().is_some() {
+//         Ok(warp::reply::with_status(
+//             warp::reply(),
+//             StatusCode::BAD_REQUEST,
+//         ))
+//     } else if err.find::<Unauthorized>().is_some() {
+//         Ok(warp::reply::with_status(
+//             warp::reply(),
+//             StatusCode::UNAUTHORIZED,
+//         ))
+//     } else {
+//         Err(err)
+//     }
+// }
 
-fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
-    warp::header::headers_cloned()
-        .map(|headers: HeaderMap| {
-            for (k, v) in &headers {
-                // Error from `to_str` should be handled properly
-                println!(
-                    "{}: {}",
-                    k,
-                    v.to_str().expect("Failed to print header value")
-                );
-            }
-        })
-        .untuple_one()
-}
+// fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
+//     warp::header::headers_cloned()
+//         .map(|headers: HeaderMap| {
+//             for (k, v) in &headers {
+//                 // Error from `to_str` should be handled properly
+//                 println!(
+//                     "{}: {}",
+//                     k,
+//                     v.to_str().expect("Failed to print header value")
+//                 );
+//             }
+//         })
+//         .untuple_one()
+// }
 
 #[cfg(test)]
 mod test {
@@ -321,16 +330,16 @@ mod test {
     //     Ok(())
     // }
 
-    #[sqlx::test]
-    async fn test_log_headers() {
-        let app = warp::post().and(log_headers()).map(|| warp::reply());
-        let secret = "asdf";
-        let _res = warp::test::request()
-            .method("POST")
-            .path("/dbl/webhook")
-            .header("authorization", secret)
-            .body("test body")
-            .reply(&app)
-            .await;
-    }
+    // #[sqlx::test]
+    // async fn test_log_headers() {
+    //     let app = warp::post().and(log_headers()).map(|| warp::reply());
+    //     let secret = "asdf";
+    //     let _res = warp::test::request()
+    //         .method("POST")
+    //         .path("/dbl/webhook")
+    //         .header("authorization", secret)
+    //         .body("test body")
+    //         .reply(&app)
+    //         .await;
+    // }
 }
