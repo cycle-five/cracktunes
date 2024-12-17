@@ -91,10 +91,10 @@ default-features = false
 features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
 
 [dependencies.lyric_finder]
-git = "https://github.com/cycle-five/spotify-player"
-branch = "master"
+# git = "https://github.com/cycle-five/lyric-finder"
+# branch = "master"
 features = ["rustls-tls"]
-version = "0.1.7"
+version = "0.2.0"
 
 [dependencies.serenity-voice-model]
 version = "0.2"

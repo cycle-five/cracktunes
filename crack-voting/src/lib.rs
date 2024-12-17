@@ -1,8 +1,8 @@
 use dbl::types::Webhook;
 use lazy_static::lazy_static;
 use sqlx::PgPool;
+use std::env;
 use std::sync::Arc;
-use std::{convert::Infallible, env};
 
 const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -15,6 +15,7 @@ lazy_static! {
 }
 
 /// Struct to hold the context for the voting server.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct VotingContext {
     pool: Arc<PgPool>,
@@ -85,6 +86,7 @@ fn get_secret() -> &'static str {
 }
 
 /// Convert the webhook type to a string.
+#[allow(dead_code)]
 fn webhook_type_to_string(kind: &dbl::types::WebhookType) -> String {
     match kind {
         dbl::types::WebhookType::Upvote => "upvote".to_string(),
@@ -94,6 +96,7 @@ fn webhook_type_to_string(kind: &dbl::types::WebhookType) -> String {
 
 /// Write the received webhook to the database.
 #[allow(clippy::cast_possible_wrap)]
+#[allow(dead_code)]
 async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(), sqlx::Error> {
     // Check for the user in the database, since we have a foreign key constraint.
     // Create the user if they don't exist.
@@ -199,9 +202,9 @@ struct ReplyBody {
 //     webhook.or(health).with(log)
 // }
 use axum::{
-    http::StatusCode,
-    routing::{get, post},
-    Json, Router,
+    routing::get,
+    Router,
+    // Json, routing::post
 };
 
 // basic handler that responds with a static string
@@ -212,7 +215,7 @@ async fn root() -> &'static str {
 /// Run the server.
 pub async fn run() {
     //-> Result<(), Box<dyn std::error::Error>> {
-    let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
+    let _ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
     let app = Router::new().route("/", get(root));
     // let app = get_app(ctx).await;
 
@@ -261,7 +264,7 @@ mod test {
     use sqlx::PgPool;
 
     use crate::get_secret;
-    use crate::{StatusCode, VotingContext, Webhook};
+    use crate::{VotingContext, Webhook};
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 

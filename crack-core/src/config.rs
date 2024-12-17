@@ -399,7 +399,9 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     None
 }
 
-#[poise::command(prefix_command, owners_only)]
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
+#[poise::command(slash_command, prefix_command, owners_only)]
 async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
     poise::builtins::register_globally(ctx.http(), commands).await?;

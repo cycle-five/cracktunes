@@ -18,7 +18,7 @@ use crate::{
     sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch},
     sources::youtube::build_query_aux_metadata,
     utils::get_track_handle_metadata,
-    utils::{edit_embed_response2, TrackData},
+    utils::TrackData,
     Context, CrackedResult, Data, Error,
 };
 use ::serenity::all::CreateAutocompleteResponse;

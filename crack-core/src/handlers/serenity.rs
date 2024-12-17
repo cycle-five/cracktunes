@@ -16,6 +16,7 @@ use ::serenity::{
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 // use dashmap;
+use crate::commands::{commands_to_register, register::register_globally_cracked};
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
 use serenity::CacheHttp;
 use serenity::{
@@ -47,6 +48,15 @@ impl EventHandler for SerenityHandler {
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
+
+        match register_globally_cracked(&ctx.http, &commands_to_register()).await {
+            Ok(_) => {
+                tracing::info!("Commands registered successfully");
+            },
+            Err(err) => {
+                tracing::error!("Error registering commands: {}", err);
+            },
+        };
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
