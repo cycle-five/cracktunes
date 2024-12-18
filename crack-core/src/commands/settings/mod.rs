@@ -47,10 +47,8 @@ pub async fn settings(
 }
 
 pub fn commands() -> Vec<crate::Command> {
-    vec![settings()]
+    vec![settings(), set::set(), get::get()]
         .into_iter()
-        .chain(set::commands())
-        .chain(get::commands())
         .collect()
 }
 

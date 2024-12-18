@@ -4,6 +4,7 @@ use crate::{
     db::{metadata::Metadata, MetadataAnd, Playlist},
     errors::CrackedError,
     poise_ext::ContextExt as _,
+    utils::TrackData,
     Context, Error,
 };
 use crack_types::NewAuxMetadata;
@@ -30,13 +31,10 @@ pub async fn add_to_playlist(
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
     let queue = call.lock().await.queue().clone();
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
-    let typemap = cur_track.typemap().read().await;
-    let metadata = match typemap.get::<NewAuxMetadata>() {
-        Some(NewAuxMetadata(meta)) => meta,
-        None => {
-            return Err(CrackedError::Other("Failed to get metadata for track.").into());
-        },
-    };
+
+    let data = cur_track.data::<TrackData>();
+    let metadata_opt = data.aux_metadata.read().await.clone();
+    let metadata = metadata_opt.ok_or(CrackedError::NoMetadata)?;
 
     // // Extract playlist name and track ID from the arguments
     let guild_id_i64 = guild_id.get() as i64;
@@ -62,7 +60,7 @@ pub async fn add_to_playlist(
         }?;
 
     let MetadataAnd::Track(in_metadata, _) =
-        aux_metadata_to_db_structures(metadata, guild_id_i64, channel_id)?;
+        aux_metadata_to_db_structures(&metadata, guild_id_i64, channel_id)?;
 
     let metadata = Metadata::get_or_create(&db_pool, &in_metadata).await?;
 

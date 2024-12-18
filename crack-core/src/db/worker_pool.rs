@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
 use tracing;
 
-use crate::db::{metadata::aux_metadata_to_db_structures, Metadata, PlayLog, User};
+use crate::db::{aux_metadata_to_db_structures, Metadata, MetadataAnd, PlayLog, User};
 use crate::CrackedError;
 
 // TODO: Make this configurable, and experiment to find a good default.
@@ -31,8 +31,10 @@ impl Display for MetadataMsg {
         )
     }
 }
-use crate::db::metadata::MetadataAnd;
+
 /// Writes metadata to the database for a playing track.
+/// # Errors
+/// Returns a `CrackedError` if there is an error writing to the database.
 pub async fn write_metadata_pg(
     database_pool: &PgPool,
     data: MetadataMsg,

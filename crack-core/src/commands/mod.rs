@@ -9,7 +9,7 @@ pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
 pub mod permissions;
-//pub mod playlist;
+pub mod playlist;
 pub mod register;
 pub mod settings;
 pub mod utility;
@@ -67,7 +67,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     .chain(utility::utility_commands())
     .chain(settings::commands())
     //.chain(admin::commands())
-    //.chain(playlist::commands())
+    .chain(playlist::commands())
     .collect()
 }
 
@@ -89,7 +89,7 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     .chain(utility::utility_commands())
     .chain(settings::commands())
     //.chain(admin::commands())
-    //.chain(playlist::commands())
+    .chain(playlist::commands())
     .collect()
 }
 
