@@ -77,3 +77,10 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
     let _ = send_reply(&ctx, CrackedMessage::Prefixes(additional_prefixes), true).await?;
     Ok(())
 }
+
+/// Get the prefix commands.
+pub fn commands() -> Vec<crate::Command> {
+    vec![add_prefix(), clear_prefixes(), get_prefixes()]
+        .into_iter()
+        .collect()
+}

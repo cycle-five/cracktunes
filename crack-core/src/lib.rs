@@ -30,7 +30,7 @@ use chrono::{DateTime, Utc};
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
 use db::worker_pool::MetadataMsg;
-use db::{PlayLog, TrackReaction};
+use db::{GuildEntity, PlayLog, TrackReaction};
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::{GuildSettings, GuildSettingsMapParam};
@@ -665,6 +665,22 @@ impl Data {
             .as_ref()
             .ok_or(CrackedError::NoDatabasePool)
             .cloned()
+    }
+
+    /// Reload the guild settings from the database.
+    pub async fn reload_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
+        let pool = self.get_db_pool()?;
+        let guild_entity = GuildEntity::get(&pool, guild_id.into())
+            .await?
+            .ok_or(CrackedError::NoGuildId)?;
+        let guild_settings = guild_entity.get_settings(&pool).await?;
+        self.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, guild_settings);
+        //let settings = GuildSettings::get_by_guild_id(&pool, guild_id.into()).await?;
+        //self.add_guild_settings(guild_id, settings).await;
+        Ok(())
     }
 
     /// Deny a user permission to use the music commands.

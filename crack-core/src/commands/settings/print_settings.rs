@@ -98,3 +98,10 @@ async fn get_messages(
         Ok(messages.into_iter().filter(|m| m.author.id == id).collect())
     }
 }
+
+/// Get the print_settings commands
+pub fn commands() -> Vec<crate::Command> {
+    vec![print_settings(), get_channel_messages()]
+        .into_iter()
+        .collect()
+}

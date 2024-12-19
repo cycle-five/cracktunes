@@ -109,6 +109,7 @@ pub enum CrackedMessage {
         timestamp: Cow<'static, String>,
         error: ControlError,
     },
+    SettingsReload,
     Shuffle,
     Skip,
     SkipAll,
@@ -329,6 +330,7 @@ impl Display for CrackedMessage {
                     .replace("{group}", group)
                     .replace("{subcommand}", subcommand),
             ),
+            Self::SettingsReload => f.write_str(SETTINGS_RELOADED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
                 "{}{} {} {} {}",
                 SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING

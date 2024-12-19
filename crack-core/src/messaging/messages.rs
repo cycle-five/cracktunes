@@ -154,6 +154,7 @@ pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SEEK_FAIL: &str = "❌⏩ Failed to seek to";
+pub const SETTINGS_RELOADED: &str = "🔄 Settings reloaded!";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";
 pub const SKIP_VOTE_EMOJI: &str = "🗳";
 pub const SKIP_VOTE_MISSING: &str = "more vote(s) needed to skip!";
