@@ -387,9 +387,9 @@ impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let res = match serde_json::to_string_pretty(self) {
             Ok(s) => s,
-            Err(e) => format!("Error: {}", e),
+            Err(e) => format!("Error: {e}"),
         };
-        write!(f, "{}", res)
+        write!(f, "{res}")
     }
 }
 
@@ -407,7 +407,7 @@ impl From<GuildSettingsRead> for GuildSettings {
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
-        settings.autoplay = true; //settings_db.autoplay;
+        settings.autoplay = true;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();

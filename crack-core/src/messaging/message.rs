@@ -240,31 +240,27 @@ impl Display for CrackedMessage {
             Self::AutoRole(role_id) => f.write_str(&format!("{} {}", AUTO_ROLE, role_id.mention())),
             Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
-            Self::InviteLink => f.write_str(&format!(
-                "{} [{}]({})",
-                INVITE_TEXT, INVITE_LINK_TEXT, INVITE_URL
-            )),
-            Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
-            Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
+            Self::InviteLink => {
+                f.write_str(&format!("{INVITE_TEXT} [{INVITE_LINK_TEXT}]({INVITE_URL})",))
+            },
+            Self::IPDetails(ip) => f.write_str(&format!("{IP_DETAILS} **{ip}**")),
+            Self::IPVersion(ipv) => f.write_str(&format!("**{ipv}**")),
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
             Self::CountryName(name) => f.write_str(name),
-            Self::Coinflip(heads) => f.write_str(&format!("{} {}", COINFLIP, heads)),
+            Self::Coinflip(heads) => f.write_str(&format!("{COINFLIP} {heads}")),
             Self::Clear => f.write_str(CLEARED),
-            Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
+            Self::Clean(n) => f.write_str(&format!("{CLEANED} {n}!")),
             Self::ChannelSizeSet { id, name, size } => {
-                f.write_str(&format!("{} {} {} {}", CHANNEL_SIZE_SET, name, id, size))
+                f.write_str(&format!("{CHANNEL_SIZE_SET} {name} {id} {size}"))
             },
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
-            } => f.write_str(&format!(
-                "{} {} {}",
-                CHANNEL_DELETED, channel_id, channel_name
-            )),
-            Self::CrackedError(err) => f.write_str(&format!("{}", err)),
+            } => f.write_str(&format!("{CHANNEL_DELETED} {channel_id} {channel_name}",)),
+            Self::CrackedError(err) => f.write_str(&format!("{err}")),
             Self::CrackedRed(s) => f.write_str(s),
-            Self::CreateEmbed(embed) => f.write_str(&format!("{:#?}", embed)),
+            Self::CreateEmbed(embed) => f.write_str(&format!("{embed:#?}")),
             Self::CommandFound(s) => f.write_str(s),
             Self::DomainInfo(info) => f.write_str(info),
             Self::DiceRoll {
@@ -273,7 +269,7 @@ impl Display for CrackedMessage {
                 results,
             } => f.write_str(crate::DICE_ROLL!(dice, sides, results)),
             Self::Error => f.write_str(ERROR),
-            Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),
+            Self::ErrorHttp(err) => f.write_str(&format!("{err}")),
             Self::GrabbedNotice => f.write_str(GRABBED_NOTICE),
             Self::Leaving => f.write_str(LEAVING),
             Self::LoopDisable => f.write_str(LOOP_DISABLED),
@@ -286,41 +282,40 @@ impl Display for CrackedMessage {
             Self::PasswordPwned => f.write_str(PASSWORD_PWNED),
             Self::PasswordSafe => f.write_str(PASSWORD_SAFE),
             Self::Pause => f.write_str(PAUSED),
-            Self::Paywall(url) => f.write_str(&format!("{}{}", ONETWOFT, url)),
+            Self::Paywall(url) => f.write_str(&format!("{ONETWOFT}{url}")),
             Self::PhoneNumberInfo(info) => f.write_str(info),
             Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
             Self::PlaylistCreated(name, len) => f.write_str(&format!(
-                "{} **{}** with {} tracks!",
-                PLAYLIST_CREATED, name, len
+                "{PLAYLIST_CREATED} **{name}**\n{PLAYLIST_TRACKS}: {len}!",
             )),
-            Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
+            Self::PlaylistQueuing(name) => f.write_str(&format!("{PLAY_QUEUING} **{name}**")),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {
-                f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
+                f.write_str(&format!("⚠️ **{domain}** {PLAY_FAILED_BLOCKED_DOMAIN}"))
             },
-            Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
+            Self::PlayLog(log) => f.write_str(&format!("{PLAY_LOG}\n{log}", log = log.join("\n"))),
             Self::Pong => f.write_str("Pong"),
             Self::Prefixes(prefixes) => {
-                f.write_str(&format!("{} {}", PREFIXES, prefixes.join(", ")))
+                f.write_str(&format!("{PREFIXES} {val}", val = prefixes.join(", ")))
             },
-            Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
+            Self::Premium(premium) => f.write_str(&format!("{PREMIUM} {premium}")),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
             },
             #[cfg(feature = "crack-osint")]
-            Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
+            Self::ScanResultQueued { id } => f.write_str(&format!("{SCAN_QUEUED} {id}")),
             Self::Search => f.write_str(SEARCHING),
 
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),
             Self::RoleCreated { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_CREATED, role_id, role_name))
+                f.write_str(&format!("{ROLE_CREATED} {role_id} {role_name}"))
             },
             Self::RoleDeleted { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
+                f.write_str(&format!("{ROLE_DELETED} {role_id} {role_name}"))
             },
             Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
@@ -332,45 +327,38 @@ impl Display for CrackedMessage {
             ),
             Self::SettingsReload => f.write_str(SETTINGS_RELOADED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
-                "{}{} {} {} {}",
-                SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
+                "{SKIP_VOTE_EMOJI}{mention} {SKIP_VOTE_USER} {missing} {SKIP_VOTE_MISSING}",
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
             Self::SongMoved { at, to } => f.write_str(&format!(
-                "{} {} {} {} {}.",
-                SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, at, to
+                "{SONG_MOVED} {SONG_MOVED_FROM} {SONG_MOVED_TO} {at} {to}.",
             )),
             Self::SongQueued { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
+                f.write_str(&format!("{ADDED_QUEUE} [**{title}**]({url})"))
             },
-            Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
+            Self::Seek { timestamp } => f.write_str(&format!("{SEEKED} **{timestamp}**!")),
             Self::SeekFail { timestamp, error } => {
-                f.write_str(&format!("{} **{}**!\n{}", SEEK_FAIL, timestamp, error))
+                f.write_str(&format!("{SEEK_FAIL} **{timestamp}**!\n{error}",))
             },
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
             Self::SkipTo { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
+                f.write_str(&format!("{SKIPPED_TO} [**{title}**]({url})!"))
             },
-            Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
+            Self::Summon { mention } => f.write_str(&format!("{JOINING} **{mention}**!")),
             Self::TextChannelCreated {
                 channel_id,
                 channel_name,
             } => f.write_str(&format!(
-                "{} {} {}",
-                TEXT_CHANNEL_CREATED, channel_id, channel_name
+                "{TEXT_CHANNEL_CREATED} {channel_id} {channel_name}",
             )),
             Self::CategoryCreated {
                 channel_id,
                 channel_name,
-            } => f.write_str(&format!(
-                "{} {} {}",
-                CATEGORY_CREATED, channel_id, channel_name
-            )),
+            } => f.write_str(&format!("{CATEGORY_CREATED} {channel_id} {channel_name}",)),
             Self::Uptime { mention, seconds } => f.write_str(&format!(
-                "**{}**\n {}",
-                mention,
-                duration_to_string(Duration::from_secs(*seconds)),
+                "**{mention}**\n {duration}",
+                duration = duration_to_string(Duration::from_secs(*seconds)),
             )),
             Self::UserAuthorized {
                 id,
@@ -378,8 +366,7 @@ impl Display for CrackedMessage {
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                AUTHORIZED, mention, id, guild_name, guild_id
+                "{AUTHORIZED}\n {mention} ({id}) Guild: {guild_name} ({guild_id})",
             )),
             Self::UserDeauthorized {
                 id,
@@ -387,8 +374,7 @@ impl Display for CrackedMessage {
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                DEAUTHORIZED, mention, id, guild_name, guild_id
+                "{DEAUTHORIZED}\n {mention} ({id}) \n {guild_name} ({guild_id})"
             )),
             Self::UserTimeout {
                 mention,
@@ -403,7 +389,7 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{UNBANNED}\n{mention} ({id})"))
             },
             Self::UserUndeafened { mention, id } => {
-                f.write_str(&format!("{} {} {}", UNDEAFENED, mention, id))
+                f.write_str(&format!("{UNDEAFENED} {mention} {id}"))
             },
             Self::UserDeafened { mention, id } => {
                 f.write_str(&format!("{DEAFENED}\n{mention}({id})"))
