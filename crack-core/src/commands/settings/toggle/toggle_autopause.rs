@@ -43,8 +43,6 @@ pub async fn toggle_autopause_internal(
     guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
-
-
     let res = data
         .guild_settings_map
         .write()

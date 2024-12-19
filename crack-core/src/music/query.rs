@@ -434,7 +434,7 @@ impl NewQueryType {
         Ok(true)
     }
 
-    pub async fn mode_end2<'ctx>(
+    pub async fn mode_end3<'ctx>(
         &self,
         ctx: Context<'ctx>,
         call: Arc<Mutex<Call>>,

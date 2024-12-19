@@ -53,6 +53,10 @@ pub enum CrackedError {
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
+    IndexOutOfBounds {
+        name: &'static str,
+        index: usize,
+    },
     InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
@@ -64,6 +68,7 @@ pub enum CrackedError {
     NoChannelId,
     NotImplemented,
     NoTrackName,
+    NoTrackPlaying,
     NoDatabasePool,
     NoGuildCached,
     NoGuildId,
@@ -150,6 +155,9 @@ impl Display for CrackedError {
             )),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::IO(err) => f.write_str(&format!("{err}")),
+            Self::IndexOutOfBounds { name, index } => {
+                f.write_str(&format!("Index out of bounds for `{name}` at {index}"))
+            },
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
             Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::InvalidPermissions => f.write_str(FAIL_INVALID_PERMS),
@@ -170,6 +178,7 @@ impl Display for CrackedError {
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
             Self::NoTrackName => f.write_str("No track name"),
+            Self::NoTrackPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
             Self::NoGuildCached => f.write_str(NO_GUILD_CACHED),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),

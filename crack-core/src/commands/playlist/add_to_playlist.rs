@@ -5,9 +5,8 @@ use crate::{
     errors::CrackedError,
     poise_ext::ContextExt as _,
     utils::TrackData,
-    Context, Error,
+    Context, CrackedMessage, Error,
 };
-use crack_types::NewAuxMetadata;
 use sqlx::PgPool;
 
 /// Adds a song to a playlist
@@ -46,45 +45,44 @@ pub async fn add_to_playlist(
     let user_id = ctx.author().id.get() as i64;
     // Database pool to execute queries
     let db_pool: PgPool = ctx.get_db_pool()?;
-    let playlist_name = playlist;
 
     // Get playlist if exists, other create it.
-    let playlist =
-        match Playlist::get_playlist_by_name(&db_pool, playlist_name.clone(), user_id).await {
-            Ok(playlist) => Ok(playlist),
-            Err(e) => {
-                tracing::error!("Error getting playlist: {:?}", e);
-                tracing::info!("Creating playlist: {:?}", playlist_name);
-                Playlist::create(&db_pool, &playlist_name, user_id).await
-            },
-        }?;
+    let target_pl = match Playlist::get_playlist_by_name(&db_pool, playlist.clone(), user_id).await
+    {
+        Ok(playlist) => Ok(playlist),
+        Err(e) => {
+            tracing::error!("Error getting playlist: {:?}", e);
+            tracing::info!("Creating playlist: {:?}", playlist);
+            Playlist::create(&db_pool, &playlist, user_id).await
+        },
+    }?;
 
     let MetadataAnd::Track(in_metadata, _) =
         aux_metadata_to_db_structures(&metadata, guild_id_i64, channel_id)?;
 
     let metadata = Metadata::get_or_create(&db_pool, &in_metadata).await?;
 
-    let res =
-        Playlist::add_track(&db_pool, playlist.id, metadata.id, guild_id_i64, channel_id).await?;
+    let res = Playlist::add_track(
+        &db_pool,
+        target_pl.id,
+        metadata.id,
+        guild_id_i64,
+        channel_id,
+    )
+    .await?;
 
     let operation_successfull = res.rows_affected() > 0;
 
     // Send a feedback message to the user
     if operation_successfull {
-        ctx.reply(format!(
-            "Track {} has been added to playlist {}",
-            track, playlist_name
-        ))
-        .await
-        .map(|_| ())
-        .map_err(|e| e.into())
+        ctx.reply(CrackedMessage::PlaylistAddSuccess { track, playlist })
+            .await
+            .map(|_| ())
+            .map_err(|e| e.into())
     } else {
-        ctx.reply(format!(
-            "Failed to add track {} to playlist {}",
-            track, playlist_name
-        ))
-        .await
-        .map(|_| ())
-        .map_err(|e| e.into())
+        ctx.reply(CrackedMessage::PlaylistAddFailure { track, playlist })
+            .await
+            .map(|_| ())
+            .map_err(|e| e.into())
     }
 }

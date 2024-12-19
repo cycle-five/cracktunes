@@ -993,9 +993,10 @@ pub async fn handle_event(
                 .write_log_obj_async(event_name, stage_instance)
                 .await
         },
-        FullEvent::ThreadCreate { thread } => {
-            event_log.write_log_obj_async(event_name, thread).await
-        },
+        FullEvent::ThreadCreate {
+            thread,
+            newly_created: _,
+        } => event_log.write_log_obj_async(event_name, thread).await,
         FullEvent::ThreadDelete {
             thread,
 

@@ -44,6 +44,8 @@ pub(crate) const MOD_VAL: u64 = 1 << 1;
 pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 pub(crate) const DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
+// 10MB (10s not powers of 2 since it gets stored on disk)
+pub(crate) const DEFAULT_BUFFER_SIZE: usize = 100_000_000;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =

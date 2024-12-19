@@ -26,6 +26,8 @@ pub async fn seek(
 }
 
 /// Internal seek function.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Error> {
     let call = ctx.get_call().await?;
 
@@ -40,12 +42,12 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
 
     let timestamp = minutes * 60 + seconds;
 
-    let handler = call.lock().await;
-    let track = handler
+    let track = call
+        .lock()
+        .await
         .queue()
         .current()
-        .ok_or(CrackedError::Other("No track playing"))?;
-    drop(handler);
+        .ok_or(CrackedError::NoTrackPlaying)?;
 
     let callback = track.seek(Duration::from_secs(timestamp));
     let msg = match callback.result_async().await {
