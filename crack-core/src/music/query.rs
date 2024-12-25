@@ -451,6 +451,7 @@ impl NewQueryType {
         Ok(true)
     }
 
+    /// Queue a query at the end of the current queue.
     pub async fn mode_end<'ctx>(
         &self,
         ctx: Context<'ctx>,

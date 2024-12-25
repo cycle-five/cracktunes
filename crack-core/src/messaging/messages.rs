@@ -208,3 +208,4 @@ pub const INVITE_TEXT: &str = "🔗 ";
 pub const INVITE_LINK_TEXT: &str = "Invite Crack Tunes to your server!";
 pub const INVITE_LINK_TEXT_SHORT: &str = "invite";
 pub const INVITE_URL: &str = "https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands";
+pub const YTDL_FALLBACK: &str = "WARNING! Falling back to yt-dlp!";

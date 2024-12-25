@@ -85,6 +85,7 @@ pub async fn search_query_to_source_and_metadata(
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
+use crate::messaging::messages;
 /// Search youtube for a query and return the source (playable)
 /// and metadata.
 pub async fn search_query_to_source_and_metadata_rusty(
@@ -112,7 +113,10 @@ pub async fn search_query_to_source_and_metadata_rusty(
         // FIXME: Fallback to yt-dlp
         let result = match results {
             Some(r) => r,
-            None => return Err(CrackedError::EmptySearchResult),
+            None => {
+                tracing::warn!("{val}", val = messages::YTDL_FALLBACK);
+                return search_query_to_source_and_metadata_ytdl(client, query.to_string()).await;
+            },
         };
         let metadata = &search_result_to_aux_metadata(&result);
         metadata.clone()

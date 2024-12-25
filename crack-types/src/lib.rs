@@ -19,6 +19,7 @@ use serenity::small_fixed_array::ValidLength;
 use songbird::Call;
 use std::collections::HashMap;
 use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -262,6 +263,32 @@ impl std::str::FromStr for QueryType {
             Ok(QueryType::VideoLink(s.to_string()))
         } else {
             Ok(QueryType::Keywords(s.to_string()))
+        }
+    }
+}
+
+impl Display for QueryType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QueryType::Keywords(keywords) => write!(f, "{}", keywords),
+            QueryType::KeywordList(keywords_list) => write!(f, "{}", keywords_list.join(" ")),
+            QueryType::VideoLink(url) => write!(f, "{}", url),
+            QueryType::SpotifyTracks(tracks) => write!(
+                f,
+                "{}",
+                tracks
+                    .iter()
+                    .map(SpotifyTrackTrait::name)
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            QueryType::PlaylistLink(url) => write!(f, "{}", url),
+            QueryType::File(file) => write!(f, "{}", file.url),
+            QueryType::NewYoutubeDl((src, metadata)) => {
+                write!(f, "{}", metadata.clone().source_url.unwrap_or_default())
+            },
+            QueryType::YoutubeSearch(query) => write!(f, "{}", query),
+            QueryType::None => write!(f, "None"),
         }
     }
 }

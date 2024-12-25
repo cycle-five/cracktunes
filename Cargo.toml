@@ -8,6 +8,7 @@ members = [
   "crack-voting",
   "crack-testing",
   "crack-types",
+  "crack-events",
 ]
 resolver = "2"
 
@@ -17,7 +18,7 @@ license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
 [workspace.dependencies.typesize]
-version = "0.1.6"
+version = "0.1.10"
 features = [
   "dervice",
   "details",
@@ -92,7 +93,7 @@ features = ["all-formats", "all-codecs", "opt-simd"]
 version = "0.5.4"
 
 [workspace.dependencies.tokio]
-version = "1.34.0"
+version = "1.42.0"
 features = ["full"]
 
 [workspace.dependencies]

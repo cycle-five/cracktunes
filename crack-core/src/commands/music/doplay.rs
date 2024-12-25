@@ -557,7 +557,6 @@ async fn match_mode(
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: NewQueryType,
-    //search_msg: &'a mut ReplyHandle<'a>,
     search_msg: ReplyHandle<'_>,
 ) -> CrackedResult<()> {
     tracing::info!("mode: {:?}", mode);
