@@ -19,7 +19,7 @@ pub mod random_mute_lol;
 // pub mod timeout;
 pub mod user;
 
-use crate::{Context, Error};
+use crack_types::{Command, Context, Error};
 // pub use audit_logs::*;
 // pub use authorize::*;
 // pub use broadcast_voice::*;
@@ -88,7 +88,7 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// List of all the admin commands.
-pub fn commands() -> Vec<crate::Command> {
+pub fn commands() -> Vec<Command> {
     vec![
         admin(),
         // user(),

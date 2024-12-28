@@ -86,14 +86,7 @@ pub async fn queue_resolved_track_back_old(
     Ok(new_q)
 }
 
-/// Data needed to queue a track.
-/// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
-pub struct TrackReadyData {
-    pub source: SongbirdInput,
-    pub metadata: NewAuxMetadata,
-    pub user_id: Option<UserId>,
-    pub username: Option<String>,
-}
+use crack_types::TrackReadyData;
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query(

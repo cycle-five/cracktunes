@@ -1,13 +1,3 @@
-use crate::{
-    // commands::queue_aux_metadata,
-    db::GuildEntity,
-    errors::CrackedError,
-    guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
-    handlers::voice_chat_stats::cam_status_loop,
-    sources::spotify::{Spotify, SPOTIFY},
-    BotConfig,
-    Data,
-};
 use ::serenity::{
     all::Message,
     builder::{CreateEmbed, CreateMessage, EditMember},
@@ -15,8 +5,20 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
-// use dashmap;
+use crack_types::{
+    db::GuildEntity,
+    errors::CrackedError,
+    handlers::voice_chat_stats::cam_status_loop,
+    sources::spotify::{Spotify, SPOTIFY},
+    BotConfig,
+    Data,
+};
 use crate::commands::{commands_to_register, register::register_globally_cracked};
+use crate::Command;
+use crack_types::{
+    guild::settings::{GuildSettings, DEFAULT_ACTIVITY, DEFAULT_PREFIX},
+    messaging::messages::CONNECTED,
+};
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
 use serenity::CacheHttp;
 use serenity::{
@@ -38,18 +40,15 @@ pub struct SerenityHandler {
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
-        tracing::info!(
-            "{} {}",
-            ready.user.name,
-            crate::messaging::messages::CONNECTED
-        );
+        tracing::info!("{} {}", ready.user.name, CONNECTED);
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
 
-        match register_globally_cracked(&ctx.http, &commands_to_register()).await {
+        let commands = commands_to_register();
+        match register_globally_cracked(&ctx.http, &commands[..]).await {
             Ok(_) => {
                 tracing::info!("Commands registered successfully");
             },
@@ -561,173 +560,4 @@ async fn check_delete_old_messages(
         }
     }
     Ok(())
-}
-
-/// Returns a string describing the difference between two voice states.
-pub async fn voice_state_diff_str(
-    old: &Option<VoiceState>,
-    new: &VoiceState,
-    // cache: impl AsRef<serenity::Cache> + AsRef<serenity::Http>,
-    cache: Arc<impl serenity::CacheHttp>,
-) -> Result<String, CrackedError> {
-    let guild_id = new.guild_id;
-    let channel = match new.channel_id {
-        Some(channel_id) => channel_id.to_channel(cache.clone(), guild_id).await.ok(),
-        None => None,
-    };
-    let premium = true; //DEFAULT_PREMIUM;
-    let old = match old {
-        Some(old) => old,
-        None => {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let result = match channel {
-                Some(channel) => format!(
-                    "Member joined voice channel\n{} joined {}",
-                    user_name,
-                    channel.mention()
-                ),
-                None => format!(
-                    "Member joined voice channel\n{} joined unknown channel",
-                    user_name
-                ),
-            };
-            return Ok(result);
-        },
-    };
-    let user = if premium {
-        if old.member.is_none() {
-            new.member.as_ref().unwrap().user.mention().to_string()
-        } else {
-            old.member.as_ref().unwrap().user.mention().to_string()
-        }
-    } else if old.member.is_none() {
-        new.member.as_ref().unwrap().user.name.to_string()
-    } else {
-        old.member.as_ref().unwrap().user.name.to_string()
-    };
-    let mut result = String::new();
-    if old.channel_id != new.channel_id {
-        if new.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let user_mention = new.member.as_ref().unwrap().user.mention();
-            let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
-
-            let user = if premium {
-                user_mention.to_string()
-            } else {
-                user_name.to_string()
-            };
-
-            let channel = if premium {
-                channel_mention.to_string()
-            } else {
-                channel_id.to_string()
-            };
-
-            return Ok(format!(
-                "Member left voice channel\n{} left {}\n",
-                user, channel
-            ));
-        } else if old.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
-
-            return Ok(format!(
-                "Member joined voice channel\n{} joined {}\n",
-                user_name, channel_mention
-            ));
-        } else {
-            let old_channel_id = old.channel_id.unwrap();
-            let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            let new_channel_mention = new_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            result.push_str(&format!(
-                "Switched voice channels: {} -> {}\n",
-                old_channel_mention, new_channel_mention
-            ));
-        }
-    }
-    if old.deaf() != new.deaf() {
-        if new.deaf() {
-            result.push_str(&format!("{} was deafend\n", user));
-        } else {
-            result.push_str(&format!("{} was undeafend\n", user));
-        }
-    }
-    if old.mute() != new.mute() {
-        if new.mute() {
-            result.push_str(&format!("{} was muted\n", user));
-        } else {
-            result.push_str(&format!("{} was unmuted\n", user));
-        }
-    }
-    if old.guild_id != new.guild_id {
-        result.push_str(&format!(
-            "{} switched guilds?!?! guild_id: {:?} -> {:?}\n",
-            user, old.guild_id, new.guild_id
-        ));
-    }
-
-    if old.self_deaf() != new.self_deaf() {
-        if new.self_deaf() {
-            result.push_str(&format!("{} deafened themselves\n", user));
-        } else {
-            result.push_str(&format!("{} undeafened themselves\n", user));
-        }
-    }
-    if old.self_mute() != new.self_mute() {
-        if new.self_mute() {
-            result.push_str(&format!("{} muted themselves\n", user));
-        } else {
-            result.push_str(&format!("{} unmuted themselves\n", user));
-        }
-    }
-    if old.self_stream() != new.self_stream() {
-        if new.self_stream().unwrap_or(false) {
-            result.push_str(&format!("{} started streaming\n", user));
-        } else {
-            result.push_str(&format!("{} stopped streaming\n", user));
-        }
-    }
-    if old.self_video() != new.self_video() {
-        if old.self_video() {
-            result.push_str(&format!("{} turned off their camera\n", user));
-        } else {
-            result.push_str(&format!("{} turned on their camera\n", user));
-        }
-    }
-    if old.session_id != new.session_id {
-        result.push_str(&format!(
-            "session_id: {:?} -> {:?}\n",
-            old.session_id, new.session_id
-        ));
-    }
-    if old.suppress() != new.suppress() {
-        result.push_str(&format!(
-            "suppress: {:?} -> {:?}\n",
-            old.suppress(),
-            new.suppress()
-        ));
-    }
-    if old.user_id != new.user_id {
-        result.push_str(&format!(
-            "user_id : {:?} -> {:?}\n",
-            old.user_id, new.user_id
-        ));
-    }
-    if old.request_to_speak_timestamp != new.request_to_speak_timestamp {
-        result.push_str(&format!(
-            "request_to_speak: {:?} -> {:?}\n",
-            old.request_to_speak_timestamp, new.request_to_speak_timestamp,
-        ));
-    }
-    Ok(result)
 }

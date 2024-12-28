@@ -1,15 +1,18 @@
-use once_cell::sync::Lazy;
-use reqwest::Client;
-use std::future::Future;
-
-use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
-use crate::music::NewQueryType;
-use crate::serenity::Color;
-use crate::CrackedResult;
+use crate::NewQueryType;
+use crate::{CrackedError, CrackedResult};
+
+use once_cell::sync::Lazy;
+use poise::serenity_prelude as serenity;
+use reqwest::Client;
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
+use serenity::Color;
+
+use std::future::Future;
+use url::Url;
+//use crate::resolve_final_url2_str;
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
@@ -260,8 +263,10 @@ pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: U
 }
 
 /// Parse a URL string into a URL object.
-pub async fn parse_url(url: &str) -> Result<url::Url, CrackedError> {
-    url::Url::parse(url).map_err(Into::into)
+/// # Errors
+/// Returns an error if the URL is invalid.
+pub fn parse_url(url: &str) -> Result<Url, CrackedError> {
+    Url::parse(url).map_err(Into::into)
 }
 
 /// Gets the final URL after following all redirects.
@@ -332,12 +337,43 @@ pub fn check_banned_domains(
     // }
 }
 
+use crate::Error;
+
+/// Parse a URL string into a URL object.
+/// # Errors
+/// Returns an error if the URL is invalid.
+// pub fn parse_url(url: &str) -> Result<Url, Error> {
+//     Url::parse(url).map_err(Into::into)
+// }
+
+/// Gets the final URL after following all redirects.
+/// # Errors
+/// Returns an error if the URL is invalid or if there was an error making the request.
+pub async fn resolve_final_url2_str(client: Client, url: &str) -> Result<String, Error> {
+    resolve_final_url2(client, parse_url(url)?)
+        .await
+        .map(|x| x.to_string())
+}
+
+/// Gets the final URL after following all redirects.
+/// # Errors
+/// Returns an error if the URL is invalid or if there was an error making the request.
+pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> {
+    // Make a GET request, which will follow redirects by default
+    let response = client.get(url.to_string()).send().await?;
+
+    // Extract the final URL after following all redirects
+    let final_url = response.url().clone();
+
+    Ok(final_url)
+}
+
 #[cfg(test)]
 mod test {
-    use crate::http_utils::resolve_final_url;
+    use super::*;
 
     #[tokio::test]
-    async fn test_resolve_final_url() {
+    async fn test_resolve_final_url0() {
         let url = "https://example.com";
 
         let final_url = resolve_final_url(url).await.unwrap();
@@ -348,7 +384,7 @@ mod test {
     fn test_build_send_message_params() {
         use crate::http_utils::SendMessageParams;
         use crate::messaging::message::CrackedMessage;
-        use serenity::all::{ChannelId, Colour};
+        use ::serenity::all::{ChannelId, Colour};
 
         let channel_id = ChannelId::new(1);
         let msg = CrackedMessage::Other("Hello, world!".to_string());
@@ -372,5 +408,35 @@ mod test {
             CrackedMessage::Other("Hello, world!".to_string())
         );
         assert_eq!(params.embed.is_none(), true);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_final_url() {
+        let client = reqwest::Client::new();
+        let url = "https://httpbin.org/redirect-to?url=https://example.com";
+        let final_url = resolve_final_url2_str(client, url).await.unwrap();
+        assert_eq!(final_url.as_str(), "https://example.com/");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_final_url2() {
+        let client = reqwest::Client::new();
+        let url = Url::parse("https://httpbin.org/redirect-to?url=https://example.com").unwrap();
+        let final_url = resolve_final_url2(client, url).await.unwrap();
+        assert_eq!(final_url.as_str(), "https://example.com/");
+    }
+
+    #[test]
+    fn test_parse_url() {
+        let url = "https://example.com/";
+        let parsed_url = parse_url(url).unwrap();
+        assert_eq!(parsed_url.as_str(), url);
+    }
+
+    #[test]
+    fn test_parse_url_invalid() {
+        let url = "https://example.com:foo";
+        let parsed_url = parse_url(url);
+        assert!(parsed_url.is_err());
     }
 }

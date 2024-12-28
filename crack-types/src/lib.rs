@@ -1,21 +1,47 @@
-// ------------------------------------------------------------------
+#![allow(internal_features)]
+#![feature(fmt_internals)]
+#![feature(formatting_options)]
 // Modules
 // ------------------------------------------------------------------
-pub mod http;
-pub use http::*;
+pub mod ctx_data;
+pub use ctx_data::*;
+pub mod ctx_extension;
+pub use ctx_extension::*;
+pub mod config;
+pub use config::*;
+pub mod client;
+pub use client::*;
+pub mod db;
+pub use db::*;
+pub mod http_utils;
+pub use http_utils::*;
+pub mod messaging;
+pub use messaging::*;
+pub mod utils;
+pub use utils::*;
+pub mod errors;
+pub use errors::*;
+pub mod guild;
+pub use guild::*;
+pub mod macros;
+pub use macros::*;
 pub mod metadata;
 pub use metadata::*;
+pub mod queue;
+pub use queue::*;
 pub mod reply_handle;
 pub use reply_handle::*;
 
-use rspotify::model::SimplifiedAlbum;
-use rspotify::model::SimplifiedArtist;
-use rspotify::model::TrackId;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
-use serenity::small_fixed_array::FixedString;
-use serenity::small_fixed_array::ValidLength;
+use rspotify::model::SimplifiedAlbum;
+use rspotify::model::SimplifiedArtist;
+use rspotify::model::TrackId;
+use serenity::all::Token;
+use serenity::model::id::{ChannelId, GuildId};
+use serenity::small_fixed_array::{FixedString, ValidLength};
+use songbird::input::Input as SongbirdInput;
 use songbird::Call;
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -27,15 +53,28 @@ use tokio::sync::{Mutex, RwLock};
 // Public types we use to simplify return and parameter types.
 // ------------------------------------------------------------------
 
+// Data sctructures for holding the state of the bot in a thread-safe manner.
 pub type ArcTRwLock<T> = Arc<RwLock<T>>;
 pub type ArcTMutex<T> = Arc<Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
-pub type Error = Box<dyn StdError + Send + Sync>;
-// pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
-// pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
 pub type SongbirdCall = Arc<Mutex<Call>>;
+
+/// Context data structures allowing for customizing the context data.
+pub type Command = poise::Command<Data, CommandError>;
+pub type Context<'a> = poise::Context<'a, Data, CommandError>;
+pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, CommandError>;
+pub type PartialContext<'a> = poise::PartialContext<'a, Data, CommandError>;
+pub type ApplicationContext<'a> = poise::ApplicationContext<'a, Data, CommandError>;
+pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
+
+/// Error types
+pub type Error = Box<dyn StdError + Send + Sync>;
+pub type CommandError = Error;
+pub type CommandResult<E = Error> = Result<(), E>;
+pub type CrackedResult<T> = Result<T, errors::CrackedError>;
+pub type CrackedHowResult<T> = anyhow::Result<T, errors::CrackedError>;
 
 // ------------------------------------------------------------------
 // Public Re-exports
@@ -68,6 +107,15 @@ pub enum TrackResolveError {
     UnknownQueryType,
 }
 
+/// Data needed to queue a track.
+/// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
+pub struct TrackReadyData {
+    pub source: SongbirdInput,
+    pub metadata: NewAuxMetadata,
+    pub user_id: Option<UserId>,
+    pub username: Option<String>,
+}
+
 /// play Mode enum.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
@@ -82,8 +130,34 @@ pub enum Mode {
     Search,
 }
 
-use serenity::all::Token;
-use serenity::model::id::{ChannelId, GuildId};
+#[derive(Clone, Debug)]
+pub struct NewQueryType(pub QueryType);
+
+/// Newtype for [`QueryType`] to implement From for [`QueryType`].
+impl From<QueryType> for NewQueryType {
+    fn from(q: QueryType) -> Self {
+        NewQueryType(q)
+    }
+}
+
+/// HACK
+impl From<NewQueryType> for QueryType {
+    fn from(q: NewQueryType) -> Self {
+        let NewQueryType(qt) = q;
+        match qt {
+            QueryType::Keywords(keywords) => QueryType::Keywords(keywords),
+            QueryType::KeywordList(keywords_list) => QueryType::KeywordList(keywords_list),
+            QueryType::VideoLink(url) => QueryType::VideoLink(url),
+            QueryType::SpotifyTracks(tracks) => QueryType::SpotifyTracks(tracks),
+            QueryType::PlaylistLink(url) => QueryType::PlaylistLink(url),
+            QueryType::File(file) => QueryType::File(file),
+            QueryType::NewYoutubeDl((src, metadata)) => QueryType::NewYoutubeDl((src, metadata)),
+            QueryType::YoutubeSearch(query) => QueryType::YoutubeSearch(query),
+            QueryType::None => QueryType::None,
+        }
+    }
+}
+
 /// Enum for 64 bit integer Ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiscId {

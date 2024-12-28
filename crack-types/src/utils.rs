@@ -1,10 +1,10 @@
+use crate::ctx_extension::PoiseContextExt;
 use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
-use crate::poise_ext::PoiseContextExt;
 use crate::{
-    db::Playlist,
+    get_human_readable_timestamp,
     messaging::{
         interface::create_nav_btns,
         message::CrackedMessage,
@@ -13,7 +13,7 @@ use crate::{
             QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
         },
     },
-    Context as CrackContext, CrackedError, CrackedResult, Data, Error,
+    Context as CrackContext, CrackedError, CrackedResult, Data, Error, NewAuxMetadata, QueryType,
 };
 use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
@@ -30,9 +30,6 @@ use ::serenity::{
     model::channel::Message,
 };
 use anyhow::Result;
-use crack_types::get_human_readable_timestamp;
-use crack_types::NewAuxMetadata;
-use crack_types::QueryType;
 use poise::{
     serenity_prelude::{
         self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
@@ -527,39 +524,6 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
-    let content = if !playlists.is_empty() {
-        let start_idx = EMBED_PAGE_SIZE * page;
-        let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
-
-        let mut description = String::new();
-
-        for (i, &playlist) in playlists.iter().enumerate() {
-            let _ = writeln!(
-                description,
-                // "`{}.` [{}]({})",
-                "`{}.` {} ({})",
-                i + start_idx + 1,
-                playlist.name,
-                playlist.id
-            );
-        }
-
-        description
-    } else {
-        PLAYLIST_LIST_EMPTY.to_string()
-    };
-
-    CreateEmbed::default().title(PLAYLISTS).description(content)
-    //     .footer(CreateEmbedFooter::new(format!(
-    //         "{} {} {} {}",
-    //         QUEUE_PAGE,
-    //         page + 1,
-    //         QUEUE_PAGE_OF,
-    //         calculate_num_pages(playlists),
-    //     )))
-}
-
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
@@ -877,7 +841,7 @@ mod test {
     use ::serenity::{all::Button, builder::CreateActionRow};
 
     use crate::messaging::interface::create_single_nav_btn;
-    use crack_types::to_fixed;
+    use crate::to_fixed;
 
     use super::*;
 

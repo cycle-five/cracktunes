@@ -1,5 +1,7 @@
 use crate::db::{user::User, Metadata, MetadataRead};
-use crate::CrackedError;
+use crate::messages::{PLAYLISTS, PLAYLIST_LIST_EMPTY};
+use crate::{CrackedError, EMBED_PAGE_SIZE};
+use serenity::all::CreateEmbed;
 use sqlx::{postgres::PgQueryResult, query, PgPool};
 
 /// Playlist db structure (does not old the tracks)
@@ -255,4 +257,38 @@ impl Playlist {
 
         Self::delete_playlist(pool, playlist_id).await.map(|_| ())
     }
+}
+
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
+    use std::fmt::Write;
+    let content = if !playlists.is_empty() {
+        let start_idx = EMBED_PAGE_SIZE * page;
+        let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
+
+        let mut description = String::new();
+
+        for (i, &playlist) in playlists.iter().enumerate() {
+            let _ = writeln!(
+                description,
+                // "`{}.` [{}]({})",
+                "`{}.` {} ({})",
+                i + start_idx + 1,
+                playlist.name,
+                playlist.id
+            );
+        }
+
+        description
+    } else {
+        PLAYLIST_LIST_EMPTY.to_string()
+    };
+
+    CreateEmbed::default().title(PLAYLISTS).description(content)
+    //     .footer(CreateEmbedFooter::new(format!(
+    //         "{} {} {} {}",
+    //         QUEUE_PAGE,
+    //         page + 1,
+    //         QUEUE_PAGE_OF,
+    //         calculate_num_pages(playlists),
+    //     )))
 }

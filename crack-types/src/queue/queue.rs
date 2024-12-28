@@ -1,6 +1,6 @@
-use crate::ResolvedTrack;
-use crate::EMPTY_QUEUE;
-use crack_types::Error;
+use super::ResolvedTrack;
+use super::EMPTY_QUEUE;
+use crate::Error;
 
 use rand::seq::SliceRandom;
 use std::collections::VecDeque;

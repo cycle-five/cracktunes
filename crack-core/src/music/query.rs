@@ -57,37 +57,7 @@ pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
 //     None,
 // }
 
-#[derive(Clone, Debug)]
-pub struct NewQueryType(pub crack_types::QueryType);
 
-/// Newtype for [`QueryType`] to implement From for [`QueryType`].
-impl From<crack_types::QueryType> for NewQueryType {
-    fn from(q: crack_types::QueryType) -> Self {
-        NewQueryType(q)
-    }
-}
-
-/// HACK
-impl From<NewQueryType> for crack_types::QueryType {
-    fn from(q: NewQueryType) -> Self {
-        let NewQueryType(qt) = q;
-        match qt {
-            QueryType::Keywords(keywords) => crack_types::QueryType::Keywords(keywords),
-            QueryType::KeywordList(keywords_list) => {
-                crack_types::QueryType::KeywordList(keywords_list)
-            },
-            QueryType::VideoLink(url) => crack_types::QueryType::VideoLink(url),
-            QueryType::SpotifyTracks(tracks) => crack_types::QueryType::SpotifyTracks(tracks),
-            QueryType::PlaylistLink(url) => crack_types::QueryType::PlaylistLink(url),
-            QueryType::File(file) => crack_types::QueryType::File(file),
-            QueryType::NewYoutubeDl((src, metadata)) => {
-                crack_types::QueryType::NewYoutubeDl((src, metadata))
-            },
-            QueryType::YoutubeSearch(query) => crack_types::QueryType::YoutubeSearch(query),
-            QueryType::None => crack_types::QueryType::None,
-        }
-    }
-}
 
 pub struct Queries {
     queries: Vec<QueryType>,

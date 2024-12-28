@@ -1,5 +1,5 @@
+use crate::{get_human_readable_timestamp, AuxMetadata, QueryType};
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
-use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{

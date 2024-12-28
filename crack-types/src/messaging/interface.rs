@@ -1,4 +1,6 @@
+use crate::ctx_extension::PoiseContextExt;
 use crate::errors::CrackedError;
+use crate::guild::settings::DEFAULT_LYRICS_PAGE_SIZE;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
@@ -8,14 +10,12 @@ use crate::messaging::messages::{
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::CrackedResult;
-use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
+use crate::{get_human_readable_timestamp, utils::create_paged_embed, NewAuxMetadata};
 use crate::{
     messaging::message::CrackedMessage,
     utils::{build_footer_info, get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
-use crack_types::get_human_readable_timestamp;
-use crack_types::NewAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -446,7 +446,6 @@ pub async fn create_search_response<'ctx>(
 
 // ---------------------- Joining Channel ---------------------------- //
 
-use crate::poise_ext::PoiseContextExt;
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel<'ctx>(
     ctx: &'ctx CrackContext<'_>,

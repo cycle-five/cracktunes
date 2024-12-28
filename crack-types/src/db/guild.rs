@@ -478,7 +478,7 @@ impl GuildEntity {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crack_types::to_fixed;
+    use crate::to_fixed;
     use sqlx::PgPool;
     use std::collections::HashSet;
     use std::str::FromStr;

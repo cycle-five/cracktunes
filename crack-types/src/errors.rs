@@ -12,8 +12,8 @@ use std::borrow::Cow;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
+use crate::TrackResolveError;
 use audiopus::error::Error as AudiopusError;
-use crack_types::TrackResolveError;
 use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
@@ -96,7 +96,7 @@ pub enum CrackedError {
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
-    TrackResolveError(crack_types::TrackResolveError),
+    TrackResolveError(TrackResolveError),
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,

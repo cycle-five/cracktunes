@@ -1,0 +1,47 @@
+[package]
+name = "crack-events"
+version = "0.3.16-alpha.3"
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Discord event handling module for Crack Tunes."
+keywords = ["music", "discord", "bot", "crack", "tunes", "types"]
+categories = [
+    "multimedia::audio",
+    "multimedia::music",
+    "multimedia::discord",
+    "multimedia::bot",
+]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[dependencies.poise]
+branch = "serenity-next"
+git = "https://github.com/CycleFive/poise"
+default-features = true
+features = ["cache", "collector"]
+
+[dependencies]
+serde = "1.0"
+serde_json = "1.0"
+tracing = "0.1"
+colored = "2.1"
+clap = "4.5"
+chrono = "0.4"
+cfg-if = "1.0"
+extract_map = "0.1"
+reqwest = "0.12"
+rusty_ytdl = "0.7"
+
+[dependencies.tiny_http]
+version = "0.12.0"
+
+[dependencies.serenity]
+git = "https://github.com/CycleFive/serenity"
+branch = "next"
+features = ["interactions_endpoint"]
+
+[dependencies.crack-types]
+path = "../crack-types"

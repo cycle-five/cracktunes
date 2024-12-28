@@ -1,13 +1,15 @@
+use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 
 use super::event_log_impl::*;
-use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
-};
+use crate::{log_event, log_event2};
 use cfg_if;
 use colored::Colorize;
-use poise::serenity_prelude as serenity;
+use crack_types::utils::interaction_to_guild_id;
+use crack_types::{
+    errors::CrackedError, guild::settings::GuildSettings,
+    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
+};
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},
     FrameworkContext,
@@ -17,27 +19,6 @@ use serenity::User;
 
 pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> =
     Some(ChannelId::new(1191633527763116039));
-
-// #[derive(Debug)]
-// pub struct LogEntry<T: Serialize> {
-//     pub name: String,
-//     pub notes: String,
-//     pub event: T,
-// }
-use crack_types::LogEntry;
-
-// impl<T: Serialize> Serialize for LogEntry<T> {
-//     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-//         let n = if self.notes.is_empty() { 2 } else { 3 };
-//         let mut state = serializer.serialize_struct("LogEntry", n)?;
-//         state.serialize_field("name", &self.name)?;
-//         if !self.notes.is_empty() {
-//             state.serialize_field("notes", &self.notes)?;
-//         }
-//         state.serialize_field("event", &self.event)?;
-//         state.end()
-//     }
-// }
 
 /// Gets the log channel for a given guild.
 pub async fn get_log_channel(
@@ -121,7 +102,7 @@ pub async fn handle_event(
     _framework: FrameworkContext<'_, Data, Error>,
     data_global: Arc<Data>,
 ) -> Result<(), Error> {
-    use crate::{db::GuildEntity, guild::settings::DEFAULT_PREFIX};
+    use crack_types::{settings::DEFAULT_PREFIX, GuildEntity};
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
     let event_name = event_in.snake_case_name();
     let guild_settings = &data_global.guild_settings_map;
@@ -141,7 +122,7 @@ pub async fn handle_event(
                         guild_settings,
                         event_in,
                         new_data,
-                        &new_data.guild_id.unwrap(),
+                        new_data.guild_id.unwrap(),
                         &ctx,
                         event_log,
                         event_name
@@ -420,7 +401,7 @@ pub async fn handle_event(
                 log_guild_create,
                 guild_settings,
                 event_in,
-                &(guild, is_new, guild_settings),
+                &(guild, is_new),
                 guild.id,
                 &ctx,
                 event_log,
@@ -763,7 +744,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &new_data.id,
+                new_data.id,
                 &ctx,
                 event_log,
                 event_name
@@ -815,7 +796,7 @@ pub async fn handle_event(
         FullEvent::InteractionCreate { interaction } => {
             let log_data = interaction;
             let guild_id =
-                crate::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
+                crack_types::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
             log_event!(
                 log_interaction_create,
                 guild_settings,
@@ -884,10 +865,10 @@ pub async fn handle_event(
             new,
             event,
         } => {
-            if new.as_ref().map(|x| x.author.bot).unwrap_or(false)
+            if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
                 || old_if_available
                     .as_ref()
-                    .map(|x| x.author.bot)
+                    .map(|x| x.author.bot())
                     .unwrap_or(false)
             {
                 return Ok(());
@@ -902,7 +883,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 &log_data,
-                &event.guild_id.unwrap_or_default(),
+                event.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
