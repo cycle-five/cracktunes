@@ -35,9 +35,10 @@ pub type ArcTMutex<T> = Arc<Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
-pub type Error = Box<dyn StdError + Send + Sync>;
-// pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
-// pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
+pub type CrackedResult<T> = Result<T, CrackedError>;
+pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
+pub type CommandError = Error;
+pub type CommandResult<E = Error> = Result<(), E>;
 pub type SongbirdCall = Arc<Mutex<Call>>;
 
 // ------------------------------------------------------------------

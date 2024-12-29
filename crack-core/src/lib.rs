@@ -56,30 +56,24 @@ use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 // ------------------------------------------------------------------
 // Our public types used throughout cracktunes.
 // Probably want to move these to crack-types...
+// Update: 2024-12-29 most have been, need to move Data and DataInner
+// for the rest.
 // ------------------------------------------------------------------
 
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
-pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
-pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
-pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
-pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
-pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
-pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
-pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
+pub use crack_types::reply_handle::MessageOrReplyHandle;
+pub use crack_types::{
+    ArcMutDMap, ArcRwMap, ArcTMutex, ArcTRwLock, ArcTRwMap, CrackedHowResult, CrackedResult, Error,
+};
+pub use crack_types::{CommandError, CommandResult};
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;
 pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, CommandError>;
 pub type PartialContext<'a> = poise::PartialContext<'a, Data, CommandError>;
 pub type ApplicationContext<'a> = poise::ApplicationContext<'a, Data, CommandError>;
-
-pub type CommandError = Error;
-pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
-// use crate::serenity::prelude::SerenityError;
-use crack_types::reply_handle::MessageOrReplyHandle;
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
