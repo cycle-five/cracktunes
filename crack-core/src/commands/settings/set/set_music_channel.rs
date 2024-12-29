@@ -1,7 +1,6 @@
 use crate::guild::operations::GuildSettingsOperations;
-use crate::{
-    errors::CrackedError, messaging::message::CrackedMessage, utils::send_reply, Context, Error,
-};
+use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
+use crack_types::errors::CrackedError;
 use serenity::all::Channel;
 
 #[poise::command(

@@ -1,8 +1,8 @@
 use crate::{
     commands::admin::{deafen::deafen_internal, mute::mute_internal},
-    messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,
 };
+use crack_types::messaging::messages::UNKNOWN;
 use crack_types::to_fixed;
 use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;

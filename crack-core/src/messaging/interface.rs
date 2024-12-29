@@ -438,9 +438,7 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(*ctx, embed)
-        .await
-        .map_err(Into::into)
+    send_embed_response_poise(*ctx, embed).await
 }
 
 // ---------------------- Joining Channel ---------------------------- //

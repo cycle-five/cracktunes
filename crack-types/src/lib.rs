@@ -22,7 +22,6 @@ use serenity::small_fixed_array::FixedString;
 use serenity::small_fixed_array::ValidLength;
 use songbird::Call;
 use std::collections::HashMap;
-use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::sync::Arc;

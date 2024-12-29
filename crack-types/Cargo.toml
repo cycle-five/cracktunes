@@ -19,6 +19,9 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
+[features]
+crack-gpt = []
+
 [dependencies]
 poise = { workspace = true }
 songbird = { workspace = true }

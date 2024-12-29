@@ -1,13 +1,13 @@
-use crack_types::CrackedError;
 use crate::http_utils;
 use crate::music::query::NewQueryType;
-use crack_types::QueryType;
-
 use crate::sources::rusty_ytdl::RustyYoutubeSearch;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::CrackedResult;
-use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
-use crack_types::NewAuxMetadata;
+use crack_types::{
+    messaging::messages,
+    metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata},
+    CrackedError, NewAuxMetadata, QueryType,
+};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
 
@@ -85,7 +85,6 @@ pub async fn search_query_to_source_and_metadata(
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
-use crate::messaging::messages;
 /// Search youtube for a query and return the source (playable)
 /// and metadata.
 pub async fn search_query_to_source_and_metadata_rusty(

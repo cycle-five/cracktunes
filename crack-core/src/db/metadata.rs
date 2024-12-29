@@ -241,7 +241,7 @@ pub fn aux_metadata_to_db_structures(
         .as_ref()
         .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
     let channel = metadata.channel.clone();
-    let channels = metadata.channels.map(i16::from);
+    let channels = metadata.channels;
     let start_time = metadata
         .start_time
         .map(|d| d.as_secs_f64() as i64)
@@ -262,7 +262,7 @@ pub fn aux_metadata_to_db_structures(
         album,
         date,
         channel,
-        channels,
+        channels: channels.map(|x| x as i16),
         start_time,
         duration,
         sample_rate,
@@ -289,7 +289,7 @@ pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedE
     let album = metadata.album.clone();
     let date = metadata.date;
     let channel = metadata.channel.clone();
-    let channels = metadata.channels.map(i16::from);
+    let channels = metadata.channels;
     let start_time = metadata.start_time;
     let duration = metadata.duration;
     let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);

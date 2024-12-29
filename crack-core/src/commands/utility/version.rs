@@ -1,9 +1,6 @@
 use crate::guild::operations::GuildSettingsOperations;
-use crate::{
-    messaging::{message::CrackedMessage, messages::UNKNOWN},
-    utils::send_reply,
-    Context, CrackedError, Error,
-};
+use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, CrackedError, Error};
+use crack_types::messaging::messages::UNKNOWN;
 
 /// Get the build version of this bot.
 #[cfg(not(tarpaulin_include))]

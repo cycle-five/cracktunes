@@ -92,7 +92,7 @@ pub async fn send_reply<'ctx>(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    ctx.send_reply(message, as_embed).await.map_err(Into::into)
+    ctx.send_reply(message, as_embed).await
 }
 
 /// Sends a reply response, possibly as an embed.
@@ -102,9 +102,7 @@ pub async fn send_reply_owned(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'_>, CrackedError> {
-    ctx.send_reply_owned(message, as_embed)
-        .await
-        .map_err(Into::into)
+    ctx.send_reply_owned(message, as_embed).await
 }
 
 /// Sends a regular reply response.

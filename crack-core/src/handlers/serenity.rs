@@ -14,6 +14,7 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+use crack_types::messaging::messages::CONNECTED;
 use crack_types::CrackedError;
 // use dashmap;
 use crate::commands::{commands_to_register, register::register_globally_cracked};
@@ -38,11 +39,7 @@ pub struct SerenityHandler {
 #[async_trait]
 impl EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
-        tracing::info!(
-            "{} {}",
-            ready.user.name,
-            crate::messaging::messages::CONNECTED
-        );
+        tracing::info!("{} {}", ready.user.name, CONNECTED);
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 

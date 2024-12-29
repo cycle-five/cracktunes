@@ -1,18 +1,15 @@
-use std::fmt::Formatter;
-
 use crate::commands::cmd_check_music;
 use crate::http_utils;
 use crate::messaging::interface as msg_int;
 use crate::music::query::query_type_from_url;
-use crate::Arc;
 use crate::CrackedMessage;
-use crate::{
-    errors::{verify, CrackedError},
-    Context, Error,
-};
+use crate::{Context, Error};
+use crack_types::errors::{verify, CrackedError};
 use rusty_ytdl::{search::YouTube, RequestOptions};
 use serenity::all::CacheHttp;
+use std::fmt::Formatter;
 use std::fmt::{self, Debug};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct CopyableContext {

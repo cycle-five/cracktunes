@@ -11,7 +11,6 @@ use crate::{
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
-        messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{edit_response_poise, yt_search_select},
@@ -19,6 +18,7 @@ use crate::{
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
+use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
 use crack_types::{verify, CrackedError};
 use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};

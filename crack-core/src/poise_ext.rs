@@ -262,10 +262,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
 
     async fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        self.data()
-            .push_latest_msg(guild_id, mor)
-            .await
-            .map_err(Into::into)
+        self.data().push_latest_msg(guild_id, mor).await
     }
 }
 

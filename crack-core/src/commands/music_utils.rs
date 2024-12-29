@@ -3,7 +3,7 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::poise_ext::PoiseContextExt;
-use crate::CrackedError;
+use crack_types::CrackedError;
 use crate::{Context, Error};
 // use crack_testing::ReplyHandleWrapper;
 use poise::serenity_prelude::Mentionable;

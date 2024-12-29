@@ -6,7 +6,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::messaging::messages::IDLE_ALERT;
+use crack_types::messaging::messages::IDLE_ALERT;
 
 /// Handler for the idle event.
 pub struct IdleHandler {

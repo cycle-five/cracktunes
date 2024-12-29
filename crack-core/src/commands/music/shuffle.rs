@@ -1,8 +1,9 @@
 use crate::{
-    commands::cmd_check_music, errors::verify, handlers::track_end::update_queue_messages,
+    commands::cmd_check_music, handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context,
     CrackedError, Error,
 };
+use crack_types::errors::verify;
 use rand::Rng;
 
 /// Move a song in the queue to a different position.

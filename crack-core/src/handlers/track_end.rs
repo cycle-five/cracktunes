@@ -1,10 +1,7 @@
 use crate::{
     db::PgPoolExtPlayLog,
     guild::operations::GuildSettingsOperations,
-    messaging::{
-        interface::{create_nav_btns, create_queue_embed, send_now_playing},
-        messages::SPOTIFY_AUTH_FAILED,
-    },
+    messaging::interface::{create_nav_btns, create_queue_embed, send_now_playing},
     music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
@@ -14,6 +11,7 @@ use crate::{
     CrackedResult,
     Data, //, Error,
 };
+use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use ::serenity::{
     all::{Cache, ChannelId},
     async_trait,

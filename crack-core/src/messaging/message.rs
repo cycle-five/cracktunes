@@ -337,6 +337,7 @@ impl Display for CrackedMessage {
             Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
+            #[allow(clippy::literal_string_with_formatting_args)]
             Self::SubcommandNotFound { group, subcommand } => f.write_str(
                 &SUBCOMMAND_NOT_FOUND
                     .replace("{group}", group)

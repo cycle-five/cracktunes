@@ -68,7 +68,6 @@ pub async fn mute_others(
     )
     .await
     .map(|_| ())
-    .map_err(Into::into)
 }
 
 /// Mute all other users in a voice channel.

@@ -1,4 +1,4 @@
-use crack_core::errors::{verify, CrackedError};
+use crack_types::errors::{verify, CrackedError};
 
 #[test]
 fn test_verify_bools() {

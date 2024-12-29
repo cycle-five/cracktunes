@@ -3,10 +3,11 @@ use reqwest::Client;
 use std::future::Future;
 
 use crate::guild::settings::GuildSettings;
-use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::messaging::message::CrackedMessage;
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
+use crack_types::messaging::messages::UNKNOWN;
 use crack_types::CrackedError;
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;

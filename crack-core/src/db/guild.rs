@@ -1,5 +1,4 @@
 use crate::{
-    errors::CrackedError,
     guild::{
         permissions::{GenericPermissionSettings, GenericPermissionSettingsReadWCommand},
         settings::{GuildSettings, WelcomeSettings},
@@ -7,6 +6,7 @@ use crate::{
     CrackedResult, Error as SerenityError,
 };
 use chrono::NaiveDateTime;
+use crack_types::errors::CrackedError;
 use serde::{Deserialize, Serialize};
 use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
