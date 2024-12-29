@@ -4,11 +4,11 @@ use crate::{
         music::{create_skip_response, force_skip_top_track},
     },
     connection::get_voice_channel_for_user,
-    errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     poise_ext::{ContextExt, PoiseContextExt},
     Context, Error,
 };
+use crack_types::{verify, CrackedError};
 use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
 

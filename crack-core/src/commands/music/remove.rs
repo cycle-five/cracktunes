@@ -1,13 +1,13 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
-    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
-    messaging::messages::REMOVED_QUEUE,
     utils::send_reply,
     utils::{get_track_handle_metadata, send_embed_response_poise},
     Context, Error,
 };
+use crack_types::messaging::messages::REMOVED_QUEUE;
+use crack_types::{verify, CrackedError};
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 use std::cmp::min;

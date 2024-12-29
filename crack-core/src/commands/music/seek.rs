@@ -1,12 +1,9 @@
 use crate::{
-    commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    messaging::message::CrackedMessage,
-    messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    poise_ext::ContextExt,
-    utils::send_reply,
-    Context, Error,
+    commands::cmd_check_music, messaging::message::CrackedMessage, poise_ext::ContextExt,
+    utils::send_reply, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
+use crack_types::messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING};
 use std::{borrow::Cow, time::Duration};
 
 /// Seek to timestamp, in format `mm:ss`.

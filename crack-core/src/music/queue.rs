@@ -1,5 +1,4 @@
 use crate::{
-    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
     music::NewQueryType,
@@ -8,6 +7,7 @@ use crate::{
     Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
+use crack_types::{verify, CrackedError};
 use crack_types::{Mode, NewAuxMetadata, QueryType};
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},

@@ -1,7 +1,6 @@
 use crate::{
     // commands::queue_aux_metadata,
     db::GuildEntity,
-    errors::CrackedError,
     guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
@@ -15,6 +14,7 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+use crack_types::CrackedError;
 // use dashmap;
 use crate::commands::{commands_to_register, register::register_globally_cracked};
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};

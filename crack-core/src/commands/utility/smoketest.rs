@@ -1,5 +1,5 @@
 //use crate::commands::help;
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
 use serenity::all::{ChannelId, GuildId};

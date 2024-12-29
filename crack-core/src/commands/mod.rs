@@ -29,7 +29,7 @@ pub use register::*;
 pub use settings::*;
 pub use utility::*;
 
-pub use crate::errors::CrackedError;
+pub use crack_types::CrackedError;
 use dashmap;
 use serenity::all::Message;
 

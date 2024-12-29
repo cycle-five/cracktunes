@@ -6,7 +6,6 @@ use crack_types::to_fixed;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
-    errors::CrackedError,
     guild::settings::GuildSettings,
     handlers::{handle_event, SerenityHandler},
     http_utils::CacheHttpExt,
@@ -17,6 +16,7 @@ use crate::{
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
+use crack_types::CrackedError;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;

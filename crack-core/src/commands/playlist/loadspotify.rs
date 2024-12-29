@@ -1,7 +1,6 @@
 use crate::{
     commands::cmd_check_music,
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
-    errors::verify,
     http_utils,
     messaging::message::CrackedMessage,
     sources::spotify::{Spotify, SPOTIFY},
@@ -10,6 +9,7 @@ use crate::{
 };
 use crack_types::NewAuxMetadata;
 use crack_types::SpotifyTrack;
+use crack_types::errors::verify;
 use songbird::input::AuxMetadata;
 use url::Url;
 

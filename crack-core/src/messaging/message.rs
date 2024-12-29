@@ -1,3 +1,4 @@
+use crack_types::DICE_ROLL;
 use std::{borrow::Cow, fmt::Display};
 
 use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
@@ -8,7 +9,9 @@ use serenity::{Mention, Mentionable, UserId};
 use songbird::error::ControlError;
 use std::time::Duration;
 
-use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
+//use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
+use crate::utils::duration_to_string;
+use crack_types::{errors::CrackedError, messaging::messages::*};
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -275,7 +278,7 @@ impl Display for CrackedMessage {
                 dice,
                 sides,
                 results,
-            } => f.write_str(crate::DICE_ROLL!(dice, sides, results)),
+            } => f.write_str(DICE_ROLL!(dice, sides, results)),
             Self::Error => f.write_str(ERROR),
             Self::ErrorHttp(err) => f.write_str(&format!("{err}")),
             Self::GrabbedNotice => f.write_str(GRABBED_NOTICE),

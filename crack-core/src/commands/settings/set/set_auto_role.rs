@@ -2,10 +2,10 @@ use poise::serenity_prelude::Mentionable;
 use serenity::all::{Role, RoleId};
 
 use crate::{
-    errors::CrackedError, guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams, messaging::message::CrackedMessage, poise_ext::PoiseContextExt,
-    Context, Error,
+    guild::operations::GuildSettingsOperations, http_utils::SendMessageParams,
+    messaging::message::CrackedMessage, poise_ext::PoiseContextExt, Context, Error,
 };
+use crack_types::CrackedError;
 
 /// Set the auto role for the server.
 #[poise::command(

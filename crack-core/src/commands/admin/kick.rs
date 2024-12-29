@@ -1,10 +1,10 @@
 //#![feature(const_random)] // This is a nightly feature
-use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::CrackedError;
 use serenity::all::{Mentionable, User};
 use serenity::builder::EditMember;
 use std::fs::read_to_string;

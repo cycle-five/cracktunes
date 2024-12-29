@@ -1,6 +1,6 @@
 use serenity::builder::CreateChannel;
 
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use songbird::input::AuxMetadata;
 use sqlx::PgPool;
 
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Metadata {

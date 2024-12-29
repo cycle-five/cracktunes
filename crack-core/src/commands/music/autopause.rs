@@ -1,12 +1,12 @@
 use crate::{
     commands::{cmd_check_music, help},
-    errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     poise_ext::PoiseContextExt,
     Context, Error,
 };
+use crack_types::CrackedError;
 
 /// Toggle whether the bot pauses after each song in the queue.
 #[cfg(not(tarpaulin_include))]

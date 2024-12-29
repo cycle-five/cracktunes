@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::UNKNOWN_LIT;
 use crate::utils::send_reply;

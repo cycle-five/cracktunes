@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use super::event_log_impl::*;
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
+    guild::settings::GuildSettings, log_event, log_event2,
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use cfg_if;
 use colored::Colorize;
+use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},

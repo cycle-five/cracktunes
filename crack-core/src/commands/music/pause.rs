@@ -1,11 +1,11 @@
 use crate::{
     commands::cmd_check_music,
-    errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     poise_ext::ContextExt,
     utils::send_reply,
     {Context, Error},
 };
+use crack_types::{verify, CrackedError};
 
 /// Pause the current track.
 #[cfg(not(tarpaulin_include))]

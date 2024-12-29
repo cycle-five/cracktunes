@@ -1,10 +1,10 @@
-use crate::errors::CrackedError;
 use crate::utils::{build_playlist_list_embed, send_embed_response_poise};
 use crate::{
     commands::{cmd_check_music, sub_help as help},
     db::playlist::Playlist,
     Context, Error,
 };
+use crack_types::CrackedError;
 
 /// List your saved playlists.
 #[cfg(not(tarpaulin_include))]

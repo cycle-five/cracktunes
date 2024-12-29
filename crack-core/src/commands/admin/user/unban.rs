@@ -1,6 +1,6 @@
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, CommandResult, Context};
+use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use serenity::{Mentionable, User, UserId};
 

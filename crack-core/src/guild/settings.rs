@@ -1,7 +1,7 @@
 use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
 use lazy_static::lazy_static;

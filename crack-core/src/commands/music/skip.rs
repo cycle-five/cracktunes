@@ -1,13 +1,10 @@
 use crate::poise_ext::ContextExt;
 use crate::{
-    commands::cmd_check_music,
-    commands::get_call_or_join_author,
-    errors::{verify, CrackedError},
-    messaging::message::CrackedMessage,
-    poise_ext::PoiseContextExt,
-    utils::get_track_handle_metadata,
-    Context, Error,
+    commands::cmd_check_music, commands::get_call_or_join_author,
+    messaging::message::CrackedMessage, poise_ext::PoiseContextExt,
+    utils::get_track_handle_metadata, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
 use serenity::all::Message;
 use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;

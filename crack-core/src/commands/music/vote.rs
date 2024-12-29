@@ -1,5 +1,5 @@
 use crate::db;
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::http_utils;
 use crate::poise_ext::ContextExt;
 use crate::{

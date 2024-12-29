@@ -6,7 +6,6 @@ use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    errors::{verify, CrackedError},
     http_utils,
     http_utils::check_banned_domains,
     messaging::{
@@ -21,6 +20,7 @@ use crate::{
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
+use crack_types::{verify, CrackedError};
 use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;

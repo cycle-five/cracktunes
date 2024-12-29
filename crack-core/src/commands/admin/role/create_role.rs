@@ -3,7 +3,7 @@ use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
 
 use crate::commands::EmptyResult;
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;

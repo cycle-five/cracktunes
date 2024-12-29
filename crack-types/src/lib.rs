@@ -7,6 +7,10 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+pub mod messaging;
+pub use messaging::*;
+pub mod errors;
+pub use errors::*;
 
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
@@ -284,7 +288,7 @@ impl Display for QueryType {
             ),
             QueryType::PlaylistLink(url) => write!(f, "{}", url),
             QueryType::File(file) => write!(f, "{}", file.url),
-            QueryType::NewYoutubeDl((src, metadata)) => {
+            QueryType::NewYoutubeDl((_src, metadata)) => {
                 write!(f, "{}", metadata.clone().source_url.unwrap_or_default())
             },
             QueryType::YoutubeSearch(query) => write!(f, "{}", query),

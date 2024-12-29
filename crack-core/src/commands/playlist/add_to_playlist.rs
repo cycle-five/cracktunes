@@ -2,11 +2,11 @@ use crate::{
     commands::cmd_check_music,
     db::aux_metadata_to_db_structures,
     db::{metadata::Metadata, MetadataAnd, Playlist},
-    errors::CrackedError,
     poise_ext::ContextExt as _,
     utils::TrackData,
     Context, CrackedMessage, Error,
 };
+use crack_types::CrackedError;
 use sqlx::PgPool;
 
 /// Adds a song to a playlist

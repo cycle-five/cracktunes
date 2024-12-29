@@ -12,7 +12,7 @@ use songbird::{
 };
 use songbird::{Call, CoreEvent, TrackEvent};
 
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::guild::settings::{DEFAULT_BUFFER_SIZE, DEFAULT_VALID_TOKEN};
 use crate::messaging::messages::INVALID_TOKEN;
 

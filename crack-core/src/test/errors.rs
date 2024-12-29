@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-    use crate::errors::CrackedError;
+    use crack_types::CrackedError;
     use crate::messaging::messages;
 
     #[test]

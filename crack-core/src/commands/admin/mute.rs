@@ -1,8 +1,8 @@
 use crate::connection::get_voice_channel_for_user;
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
+use crack_types::CrackedError;
 
 use extract_map::ExtractMap;
 use poise::serenity_prelude as serenity;

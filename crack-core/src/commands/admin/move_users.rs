@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::Context;
 use crate::Error;
 use serenity::all::ChannelType;

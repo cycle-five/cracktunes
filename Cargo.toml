@@ -8,7 +8,6 @@ members = [
   "crack-voting",
   "crack-testing",
   "crack-types",
-  "crack-events",
 ]
 resolver = "2"
 

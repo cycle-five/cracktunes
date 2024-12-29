@@ -1,4 +1,5 @@
-use crate::{errors::CrackedError, Data, GuildSettings};
+use crate::{Data, GuildSettings};
+use crack_types::CrackedError;
 use serenity::{
     all::{ChannelId, Context as SerenityContext, GuildId},
     small_fixed_array::FixedString,

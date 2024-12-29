@@ -1,16 +1,10 @@
 use crate::{
     commands::{cmd_check_music, get_call_or_join_author, help},
-    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils,
     http_utils::SendMessageParams,
     messaging::interface::create_now_playing_embed,
-    messaging::{
-        message::CrackedMessage,
-        messages::{
-            PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
-        },
-    },
+    messaging::message::CrackedMessage,
     music::query::query_type_from_url,
     music::queue::{get_mode, get_msg, queue_track_back},
     music::NewQueryType,
@@ -27,9 +21,13 @@ use ::serenity::{
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
 use crack_testing::{suggestion2, ResolvedTrack};
+use crack_types::messaging::messages::{
+    PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
+};
 use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata, QueryType,
 };
+use crack_types::{verify, CrackedError};
 use poise::{serenity_prelude as serenity, CreateReply, ReplyHandle};
 use rusty_ytdl::search::YouTube;
 use songbird::{

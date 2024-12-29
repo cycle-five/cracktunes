@@ -1,9 +1,7 @@
 use super::serenity::voice_state_diff_str;
-use crate::{
-    errors::CrackedError, http_utils::get_guild_name, messaging::interface::send_log_embed_thumb,
-    Error,
-};
+use crate::{http_utils::get_guild_name, messaging::interface::send_log_embed_thumb, Error};
 use colored::Colorize;
+use crack_types::CrackedError;
 use serde::Serialize;
 use serenity::{
     all::{

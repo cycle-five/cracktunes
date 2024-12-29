@@ -1,10 +1,4 @@
-use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
-use crate::messaging::messages::UNKNOWN;
-use crate::messaging::messages::{
-    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SRC, QUEUE_NO_TITLE,
-    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
-};
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::CrackedResult;
@@ -15,6 +9,11 @@ use crate::{
     Context as CrackContext, Error,
 };
 use crack_types::get_human_readable_timestamp;
+use crack_types::messaging::messages::{
+    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SRC, QUEUE_NO_TITLE,
+    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY, UNKNOWN,
+};
+use crack_types::CrackedError;
 use crack_types::NewAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.

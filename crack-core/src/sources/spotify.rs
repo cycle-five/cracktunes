@@ -1,9 +1,6 @@
-use crate::{
-    errors::CrackedError,
-    messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
-    utils::MUSIC_SEARCH_SUFFIX,
-};
-use crack_types::{QueryType, SpotifyTrack};
+use crate::utils::MUSIC_SEARCH_SUFFIX;
+use crack_types::messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED};
+use crack_types::{CrackedError, QueryType, SpotifyTrack};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::model::{FullPlaylist, FullTrack, SimplifiedAlbum};

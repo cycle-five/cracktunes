@@ -1,8 +1,8 @@
 use super::mute::mute_internal;
-use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
 use async_trait::async_trait;
+use crack_types::CrackedError;
 use rand::Rng;
 use serenity::all::{Context as SerenityContext, GuildId, User};
 use songbird::{Call, Event, EventContext, EventHandler};

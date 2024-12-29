@@ -1,12 +1,12 @@
 use crate::{
     commands::{cmd_check_music, sub_help as help},
-    errors::CrackedError,
     messaging::interface::create_search_results_reply,
     Context, Error,
 };
 use poise::ReplyHandle;
 use serenity::builder::CreateEmbed;
 use songbird::input::YoutubeDl;
+use crack_types::errors::CrackedError;
 
 /// Search for a song and play it.
 #[cfg(not(tarpaulin_include))]

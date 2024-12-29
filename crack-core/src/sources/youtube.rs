@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::http_utils;
 use crate::music::query::NewQueryType;
 use crack_types::QueryType;

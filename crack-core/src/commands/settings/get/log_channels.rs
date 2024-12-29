@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::get_guild_name;
@@ -56,7 +56,7 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn join_leave_log_channel(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
-        .ok_or(crate::errors::CrackedError::NoGuildId)?;
+        .ok_or(crack_types::CrackedError::NoGuildId)?;
     let name = get_guild_name(ctx.serenity_context(), guild_id).await;
     {
         let join_leave_log_channel = {

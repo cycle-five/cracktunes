@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::utils::send_reply;

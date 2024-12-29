@@ -1,8 +1,8 @@
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::CrackedError;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::User;
 

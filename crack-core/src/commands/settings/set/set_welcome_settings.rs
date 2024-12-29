@@ -1,9 +1,9 @@
 use crate::{
-    errors::CrackedError,
     guild::settings::{GuildSettings, WelcomeSettings},
     utils::get_guild_name,
     Context, Data, Error,
 };
+use crack_types::CrackedError;
 use serenity::all::{Channel, GuildId, Role};
 use std::sync::Arc;
 

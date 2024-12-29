@@ -5,14 +5,7 @@ use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db::Playlist,
-    messaging::{
-        interface::create_nav_btns,
-        message::CrackedMessage,
-        messages::{
-            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY,
-            QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
-        },
-    },
+    messaging::{interface::create_nav_btns, message::CrackedMessage},
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::all::MessageInteractionMetadata;
@@ -31,6 +24,10 @@ use ::serenity::{
 };
 use anyhow::Result;
 use crack_types::get_human_readable_timestamp;
+use crack_types::messaging::messages::{
+    INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
+    QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
+};
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{

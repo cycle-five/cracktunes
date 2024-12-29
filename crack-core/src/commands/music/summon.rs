@@ -1,9 +1,7 @@
 use crate::commands::{cmd_check_music, do_join, help, sub_help as help};
-use crate::{
-    connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
-    Context, Error,
-};
+use crate::{connection::get_voice_channel_for_user_summon, poise_ext::ContextExt, Context, Error};
 use ::serenity::all::{Channel, ChannelId, Mentionable};
+use crack_types::CrackedError;
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;

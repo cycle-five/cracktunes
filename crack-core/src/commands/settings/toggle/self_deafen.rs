@@ -1,7 +1,5 @@
-use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, http_utils::CacheHttpExt, Context, Data,
-    Error,
-};
+use crate::{guild::settings::GuildSettings, http_utils::CacheHttpExt, Context, Data, Error};
+use crack_types::CrackedError;
 use serenity::all::GuildId;
 use sqlx::PgPool;
 

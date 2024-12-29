@@ -1,9 +1,9 @@
+use crate::{Context, Error};
+use crack_types::CrackedError;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
-
-use crate::{errors::CrackedError, Context, Error};
 
 /// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;

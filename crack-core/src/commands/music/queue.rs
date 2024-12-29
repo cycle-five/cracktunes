@@ -1,12 +1,8 @@
 use crate::utils::get_interaction_new;
 use crate::{
     commands::cmd_check_music,
-    errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::{
-        interface::{create_nav_btns, create_queue_embed},
-        messages::QUEUE_EXPIRED,
-    },
+    messaging::interface::{create_nav_btns, create_queue_embed},
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
@@ -14,6 +10,8 @@ use ::serenity::builder::{
     CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
 };
 use ::serenity::futures::StreamExt;
+use crack_types::errors::CrackedError;
+use crack_types::messaging::messages::QUEUE_EXPIRED;
 use poise::CreateReply;
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};

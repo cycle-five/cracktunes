@@ -2,11 +2,12 @@ use self::serenity::model::{
     guild::Guild,
     id::{ChannelId, UserId},
 };
-use crate::{errors::CrackedError, Error};
 use poise::serenity_prelude as serenity;
+use crack_types::CrackedError;
+use crate::Error;
 
-/// Enum for types of voice connection relationships.
 #[derive(Debug, PartialEq)]
+/// Enum for types of voice connection relationships.
 pub enum Connection {
     User(ChannelId),
     Bot(ChannelId),

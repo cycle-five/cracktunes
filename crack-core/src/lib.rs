@@ -5,7 +5,6 @@ pub mod commands;
 pub mod config;
 pub mod connection;
 pub mod db;
-pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
@@ -29,9 +28,9 @@ use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
+use crack_types::CrackedError;
 use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
-use errors::CrackedError;
 use guild::settings::get_log_prefix;
 use guild::settings::{GuildSettings, GuildSettingsMapParam};
 use guild::settings::{

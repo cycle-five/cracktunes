@@ -1,6 +1,5 @@
 use crate::{
     db::PgPoolExtPlayLog,
-    errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     messaging::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
@@ -24,6 +23,7 @@ use ::serenity::{
 };
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
+use crack_types::{verify, CrackedError};
 use serenity::all::{CacheHttp, UserId};
 use songbird::input::AuxMetadata;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};

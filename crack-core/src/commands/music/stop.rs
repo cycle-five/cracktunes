@@ -1,14 +1,10 @@
 use songbird::tracks::TrackHandle;
 
 use crate::{
-    commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    guild::operations::GuildSettingsOperations,
-    messaging::message::CrackedMessage,
-    poise_ext::ContextExt,
-    utils::send_reply,
-    Context, Error,
+    commands::cmd_check_music, guild::operations::GuildSettingsOperations,
+    messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
 
 /// Stop the current track and clear the queue.
 #[cfg(not(tarpaulin_include))]

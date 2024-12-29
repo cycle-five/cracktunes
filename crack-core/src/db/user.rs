@@ -1,6 +1,7 @@
 use crate::messaging::messages::TEST;
-use crate::{errors::CrackedError, CrackedResult};
+use crate::CrackedResult;
 use ::chrono::Duration;
+use crack_types::CrackedError;
 use sqlx::{
     types::chrono::{self},
     PgPool,
