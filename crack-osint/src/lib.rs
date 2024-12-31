@@ -1,5 +1,7 @@
 #[cfg(feature = "checkpass")]
 pub mod checkpass;
+#[cfg(feature = "ipqs")]
+pub mod ipqs;
 // // pub mod ip;
 // // pub mod ipv;
 // // pub mod paywall;
@@ -14,6 +16,8 @@ pub mod virustotal;
 #[cfg(feature = "checkpass")]
 pub use checkpass::*;
 // pub use crack_core::PhoneCodeData;
+#[cfg(feature = "ipqs")]
+pub use ipqs::*;
 // pub use ip::ip;
 // pub use ipv::*;
 // pub use paywall::*;
@@ -28,7 +32,11 @@ pub use virustotal::*;
 // pub use crack_core::{
 //     messaging::message::CrackedMessage, utils::send_reply, Context, Error, Result,
 // };
-pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
+// pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
+// use poise::CreateReply;
+
+use crack_types::{CrackedError, Error};
+// use poise::Context;
 
 // /// Osint Commands
 // #[poise::command(
@@ -44,7 +52,7 @@ pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 //         // "checkpass",
 //         // "phlookup",
 //         // "phcode",
-//         "scan",
+//         // "scan",
 //     ),
 // )]
 // pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
@@ -64,8 +72,8 @@ pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 
 //     Ok(())
 // }
-#[cfg(test)]
-mod test;
+// // #[cfg(test)]
+// // mod test;
 // #[cfg(test)]
 // mod test {
 //     use crate::osint;

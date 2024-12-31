@@ -147,3 +147,4 @@ async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "m
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
 poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
 serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }

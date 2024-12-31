@@ -1,5 +1,5 @@
 use crack_types::Error;
-use sha1::{Digest, Sha1};
+use sha1::{digest::core_api::RtVariableCoreWrapper, Digest, Sha1};
 
 pub async fn check_password_pwned(client: &reqwest::Client, password: &str) -> Result<bool, Error> {
     // Compute the SHA-1 hash of the password

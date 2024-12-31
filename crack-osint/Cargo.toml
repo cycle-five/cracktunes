@@ -12,7 +12,7 @@ homepage = "https://cracktun.es/"
 # The official main repo is sr.ht, this is needed for the CI/CD pipeline.
 # repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
-workspace = "../"
+workspace = ".."
 
 [dependencies]
 whois-rs = "1.6.1"
@@ -25,12 +25,14 @@ crack-types = { path = "../crack-types" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
+poise = { workspace = true }
 
 [features]
-default = ["checkpass", "virustotal", "scan"]
+default = ["checkpass", "virustotal", "scan", "ipqs"]
 checkpass = []
 virustotal = []
 scan = []
+ipqs = []
 #phone = []
 #social = []
 #wayback = []
