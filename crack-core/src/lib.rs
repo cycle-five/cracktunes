@@ -419,6 +419,11 @@ impl DataInner {
             ..self.clone()
         }
     }
+
+    /// Get the http client.
+    pub fn get_http_client(&self) -> reqwest::Client {
+        self.http_client.clone()
+    }
 }
 
 /// General log for events that the bot reveices from Discord.
@@ -449,8 +454,7 @@ impl Default for EventLogAsync {
                 eprintln!("Error creating log file: {}", e);
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
-                File::create("/dev/null")
-                    .expect("Should have a file object to write too??? (three bcz real confused).")
+                File::create("/dev/null").expect("Should have a file object to write too???")
             },
         };
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))

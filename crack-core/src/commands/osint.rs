@@ -7,6 +7,7 @@ use crate::{
     Context,
     Error,
 };
+use crack_osint::IPQSClient;
 use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
@@ -31,6 +32,7 @@ use std::str::FromStr;
         "checkpass",
         "scan",
         "virustotal_result",
+        "ipqs_ip_score",
         //"help",
     ),
 )]
@@ -146,6 +148,24 @@ pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> 
     ctx.send_reply_embed(message).await?;
 
     Ok(())
+}
+
+/// Check if a password has been pwned.
+#[poise::command(category = "OsInt", slash_command)]
+pub async fn ipqs_ip_score(ctx: Context<'_>, ip: String) -> Result<(), Error> {
+    // Get reqwest client from the context
+    let data = ctx.data();
+    let client = &data.http_client;
+    // Get the IPQS API key from the environment
+    let api_key =
+        std::env::var("IPQS_API_KEY").map_err(|_| crate::CrackedError::Other("IPQS_API_KEY"))?;
+    let client = IPQSClient::new_with_client(api_key, client.clone());
+    Ok(())
+}
+
+/// Get the list of commands available in the osint category.
+pub fn commands() -> Vec<crate::Command> {
+    vec![scan(), virustotal_result(), checkpass(), ipqs_ip_score()]
 }
 
 #[cfg(test)]
