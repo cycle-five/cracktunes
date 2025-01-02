@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use tracing::{debug, error, instrument};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct IpqsResponse {
     #[serde(default)]
     pub success: bool,
@@ -81,8 +82,8 @@ impl Default for IpqsError {
 impl std::fmt::Display for IpqsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IpqsError::RequestError(e) => write!(f, "Request error: {}", e),
-            IpqsError::InvalidResponse(e) => write!(f, "Invalid response: {}", e),
+            IpqsError::RequestError(e) => write!(f, "Request error: {e}"),
+            IpqsError::InvalidResponse(e) => write!(f, "Invalid response: {e}"),
         }
     }
 }
@@ -105,6 +106,7 @@ impl Default for IpqsClient {
 }
 
 impl IpqsClient {
+    #[must_use]
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
@@ -112,6 +114,7 @@ impl IpqsClient {
         }
     }
 
+    #[must_use]
     pub fn new_with_client(api_key: String, client: Client) -> Self {
         Self { api_key, client }
     }

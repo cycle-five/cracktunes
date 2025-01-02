@@ -13,6 +13,12 @@ pub const VIRUSTOTAL_API_ANALYSES_URL: &str = concatcp!(VIRUSTOTAL_API_BASE_URL,
 pub const VIRUSTOTAL_API_URLS_URL: &str = concatcp!(VIRUSTOTAL_API_BASE_URL, "/urls");
 
 /// Get the scan result for a given id.
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - The API request fails
+/// - The response cannot be parsed as JSON
 pub async fn get_scan_result(
     client: &VirusTotalClient,
     id: String,

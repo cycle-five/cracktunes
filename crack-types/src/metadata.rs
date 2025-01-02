@@ -56,6 +56,7 @@ impl NewAuxMetadata {
     /// Create new `NewAuxMetadata` from &`SpotifyTrack`.
     #[must_use]
     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
+        #[allow(clippy::cast_sign_loss)]
         let duration: Duration =
             Duration::from_millis(track.full_track.duration.num_milliseconds() as u64);
         let name = track.full_track.name.clone();
