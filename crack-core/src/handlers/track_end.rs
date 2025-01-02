@@ -11,7 +11,6 @@ use crate::{
     CrackedResult,
     Data, //, Error,
 };
-use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use ::serenity::{
     all::{Cache, ChannelId},
     async_trait,
@@ -19,6 +18,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
+use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use crack_types::{verify, CrackedError};

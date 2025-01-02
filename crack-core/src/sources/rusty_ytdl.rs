@@ -1,9 +1,9 @@
-use crack_types::CrackedError;
 use crate::http_utils;
 use crate::music::NewQueryType;
 use bytes::Buf;
 use bytes::BytesMut;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
+use crack_types::CrackedError;
 use crack_types::QueryType;
 use rusty_ytdl::stream::Stream;
 use rusty_ytdl::RequestOptions;

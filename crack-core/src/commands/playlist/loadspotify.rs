@@ -7,9 +7,9 @@ use crate::{
     utils::send_reply,
     Context, CrackedError, Error,
 };
+use crack_types::errors::verify;
 use crack_types::NewAuxMetadata;
 use crack_types::SpotifyTrack;
-use crack_types::errors::verify;
 use songbird::input::AuxMetadata;
 use url::Url;
 

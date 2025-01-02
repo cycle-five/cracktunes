@@ -1,9 +1,9 @@
-use crack_types::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::CrackedError;
 use serenity::all::Channel;
 
 /// Set the join-leave log channel.

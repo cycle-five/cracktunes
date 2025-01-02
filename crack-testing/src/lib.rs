@@ -513,7 +513,7 @@ enum Commands {
         /// The query to get suggestions for.
         query: String,
     },
-    IPQS {
+    Ipqs {
         ip: String,
     },
     Resolve {
@@ -538,21 +538,21 @@ fn yt_url_type(url: &url::Url) -> QueryType {
     }
 }
 
-use crack_osint::ipqs::IPQSClient;
+use crack_osint::ipqs::IpqsClient;
 
 /// Match the CLI command and run the appropriate function.
 #[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let guild = GuildId::new(1);
     let client = Box::leak(Box::new(CrackTrackClient::new()));
-    let osint_key = std::env::var("IPQS_API_KEY").expect("No IPQS API key");
-    let osint_client = IPQSClient::new(osint_key);
+    let osint_key = std::env::var("Ipqs_API_KEY").expect("No Ipqs API key");
+    let osint_client = IpqsClient::new(osint_key);
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
             tracing::info!("Suggestions: {res:?}");
         },
-        Commands::IPQS { ip } => {
+        Commands::Ipqs { ip } => {
             let res = osint_client.check_ip(&ip, None).await?;
             tracing::info!("Suggestions: {res:?}");
         },

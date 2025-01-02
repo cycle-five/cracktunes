@@ -1,9 +1,9 @@
 use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
-use crack_types::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
+use crack_types::CrackedError;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};

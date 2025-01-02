@@ -7,7 +7,7 @@ use crate::{
     Context,
     Error,
 };
-use crack_osint::IPQSClient;
+use crack_osint::IpqsClient;
 use crack_osint::{check_password_pwned, VirusTotalClient};
 use crack_osint::{get_scan_result, scan_url};
 use poise::CreateReply;
@@ -156,10 +156,10 @@ pub async fn ipqs_ip_score(ctx: Context<'_>, ip: String) -> Result<(), Error> {
     // Get reqwest client from the context
     let data = ctx.data();
     let client = &data.http_client;
-    // Get the IPQS API key from the environment
+    // Get the Ipqs API key from the environment
     let api_key =
-        std::env::var("IPQS_API_KEY").map_err(|_| crate::CrackedError::Other("IPQS_API_KEY"))?;
-    let client = IPQSClient::new_with_client(api_key, client.clone());
+        std::env::var("Ipqs_API_KEY").map_err(|_| crate::CrackedError::Other("Ipqs_API_KEY"))?;
+    let client = IpqsClient::new_with_client(api_key, client.clone());
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 //use crate::commands::help;
-use crack_types::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
+use crack_types::CrackedError;
 use serenity::all::{ChannelId, GuildId};
 
 /// Struct that defines a smoke test to run.

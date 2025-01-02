@@ -8,10 +8,10 @@
 
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crack_types::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use crate::utils::{create_paged_embed, send_reply_owned};
 use crate::{require, Context, Data, Error};
 use ::serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
+use crack_types::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use itertools::Itertools;
 
 /// Optional configuration for how the help message from [`help()`] looks

@@ -1,12 +1,11 @@
 use crate::db;
-use crack_types::CrackedError;
 use crate::http_utils;
 use crate::poise_ext::ContextExt;
 use crate::{Context, Error};
 use crack_types::messaging::messages::{
-    VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL,
-    VOTE_TOPGG_VOTED,
+    VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL, VOTE_TOPGG_VOTED,
 };
+use crack_types::CrackedError;
 use serenity::all::{GuildId, UserId};
 
 /// For API response from top.gg

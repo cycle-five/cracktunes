@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tracing::{debug, error, instrument};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct IPQSResponse {
+pub struct IpqsResponse {
     #[serde(default)]
     pub success: bool,
     #[serde(default)]
@@ -68,34 +68,34 @@ pub struct IPQSResponse {
 }
 
 #[derive(Debug)]
-pub enum IPQSError {
+pub enum IpqsError {
     RequestError(String),
     InvalidResponse(String),
 }
-impl Default for IPQSError {
+impl Default for IpqsError {
     fn default() -> Self {
-        IPQSError::RequestError(String::new())
+        IpqsError::RequestError(String::new())
     }
 }
 
-impl std::fmt::Display for IPQSError {
+impl std::fmt::Display for IpqsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IPQSError::RequestError(e) => write!(f, "Request error: {}", e),
-            IPQSError::InvalidResponse(e) => write!(f, "Invalid response: {}", e),
+            IpqsError::RequestError(e) => write!(f, "Request error: {}", e),
+            IpqsError::InvalidResponse(e) => write!(f, "Invalid response: {}", e),
         }
     }
 }
 
-impl std::error::Error for IPQSError {}
+impl std::error::Error for IpqsError {}
 
 #[derive(Debug, Clone)]
-pub struct IPQSClient {
+pub struct IpqsClient {
     api_key: String,
     client: Client,
 }
 
-impl Default for IPQSClient {
+impl Default for IpqsClient {
     fn default() -> Self {
         Self {
             api_key: String::default(),
@@ -104,7 +104,7 @@ impl Default for IPQSClient {
     }
 }
 
-impl IPQSClient {
+impl IpqsClient {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
@@ -121,7 +121,7 @@ impl IPQSClient {
         &self,
         ip: &str,
         params: Option<HashMap<String, String>>,
-    ) -> Result<IPQSResponse, IPQSError> {
+    ) -> Result<IpqsResponse, IpqsError> {
         #[cfg(feature = "crack-tracing")]
         debug!("Checking IP: {}", ip);
 
@@ -143,23 +143,23 @@ impl IPQSClient {
         let response = request.send().await.map_err(|e| {
             #[cfg(feature = "crack-tracing")]
             error!("Request failed: {}", e);
-            IPQSError::RequestError(e.to_string())
+            IpqsError::RequestError(e.to_string())
         })?;
 
         if !response.status().is_success() {
             let error_msg = format!("API request failed with status: {}", response.status());
             #[cfg(feature = "crack-tracing")]
             error!("{}", error_msg);
-            return Err(IPQSError::InvalidResponse(error_msg));
+            return Err(IpqsError::InvalidResponse(error_msg));
         }
 
         #[cfg(feature = "crack-tracing")]
         debug!("Successfully received response");
 
-        response.json::<IPQSResponse>().await.map_err(|e| {
+        response.json::<IpqsResponse>().await.map_err(|e| {
             #[cfg(feature = "crack-tracing")]
             error!("Failed to parse response: {}", e);
-            IPQSError::RequestError(e.to_string())
+            IpqsError::RequestError(e.to_string())
         })
     }
 }
@@ -175,7 +175,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let ipqs = IPQSClient::new_with_client("your_api_key".to_string(), client);
+        let ipqs = IpqsClient::new_with_client("your_api_key".to_string(), client);
 
         let mut params = HashMap::new();
         params.insert(
@@ -200,12 +200,12 @@ mod tests {
 
     #[test]
     fn test_default_implementations() {
-        let response = IPQSResponse::default();
+        let response = IpqsResponse::default();
         assert_eq!(response.success, false);
         assert_eq!(response.fraud_score, 0);
         assert_eq!(response.message, "");
 
-        let client = IPQSClient::default();
+        let client = IpqsClient::default();
         assert_eq!(client.api_key, "");
     }
 }

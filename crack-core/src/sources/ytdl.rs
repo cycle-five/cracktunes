@@ -1,5 +1,5 @@
-use crack_types::CrackedError;
 use crate::guild::settings::VIDEO_WATCH_URL;
+use crack_types::CrackedError;
 use std::fmt::Display;
 use tokio::process::Command;
 use tokio::runtime::Handle;

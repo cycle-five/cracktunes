@@ -1,11 +1,11 @@
 use self::serenity::builder::CreateEmbed;
 use crate::commands::{cmd_check_music, help};
-use crack_types::CrackedError;
 use crate::guild::settings::GuildSettings;
 use crate::poise_ext::ContextExt;
 use crate::utils::{get_guild_name, send_embed_response_poise};
 use crate::{Context, Error};
 use colored::Colorize;
+use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use songbird::tracks::TrackHandle;
 

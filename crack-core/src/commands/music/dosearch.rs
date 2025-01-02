@@ -3,10 +3,10 @@ use crate::{
     messaging::interface::create_search_results_reply,
     Context, Error,
 };
+use crack_types::errors::CrackedError;
 use poise::ReplyHandle;
 use serenity::builder::CreateEmbed;
 use songbird::input::YoutubeDl;
-use crack_types::errors::CrackedError;
 
 /// Search for a song and play it.
 #[cfg(not(tarpaulin_include))]
