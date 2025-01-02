@@ -542,11 +542,13 @@ use crack_osint::ipqs::IpqsClient;
 
 /// Match the CLI command and run the appropriate function.
 #[tracing::instrument]
-async fn match_cli(cli: Cli) -> Result<(), Error> {
+async fn match_cli(cli: Cli) -> Result<String, Error> {
     let guild = GuildId::new(1);
     let client = Box::leak(Box::new(CrackTrackClient::new()));
-    let osint_key = std::env::var("Ipqs_API_KEY").expect("No Ipqs API key");
+    let osint_key = std::env::var("IPQS_API_KEY").expect("No Ipqs API key");
     let osint_client = IpqsClient::new(osint_key);
+    let cli_str = format!("{cli:?}");
+    tracing::info!("Running CLI command: {cli_str}");
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
@@ -554,7 +556,7 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
         },
         Commands::Ipqs { ip } => {
             let res = osint_client.check_ip(&ip, None).await?;
-            tracing::info!("Suggestions: {res:?}");
+            tracing::info!("{res:?}");
         },
         Commands::Resolve { url } => {
             let tracks = match yt_url_type(&url) {
@@ -581,7 +583,8 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
             }
         },
     }
-    Ok(())
+
+    Ok(cli_str)
 }
 
 /// Run the CLI.

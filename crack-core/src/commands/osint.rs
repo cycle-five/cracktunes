@@ -158,7 +158,7 @@ pub async fn ipqs_ip_score(ctx: Context<'_>, ip: String) -> Result<(), Error> {
     let client = &data.http_client;
     // Get the Ipqs API key from the environment
     let api_key =
-        std::env::var("Ipqs_API_KEY").map_err(|_| crate::CrackedError::Other("Ipqs_API_KEY"))?;
+        std::env::var("IPQS_API_KEY").map_err(|_| crate::CrackedError::Other("IPQS_API_KEY"))?;
     let client = IpqsClient::new_with_client(api_key, client.clone());
     Ok(())
 }

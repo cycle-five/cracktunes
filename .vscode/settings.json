@@ -16,7 +16,8 @@
         "crack-osint",
         "crack-bf",
         "crack-activity",
-        "crack-music"
+        "crack-music",
+        "crack-tracing",
     ],
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",

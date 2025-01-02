@@ -14,6 +14,11 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
+
+[features]
+default = ["crack-tracing"]
+crack-tracing = ["tracing", "tracing-subscriber"]
+
 [dependencies]
 anyhow = "1.0"
 crack-types = { path = "../crack-types" }
@@ -33,24 +38,29 @@ reqwest = { version = "0.12.9", default-features = false, features = [
     "http2",
     "macos-system-configuration",
 ] }
-serenity = { workspace = true }
-tracing = "0.1"
-tokio = { workspace = true }
+rusty_ytdl = { version = "0.7.4", default-features = false, features = [
+    "live",
+    "rustls-tls",
+    "search",
+    "blocking",
+    "ffmpeg",
+] }
+rspotify = { version = "0.14", default-features = false, features = [
+    "client-reqwest",
+    "reqwest-rustls-tls",
+] }
 thiserror = "2.0"
-poise = { workspace = true }
-songbird = { workspace = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+], optional = true }
 url = ">=2.5.4"
 
+poise = { workspace = true }
+serenity = { workspace = true }
+songbird = { workspace = true }
+tokio = { workspace = true }
 
-[dependencies.rusty_ytdl]
-version = "0.7.4"
-default-features = false
-features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
-
-[dependencies.rspotify]
-version = "0.14"
-default-features = false
-features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

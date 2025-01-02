@@ -29,7 +29,7 @@ reqwest = { workspace = true }
 poise = { workspace = true }
 
 [features]
-default = ["checkpass", "virustotal", "scan", "ipqs"]
+default = ["checkpass", "virustotal", "scan", "ipqs", "crack-tracing"]
 crack-tracing = []
 checkpass = []
 virustotal = []

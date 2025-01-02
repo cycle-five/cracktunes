@@ -5,6 +5,8 @@ use crate::{
 use const_format::concatcp;
 use ipinfo::{IpError, IpErrorKind};
 use reqwest::Url;
+#[cfg(feature = "crack-tracing")]
+use tracing::instrument;
 
 pub const VIRUSTOTAL_API_BASE_URL: &str = "https://www.virustotal.com/api/v3";
 pub const VIRUSTOTAL_API_ANALYSES_URL: &str = concatcp!(VIRUSTOTAL_API_BASE_URL, "/analyses");
