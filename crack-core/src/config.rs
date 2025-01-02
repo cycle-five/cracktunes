@@ -176,16 +176,7 @@ pub async fn poise_framework(
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::trace!(">>> {}!", ctx.command().qualified_name);
-                // let test = Some(true);
-                // if !test.is_none() && test.unwrap() {
-                //     let span = tracing::span!(
-                //         tracing::Level::TRACE,
-                //         "command",
-                //         command = ctx.command().qualified_name.as_ref(),
-                //         is_prefix = ctx.is_prefix()
-                //     )
-                //     .entered();
-                // }
+
                 count_command(ctx.command().qualified_name.as_ref(), ctx.is_prefix());
             })
         },

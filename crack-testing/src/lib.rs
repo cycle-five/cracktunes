@@ -513,9 +513,8 @@ enum Commands {
         /// The query to get suggestions for.
         query: String,
     },
-    SuggestNew {
-        /// The query to get suggestions for, second method.
-        query: String,
+    IPQS {
+        ip: String,
     },
     Resolve {
         /// URL of the video / playlist to resolve.
@@ -539,18 +538,22 @@ fn yt_url_type(url: &url::Url) -> QueryType {
     }
 }
 
+use crack_osint::ipqs::IPQSClient;
+
 /// Match the CLI command and run the appropriate function.
 #[tracing::instrument]
 async fn match_cli(cli: Cli) -> Result<(), Error> {
     let guild = GuildId::new(1);
     let client = Box::leak(Box::new(CrackTrackClient::new()));
+    let osint_key = std::env::var("IPQS_API_KEY").expect("No IPQS API key");
+    let osint_client = IPQSClient::new(osint_key);
     match cli.command {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
             tracing::info!("Suggestions: {res:?}");
         },
-        Commands::SuggestNew { query } => {
-            let res = suggestion2(&query).await?;
+        Commands::IPQS { ip } => {
+            let res = osint_client.check_ip(&ip, None).await?;
             tracing::info!("Suggestions: {res:?}");
         },
         Commands::Resolve { url } => {
