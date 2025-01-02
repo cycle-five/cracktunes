@@ -1204,6 +1204,7 @@ dependencies = [
 name = "crack-osint"
 version = "0.3.16-alpha.3"
 dependencies = [
+ "const_format",
  "crack-types",
  "ipinfo",
  "poise",

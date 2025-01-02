@@ -1,3 +1,5 @@
+#![feature(const_trait_impl)]
+
 #[cfg(feature = "checkpass")]
 pub mod checkpass;
 #[cfg(feature = "ipqs")]
@@ -35,7 +37,7 @@ pub use virustotal::*;
 // pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 // use poise::CreateReply;
 
-use crack_types::{CrackedError, Error};
+use crack_types::Error;
 // use poise::Context;
 
 // /// Osint Commands

@@ -2,12 +2,16 @@ use crate::{
     virustotal::{VirusTotalApiResponse, VirusTotalClient},
     Error,
 };
+use const_format::concatcp;
 use ipinfo::{IpError, IpErrorKind};
 use reqwest::Url;
 
-const _VIRUSTOTAL_API_URL: &str = "https://www.virustotal.com/api/v3/urls";
+pub const VIRUSTOTAL_API_BASE_URL: &str = "https://www.virustotal.com/api/v3";
+pub const VIRUSTOTAL_API_ANALYSES_URL: &str = concatcp!(VIRUSTOTAL_API_BASE_URL, "/analyses");
+pub const VIRUSTOTAL_API_URLS_URL: &str = concatcp!(VIRUSTOTAL_API_BASE_URL, "/urls");
 
 /// Get the scan result for a given id.
+#[must_use]
 pub async fn get_scan_result(
     client: &VirusTotalClient,
     id: String,
@@ -16,11 +20,17 @@ pub async fn get_scan_result(
         .clone()
         .fetch_analysis_report(&id)
         .await
-        .map_err(|e| e.into())
+        .map_err(Into::into)
 }
 
 /// Scan a website for viruses or malicious content.
-//pub async fn scan_url<C: Client>(url: String, client: MyClient<C>) -> Result<String, Error> {
+/// # Arguments
+/// * `client` - The [`VirusTotalClient`] to use for the scan.
+/// * `url` - The [`String`] URL to scan.
+/// # Returns
+/// A [`Result`] containing the [`VirusTotalApiResponse`] if successful.
+/// # Errors
+/// Returns an [`Error`] if the request fails or the response is not valid JSON.
 pub async fn scan_url(
     client: &VirusTotalClient,
     url: String,
@@ -58,6 +68,7 @@ pub async fn scan_url(
 }
 
 /// Validate the provided URL
+#[cfg_attr(feature = "crack-tracing", instrument)]
 fn url_validator(url: &str) -> bool {
     // Using the Url cracktunes to parse and validate the URL
     // let test_url = if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -65,7 +76,6 @@ fn url_validator(url: &str) -> bool {
     // } else {
     //     url.to_string()
     // };
-    tracing::info!("url_validator: {}", url);
     Url::parse(url).is_ok()
 }
 

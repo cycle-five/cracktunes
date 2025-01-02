@@ -24,6 +24,7 @@ pub struct VotingContext {
 
 /// Implement the `VotingContext`.
 impl VotingContext {
+    #[allow(dead_code)]
     async fn new() -> Self {
         let pool = sqlx::PgPool::connect(&DATABASE_URL)
             .await
@@ -213,16 +214,19 @@ async fn root() -> &'static str {
 }
 
 /// Run the server.
-pub async fn run() {
-    //-> Result<(), Box<dyn std::error::Error>> {
-    let _ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
+/// # Errors
+/// Returns an error if tokio fails to bind to the address
+/// or if axum fails to serve the app.
+/// TODO: Actually hook into the real code lol.
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    //let _ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
     let app = Router::new().route("/", get(root));
     // let app = get_app(ctx).await;
 
     // warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    axum::serve(listener, app).await.map_err(Into::into)
 }
 
 // /// Custom error handling for the server.

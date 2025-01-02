@@ -1,18 +1,17 @@
 use crate::messaging::messages::{
-    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
-    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT,
-    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
-    FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
-    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
-    FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL,
-    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
+    EMPTY_SEARCH_RESULT, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA, FAIL_AUTHOR_DISCONNECTED,
+    FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT, FAIL_INVALID_PERMS,
+    FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_QUERY_PROVIDED,
+    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
+    FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
+    NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID,
+    NO_GUILD_SETTINGS, NO_METADATA, NO_TRACK_NAME, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
     ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use std::borrow::Cow;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
-//use audiopus::error::Error as AudiopusError;
 use crate::TrackResolveError;
 use poise::serenity_prelude::Mentionable;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
@@ -127,11 +126,11 @@ impl Display for CrackedError {
             },
             Self::AuxMetadataError(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
+                f.write_fmt(format_args!("{FAIL_AUTHOR_DISCONNECTED} {mention}"))
             },
             Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
             Self::AlreadyConnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
+                f.write_fmt(format_args!("{FAIL_AUTHOR_NOT_FOUND} {mention}"))
             },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             #[cfg(feature = "crack-gpt")]
@@ -140,14 +139,14 @@ impl Display for CrackedError {
                 "Command `{program}` failed with status `{status}` and output `{output}`"
             )),
             Self::CommandNotFound(command) => {
-                f.write_fmt(format_args!("Command does not exist: {}", command))
+                f.write_fmt(format_args!("Command does not exist: {command}"))
             },
             Self::Control(err) => f.write_str(&format!("{err}")),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
             Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
-            Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
+            Self::EmptyVector(msg) => f.write_str(&format!("{FAIL_EMPTY_VECTOR} {msg}")),
             Self::FailedResume => f.write_str(FAIL_RESUME),
             Self::FailedToInsert => f.write_str(FAIL_INSERT),
             Self::FailedToSetChannelSize(name, id, size, err) => f.write_str(&format!(
@@ -158,7 +157,7 @@ impl Display for CrackedError {
             Self::IndexOutOfBounds { name, index } => {
                 f.write_str(&format!("Index out of bounds for `{name}` at {index}"))
             },
-            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
+            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {ip}")),
             Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::InvalidPermissions => f.write_str(FAIL_INVALID_PERMS),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
@@ -169,21 +168,19 @@ impl Display for CrackedError {
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),
-            Self::NotInMusicChannel(channel_id) => f.write_str(&format!(
-                "{} {}",
-                NOT_IN_MUSIC_CHANNEL,
-                channel_id.mention()
-            )),
+            Self::NotInMusicChannel(channel_id) => {
+                f.write_str(&format!("{NOT_IN_MUSIC_CHANNEL} {}", channel_id.mention()))
+            },
             Self::NoChannelId => f.write_str(NO_CHANNEL_ID),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
-            Self::NoTrackName => f.write_str("No track name"),
             Self::NoTrackPlaying => f.write_str(FAIL_NOTHING_PLAYING),
+            Self::NoTrackName => f.write_str(NO_TRACK_NAME),
             Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
             Self::NoGuildCached => f.write_str(NO_GUILD_CACHED),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {
-                f.write_fmt(format_args!("No guild for channel id {}", channel_id))
+                f.write_fmt(format_args!("No guild for channel id {channel_id}",))
             },
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
@@ -202,9 +199,7 @@ impl Display for CrackedError {
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             //Self::ReqwestOld(err) => f.write_str(&format!("{err}")),
-            Self::RoleNotFound(role_id) => {
-                f.write_fmt(format_args!("{} {}", ROLE_NOT_FOUND, role_id))
-            },
+            Self::RoleNotFound(role_id) => f.write_fmt(format_args!("{ROLE_NOT_FOUND} {role_id}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
@@ -236,10 +231,8 @@ impl PartialEq for CrackedError {
             (Self::NotInRange(l0, l1, l2, l3), Self::NotInRange(r0, r1, r2, r3)) => {
                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
             },
-            (Self::AuthorDisconnected(l0), Self::AuthorDisconnected(r0)) => {
-                l0.to_string() == r0.to_string()
-            },
-            (Self::AlreadyConnected(l0), Self::AlreadyConnected(r0)) => {
+            (Self::AuthorDisconnected(l0), Self::AuthorDisconnected(r0))
+            | (Self::AlreadyConnected(l0), Self::AlreadyConnected(r0)) => {
                 l0.to_string() == r0.to_string()
             },
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
@@ -438,6 +431,7 @@ where
 }
 
 /// Verifies if a value is true (or equivalent).
+/// # Errors
 /// Returns an [`Err`] with the given error or the value wrapped in [`Ok`].
 pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K, CrackedError> {
     if verifiable.to_bool() {

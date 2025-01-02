@@ -12,6 +12,8 @@ pub struct VirusTotalApiResponse {
 }
 
 impl VirusTotalApiResponse {
+    /// Takes a VirusTotalApiResponse and returns a new one without the results map.
+    #[must_use]
     pub fn without_results_map(&self) -> Self {
         let mut new_self = self.clone();
         new_self.data.attributes.results = HashMap::new();
@@ -100,6 +102,7 @@ pub struct UrlInfo {
     pub url: String,
 }
 
+/// A client for interacting with the VirusTotal API.
 #[derive(Debug, Clone)]
 pub struct VirusTotalClient {
     pub client: reqwest::Client,
@@ -107,7 +110,23 @@ pub struct VirusTotalClient {
     pub api_url: String,
 }
 
+/// Implement the Default trait for VirusTotalClient.
+impl Default for VirusTotalClient {
+    fn default() -> Self {
+        let client = reqwest::Client::new();
+        let api_key = std::env::var("VIRUSTOTAL_API_KEY").expect("VIRUSTOTAL_API_KEY not set");
+        let api_url = "https://www.virustotal.com/api/v3/urls".to_string();
+        Self {
+            client,
+            api_key,
+            api_url,
+        }
+    }
+}
+
 impl VirusTotalClient {
+    /// Create a new VirusTotalClient with the given API key and reqwest Client.
+    #[must_use]
     pub fn new(api_key: &str, client: Client) -> Self {
         let api_url = "https://www.virustotal.com/api/v3/urls".to_string();
         Self {
@@ -117,6 +136,11 @@ impl VirusTotalClient {
         }
     }
 
+    /// Fetch the initial scan result for a given URL.
+    /// # Returns
+    /// A [`Result`] containing the [`VirusTotalApiInitialResponse`] if successful.
+    /// # Errors
+    /// Returns an [`Error`] if the request fails or the response is not valid JSON.
     pub async fn fetch_initial_scan_result(
         self,
         url: &str,
@@ -139,20 +163,22 @@ impl VirusTotalClient {
         Ok(initial_response)
     }
 
-    pub fn format_initial_scan_result(self, initial_response: VirusTotalApiResponse) -> String {
+    /// Format the initial scan result into a human-readable string.
+    #[must_use]
+    pub fn format_initial_scan_result(self, initial_response: &VirusTotalApiResponse) -> String {
         // let result_url = initial_response.data.links.self_;
-        format!(
-            "Scan result: {}",
-            serde_json::to_string_pretty(&initial_response).unwrap()
-        )
+        let result_str = match serde_json::to_string_pretty(initial_response) {
+            Ok(s) => s,
+            Err(_) => "Error formatting JSON".to_string(),
+        };
+        format!("Scan result: {result_str}")
     }
 
     pub async fn fetch_analysis_report(
         self,
         analysis_id: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
-        let detailed_api_url =
-            format!("https://www.virustotal.com/api/v3/analyses/{}", analysis_id);
+        let detailed_api_url = format!("https://www.virustotal.com/api/v3/analyses/{analysis_id}");
         let detailed_response = self
             .client
             .get(&detailed_api_url)
@@ -164,12 +190,16 @@ impl VirusTotalClient {
         Ok(detailed_response)
     }
 
+    /// Fetch the detailed scan result for a given analysis ID.
+    /// # Returns
+    /// A [`Result`] containing the detailed scan result if successful.
+    /// # Errors
+    /// Returns an [`Error`] if the request fails or the response is not valid JSON.
     pub async fn fetch_detailed_scan_result(
         self,
         analysis_id: &str,
     ) -> Result<VirusTotalApiResponse, Error> {
-        let detailed_api_url =
-            format!("https://www.virustotal.com/api/v3/analyses/{}", analysis_id);
+        let detailed_api_url = format!("https://www.virustotal.com/api/v3/analyses/{analysis_id}");
         let detailed_response = self
             .client
             .get(&detailed_api_url)
@@ -181,12 +211,13 @@ impl VirusTotalClient {
         Ok(detailed_response)
     }
 
+    #[must_use]
     pub fn format_detailed_scan_result(detailed_response: VirusTotalApiResponse) -> String {
         let stats = detailed_response.data.attributes.stats;
         let map = detailed_response.data.attributes.results;
         let j1 = map
             .iter()
-            .map(|(k, v)| format!("{}: {:?}", k, v))
+            .map(|(k, v)| format!("{k}: {v:?}",))
             .collect::<Vec<_>>()
             .join(", ");
         // let j1 = serde_json::to_string_pretty(hashmap_to_json_map(map).to_string())?;

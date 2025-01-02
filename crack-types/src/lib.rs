@@ -274,9 +274,8 @@ impl std::str::FromStr for QueryType {
 impl Display for QueryType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            QueryType::Keywords(keywords) => write!(f, "{}", keywords),
+            QueryType::Keywords(keywords) => write!(f, "{keywords}"),
             QueryType::KeywordList(keywords_list) => write!(f, "{}", keywords_list.join(" ")),
-            QueryType::VideoLink(url) => write!(f, "{}", url),
             QueryType::SpotifyTracks(tracks) => write!(
                 f,
                 "{}",
@@ -286,12 +285,12 @@ impl Display for QueryType {
                     .collect::<Vec<String>>()
                     .join(" ")
             ),
-            QueryType::PlaylistLink(url) => write!(f, "{}", url),
+            QueryType::PlaylistLink(url) | QueryType::VideoLink(url) => write!(f, "{url}"),
             QueryType::File(file) => write!(f, "{}", file.url),
             QueryType::NewYoutubeDl((_src, metadata)) => {
                 write!(f, "{}", metadata.clone().source_url.unwrap_or_default())
             },
-            QueryType::YoutubeSearch(query) => write!(f, "{}", query),
+            QueryType::YoutubeSearch(query) => write!(f, "{query}"),
             QueryType::None => write!(f, "None"),
         }
     }
