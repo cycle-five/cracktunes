@@ -5,7 +5,7 @@ use sha1::{Digest, Sha1};
 /// Checks if a password has been exposed in data breaches using the `HaveIBeenPwned` API.
 ///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - The API request fails
 /// - The response cannot be parsed as text

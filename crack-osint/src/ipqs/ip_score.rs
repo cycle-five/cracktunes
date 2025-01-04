@@ -169,6 +169,8 @@ impl IpqsClient {
 
 #[cfg(test)]
 mod tests {
+    use core::error;
+
     use super::*;
 
     #[tokio::test]
@@ -194,7 +196,9 @@ mod tests {
 
         match result {
             Ok(response) => {
-                assert!(response.success);
+                if !response.success {
+                    panic!("Test failed: {:?}", response);
+                }
                 // Add more assertions as needed
             },
             Err(e) => panic!("Test failed: {}", e),

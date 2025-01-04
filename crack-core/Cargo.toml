@@ -71,7 +71,7 @@ tracing-subscriber = { version = "0.3", features = [
 ], optional = true }
 typemap_rev = "0.3"
 urlencoding = "2.1"
-url = ">=2.5.4"
+url = ">=2.5"
 
 crack-gpt = { path = "../crack-gpt", optional = true }
 crack-osint = { path = "../crack-osint", optional = true }
@@ -103,14 +103,14 @@ version = "0.2.0"
 version = "0.2"
 
 [dependencies.rspotify]
-version = "0.13"
+version = "0.14"
 default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "0.2"
-tungstenite = "0.26.1"
-async-tungstenite = "0.28.0"
+tungstenite = "0.26"
+async-tungstenite = "0.28"
 sqlx = { version = "0.8.2", features = [
   "runtime-tokio",
   "tls-rustls",
@@ -122,7 +122,7 @@ sqlx = { version = "0.8.2", features = [
 ] }
 
 [build-dependencies]
-vergen-gitcl = { version = "1.0.1", features = ["build"] }
+vergen-gitcl = { version = "1.0", features = ["build"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

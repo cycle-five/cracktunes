@@ -180,9 +180,9 @@ impl VirusTotalClient {
     }
 
     /// Fetch an analysis report for a given analysis ID.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if:
     /// - The API request fails
     /// - The response cannot be parsed as JSON

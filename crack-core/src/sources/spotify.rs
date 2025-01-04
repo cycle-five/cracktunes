@@ -10,7 +10,7 @@ use rspotify::{
         AlbumId, Country, Market, PlayableItem, PlaylistId, Recommendations, SearchResult,
         SimplifiedArtist, TrackId,
     },
-    ClientCredsSpotify, ClientResult, Config, Credentials,
+    ClientCredsSpotify, ClientError as RSpotifyError, ClientResult, Config, Credentials,
 };
 use std::{collections::HashMap, env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
@@ -118,7 +118,10 @@ impl Spotify {
         };
 
         let spotify = ClientCredsSpotify::with_config(creds, config);
-        spotify.request_token().await?;
+        spotify
+            .request_token()
+            .await
+            .map_err(|arg: RSpotifyError| CrackedError::RSpotify(arg))?;
 
         Ok(spotify)
     }
@@ -199,7 +202,8 @@ impl Spotify {
                 None,
                 None,
             )
-            .await?;
+            .await
+            .map_err(CrackedError::RSpotify)?;
 
         Self::extract_search_results(search_result)
     }
