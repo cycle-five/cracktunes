@@ -66,7 +66,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
     .chain(settings::commands())
-    //.chain(admin::commands())
+    .chain(admin::commands())
     .chain(playlist::commands())
     .collect()
 }

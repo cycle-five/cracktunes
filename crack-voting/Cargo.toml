@@ -31,7 +31,7 @@ eula = false
 [dependencies]
 lazy_static = "1.5"
 dbl-rs = "0.4"
-axum = "0.7.9"
+axum = "0.8.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }

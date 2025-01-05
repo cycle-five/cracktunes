@@ -32,7 +32,7 @@ features = [
 ]
 
 [workspace.dependencies.sqlx]
-version = "0.8.2"
+version = "0.8.3"
 default-features = false
 features = [
   "runtime-tokio",
