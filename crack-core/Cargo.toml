@@ -44,7 +44,7 @@ audiopus = "0.3.0-rc.0"
 async-trait = "0.1"
 anyhow = "1.0"
 bytes = "1.7"
-colored = "2.1"
+colored = "3"
 const-random = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 cfg-if = "1"
@@ -60,9 +60,9 @@ prometheus = { version = "0.13", features = ["process"], optional = true }
 rand = "0.8"
 rustls = "0.23"
 regex = "1.11"
-serde = { version = "1.0", features = ["derive", "rc"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 serde_derive = "1.0"
-serde_json = "1.0"
 strsim = "0.11"
 sys-info = "0.9"
 tracing = { version = "0.1", optional = true }
