@@ -121,10 +121,6 @@ serde_json = "1.0"
 tracing = "0.1"
 
 
-[patch.crates-io.serenity-voice-model]
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
-
 [profile.release]
 incremental = true
 # Set this to 1 or 2 to get more useful backtraces in debugger.
@@ -151,3 +147,5 @@ rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main"
 poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
 serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
 whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }
+
+serenity-voice-model = { git = "https://github.com/CycleFive/serenity", branch = "next" }

@@ -1,22 +1,29 @@
 use ::http::response::Builder;
+use crack_types::{CrackedError, CrackedResult};
 ///
 use mockall::automock;
-use reqwest::Client;
+use reqwest::{Client, Error as ReqwestError, Response};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 
 #[cfg(feature = "crack-tracing")]
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, instrument, warn};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ScamalyticsCredits {
     #[serde(default)]
-    pub used: String,
+    pub used: i32,
     #[serde(default)]
-    pub remaining: String,
+    pub remaining: i32,
+    #[serde(default)]
+    pub seconds_elapsed_since_last_sync: i32,
+    #[serde(default)]
+    last_sync_timestamp_utc: String,
+    #[serde(default)]
+    pub note: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskLevel {
     #[default]
@@ -27,8 +34,7 @@ pub enum RiskLevel {
     VeryHigh,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum ProxyType {
     #[default]
     #[serde(rename = "0")]
@@ -41,7 +47,7 @@ pub enum ProxyType {
     SES,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionType {
     #[default]
@@ -66,7 +72,7 @@ pub struct ScamalyticsResponse {
     #[serde(default)]
     pub ip: String,
     #[serde(default)]
-    pub score: String,
+    pub score: i32,
     #[serde(default)]
     pub risk: RiskLevel,
     #[serde(default)]
@@ -123,8 +129,6 @@ impl Default for ScamalyticsError {
         ScamalyticsError::RequestError(String::new())
     }
 }
-
-use reqwest::{Error as ReqwestError, Response};
 
 // Add this trait to abstract the HTTP client functionality
 #[cfg_attr(test, automock)]
@@ -204,7 +208,8 @@ impl ScamalyticsClient {
         );
 
         #[cfg(feature = "crack-tracing")]
-        debug!("Making request to Scamalytics API");
+        debug!("Making request to Scamalytics API {url}");
+        println!("Making request to Scamalytics API {url}");
 
         let response = self.client.get(&url).await.map_err(|e| {
             #[cfg(feature = "crack-tracing")]
@@ -218,6 +223,18 @@ impl ScamalyticsClient {
             error!("{}", error_msg);
             return Err(ScamalyticsError::InvalidResponse(error_msg));
         }
+
+        #[cfg(feature = "crack-tracing")]
+        debug!("response: {response:?}");
+
+        // println!("response: {response:?}");
+        // let raw = response.text().await.unwrap();
+        // println!("response: {raw:?}");
+        // let result: ScamalyticsResponse = serde_json::from_str(&raw).map_err(|e| {
+        //     #[cfg(feature = "crack-tracing")]
+        //     error!("Failed to parse response: {}", e);
+        //     ScamalyticsError::InvalidResponse(e.to_string())
+        // })?;
 
         let result = response.json::<ScamalyticsResponse>().await.map_err(|e| {
             #[cfg(feature = "crack-tracing")]
@@ -241,11 +258,29 @@ impl ScamalyticsClient {
     }
 }
 
+/// Gets an environment variable or returns an error if it's not set.
+/// Arguments:
+/// - key: The name of the environment variable to retrieve
+/// Errors:
+/// - MissingEnvVar: The environment variable is not set
+fn check_get_env_var(key: &str) -> CrackedResult<String> {
+    match std::env::var(key) {
+        Ok(val) => Ok(val),
+        Err(_) => {
+            #[cfg(feature = "crack-tracing")]
+            warn!("Environment variable {key} not set");
+            Err(CrackedError::MissingEnvVar(key.to_string()))
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // use url::Url;
     use super::*;
     use ::http::response::Builder;
+    use crack_types::CrackedError;
+    use crack_types::CrackedResult;
     use mockall::mock;
     use mockall::predicate::*;
     use poise::serenity_prelude::http;
@@ -274,41 +309,49 @@ mod tests {
     async fn test_successful_ip_check() {
         let mut mock_client = MockHttpClient::new();
 
-        // Create mock response data
-        let response_data = json!({
-            "status": "ok",
-            "mode": "test",
-            "ip": "167.99.90.43",
-            "score": "99",
-            "risk": "very high",
-            "url": "https://scamalytics.com/ip/167.99.90.43",
-            "credits": {
-                "used": "123",
-                "remaining": "12373845362"
+        // Create mock response data that exactly matches our struct's format
+        let response_data = ScamalyticsResponse {
+            status: "ok".to_string(),
+            error: None,
+            mode: "live".to_string(),
+            ip: "8.8.8.8".to_string(),
+            score: 0,
+            risk: RiskLevel::Low,
+            url: "https://scamalytics.com/ip/8.8.8.8".to_string(),
+            credits: ScamalyticsCredits {
+                used: 4,
+                remaining: 4996,
+                seconds_elapsed_since_last_sync: 20,
+                last_sync_timestamp_utc: "2025-01-08 20:38:01".to_string(),
+                note: "Credits used and remaining are approximate values.".to_string(),
             },
-            "exec": "1.47ms",
-            "ip_country_code": "US",
-            "ip_state_name": "Illinois",
-            "ip_city": "Chicago",
-            "ip_postcode": "60666",
-            "ip_geolocation": "41.8781,-87.6298",
-            "ip_country_name": "United States",
-            "ISP Name": "DigitalOcean, LLC",
-            "ISP Fraud Score": "52",
-            "proxy_type": "DCH",
-            "connection_type": "cable",
-            "Organization Name": "DigitalOcean"
-        });
+            exec: "3.37 ms".to_string(),
+            ip_country_code: "US".to_string(),
+            ip_state_name: "California".to_string(),
+            ip_city: "Mountain View".to_string(),
+            ip_postcode: "94043".to_string(),
+            ip_geolocation: "37.4223,-122.085".to_string(),
+            ip_country_name: "United States".to_string(),
+            isp_name: "Google LLC".to_string(),
+            isp_fraud_score: "2".to_string(),
+            proxy_type: ProxyType::DCH,
+            connection_type: ConnectionType::Unknown,
+            organization_name: "Level 3".to_string(),
+        };
 
-        // Set up the mock expectation
+        // Convert to JSON string
+        let response_json = serde_json::to_string(&response_data).unwrap();
+
+        // Set up the mock expectation with reqwest Response directly
         mock_client
             .expect_get()
-            .with(str::contains("167.99.90.43"))
+            .with(str::contains("8.8.8.8"))
             .returning(move |_| {
                 Ok(Response::from(
                     Builder::new()
                         .status(StatusCode::OK)
-                        .body(response_data.to_string())
+                        .header("content-type", "application/json")
+                        .body(response_json.clone())
                         .unwrap(),
                 ))
             });
@@ -320,14 +363,17 @@ mod tests {
             Box::new(mock_client),
         );
 
-        let result = client.check_ip("167.99.90.43", true).await.unwrap();
+        let result = client.check_ip("8.8.8.8", true).await.unwrap();
 
-        assert_eq!(result.status, "ok");
-        assert_eq!(result.ip, "167.99.90.43");
-        assert_eq!(result.score, "99");
-        assert!(matches!(result.risk, RiskLevel::VeryHigh));
-        assert_eq!(result.isp_name, "DigitalOcean, LLC");
-        assert_eq!(result.isp_fraud_score, "52");
+        // Verify all fields match exactly
+        assert_eq!(result.status, response_data.status);
+        assert_eq!(result.ip, response_data.ip);
+        assert_eq!(result.score, response_data.score);
+        assert_eq!(result.risk, response_data.risk);
+        assert_eq!(result.isp_name, response_data.isp_name);
+        assert_eq!(result.isp_fraud_score, response_data.isp_fraud_score);
+        assert_eq!(result.proxy_type, response_data.proxy_type);
+        assert_eq!(result.connection_type, response_data.connection_type);
     }
 
     #[tokio::test]
@@ -395,11 +441,82 @@ mod tests {
     fn test_default_implementations() {
         let response = ScamalyticsResponse::default();
         assert_eq!(response.status, "");
-        assert_eq!(response.score, "");
+        assert_eq!(response.score, 0);
+        assert_eq!(response.risk, RiskLevel::Low);
+        assert_eq!(response.credits.used, 0);
+        assert_eq!(response.proxy_type, ProxyType::None);
 
         let client = ScamalyticsClient::default();
         assert_eq!(client.hostname, "");
         assert_eq!(client.username, "");
         assert_eq!(client.api_key, "");
+    }
+
+    #[tokio::test]
+    async fn test_live_ip_check() {
+        // Skip if we're in CI environment
+        if std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok() {
+            return;
+        }
+
+        // Get API credentials from environment
+        let api_key = match check_get_env_var("SCAMALYTICS_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                println!("Skipping test: SCAMALYTICS_API_KEY not set");
+                return;
+            },
+        };
+
+        let api_host = match check_get_env_var("SCAMALYTICS_API_HOST") {
+            Ok(host) => host,
+            Err(_) => {
+                println!("Skipping test: SCAMALYTICS_API_HOST not set");
+                return;
+            },
+        };
+
+        let api_user = match check_get_env_var("SCAMALYTICS_API_USER") {
+            Ok(user) => user,
+            Err(_) => {
+                println!("Skipping test: SCAMALYTICS_API_USER not set");
+                return;
+            },
+        };
+
+        let client = ScamalyticsClient::new(api_host, api_user, api_key);
+
+        // Test with Google's public DNS IP
+        let result = match client.check_ip("8.8.8.8", false).await {
+            Ok(response) => response,
+            Err(e) => {
+                panic!("Live API call failed: {}", e);
+            },
+        };
+
+        // Verify response structure
+        assert_eq!(result.status, "ok", "API response status should be 'ok'");
+        assert_eq!(result.ip, "8.8.8.8", "IP address should match input");
+        assert!(result.score >= 0, "Score should be non-negative");
+        assert!(
+            matches!(
+                result.risk,
+                RiskLevel::Low | RiskLevel::Medium | RiskLevel::High | RiskLevel::VeryHigh
+            ),
+            "Risk level should be valid"
+        );
+        assert!(!result.isp_name.is_empty(), "ISP name should not be empty");
+        assert!(
+            !result.ip_country_code.is_empty(),
+            "Country code should not be empty"
+        );
+        assert!(
+            result.credits.used >= 0,
+            "Used credits should be non-negative"
+        );
+        assert!(
+            result.credits.remaining >= 0,
+            "Remaining credits should be non-negative"
+        );
     }
 }

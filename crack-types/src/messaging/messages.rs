@@ -97,6 +97,7 @@ pub const GRABBED_NOTICE: &str = "📃 Sent you a DM with the current track!";
 pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
 pub const LOOP_ENABLED: &str = "🔁 Enabled loop!";
+pub const MISSING_ENV_VAR: &str = "⚠️ Missing environment variable!";
 pub const NO_AUTO_ROLE: &str = "⚠️ No auto role set for this server!";
 pub const NO_CHANNEL_ID: &str = "⚠️ No ChannelId Found!";
 pub const NO_DATABASE_POOL: &str = "⚠️ No Database Pool Found!";
