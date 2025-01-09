@@ -1,10 +1,9 @@
-use ::http::response::Builder;
 use crack_types::{CrackedError, CrackedResult};
-///
+#[cfg(test)]
 use mockall::automock;
 use reqwest::{Client, Error as ReqwestError, Response};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 #[cfg(feature = "crack-tracing")]
 use tracing::{debug, error, instrument, warn};
@@ -115,9 +114,9 @@ pub enum ScamalyticsError {
 impl std::fmt::Display for ScamalyticsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScamalyticsError::RequestError(e) => write!(f, "Request error: {}", e),
-            ScamalyticsError::ApiError(e) => write!(f, "API error: {}", e),
-            ScamalyticsError::InvalidResponse(e) => write!(f, "Invalid response: {}", e),
+            ScamalyticsError::RequestError(e) => write!(f, "Request error: {e}"),
+            ScamalyticsError::ApiError(e) => write!(f, "API error: {e}"),
+            ScamalyticsError::InvalidResponse(e) => write!(f, "Invalid response: {e}"),
         }
     }
 }
@@ -166,6 +165,7 @@ impl Default for ScamalyticsClient {
 }
 
 impl ScamalyticsClient {
+    #[must_use]
     pub fn new(hostname: String, username: String, api_key: String) -> Self {
         Self {
             hostname,
@@ -175,6 +175,7 @@ impl ScamalyticsClient {
         }
     }
 
+    #[must_use]
     pub fn new_with_client(
         hostname: String,
         username: String,
@@ -259,18 +260,18 @@ impl ScamalyticsClient {
 }
 
 /// Gets an environment variable or returns an error if it's not set.
-/// Arguments:
-/// - key: The name of the environment variable to retrieve
-/// Errors:
-/// - MissingEnvVar: The environment variable is not set
+///   Arguments:
+/// - [`&str`]: The name of the environment variable to retrieve
+///   Errors:
+/// - [`MissingEnvVar`]: The environment variable is not set
+#[allow(dead_code)]
 fn check_get_env_var(key: &str) -> CrackedResult<String> {
-    match std::env::var(key) {
-        Ok(val) => Ok(val),
-        Err(_) => {
-            #[cfg(feature = "crack-tracing")]
-            warn!("Environment variable {key} not set");
-            Err(CrackedError::MissingEnvVar(key.to_string()))
-        },
+    if let Ok(val) = std::env::var(key) {
+        Ok(val)
+    } else {
+        #[cfg(feature = "crack-tracing")]
+        warn!("Environment variable {key} not set");
+        Err(CrackedError::MissingEnvVar(key.to_string()))
     }
 }
 

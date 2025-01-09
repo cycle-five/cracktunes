@@ -58,7 +58,7 @@ pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
 // problems from it getting out of hand if the module is too big, I don't see a problem with it.
 //------------------------------------
 static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    println!("{}: {}...", CREATING, REQ_CLIENT_STR);
+    println!("{CREATING}: {REQ_CLIENT_STR}...");
     build_configured_reqwest_client()
 });
 
@@ -70,7 +70,7 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
         ..Default::default()
     };
     rusty_ytdl::search::YouTube::new_with_options(&opts)
-        .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, YOUTUBE_CLIENT_STR))
+        .unwrap_or_else(|_| panic!("{NEW_FAILED} {YOUTUBE_CLIENT_STR}"))
 });
 
 static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient<'static>> = Lazy::new(|| {
@@ -78,16 +78,20 @@ static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient<'static>> = Lazy::new(|| {
     CrackTrackClient::new_with_clients(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone())
 });
 
-/// Build a configured reqwest client for use in the CrackTrackClient.
+/// Build a configured reqwest client for use in the `CrackTrackClient`.
+/// 
+/// # Panics
+/// Panics if the reqwest client cannot be built.
+#[must_use]
 pub fn build_configured_reqwest_client() -> reqwest::Client {
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .cookie_store(true)
         .build()
-        .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
+        .unwrap_or_else(|_| panic!("{NEW_FAILED} {REQ_CLIENT_STR}"))
 }
 
-/// Client for resolving tracks, mostly holds other clients like reqwest and rusty_ytdl.
+/// Client for resolving tracks, mostly holds other clients like reqwest and `rusty_ytdl`.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct CrackTrackClient<'a> {
@@ -97,7 +101,7 @@ pub struct CrackTrackClient<'a> {
     q: Arc<DashMap<GuildId, CrackTrackQueue<'a>>>,
 }
 
-/// Implement [Default] for [CrackTrackClient].
+/// Implement [`Default`] for [`CrackTrackClient`].
 impl Default for CrackTrackClient<'_> {
     fn default() -> Self {
         let req_client = REQ_CLIENT.clone();
@@ -127,11 +131,12 @@ impl Display for CrackTrackClient<'_> {
 
 impl<'a> CrackTrackClient<'a> {
     /// Create a new [`CrackTrackClient`].
+    #[must_use]
     pub fn new() -> Self {
-        Default::default()
+        CrackTrackClient::default()
     }
 
-    /// Create a new [`CrackTrackClient`] with a reqwest client and a rusty_ytdl client.
+    /// Create a new [`CrackTrackClient`] with a reqwest client and a `rusty_ytdl` client.
     #[must_use]
     pub fn new_with_clients(
         req_client: reqwest::Client,
@@ -154,6 +159,11 @@ impl<'a> CrackTrackClient<'a> {
     }
 
     /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
+    /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
+    /// 
+    /// # Panics
+    /// Panics if the `YouTube` client cannot be created.
+    #[must_use]
     pub fn new_with_req_client(req_client: reqwest::Client) -> Self {
         let opts = RequestOptions {
             client: Some(req_client.clone()),
@@ -173,6 +183,13 @@ impl<'a> CrackTrackClient<'a> {
         }
     }
 
+    /// Resolve a query to a vector of tracks.
+    /// 
+    /// # Errors
+    /// Returns an error if:
+    /// - The query type is not implemented
+    /// - The track(s) cannot be resolved
+    /// - The playlist cannot be resolved
     pub async fn resolve_query_to_tracks(
         &self,
         query: QueryType,
@@ -251,9 +268,8 @@ impl<'a> CrackTrackClient<'a> {
             QueryType::VideoLink(ref url) => self.resolve_url(url).await,
             QueryType::Keywords(ref keywords) => {
                 let search_results = self.yt_client.search_one(keywords, None).await?;
-                let video = match search_results {
-                    Some(SearchResult::Video(result)) => result,
-                    _ => return Err(TrackResolveError::NotFound.into()),
+                let Some(SearchResult::Video(video)) = search_results else {
+                    return Err(TrackResolveError::NotFound.into())
                 };
                 let video_url = video.url.clone();
                 self.resolve_url(&video_url).await

@@ -631,11 +631,7 @@ impl Data {
     }
 
     /// Remove and return a message from the cache based on the guild_id and timestamp.
-    pub async fn remove_msg_from_cache(
-        &self,
-        guild_id: GuildId,
-        ts: DateTime<Utc>,
-    ) -> Option<Message> {
+    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         self.id_cache_map
             .get_mut(&guild_id.into())
             .unwrap()
@@ -708,7 +704,7 @@ impl Data {
     }
 
     /// Push a message to the command message queue.
-    pub async fn push_latest_msg(
+    pub fn push_latest_msg(
         &self,
         guild_id: GuildId,
         msg: MessageOrReplyHandle,
@@ -736,7 +732,9 @@ impl Data {
         Ok(())
     }
 
-    pub async fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+    /// Builder method to set the bot settings for the user data.
+    ///
+    pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 

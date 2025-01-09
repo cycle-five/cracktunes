@@ -74,7 +74,7 @@ pub trait ContextExt<'ctx> {
     fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 
     /// Add a message to the stack of messages the bot is still interacting with.
-    fn push_latest_msg(self, msg: MessageOrReplyHandle) -> impl Future<Output = CrackedResult<()>>;
+    fn push_latest_msg(self, msg: MessageOrReplyHandle) -> CrackedResult<()>;
 }
 
 /// Implement the ContextExt trait for the Context struct.
@@ -260,9 +260,10 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         }
     }
 
-    async fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
+    /// Add a message to the stack of messages the bot is still interacting with.
+    fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        self.data().push_latest_msg(guild_id, mor).await
+        self.data().push_latest_msg(guild_id, mor)
     }
 }
 
@@ -620,7 +621,7 @@ impl SongbirdManagerExt for songbird::Songbird {
 use poise::serenity_prelude::Context as SerenityContext;
 use std::collections::HashSet;
 pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool {
-    let allowed_bots = HashSet::from([1111844110597374042, 1124707756750934159]);
+    let allowed_bots = HashSet::from([1_111_844_110_597_374_042, 1_124_707_756_750_934_159]);
     let author_id = msg.author.id;
     allowed_bots.contains(&author_id.get())
 }

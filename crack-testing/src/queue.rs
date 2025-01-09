@@ -29,11 +29,13 @@ impl Default for CrackTrackQueue<'_> {
 /// Implement [`CrackTrackQueue`].
 impl<'a> CrackTrackQueue<'a> {
     /// Create a new [`CrackTrackQueue`].
+    #[must_use]
     pub fn new() -> Self {
-        Default::default()
+        CrackTrackQueue::default()
     }
 
     /// Create a new [`CrackTrackQueue`] with a given [`VecDeque`] of [`ResolvedTrack`].
+    #[must_use]
     pub fn with_queue(queue: VecDeque<ResolvedTrack<'a>>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
@@ -57,19 +59,23 @@ impl<'a> CrackTrackQueue<'a> {
     }
 
     /// Return the display string for the queue.
+    #[must_use]
     pub fn get_display(&self) -> String {
         self.display.clone().unwrap_or_default()
     }
 
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
+    /// 
+    /// # Errors
+    /// Returns an error if the display string cannot be built.
     pub async fn build_display(&mut self) -> Result<(), Error> {
         self.display = {
             let queue = self.inner.lock().await.clone();
             Some(
                 queue
                     .iter()
-                    .map(|track| track.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<String>>()
                     .join("\n"),
             )
