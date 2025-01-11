@@ -245,7 +245,7 @@ mod tests {
         let input = Cursor::new(input_data);
         let mut output = Cursor::new(vec![]);
 
-        let res = bf.run_async(input, &mut output).await;
+        let res = Box::pin(bf.run_async(input, &mut output)).await;
         match res {
             Ok(n) => println!("Wooooo! {n}"),
             Err(_) => {
@@ -263,12 +263,12 @@ mod tests {
         let program = r"
             ++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.
         ";
-        let stdio = std::io::stdin();
-        let stdin = stdio.lock();
+        let stdin_init = std::io::stdin();
+        let stdin = stdin_init.lock();
         let stdout = std::io::stdout();
         let mut bf = BrainfuckProgram::new(program);
-        if let Err(_) = bf.run(stdin, stdout) {
-            assert!(false);
+        if bf.run(stdin, stdout).is_err() {
+            panic!();
         }
     }
 
