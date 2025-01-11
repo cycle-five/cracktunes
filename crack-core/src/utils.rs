@@ -556,7 +556,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
     //     )))
 }
 
-///  
+///  Builds an embed for the tracks in a playlist.
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
@@ -877,8 +877,8 @@ pub fn duration_to_string(duration: Duration) -> String {
 #[cfg(test)]
 mod test {
 
-    use ::serenity::{all::Button, builder::CreateActionRow};
     use crate::messaging::interface::create_single_nav_btn;
+    use ::serenity::{all::Button, builder::CreateActionRow};
     use crack_types::to_fixed;
 
     use super::*;
