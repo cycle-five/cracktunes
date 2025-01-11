@@ -267,6 +267,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 }
 
+use serenity::Colour;
 /// Extension trait for the `poise::Context`.
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(

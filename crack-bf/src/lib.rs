@@ -267,7 +267,7 @@ mod tests {
         let stdin = stdin_init.lock();
         let stdout = std::io::stdout();
         let mut bf = BrainfuckProgram::new(program);
-        assert!(!bf.run(stdin, stdout).is_err(),)
+        assert!(bf.run(stdin, stdout).is_ok(),);
     }
 
     #[tokio::test]
@@ -293,8 +293,6 @@ mod tests {
         let output = Cursor::new(vec![]);
 
         let mut bf = BrainfuckProgram::new(program);
-        if Box::pin(bf.run_async(input, output)).await.is_err() {
-            panic!("Error running program");
-        }
+        assert!(Box::pin(bf.run_async(input, output)).await.is_ok(), "Error running program");
     }
 }

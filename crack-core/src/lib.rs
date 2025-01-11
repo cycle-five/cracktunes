@@ -30,7 +30,7 @@ use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
 use crack_types::messages::CAM_VIOLATION_MSG;
 use crack_types::CrackedError;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;

@@ -465,7 +465,7 @@ impl GuildSettings {
         };
 
         let guild_name = guild_name.unwrap_or_default();
-        let asdf: Vec<u64> = vec![1165246445654388746];
+        let asdf: Vec<u64> = vec![1_165_246_445_654_388_746];
         GuildSettings {
             guild_id,
             guild_name,

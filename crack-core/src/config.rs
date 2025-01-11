@@ -98,7 +98,7 @@ pub async fn poise_framework(
         owners: config
             .owners
             .as_ref()
-            .unwrap_or(&vec![285219649921220608])
+            .unwrap_or(&vec![285_219_649_921_220_608])
             .iter()
             .map(|id| UserId::new(*id))
             .collect(),
