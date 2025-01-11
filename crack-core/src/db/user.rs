@@ -244,7 +244,7 @@ mod test {
         )
         .await
         .unwrap();
-        assert_eq!(has_voted, true);
+        assert!(has_voted);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
@@ -253,6 +253,6 @@ mod test {
             .await
             .unwrap();
         let has_voted = UserVote::has_voted_recently_topgg(1, &pool).await.unwrap();
-        assert_eq!(has_voted, true);
+        assert!(has_voted);
     }
 }

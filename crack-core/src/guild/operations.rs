@@ -642,7 +642,7 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_autopause(guild_id).await, true);
+        assert!(data.get_autopause(guild_id).await);
     }
 
     #[tokio::test]
@@ -663,7 +663,7 @@ mod test {
 
         data.set_autopause(guild_id, false).await;
 
-        assert_eq!(data.get_autopause(guild_id).await, false);
+        assert!(!(data.get_autopause(guild_id).await));
     }
 
     #[tokio::test]
@@ -698,6 +698,6 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_autoplay(guild_id).await, false);
+        assert!(!(data.get_autoplay(guild_id).await));
     }
 }

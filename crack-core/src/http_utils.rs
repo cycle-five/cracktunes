@@ -364,15 +364,15 @@ mod test {
             .with_embed(None);
 
         assert_eq!(params.channel, channel_id);
-        assert_eq!(params.as_embed, true);
-        assert_eq!(params.ephemeral, false);
-        assert_eq!(params.reply, true);
+        assert!(params.as_embed);
+        assert!(!params.ephemeral);
+        assert!(params.reply);
         assert_eq!(params.color, Colour::BLUE);
-        assert_eq!(params.cache_msg, true);
+        assert!(params.cache_msg);
         assert_eq!(
             params.msg,
             CrackedMessage::Other("Hello, world!".to_string())
         );
-        assert_eq!(params.embed.is_none(), true);
+        assert!(params.embed.is_none());
     }
 }

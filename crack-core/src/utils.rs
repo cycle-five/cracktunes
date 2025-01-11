@@ -917,10 +917,10 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {s}");
-        let btn = serde_json::from_str::<Button>(&*s).unwrap();
+        let btn = serde_json::from_str::<Button>(&s).unwrap();
 
         assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
-        assert_eq!(btn.disabled, true);
+        assert!(btn.disabled);
     }
 
     #[test]
@@ -935,14 +935,14 @@ mod test {
                 btns.push(btn);
             }
             let s = serde_json::to_string_pretty(&nav_btns).unwrap();
-            println!("s: {}", s);
+            println!("s: {s}");
             let btns = serde_json::from_str::<Vec<Button>>(&s).unwrap();
 
             assert_eq!(btns.len(), 4);
             let btn = &btns[0];
             assert_eq!(btns[0], btn.clone());
         } else {
-            assert!(false);
+            panic!("not buttons");
         }
     }
 }

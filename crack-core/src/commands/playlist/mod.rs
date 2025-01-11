@@ -66,6 +66,6 @@ mod tests {
     #[test]
     fn test_commands() {
         let commands = crate::commands::playlist::commands();
-        assert!(commands.len() > 0);
+        assert!(!commands.is_empty());
     }
 }

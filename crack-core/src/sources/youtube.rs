@@ -198,7 +198,7 @@ mod test {
             ..Default::default()
         };
         let res = build_query_lyric_aux_metadata(&aux_metadata);
-        assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
+        assert_eq!(res, format!("world hello {MUSIC_SEARCH_SUFFIX}"));
     }
 
     #[tokio::test]
@@ -210,7 +210,7 @@ mod test {
         let reqclient = http_utils::get_client().clone();
         let ytclient = YouTube::new_with_options(&opts).unwrap();
         let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string()).into();
+            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
         let query_type = NewQueryType(query_type);
         let res = query_type.get_track_metadata(ytclient, reqclient).await;
         if let Err(ref e) = res {
@@ -265,11 +265,8 @@ mod test {
         ]));
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
-        match res {
-            Ok(_) => assert!(true),
-            Err(e) => {
-                println!("{e}");
-            },
+        if Err(e) = res {
+            println!("{e}");
         }
     }
 

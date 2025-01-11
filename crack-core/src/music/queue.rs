@@ -562,14 +562,14 @@ mod test {
 
     #[test]
     fn test_get_msg() {
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
+        let mode = Some(String::new());
+        let query_or_url = Some(String::new());
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
         let mode = None;
-        let query_or_url = Some("".to_string());
+        let query_or_url = Some(String::new());
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
@@ -580,17 +580,17 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
+        let mode = Some(String::new());
+        let query_or_url = Some(String::new());
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
+        assert_eq!(res, Some(String::new()));
 
         let mode = None;
-        let query_or_url = Some("".to_string());
+        let query_or_url = Some(String::new());
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
+        assert_eq!(res, Some(String::new()));
 
         let mode = None;
         let query_or_url = None;
@@ -598,13 +598,13 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
+        let mode = Some(String::new());
         let query_or_url = None;
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
+        let mode = Some(String::new());
         let query_or_url = None;
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);

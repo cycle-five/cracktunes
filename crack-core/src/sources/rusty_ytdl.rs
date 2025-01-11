@@ -402,11 +402,11 @@ mod test {
         let metadata = match media_source.aux_metadata().await {
             Ok(metadata) => metadata,
             Err(e) => {
-                println!("{:?}", e);
+                println!("{e:?}");
                 return;
             },
         };
-        println!("{:?}", metadata);
+        println!("{metadata:?}");
         assert!(metadata.title.is_some());
     }
 
@@ -430,13 +430,13 @@ mod test {
         match playlist {
             Ok(Some(playlist)) => {
                 let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
-                println!("{:?}", metadata);
+                println!("{metadata:?}");
             },
             Ok(None) => {
-                assert!(false)
+                assert!(false);
             },
             Err(e) => {
-                println!("{:?}", e);
+                println!("{e:?}");
             },
         }
     }
@@ -465,7 +465,7 @@ mod test {
             let res = rusty_yt.search_one(search.to_string(), None).await;
             assert!(
                 res.is_ok() || {
-                    println!("{}", res.unwrap_err().to_string());
+                    println!("{}", res.unwrap_err());
                     true
                 }
             );
@@ -488,7 +488,7 @@ mod test {
             let res = ytdl.search(Some(1)).await;
             if let Err(err) = res {
                 let expected_err = err.to_string().contains(phrase);
-                println!("{:?}\n{}\n", err, expected_err);
+                println!("{err:?}\n{expected_err}\n");
             }
         }
     }
@@ -505,7 +505,7 @@ mod test {
         .await
         .unwrap();
 
-        println!("{:?}", metadata);
+        println!("{metadata:?}");
         println!("{:?}", input.is_playable());
 
         let mut driver = songbird::driver::Driver::default();

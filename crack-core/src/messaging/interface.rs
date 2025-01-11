@@ -500,6 +500,6 @@ mod test {
         // let fmt = std::fmt::Formatter::new(writer);
         embed.fmt(&mut formatter).unwrap();
         let formatted_output = output;
-        println!("{:?}", formatted_output);
+        println!("{formatted_output:?}");
     }
 }

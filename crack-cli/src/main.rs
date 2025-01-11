@@ -30,7 +30,7 @@ use std::time::Duration;
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
-fn main() -> Result<(), Error> {
+fn main() -> () {
     config::install_crypto_provider();
     // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();
@@ -58,8 +58,6 @@ fn main() -> Result<(), Error> {
 
     // init_telemetry(url).await;
     // main_async(event_log_async).await?;
-
-    Ok(())
 }
 
 /// Main async function, needed so we can  initialize everything.
@@ -124,23 +122,23 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 // }
 
 /// Load an environment variable
-fn load_key(k: String) -> Result<String, Error> {
+fn load_key(k: &str) -> Result<String, Error> {
     if let Ok(token) = env::var(&k) {
         Ok(token)
     } else {
-        tracing::warn!("{} not found in environment.", &k);
-        Err(format!("{} not found in environment.", &k).into())
+        tracing::warn!("{k} not found in environment.");
+        Err(format!("{k} not found in environment.").into())
     }
 }
 
 /// Load the bot's config
 fn load_bot_config() -> Result<BotConfig, Error> {
-    let discord_token = load_key("DISCORD_TOKEN".to_string())?;
-    let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
-    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
-    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
-    let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
-    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY".to_string()).ok();
+    let discord_token = load_key("DISCORD_TOKEN")?;
+    let discord_app_id = load_key("DISCORD_APP_ID")?;
+    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID").ok();
+    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET").ok();
+    let openai_api_key = load_key("OPENAI_API_KEY").ok();
+    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY").ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -337,7 +335,7 @@ mod test {
 
     #[test]
     fn test_load_key() {
-        let key = "DISCORD_TOKEN".to_string();
+        let key = "DISCORD_TOKEN";
         let result = load_key(key);
         if let Ok(token) = result {
             assert!(!token.is_empty());

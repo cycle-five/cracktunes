@@ -315,7 +315,7 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
-    use ::serenity::all::Token;
+    
     use crack_types::get_valid_token;
 
     #[test]
@@ -330,8 +330,8 @@ mod test {
     fn test_cam_status_display() {
         let on = CamStatus::On;
         let off = CamStatus::Off;
-        assert_eq!(format!("{}", on), "On");
-        assert_eq!(format!("{}", off), "Off");
+        assert_eq!(format!("{on}"), "On");
+        assert_eq!(format!("{off}"), "Off");
     }
 
     #[test]

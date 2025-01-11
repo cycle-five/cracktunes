@@ -126,16 +126,16 @@ mod test {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_check_and_record_vote(pool: sqlx::PgPool) {
-        let user_id = 285219649921220608;
+        let user_id = 285_219_649_921_220_608;
         let username = "test".to_string();
-        let bot_id = 1115229568006103122;
+        let bot_id = 1_115_229_568_006_103_122;
 
         let has_voted = check_and_record_vote(&pool, user_id, username, bot_id).await;
 
         if has_voted.is_ok() {
             assert!(!has_voted.unwrap());
         } else {
-            println!("{has_voted:?}")
+            println!("{has_voted:?}");
         }
     }
 }

@@ -9,7 +9,14 @@ use std::{
 
 pub struct ShardManagerOptionsBuilder(pub ShardManagerOptions);
 
+impl Default for ShardManagerOptionsBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShardManagerOptionsBuilder {
+    #[must_use]
     pub fn new() -> Self {
         let ws_url = "ws://localhost:3030".to_string();
         let ws_url: Arc<str> = Arc::from(ws_url);
@@ -20,8 +27,8 @@ impl ShardManagerOptionsBuilder {
             event_handler: None,
             raw_event_handler: None,
             framework: Arc::new(OnceLock::new()),
-            max_concurrency: NonZeroU16::new(1).unwrap(),
-            shard_total: NonZeroU16::new(1).unwrap(),
+            max_concurrency: NonZeroU16::new(1).expect("max_concurrency must be > 0"),
+            shard_total: NonZeroU16::new(1).expect("shard_total must be > 0"),
             wait_time_between_shard_start: Duration::from_secs(1),
             cache: Arc::new(Cache::new()),
             http: Arc::new(Http::new(token.clone())),
@@ -47,17 +54,26 @@ pub struct ShardManagerBuilder(
     UnboundedReceiver<Result<(), GatewayError>>,
 );
 
+impl Default for ShardManagerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShardManagerBuilder {
+    #[must_use]
     pub fn new() -> Self {
         let (manager, res) = ShardManager::new(ShardManagerOptionsBuilder::new().build());
         Self(manager, res)
     }
 
+    #[must_use]
     pub fn with_opts(opts: ShardManagerOptions) -> Self {
         let (manager, res) = ShardManager::new(opts);
         Self(manager, res)
     }
 
+    #[must_use]
     pub fn build(
         self,
     ) -> (

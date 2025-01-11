@@ -30,7 +30,7 @@ use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
 use crack_types::messages::CAM_VIOLATION_MSG;
 use crack_types::CrackedError;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;
@@ -601,18 +601,21 @@ impl Data {
     }
 
     /// Add a message to the cache
+    #[must_use]
     pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
         self.add_msg_to_cache_ts(guild_id.into(), now, msg)
     }
 
     /// Add a message to the cache
+    #[must_use]
     pub fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
         self.add_msg_to_cache_ts(id, now, msg)
     }
 
     /// Add msg to the cache with a timestamp.
+    #[must_use]
     pub fn add_msg_to_cache_ts(&self, id: u64, ts: DateTime<Utc>, msg: Message) -> Option<Message> {
         self.id_cache_map
             .entry(id)
@@ -622,6 +625,7 @@ impl Data {
     }
 
     /// Add a reply handle to the cache with a timestamp.
+    #[must_use]
     pub fn add_reply_handle_to_cache(
         &self,
         guild_id: GuildId,
@@ -765,7 +769,7 @@ mod lib_test {
 
         assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
         assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
-        let want = &vec!["CA".to_string(), "UM".to_string(), "US".to_string()];
+        let want = ["CA".to_string(), "UM".to_string(), "US".to_string()];
         let got = country_by_phone_code.get("1").unwrap();
         // This would be cheaper using a heap or tree
         assert!(got.iter().all(|x| want.contains(x)));
@@ -780,7 +784,7 @@ mod lib_test {
         assert_eq!(file.metadata().unwrap().len(), 0);
     }
 
-    /// Test the creation and printing of CamKickConfig
+    /// Test the creation and printing of `CamKickConfig`
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();

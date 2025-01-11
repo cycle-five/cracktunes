@@ -39,7 +39,7 @@ fn test_load_config() {
     println!("config: {config:?}");
 
     let cam_kick = config.cam_kick.unwrap();
-    let guild_settings_map = if let Some(map) = config.guild_settings_map { map } else {
+    let Some(guild_settings_map) = config.guild_settings_map else {
         tracing::error!("guild_settings_map is None");
         panic!("guild_settings_map is None");
     };

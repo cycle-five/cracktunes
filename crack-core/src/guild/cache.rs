@@ -48,7 +48,7 @@ mod test {
     #[tokio::test]
     async fn test_guild_cache() {
         let guild_cache = GuildCache::default();
-        assert_eq!(guild_cache.autoplay, true);
+        assert!(guild_cache.autoplay);
         assert_eq!(guild_cache.time_ordered_messages.len(), 0);
         assert_eq!(guild_cache.queue_messages.len(), 0);
         assert_eq!(guild_cache.current_skip_votes.len(), 0);
