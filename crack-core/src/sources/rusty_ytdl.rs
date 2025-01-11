@@ -378,8 +378,6 @@ impl From<NewSearchSource> for Input {
 
 #[cfg(test)]
 mod test {
-    use crate::sources::rusty_ytdl;
-    use crate::sources::rusty_ytdl::search_result_to_aux_metadata;
     use crate::{
         http_utils,
         music::NewQueryType,

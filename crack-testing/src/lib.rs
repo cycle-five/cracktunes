@@ -832,7 +832,8 @@ mod tests {
             match res {
                 QueryType::VideoLink(_) => assert!(!want),
                 QueryType::PlaylistLink(_) => assert!(want),
-                _ => assert!(false),
+                _ => panic!():w
+                ,
             }
         }
     }
