@@ -49,8 +49,8 @@ pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let _ = match toggler(&track) {
-        Ok(_) if was_looping => send_reply(&ctx, CrackedMessage::LoopDisable, true).await,
-        Ok(_) if !was_looping => send_reply(&ctx, CrackedMessage::LoopEnable, true).await,
+        Ok(()) if was_looping => send_reply(&ctx, CrackedMessage::LoopDisable, true).await,
+        Ok(()) if !was_looping => send_reply(&ctx, CrackedMessage::LoopEnable, true).await,
         _ => Err(CrackedError::Other(FAIL_LOOP)),
     }?;
     Ok(())

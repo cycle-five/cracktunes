@@ -24,7 +24,7 @@ use std::borrow::Cow;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
-/// on_error is called when an error occurs in the framework.
+/// `on_error` is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
@@ -61,7 +61,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                tracing::error!("Error while handling error: {}", e)
+                tracing::error!("Error while handling error: {}", e);
             }
         },
     }
@@ -347,7 +347,7 @@ pub async fn poise_framework(
             for (k, v) in guilds {
                 //tracing::warn!("Saving Guild: {}", k);
                 match v.save(&p).await {
-                    Ok(_) => {
+                    Ok(()) => {
                         saved_guilds.push(k);
                     },
                     Err(e) => {
@@ -357,7 +357,7 @@ pub async fn poise_framework(
             }
             p.close().await;
         }
-        println!("Saved guilds: {:?}", saved_guilds);
+        println!("Saved guilds: {saved_guilds:?}");
         tracing::trace!("Saved guilds: {:?}", saved_guilds);
 
         shard_manager.clone().shutdown_all().await;

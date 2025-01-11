@@ -64,7 +64,7 @@ pub async fn uptime_internal(ctx: Context<'_>) -> CrackedMessage {
 }
 
 /// Get all the utility commands.
-pub fn utility_commands() -> [crate::Command; 6] {
+#[must_use] pub fn utility_commands() -> [crate::Command; 6] {
     [
         clean(),
         debug(),

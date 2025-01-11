@@ -36,8 +36,8 @@ pub async fn toggle_autoplay(ctx: Context<'_>, value: Option<bool>) -> Result<()
     } else {
         !ctx.data().get_autoplay(guild_id).await
     };
-    let _ = ctx.data().set_autoplay(guild_id, autoplay).await;
-    let _ = ctx.data().set_autoplay_setting(guild_id, autoplay).await;
+    let () = ctx.data().set_autoplay(guild_id, autoplay).await;
+    let () = ctx.data().set_autoplay_setting(guild_id, autoplay).await;
 
     send_reply(&ctx, autoplay_msg(autoplay), true).await?;
     Ok(())

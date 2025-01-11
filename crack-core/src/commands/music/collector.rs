@@ -12,7 +12,7 @@ use poise::{serenity_prelude as serenity, CreateReply};
 pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     let uuid_boop = ctx.id();
 
-    let id_str = format!("{}", uuid_boop);
+    let id_str = format!("{uuid_boop}");
 
     ctx.send(
         CreateReply::default()
@@ -39,7 +39,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
         let mut msg = mci.message.clone();
         msg.edit(
             &ctx,
-            EditMessage::default().content(format!("Boop count: {}", boop_count)),
+            EditMessage::default().content(format!("Boop count: {boop_count}")),
         )
         .await?;
 

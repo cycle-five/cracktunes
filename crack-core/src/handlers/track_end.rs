@@ -70,7 +70,7 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
         end: false,
     };
 
-    for (state, _) in track_states.iter() {
+    for (state, _) in track_states {
         match state.playing {
             PlayMode::Play => union.playing = true,
             PlayMode::Pause => union.paused = true,
@@ -99,13 +99,11 @@ impl EventHandler for TrackEndHandler {
             let settings = self.data.guild_settings_map.read().await.clone();
             let autopause = settings
                 .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.autopause)
-                .unwrap_or_default();
+                .is_some_and(|guild_settings| guild_settings.autopause);
             tracing::error!("Autopause: {}", autopause);
             let volume = settings
                 .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.volume)
-                .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
+                .map_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL, |guild_settings| guild_settings.volume);
             tracing::error!("Volume: {}", volume);
             (autopause, volume)
         };
@@ -120,7 +118,7 @@ impl EventHandler for TrackEndHandler {
         tracing::trace!("Forgetting skip votes");
         // FIXME
         match self.data.forget_skip_votes(self.guild_id).await {
-            Ok(_) => tracing::trace!("Forgot skip votes"),
+            Ok(()) => tracing::trace!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
 
@@ -171,7 +169,7 @@ impl EventHandler for TrackEndHandler {
             Ok(query) => query,
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
+                let msg = format!("Error: {e}");
                 tracing::warn!("{}", msg);
                 return None;
             },
@@ -182,7 +180,7 @@ impl EventHandler for TrackEndHandler {
             Ok(_) => (),
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
+                let msg = format!("Error: {e}");
                 tracing::warn!("{}", msg);
             },
         }
@@ -268,7 +266,7 @@ pub async fn update_queue_messages(
         None => return,
     };
 
-    for (message, page_lock) in messages.iter_mut() {
+    for (message, page_lock) in &mut messages {
         // has the page size shrunk?
         let num_pages = calculate_num_pages(tracks);
         let page = *page_lock.read().await;

@@ -37,8 +37,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     tracing::info!(
         "{}",
         format!(
-            "Unimplemented Event: {}, {}, {:?}",
-            guild_name, channel_id, log_data
+            "Unimplemented Event: {guild_name}, {channel_id}, {log_data:?}"
         )
         .blue()
     );
@@ -62,7 +61,7 @@ pub async fn log_integration_update(
             guild_id,
         );
     }
-    let title = format!("Integration Create Event {}", channel_id);
+    let title = format!("Integration Create Event {channel_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
@@ -89,8 +88,7 @@ pub async fn log_integration_delete(
 ) -> Result<(), Error> {
     let &(integration_id, _guild_id, _application_id) = log_data;
     let title = format!(
-        "Integration Delete Event {} {} {}",
-        integration_id, guild_id, channel_id
+        "Integration Delete Event {integration_id} {guild_id} {channel_id}"
     );
     let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
     let avatar_url = "";
@@ -119,7 +117,7 @@ pub async fn log_integration_create(
     let integration = log_data.clone();
     let guild_id2 = integration.guild_id.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let title = format!("Integration Create Event {}", channel_id);
+    let title = format!("Integration Create Event {channel_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
@@ -149,7 +147,7 @@ pub async fn log_interaction_create(
     // let guild_id = invite_create_event.guild_id.unwrap_or_default();
     let guild_id2 = interaction_to_guild_id(&interaction).unwrap_or(GuildId::new(1));
     guild_ids_match!(guild_id, guild_id2);
-    let title = format!("Interaction Create Event {}", channel_id);
+    let title = format!("Interaction Create Event {channel_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
@@ -177,7 +175,7 @@ pub async fn log_invite_delete(
     let invite_create_event = log_data.clone();
     let guild_id2 = invite_create_event.guild_id.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let title = format!("Guild Invite Create {}", guild_id);
+    let title = format!("Guild Invite Create {guild_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -205,7 +203,7 @@ pub async fn log_invite_create(
     let invite_create_event = log_data.clone();
     let guild_id2 = invite_create_event.guild_id.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let title = format!("Guild Invite Create {}", guild_id);
+    let title = format!("Guild Invite Create {guild_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -232,7 +230,7 @@ pub async fn log_guild_stickers_update(
     log_data: &&ExtractMap<StickerId, Sticker>,
 ) -> Result<(), Error> {
     let _stickers: &ExtractMap<StickerId, Sticker> = log_data;
-    let title = format!("Guild Stickers Update for guild {}", guild_id);
+    let title = format!("Guild Stickers Update for guild {guild_id}");
     let description = serde_json::to_string_pretty(&log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -413,7 +411,7 @@ pub async fn log_guild_create(
     } else {
         ""
     };
-    let description = format!("Guild is {}new", is_new_str);
+    let description = format!("Guild is {is_new_str}new");
     let id = guild.id.to_string();
     let avatar_url = "";
     send_log_embed_thumb(
@@ -451,11 +449,11 @@ pub async fn log_guild_delete_event(
     //         .insert(guild_id, new_settings.clone());
     // }
 
-    let title = format!("Guild Delete: {}", guild_name);
-    let mut description = if !unavailable.unavailable {
-        "Bot was removed from the guild."
-    } else {
+    let title = format!("Guild Delete: {guild_name}");
+    let mut description = if unavailable.unavailable {
         "Guild was deleted."
+    } else {
+        "Bot was removed from the guild."
     }
     .to_string();
 
@@ -701,10 +699,10 @@ pub async fn log_channel_delete(
 ) -> Result<(), Error> {
     let &(guild_channel, messages) = log_data;
     let del_channel_id = guild_channel.id;
-    let title = format!("Channel Deleted: {}", del_channel_id);
+    let title = format!("Channel Deleted: {del_channel_id}");
     let description = format!(
         "messages deleted: {}",
-        messages.as_ref().map(|x| x.len()).unwrap_or_default()
+        messages.as_ref().map(std::collections::VecDeque::len).unwrap_or_default()
     );
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -729,10 +727,10 @@ pub async fn log_message_delete(
 ) -> Result<(), Error> {
     let &(del_channel_id, message_id, guild_id_opt) = log_data;
     let id = message_id.to_string();
-    let title = format!("Message Deleted: {}", id);
+    let title = format!("Message Deleted: {id}");
     let guild_id2 = guild_id_opt.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let description = format!("ChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
+    let description = format!("ChannelId: {del_channel_id}\nGuildId: {guild_id}");
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
@@ -758,9 +756,7 @@ pub async fn log_user_update(
     let title = format!("User Updated: {}", new.name);
     let description = format!(
             "Old User: {}\nNew User: {}",
-            old.clone().map(|x| x.name.clone()).unwrap_or_else(
-                || FixedString::from_str("None").expect("Failed to create FixedString")
-            ),
+            old.clone().map_or_else(|| FixedString::from_str("None").expect("Failed to create FixedString"), |x| x.name.clone()),
             new.name
         );
 
@@ -771,10 +767,10 @@ pub async fn log_user_update(
         .and_then(|x| x.avatar_url())
         .unwrap_or_default();
 
-    let description = if avatar_url != old_avatar_url {
-        format!("Avatar Updated: {}", name)
-    } else {
+    let description = if avatar_url == old_avatar_url {
         description
+    } else {
+        format!("Avatar Updated: {name}")
     };
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
 
@@ -868,7 +864,7 @@ pub async fn log_message_update(
 ) -> Result<(), Error> {
     // Don't log message updates from bots
     // TODO: Make this configurable
-    if log_data.2.author.as_ref().map(|x| x.bot()).unwrap_or(false) {
+    if log_data.2.author.as_ref().is_some_and(serenity::all::User::bot) {
         return Ok(());
     }
 
@@ -928,11 +924,11 @@ pub async fn log_message_update(
     .map(|_| ())
 }
 
-pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
+#[must_use] pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
     let title = "Message Updated".to_string();
     let description = msg.id.to_string();
-    let avatar_url = "".to_string();
-    let id = "".to_string();
+    let avatar_url = String::new();
+    let id = String::new();
     (id, title, description, avatar_url)
 }
 
@@ -991,7 +987,7 @@ pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
 }
 
 /// Guild Role to a string.
-pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
+#[must_use] pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
     format!(
         "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
         role.name,
@@ -1005,7 +1001,7 @@ pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
 }
 
 /// Diff two guild roles.
-pub fn guild_role_diff(
+#[must_use] pub fn guild_role_diff(
     old: &serenity::model::prelude::Role,
     new: &serenity::model::prelude::Role,
 ) -> String {
@@ -1051,9 +1047,7 @@ pub async fn log_guild_role_update(
     let &(old, new) = log_data;
     let title = format!("Role Updated: {}", new.name);
     let description = old
-        .as_ref()
-        .map(|r| guild_role_diff(r, new))
-        .unwrap_or_else(|| guild_role_to_string(new));
+        .as_ref().map_or_else(|| guild_role_to_string(new), |r| guild_role_diff(r, new));
     // FIXME: Use icon or emoji
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -1192,39 +1186,39 @@ impl std::fmt::Display for ActivityPrinter<'_> {
         let activity = self.activity.clone();
         let mut activity_str = String::new();
         if let Some(url) = activity.url {
-            activity_str.push_str(&format!("URL: {}\n", url));
+            activity_str.push_str(&format!("URL: {url}\n"));
         }
         if let Some(application_id) = activity.application_id {
-            activity_str.push_str(&format!("Application ID: {}\n", application_id));
+            activity_str.push_str(&format!("Application ID: {application_id}\n"));
         }
         if let Some(timestamps) = activity.timestamps {
-            activity_str.push_str(&format!("Timestamps: {:?}\n", timestamps));
+            activity_str.push_str(&format!("Timestamps: {timestamps:?}\n"));
         }
         if let Some(details) = activity.details {
-            activity_str.push_str(&format!("Details: {}\n", details));
+            activity_str.push_str(&format!("Details: {details}\n"));
         }
         if let Some(state) = activity.state {
-            activity_str.push_str(&format!("State: {}\n", state));
+            activity_str.push_str(&format!("State: {state}\n"));
         }
         if let Some(emoji) = activity.emoji {
-            activity_str.push_str(&format!("Emoji: {:?}\n", emoji));
+            activity_str.push_str(&format!("Emoji: {emoji:?}\n"));
         }
         if let Some(party) = activity.party {
-            activity_str.push_str(&format!("Party: {:?}\n", party));
+            activity_str.push_str(&format!("Party: {party:?}\n"));
         }
         if let Some(assets) = activity.assets {
-            activity_str.push_str(&format!("Assets: {:?}\n", assets));
+            activity_str.push_str(&format!("Assets: {assets:?}\n"));
         }
         if let Some(secrets) = activity.secrets {
-            activity_str.push_str(&format!("Secrets: {:?}\n", secrets));
+            activity_str.push_str(&format!("Secrets: {secrets:?}\n"));
         }
         if let Some(instance) = activity.instance {
-            activity_str.push_str(&format!("Instance: {:?}\n", instance));
+            activity_str.push_str(&format!("Instance: {instance:?}\n"));
         }
         if let Some(flags) = activity.flags {
-            activity_str.push_str(&format!("Flags: {:?}\n", flags));
+            activity_str.push_str(&format!("Flags: {flags:?}\n"));
         }
-        write!(f, "{}", activity_str)
+        write!(f, "{activity_str}")
     }
 }
 struct ClientStatusPrinter {
@@ -1300,7 +1294,7 @@ pub async fn log_voice_channel_status_update(
     log_data: &(&Option<String>, &Option<String>, &ChannelId, &GuildId),
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, status, _, _) = log_data;
-    let title = format!("Voice Channel Status Update: {:?} -> {:?}", old, status);
+    let title = format!("Voice Channel Status Update: {old:?} -> {status:?}");
 
     let description = "";
     let avatar_url = "";

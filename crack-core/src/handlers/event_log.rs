@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::event_log_impl::*;
+use super::event_log_impl::{log_automod_command_execution, log_automod_rule_create, log_automod_rule_update, log_channel_delete, log_command_permissions_update, log_guild_ban_addition, log_guild_ban_removal, log_guild_create, log_guild_delete_event, log_guild_member_addition, log_guild_member_removal, log_guild_role_create, log_guild_role_delete, log_guild_role_update, log_guild_scheduled_event_create, log_guild_scheduled_event_delete, log_guild_scheduled_event_update, log_guild_scheduled_event_user_add, log_guild_scheduled_event_user_remove, log_guild_stickers_update, log_integration_create, log_integration_delete, log_integration_update, log_interaction_create, log_invite_create, log_invite_delete, log_message, log_message_delete, log_message_update, log_reaction_add, log_reaction_remove, log_typing_start_noop, log_unimplemented_event, log_user_update, log_voice_channel_status_update, log_voice_state_update};
 use crate::{
     guild::settings::GuildSettings, log_event, log_event2,
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
@@ -502,8 +502,7 @@ pub async fn handle_event(
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
-                .map(|x| x.get_join_leave_log_channel())
-                .unwrap_or(None);
+                .and_then(super::super::guild::settings::GuildSettings::get_join_leave_log_channel);
             let id = new.user.id;
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
@@ -527,7 +526,7 @@ pub async fn handle_event(
             }
 
             let mut notes = "";
-            let mut title: String = String::from("");
+            let mut title: String = String::new();
 
             if let Some(old) = old_if_available {
                 if old.user.avatar.is_none()
@@ -560,23 +559,20 @@ pub async fn handle_event(
                 },
                 _ => {},
             }
-            match maybe_log_channel {
-                Some(channel_id) => {
-                    send_log_embed_thumb(
-                        &guild_name,
-                        &channel_id,
-                        &ctx,
-                        &id.to_string(),
-                        &title,
-                        &description,
-                        &avatar_url,
-                    )
-                    .await?;
-                },
-                None => {
-                    tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
-                    tracing::debug!(title);
-                },
+            if let Some(channel_id) = maybe_log_channel {
+                send_log_embed_thumb(
+                    &guild_name,
+                    &channel_id,
+                    &ctx,
+                    &id.to_string(),
+                    &title,
+                    &description,
+                    &avatar_url,
+                )
+                .await?;
+            } else {
+                tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
+                tracing::debug!(title);
             }
             event_log
                 .write_log_obj_note_async(event_name, Some(notes), &(old_if_available, new, event))
@@ -914,11 +910,10 @@ pub async fn handle_event(
             new,
             event,
         } => {
-            if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
+            if new.as_ref().is_some_and(|x| x.author.bot())
                 || old_if_available
                     .as_ref()
-                    .map(|x| x.author.bot())
-                    .unwrap_or(false)
+                    .is_some_and(|x| x.author.bot())
             {
                 return Ok(());
             }

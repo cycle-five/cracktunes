@@ -59,7 +59,7 @@ pub async fn search_query_to_source_and_metadata(
         tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
 
         // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
-        let query = query.replace("\\", "").replace("\"", "");
+        let query = query.replace(['\\', '"'], "");
         tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
         let results = rytdl.search_one(query.clone(), None).await?;
 
@@ -77,7 +77,7 @@ pub async fn search_query_to_source_and_metadata(
 
     let source_url = match metadata.clone().source_url {
         Some(url) => url.clone(),
-        None => "".to_string(),
+        None => String::new(),
     };
     let ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), source_url);
     let my_metadata = NewAuxMetadata(metadata);
@@ -110,12 +110,11 @@ pub async fn search_query_to_source_and_metadata_rusty(
             .await?;
         tracing::warn!("search_query_to_source_and_metadata_rusty: {:?}", results);
         // FIXME: Fallback to yt-dlp
-        let result = match results {
-            Some(r) => r,
-            None => {
-                tracing::warn!("{val}", val = messages::YTDL_FALLBACK);
-                return search_query_to_source_and_metadata_ytdl(client, query.to_string()).await;
-            },
+        let result = if let Some(r) = results {
+            r
+        } else {
+            tracing::warn!("{val}", val = messages::YTDL_FALLBACK);
+            return search_query_to_source_and_metadata_ytdl(client, query.to_string()).await;
         };
         let metadata = &search_result_to_aux_metadata(&result);
         metadata.clone()
@@ -141,7 +140,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     let query = if query.starts_with("ytsearch:") {
         query
     } else {
-        format!("ytsearch:{}", query)
+        format!("ytsearch:{query}")
     };
     let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
@@ -150,7 +149,8 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     Ok((ytdl.into(), vec![my_metadata]))
 }
 
-/// Build a query from AuxMetadata.
+/// Build a query from `AuxMetadata`.
+#[must_use]
 pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
         "{} {}",
@@ -159,7 +159,8 @@ pub fn build_query_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     )
 }
 
-/// Build a query from AuxMetadata for.
+/// Build a query from `AuxMetadata` for.
+#[must_use]
 pub fn build_query_lyric_aux_metadata(aux_metadata: &AuxMetadata) -> String {
     format!(
         "{} {} {}",
@@ -213,26 +214,21 @@ mod test {
         let query_type = NewQueryType(query_type);
         let res = query_type.get_track_metadata(ytclient, reqclient).await;
         if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            // assert!(e.to_string().contains(phrase));
-            println!("{}", e.to_string());
+            println!("{e}");
         }
-        //assert!(res.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_track_source_and_metadata() {
         let reqclient = http_utils::get_client().clone();
         let query_type = QueryType::Keywords("hello".to_string());
-        QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
+        // QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
         let query_type = NewQueryType(query_type);
         let res = query_type
             .get_track_source_and_metadata(Some(reqclient))
             .await;
         if let Err(ref e) = res {
-            //let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
-            //assert!(e.to_string().contains(phrase));
+            println!("{e}");
         }
     }
 
@@ -244,11 +240,8 @@ mod test {
         let client = http_utils::build_client();
         let res = query_type.get_track_source_and_metadata(Some(client)).await;
         if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
-            //assert!(e.to_string());
+            println!("{e}");
         }
-        //assert!(res.is_ok());
     }
 
     #[tokio::test]
@@ -260,9 +253,7 @@ mod test {
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
         if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
-            // assert!(e.to_string().contains(phrase));
+            println!("{e}");
         }
     }
 
@@ -277,9 +268,7 @@ mod test {
         match res {
             Ok(_) => assert!(true),
             Err(e) => {
-                // let phrase = "Sign in to confirm you’re not a bot";
-                println!("{}", e.to_string());
-                // assert!(e.to_string().contains(phrase));
+                println!("{e}");
             },
         }
     }
@@ -296,7 +285,7 @@ mod test {
             Err(e) => {
                 //let phrase = "Sign in to confirm you’re not a bot";
                 //assert!(e.to_string().contains(phrase));
-                println!("{}", e.to_string());
+                println!("{e}");
             },
         }
     }
@@ -314,7 +303,7 @@ mod test {
             Err(e) => {
                 // let phrase = "Sign in to confirm you’re not a bot";
                 // assert!(e.to_string().contains(phrase));
-                println!("{}", e.to_string());
+                println!("{e}");
             },
         }
     }

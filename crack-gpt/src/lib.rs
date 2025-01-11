@@ -261,7 +261,7 @@ mod test {
         let query = "Please respond with the word \"fish\".".to_string();
         let ctx = GptContext::default();
         let response = ctx.openai_azure_response(query, 1).await;
-        println!("{:?}", response);
+        println!("{response:?}");
         assert!(response.is_err() || response.unwrap().to_ascii_lowercase().contains("fish"));
     }
 }

@@ -49,7 +49,7 @@ pub async fn get_playlist_(
     // Assuming you have a way to fetch the user_id of the command issuer
     let aux_metadata = metadata
         .iter()
-        .flat_map(|m| match aux_metadata_from_db(m) {
+        .filter_map(|m| match aux_metadata_from_db(m) {
             Ok(aux) => Some(NewAuxMetadata(aux.clone())),
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);

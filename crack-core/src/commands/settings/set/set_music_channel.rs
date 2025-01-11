@@ -35,7 +35,7 @@ pub async fn music_channel(
     };
 
     let data = ctx.data();
-    let _ = data.set_music_channel(guild_id, channel_id).await;
+    let () = data.set_music_channel(guild_id, channel_id).await;
 
     let opt_settings = data.guild_settings_map.read().await.clone();
     let settings = opt_settings.get(&guild_id);
@@ -46,7 +46,7 @@ pub async fn music_channel(
 
     let _ = send_reply(
         &ctx,
-        CrackedMessage::Other(format!("Music channel set to {}", channel_id)),
+        CrackedMessage::Other(format!("Music channel set to {channel_id}")),
         true,
     )
     .await?;
@@ -74,7 +74,7 @@ pub async fn music_denied_user(
 
     let _ = send_reply(
         &ctx,
-        CrackedMessage::Other(format!("Denied user set to {}", user)),
+        CrackedMessage::Other(format!("Denied user set to {user}")),
         true,
     )
     .await?;

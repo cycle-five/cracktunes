@@ -112,7 +112,7 @@ pub async fn mute_internal(
         )
         .await
     {
-        Ok(CrackedMessage::Other(format!("Failed to mute user: {}", e)))
+        Ok(CrackedMessage::Other(format!("Failed to mute user: {e}")))
     } else {
         // Send success message
         Ok(CrackedMessage::UserMuted { mention, id })
@@ -133,7 +133,7 @@ pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: User,
 ) -> Result<(), Error> {
-    unmute_impl(ctx, user).await.map(|_| ())
+    unmute_impl(ctx, user).await
 }
 
 /// Unmute a user
@@ -152,7 +152,7 @@ pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
         // Handle error, send error message
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+            CrackedMessage::Other(format!("Failed to unmute user: {e}")),
             true,
         )
         .await

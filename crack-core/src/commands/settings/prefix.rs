@@ -79,7 +79,7 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get the prefix commands.
-pub fn commands() -> Vec<crate::Command> {
+#[must_use] pub fn commands() -> Vec<crate::Command> {
     vec![add_prefix(), clear_prefixes(), get_prefixes()]
         .into_iter()
         .collect()

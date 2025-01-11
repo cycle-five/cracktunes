@@ -640,7 +640,7 @@ mod tests {
         let cli = Cli::parse_from(vec!["crack_testing", "suggest", "molly nilsson"]);
         match match_cli(cli).await {
             Ok(_) => (),
-            Err(e) => eprintln!("{}", e),
+            Err(e) => eprintln!("{e}"),
         }
     }
 
@@ -659,7 +659,7 @@ mod tests {
         let cli = Cli::parse_from(vec!["crack_testing", "suggest-new", "molly nilsson"]);
         match match_cli(cli).await {
             Ok(_) => (),
-            Err(e) => eprintln!("{}", e),
+            Err(e) => eprintln!("{e}"),
         }
     }
 
@@ -668,7 +668,7 @@ mod tests {
         let cli = Cli::parse_from(vec!["crack_testing", "query", "molly nilsson"]);
         match match_cli(cli).await {
             Ok(_) => (),
-            Err(e) => eprintln!("{}", e),
+            Err(e) => eprintln!("{e}"),
         }
     }
 
@@ -791,17 +791,15 @@ mod tests {
         ];
         for query in queries {
             if let Ok(track) = client.enqueue_query(guild, query).await {
-                println!("Enqueued: {}", track);
+                println!("Enqueued: {track}");
                 client
                     .build_display(guild)
                     .await
                     .expect("Failed to build display");
                 let disp: String = client.get_display(guild);
-                println!("{}", disp);
-            } else {
-                if !std::env::var("CI").is_ok() {
-                    assert!(false);
-                }
+                println!("{disp}");
+            } else if std::env::var("CI").is_err() {
+                assert!(false);
             }
         }
 
@@ -818,11 +816,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_yt_url_type() {
-        let urls = vec![
-            "https://www.youtube.com/watch?v=X9ukSm5gmKk",
+        let urls = ["https://www.youtube.com/watch?v=X9ukSm5gmKk",
             "https://www.youtube.com/watch?v=X9ukSm5gmKk&list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
-            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
-        ];
+            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP"];
         let want_playlist = vec![false, true, true];
         let urls = urls
             .iter()
@@ -830,7 +826,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         for (url, want) in urls.iter().zip(want_playlist) {
-            let res = yt_url_type(&url);
+            let res = yt_url_type(url);
             match res {
                 QueryType::VideoLink(_) => assert!(!want),
                 QueryType::PlaylistLink(_) => assert!(want),

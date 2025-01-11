@@ -21,6 +21,6 @@ pub async fn toggle(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get all settings-toggle commands
-pub fn commands() -> Vec<crate::Command> {
+#[must_use] pub fn commands() -> Vec<crate::Command> {
     vec![selfdeafen(), toggle_autopause()]
 }

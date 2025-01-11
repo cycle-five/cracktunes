@@ -157,7 +157,7 @@ impl NewQueryType {
     /// Build a query string from the query type.
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
-        base.map(|x| format!("{} {}", x, MUSIC_SEARCH_SUFFIX))
+        base.map(|x| format!("{x} {MUSIC_SEARCH_SUFFIX}"))
     }
 
     pub fn build_query_base(&self) -> Option<String> {
@@ -169,7 +169,7 @@ impl NewQueryType {
             QueryType::SpotifyTracks(tracks) => Some(
                 tracks
                     .iter()
-                    .map(|x| x.build_query())
+                    .map(super::super::sources::spotify::SpotifyTrackTrait::build_query)
                     .collect::<Vec<String>>()
                     .join(" "),
             ),
@@ -183,7 +183,7 @@ impl NewQueryType {
 
     /// Build a query string for a explicit result from the query type.
     pub fn build_query_explicit(&self, query: Option<String>) -> Option<String> {
-        query.map(|x| format!("{} explicit", x))
+        query.map(|x| format!("{x} explicit"))
     }
 
     // FIXME: Do you want to have a reqwest client we keep around and pass into
@@ -236,7 +236,7 @@ impl NewQueryType {
                 tracing::warn!("In Keywords");
                 let mut ytdl = YoutubeDl::new(
                     http_utils::get_client_old().clone(),
-                    format!("ytsearch:{}", query),
+                    format!("ytsearch:{query}"),
                 );
                 let metadata = ytdl.aux_metadata().await.unwrap();
                 let url = metadata.source_url.unwrap();
@@ -254,7 +254,7 @@ impl NewQueryType {
             },
             QueryType::File(file) => {
                 tracing::warn!("In File");
-                Ok((true, file.url.to_owned().to_string()))
+                Ok((true, file.url.clone().to_string()))
             },
             QueryType::PlaylistLink(url) => {
                 tracing::warn!("In PlaylistLink");
@@ -273,7 +273,7 @@ impl NewQueryType {
                 tracing::warn!("In SpotifyTracks");
                 let keywords_list = tracks
                     .iter()
-                    .map(|x| x.build_query())
+                    .map(super::super::sources::spotify::SpotifyTrackTrait::build_query)
                     .collect::<Vec<String>>();
                 let url = format!("ytsearch:{}", keywords_list.first().unwrap());
                 let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), url.clone());
@@ -316,7 +316,7 @@ impl NewQueryType {
             .send_message(
                 ctx.http(),
                 CreateMessage::new()
-                    .content(format!("Download status {}", status))
+                    .content(format!("Download status {status}"))
                     .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
             )
             .await?;
@@ -340,7 +340,7 @@ impl NewQueryType {
                     call,
                     tracks
                         .iter()
-                        .map(|x| x.build_query())
+                        .map(super::super::sources::spotify::SpotifyTrackTrait::build_query)
                         .collect::<Vec<String>>()
                         .join(" "),
                 )
@@ -349,7 +349,7 @@ impl NewQueryType {
             QueryType::YoutubeSearch(query) => {
                 self.mode_search_keywords(ctx, call, query.clone()).await
             },
-            _ => send_search_failed(&ctx).await.map(|_| vec![]),
+            _ => send_search_failed(&ctx).await.map(|()| vec![]),
         }
     }
 
@@ -523,7 +523,7 @@ impl NewQueryType {
                 // update_queue_messages(ctx.http(), ctx.data(), &queue, guild_id).await;
                 Ok(true)
             },
-            QueryType::None => send_no_query_provided(&ctx).await.map(|_| false),
+            QueryType::None => send_no_query_provided(&ctx).await.map(|()| false),
         }
     }
 
@@ -706,7 +706,7 @@ impl NewQueryType {
         use colored::Colorize;
         let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         let client_old = http_utils::get_client_old().clone();
-        tracing::warn!("{}", format!("query_type: {:?}", self).red());
+        tracing::warn!("{}", format!("query_type: {self:?}").red());
         let NewQueryType(qt) = self;
         match qt {
             QueryType::YoutubeSearch(query) => {
@@ -786,7 +786,7 @@ impl NewQueryType {
                 tracing::error!("In SpotifyTracks, this is broken");
                 let keywords_list = tracks
                     .iter()
-                    .map(|x| x.build_query())
+                    .map(super::super::sources::spotify::SpotifyTrackTrait::build_query)
                     .collect::<Vec<String>>();
                 let mut ytdl = YoutubeDl::new(
                     client_old.clone(),
@@ -872,7 +872,7 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
 // This should not be permenant, but just to get it working
 // with the port before re-enabling all the other modules.
 #[allow(dead_code)]
-/// Returns the QueryType for a given URL (or query string, or file attachment)
+/// Returns the `QueryType` for a given URL (or query string, or file attachment)
 pub async fn query_type_from_url(
     ctx: Context<'_>,
     url: &str,
@@ -883,7 +883,7 @@ pub async fn query_type_from_url(
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
-            Some("open.spotify.com") | Some("spotify.link") => {
+            Some("open.spotify.com" | "spotify.link") => {
                 // We don't want to give up as long as we have a url.
                 let final_url = http_utils::resolve_final_url(url)
                     .await
@@ -918,12 +918,9 @@ pub async fn query_type_from_url(
                         }
                     })
                     .next();
-                match opt_query {
-                    Some(query) => Some(query),
-                    None => {
-                        tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
-                        Some(QueryType::VideoLink(url.to_string()))
-                    },
+                if let Some(query) = opt_query { Some(query) } else {
+                    tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
+                    Some(QueryType::VideoLink(url.to_string()))
                 }
             },
             // For all other domains fall back to yt-dlp.

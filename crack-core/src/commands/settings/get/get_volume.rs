@@ -21,6 +21,6 @@ pub async fn get_volume(ctx: Context<'_>) -> Result<(), Error> {
     let volume = CrackedMessage::Volume { vol, old_vol };
     ctx.send_reply(volume, true)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
         .map(|_| ())
 }

@@ -14,9 +14,9 @@ pub struct SmokeTest<'a> {
     want_response: Option<String>,
 }
 
-/// Implemention of the SmokeTest struct.
+/// Implemention of the `SmokeTest` struct.
 impl<'a> SmokeTest<'a> {
-    pub fn new(ctx: Context<'a>, chan: ChannelId, say_msg: String) -> Self {
+    #[must_use] pub fn new(ctx: Context<'a>, chan: ChannelId, say_msg: String) -> Self {
         Self {
             ctx,
             chan,
@@ -36,12 +36,12 @@ impl<'a> SmokeTest<'a> {
         }
     }
 
-    pub fn with_wait_secs(mut self, wait_secs: u64) -> Self {
+    #[must_use] pub fn with_wait_secs(mut self, wait_secs: u64) -> Self {
         self.wait_secs = Some(wait_secs);
         self
     }
 
-    pub fn with_want_response(mut self, want_response: String) -> Self {
+    #[must_use] pub fn with_want_response(mut self, want_response: String) -> Self {
         self.want_response = Some(want_response);
         self
     }
@@ -66,10 +66,8 @@ pub async fn smoketest(
     #[description = "show the help menu for this command."]
     help: bool,
 ) -> Result<(), Error> {
-    if help {
-        //return help::wrapper(ctx).await;
-        panic!("Help not implemented");
-    }
+    //return help::wrapper(ctx).await;
+assert!(!help, "Help not implemented");
 
     smoketest_internal(ctx).await
 }

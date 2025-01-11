@@ -60,7 +60,7 @@ impl EventHandler for IdleHandler {
             && self.count.fetch_add(60, Ordering::Relaxed) >= self.limit
         {
             match manager.remove(self.guild_id).await {
-                Ok(_) => {
+                Ok(()) => {
                     match self
                         .channel_id
                         .say(&self.serenity_ctx.http, IDLE_ALERT)

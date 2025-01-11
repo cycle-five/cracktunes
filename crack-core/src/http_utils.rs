@@ -98,7 +98,7 @@ impl<'a> SendMessageParams<'a> {
     }
 }
 
-/// Extension trait for CacheHttp to add some utility functions.
+/// Extension trait for `CacheHttp` to add some utility functions.
 pub trait CacheHttpExt {
     fn get_bot_id(&self) -> impl Future<Output = CrackedResult<UserId>> + Send;
     fn user_id_to_username_or_default(
@@ -120,7 +120,7 @@ pub trait CacheHttpExt {
     ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
 }
 
-/// Implement the CacheHttpExt trait for any type that implements CacheHttp.
+/// Implement the `CacheHttpExt` trait for any type that implements `CacheHttp`.
 impl<T: CacheHttp> CacheHttpExt for T {
     async fn get_bot_id(&self) -> CrackedResult<UserId> {
         get_bot_id(self).await
@@ -184,7 +184,7 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
 // });
 
 /// Build a reqwest client with rustls.
-pub fn build_client() -> Client {
+#[must_use] pub fn build_client() -> Client {
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .cookie_store(true)
@@ -193,12 +193,12 @@ pub fn build_client() -> Client {
 }
 
 /// Get a reference to the lazy, static, global reqwest client.
-pub fn get_client() -> &'static Client {
+#[must_use] pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
 /// Get a reference to an old version client.
-pub fn get_client_old() -> &'static reqwest::Client {
+#[must_use] pub fn get_client_old() -> &'static reqwest::Client {
     &CLIENT
 }
 
@@ -232,12 +232,9 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
     let tune_titan_id = UserId::new(1124707756750934159);
     let rusty_bot_id = UserId::new(1111844110597374042);
     let cracktunes_id = UserId::new(1115229568006103122);
-    let bot_id = match cache_http.cache() {
-        Some(cache) => cache.current_user().id,
-        None => {
-            tracing::warn!("cache_http.cache() returned None");
-            return Err(CrackedError::Other("cache_http.cache() returned None"));
-        },
+    let bot_id = if let Some(cache) = cache_http.cache() { cache.current_user().id } else {
+        tracing::warn!("cache_http.cache() returned None");
+        return Err(CrackedError::Other("cache_http.cache() returned None"));
     };
 
     // If the bot is tune titan or rusty bot, return cracktunes ID
@@ -251,12 +248,9 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
 pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
-    match user_id.to_user(cache_http).await {
-        Ok(x) => x.name.to_string(),
-        Err(_) => {
-            tracing::warn!("cache.user returned None");
-            UNKNOWN.to_string()
-        },
+    if let Ok(x) = user_id.to_user(cache_http).await { x.name.to_string() } else {
+        tracing::warn!("cache.user returned None");
+        UNKNOWN.to_string()
     }
 }
 
@@ -279,7 +273,7 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     Ok(final_url.into())
 }
 
-/// Gets the guild_name for a channel_id.
+/// Gets the `guild_name` for a `channel_id`.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,

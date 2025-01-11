@@ -169,7 +169,7 @@ impl IpqsClient {
 
 #[cfg(test)]
 mod tests {
-    use core::error;
+    
 
     use super::*;
 
@@ -196,19 +196,17 @@ mod tests {
 
         match result {
             Ok(response) => {
-                if !response.success {
-                    panic!("Test failed: {:?}", response);
-                }
+                assert!(response.success, "Test failed: {response:?}");
                 // Add more assertions as needed
             },
-            Err(e) => panic!("Test failed: {}", e),
+            Err(e) => panic!("Test failed: {e}"),
         }
     }
 
     #[test]
     fn test_default_implementations() {
         let response = IpqsResponse::default();
-        assert_eq!(response.success, false);
+        assert!(!response.success);
         assert_eq!(response.fraud_score, 0);
         assert_eq!(response.message, "");
 

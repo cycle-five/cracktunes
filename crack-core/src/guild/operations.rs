@@ -101,7 +101,7 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .and_then(|x| x.get_music_channel())
+            .and_then(super::settings::GuildSettings::get_music_channel)
     }
 
     /// Set the music channel for the guild.
@@ -221,8 +221,7 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .map(|x| x.autopause)
-            .unwrap_or(false)
+            .is_some_and(|x| x.autopause)
     }
 
     /// Set the autopause setting.
@@ -275,9 +274,7 @@ impl GuildSettingsOperations for Data {
         self.guild_cache_map
             .lock()
             .await
-            .get(&guild_id)
-            .map(|settings| settings.autoplay)
-            .unwrap_or(true)
+            .get(&guild_id).is_none_or(|settings| settings.autoplay)
     }
 
     async fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) {
@@ -294,9 +291,7 @@ impl GuildSettingsOperations for Data {
         self.guild_settings_map
             .read()
             .await
-            .get(&guild_id)
-            .map(|e| e.autoplay)
-            .unwrap_or(true)
+            .get(&guild_id).is_none_or(|e| e.autoplay)
     }
 
     /// Set the autoplay setting
@@ -316,8 +311,7 @@ impl GuildSettingsOperations for Data {
             .read()
             .await
             .get(&guild_id)
-            .map(|settings| (settings.volume, settings.old_volume))
-            .unwrap_or((DEFAULT_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL))
+            .map_or((DEFAULT_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL), |settings| (settings.volume, settings.old_volume))
     }
 
     /// Set the current autoplay settings.

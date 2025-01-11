@@ -80,7 +80,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
         do_join(ctx, &manager, guild_id, channel_id)
             .await
-            .map_err(|err| err.into())
+            .map_err(std::convert::Into::into)
     }
     // // Return the call if it already exists
     // if let Some(call) = manager.get(guild_id) {
@@ -123,21 +123,18 @@ pub async fn do_join(
     );
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
-        Err(err) => match manager.get(guild_id) {
-            Some(call) => call,
-            None => {
-                tracing::warn!("Error joining channel: {:?}", err);
-                // let str = err.to_string().clone();
-                let my_err = CrackedError::JoinChannelError(err);
-                // let crack_msg = CrackedMessage::CrackedRed(str.clone());
-                // let msg = PoiseContextExt::send_reply_embed(ctx, crack_msg).await?;
-                // //ctx.defer().await;
-                // //msg.delete_after(ctx, Duration::from_secs(10)).await;
-                // let msg_or_reply =
-                //     MessageOrReplyHandle::from(ReplyHandleWrapper { handle: msg.into() });
-                // ctx.data().push_latest_msg(guild_id, msg_or_reply).await;
-                return Err(Box::new(my_err));
-            },
+        Err(err) => if let Some(call) = manager.get(guild_id) { call } else {
+            tracing::warn!("Error joining channel: {:?}", err);
+            // let str = err.to_string().clone();
+            let my_err = CrackedError::JoinChannelError(err);
+            // let crack_msg = CrackedMessage::CrackedRed(str.clone());
+            // let msg = PoiseContextExt::send_reply_embed(ctx, crack_msg).await?;
+            // //ctx.defer().await;
+            // //msg.delete_after(ctx, Duration::from_secs(10)).await;
+            // let msg_or_reply =
+            //     MessageOrReplyHandle::from(ReplyHandleWrapper { handle: msg.into() });
+            // ctx.data().push_latest_msg(guild_id, msg_or_reply).await;
+            return Err(Box::new(my_err));
         },
     };
     set_global_handlers(ctx, call.clone(), guild_id, channel_id).await;

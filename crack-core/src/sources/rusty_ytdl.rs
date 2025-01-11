@@ -71,30 +71,30 @@ impl Default for RequestOptionsBuilder {
 /// Implementation of the builder for the [`RequestOptions`] struct.
 impl RequestOptionsBuilder {
     /// Creates a default builder.
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Default::default()
     }
 
     /// Sets the client for the builder, mutating.
-    pub fn set_client(mut self, client: reqwest::Client) -> Self {
+    #[must_use] pub fn set_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
         self
     }
 
     /// Sets the ipv6 block for the builder, mutating.
-    pub fn set_ipv6_block(mut self, ipv6_block: String) -> Self {
+    #[must_use] pub fn set_ipv6_block(mut self, ipv6_block: String) -> Self {
         self.ipv6_block = Some(ipv6_block);
         self
     }
 
     /// Sets the client for the builder, mutating.
-    pub fn set_default_ipv6_block(mut self) -> Self {
+    #[must_use] pub fn set_default_ipv6_block(mut self) -> Self {
         self.ipv6_block = Some("2001:4::/48".to_string());
         self
     }
 
     /// Builds the [`RequestOptions`] struct.
-    pub fn build(self) -> RequestOptions {
+    #[must_use] pub fn build(self) -> RequestOptions {
         RequestOptions {
             client: self.client,
             ipv6_block: self.ipv6_block,
@@ -109,7 +109,7 @@ pub async fn get_video_info(
     video_opts: VideoOptions,
 ) -> Result<VideoInfo, CrackedError> {
     let video = Video::new_with_options(&url, video_opts)?;
-    video.get_basic_info().await.map_err(|e| e.into())
+    video.get_basic_info().await.map_err(std::convert::Into::into)
 }
 
 impl<'a> RustyYoutubeSearch<'a> {
@@ -147,13 +147,7 @@ impl<'a> RustyYoutubeSearch<'a> {
             QueryType::VideoLink(ref url) => Some(url.clone()),
             _ => None,
         };
-        Ok(Self {
-            rusty_ytdl,
-            url,
-            query,
-            metadata,
-            video,
-        })
+        Ok(Self { rusty_ytdl, metadata, url, video, query })
     }
 
     /// Reset the search.
@@ -290,7 +284,7 @@ impl MediaSourceStream {
         let chunk = match opt_bytes {
             either::Left(Some(chunk)) => Some(chunk),
             either::Left(None) => return Ok(0), // End of stream
-            either::Right(_) => None,
+            either::Right(()) => None,
         };
 
         let mut buffer = self.buffer.write().await;

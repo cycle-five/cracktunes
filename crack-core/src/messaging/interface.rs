@@ -43,7 +43,7 @@ use std::time::Duration;
 // ------ Logging output ------ //
 
 /// Create and sends an log message as an embed.
-/// FIXME: The avatar_url won't always be available. How do we best handle this?
+/// FIXME: The `avatar_url` won't always be available. How do we best handle this?
 pub async fn build_log_embed<'a>(
     title: &'a str,
     description: &'a str,
@@ -67,7 +67,7 @@ pub async fn build_log_embed_thumb<'a>(
     avatar_url: &'a str,
 ) -> CrackedResult<CreateEmbed<'a>> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
+    let footer_str = format!("{guild_name} | {id} | {now_time_str}");
     let footer = CreateEmbedFooter::new(footer_str);
     let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
     Ok(CreateEmbed::default()
@@ -117,7 +117,7 @@ pub async fn send_log_embed(
 // ------ Queue Display / Interaction ------ //
 
 /// Converts a user id to a string, with special handling for autoplay.
-pub fn requesting_user_to_string(user_id: UserId) -> String {
+#[must_use] pub fn requesting_user_to_string(user_id: UserId) -> String {
     match user_id.get() {
         1 => "(auto)".to_string(),
         _ => user_id.mention().to_string(),
@@ -167,7 +167,9 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'_> {
-    let (description, thumbnail): (String, String) = if !tracks.is_empty() {
+    let (description, thumbnail): (String, String) = if tracks.is_empty() {
+        (QUEUE_NOTHING_IS_PLAYING.to_string(), String::new())
+    } else {
         let metadata = get_track_handle_metadata(tracks.first().unwrap())
             .await
             .unwrap();
@@ -177,7 +179,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
             Ok(url) => url.to_string(),
             Err(e) => {
                 tracing::error!("error parsing url: {:?}", e);
-                "".to_string()
+                String::new()
             },
         };
 
@@ -194,8 +196,6 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
             get_human_readable_timestamp(metadata.duration)
         );
         (description, thumbnail)
-    } else {
-        (QUEUE_NOTHING_IS_PLAYING.to_string(), "".to_string())
     };
 
     CreateEmbed::default()
@@ -238,10 +238,10 @@ pub async fn send_now_playing(
         None => CreateMessage::new().content("Nothing playing"),
     };
     tracing::warn!("sending message: {:?}", msg);
-    channel.send_message(&http, msg).await.map_err(|e| e.into())
+    channel.send_message(&http, msg).await.map_err(std::convert::Into::into)
 }
 
-/// Creates an embed from a CrackedMessage and sends it as an embed.
+/// Creates an embed from a `CrackedMessage` and sends it as an embed.
 pub fn build_now_playing_embed_metadata<'a>(
     requesting_user: Option<UserId>,
     cur_position: Option<Duration>,
@@ -257,18 +257,15 @@ pub fn build_now_playing_embed_metadata<'a>(
     let position = get_human_readable_timestamp(cur_position);
     let duration = get_human_readable_timestamp(metadata.duration);
 
-    let progress_field = (PROGRESS, format!(">>> {} / {}", position, duration), true);
+    let progress_field = (PROGRESS, format!(">>> {position} / {duration}"), true);
 
-    let channel_field: (&'static str, String, bool) = match requesting_user {
-        Some(user_id) => (
-            REQUESTED_BY,
-            format!(">>> {}", requesting_user_to_string(user_id)),
-            true,
-        ),
-        None => {
-            tracing::info!("No user id, we're autoplaying");
-            (REQUESTED_BY, ">>> N/A".to_string(), true)
-        },
+    let channel_field: (&'static str, String, bool) = if let Some(user_id) = requesting_user { (
+        REQUESTED_BY,
+        format!(">>> {}", requesting_user_to_string(user_id)),
+        true,
+    ) } else {
+        tracing::info!("No user id, we're autoplaying");
+        (REQUESTED_BY, ">>> N/A".to_string(), true)
     };
     let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
 
@@ -286,7 +283,7 @@ pub fn build_now_playing_embed_metadata<'a>(
                 .map(|x| x.to_string())
                 .map_err(|e| {
                     tracing::error!("error parsing url: {:?}", e);
-                    "".to_string()
+                    String::new()
                 })
                 .unwrap_or_default(),
         )
@@ -352,12 +349,11 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_>
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
-        .disabled(is_disabled)
-        .to_owned()
+        .disabled(is_disabled).clone()
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
+#[must_use] pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(Cow::Owned(vec![
         create_single_nav_btn("<<", cant_left),
@@ -430,8 +426,8 @@ pub async fn create_search_response<'ctx>(
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let fields = build_embed_fields(res).await;
     let author = CreateEmbedAuthor::new(name);
-    let title = format!("Search results for: {}", query);
-    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
+    let title = format!("Search results for: {query}");
+    let footer = CreateEmbedFooter::new(format!("{user_id} * {guild_id} * {now_time_str}"));
     let embed = CreateEmbed::new()
         .author(author)
         .title(title)
@@ -464,12 +460,12 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
     tracing::warn!("num elems: {:?}", elems.len());
     let mut fields = vec![];
     // let tmp = "".to_string();
-    for elem in elems.into_iter() {
+    for elem in elems {
         let title = elem.title.unwrap_or_default();
         let link = elem.source_url.unwrap_or_default();
         let duration = elem.duration.unwrap_or_default();
         let elem = format!("({}) - {}", link, duration_to_string(duration));
-        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
+        fields.push(EmbedField::new(format!("[{title}]"), elem, true));
     }
     fields
 }

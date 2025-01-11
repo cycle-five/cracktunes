@@ -17,7 +17,7 @@ enum QueryType {
 impl Display for QueryType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            QueryType::Url(url) => write!(f, "{}", url),
+            QueryType::Url(url) => write!(f, "{url}"),
             //QueryType::Search(query) => write!(f, "ytsearch5:{}", query),
         }
     }
@@ -57,7 +57,7 @@ impl MyYoutubeDl {
         }
     }
 
-    /// Gets all the URLs in a YouTube playlist.
+    /// Gets all the URLs in a `YouTube` playlist.
     pub async fn get_playlist(&mut self) -> Result<Vec<String>, CrackedError> {
         let ytdl_args = [
             // "-j",

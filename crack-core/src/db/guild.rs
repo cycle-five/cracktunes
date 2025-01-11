@@ -341,7 +341,7 @@ impl GuildEntity {
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
-    pub fn new_guild(id: i64, name: String) -> GuildEntity {
+    #[must_use] pub fn new_guild(id: i64, name: String) -> GuildEntity {
         GuildEntity {
             id,
             name,
@@ -447,7 +447,7 @@ impl GuildEntity {
         .execute(pool)
         .await
         .map(|_| ())
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Load the command settings for a guild.
@@ -471,7 +471,7 @@ impl GuildEntity {
                 .map(|row| (row.command.clone(), GenericPermissionSettings::from(row)))
                 .collect()
         })
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 }
 

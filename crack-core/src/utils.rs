@@ -123,7 +123,7 @@ pub async fn send_nonembed_reply(
 }
 
 #[cfg(not(tarpaulin_include))]
-/// Edit an embed response with a CrackedMessage.
+/// Edit an embed response with a `CrackedMessage`.
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
@@ -140,7 +140,7 @@ pub async fn edit_response_poise(
 }
 
 #[cfg(not(tarpaulin_include))]
-/// Edit an embed response from a CommandOrMessageInteraction with a str.
+/// Edit an embed response from a `CommandOrMessageInteraction` with a str.
 pub async fn edit_response_text(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
@@ -195,17 +195,15 @@ pub async fn yt_search_select(
     // Wait for the user to make a selection
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
-    let interaction = match m
-        .id
-        .collect_component_interactions(ctx.shard.clone())
-        .timeout(Duration::from_secs(60 * 3))
-        .await
+    let interaction = if let Some(x) =
+        m.id.collect_component_interactions(ctx.shard.clone())
+            .timeout(Duration::from_secs(60 * 3))
+            .await
     {
-        Some(x) => x,
-        None => {
-            m.reply(ctx.http(), "Timed out").await.unwrap();
-            return Err(CrackedError::Other("Timed out").into());
-        },
+        x
+    } else {
+        m.reply(ctx.http(), "Timed out").await.unwrap();
+        return Err(CrackedError::Other("Timed out").into());
     };
 
     // data.values contains the selected value from each select menus. We only have one menu,
@@ -232,8 +230,8 @@ pub async fn yt_search_select(
             ),
         )
         .await
-        .map_err(|e| e.into())
-        .map(|_| qt);
+        .map_err(std::convert::Into::into)
+        .map(|()| qt);
 
     channel_id.delete_message(ctx.http(), m.id, None).await?;
     res
@@ -395,6 +393,7 @@ unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
 
 impl TrackData {
+    #[must_use]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             user_id: Arc::new(RwLock::new(Some(UserId::new(1)))),
@@ -402,6 +401,7 @@ impl TrackData {
         })
     }
 
+    #[must_use]
     pub fn with_user_id(self: Arc<Self>, user_id: UserId) -> Arc<Self> {
         Arc::new(Self {
             user_id: Arc::new(RwLock::new(Some(user_id))),
@@ -409,6 +409,7 @@ impl TrackData {
         })
     }
 
+    #[must_use]
     pub fn with_metadata(self: Arc<Self>, md: AuxMetadata) -> Arc<Self> {
         Arc::new(Self {
             user_id: Arc::clone(&self.user_id),
@@ -523,7 +524,9 @@ pub async fn forget_queue_message(
 }
 
 pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
-    let content = if !playlists.is_empty() {
+    let content = if playlists.is_empty() {
+        PLAYLIST_LIST_EMPTY.to_string()
+    } else {
         let start_idx = EMBED_PAGE_SIZE * page;
         let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
 
@@ -541,8 +544,6 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
         }
 
         description
-    } else {
-        PLAYLIST_LIST_EMPTY.to_string()
     };
 
     CreateEmbed::default().title(PLAYLISTS).description(content)
@@ -555,6 +556,7 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
     //     )))
 }
 
+///  
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
@@ -667,6 +669,7 @@ pub async fn create_paged_embed(
 }
 
 /// Split a str into chunks
+#[must_use]
 pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> {
     string
         .chars()
@@ -677,6 +680,7 @@ pub fn split_string_into_chunks(string: &str, chunk_size: usize) -> Vec<String> 
 }
 
 /// Splits a String chunks of a given size, but tries to split on a newline if possible.
+#[must_use]
 pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let end = string.len();
@@ -724,10 +728,10 @@ pub fn create_page_getter_newline(
 }
 
 /// Build the strings used for the footer of an embed from a given url.
+#[must_use]
 pub fn build_footer_info(url: &str) -> (String, String, String) {
     let vanity = format!(
-        "[{}]({}) • [{}]({})",
-        VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
+        "[{VOTE_TOPGG_LINK_TEXT_SHORT}]({VOTE_TOPGG_URL}) • [{INVITE_LINK_TEXT_SHORT}]({INVITE_URL})",
     );
     let url_data = match Url::parse(url) {
         Ok(url_data) => url_data,
@@ -745,8 +749,8 @@ pub fn build_footer_info(url: &str) -> (String, String, String) {
     let domain = domain.replace("www.", "");
 
     (
-        format!("Streaming via {}", domain),
-        format!("https://www.google.com/s2/favicons?domain={}", domain),
+        format!("Streaming via {domain}"),
+        format!("https://www.google.com/s2/favicons?domain={domain}"),
         vanity,
     )
 }
@@ -754,6 +758,7 @@ pub fn build_footer_info(url: &str) -> (String, String, String) {
 use serenity::prelude::SerenityError;
 
 /// Check if a subdomian is from the same domain.
+#[must_use]
 pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
@@ -766,7 +771,7 @@ pub fn check_msg(result: Result<Message, Error>) {
 }
 
 #[cfg(not(tarpaulin_include))]
-/// Takes a Result ReplyHandle and logs the error if it's an Err.
+/// Takes a Result `ReplyHandle` and logs the error if it's an Err.
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
@@ -784,9 +789,9 @@ pub fn check_interaction(result: Result<(), Error>) {
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
     Message(Option<Box<MessageInteractionMetadata>>),
-    //Message(Option<Box<MessageInteraction>>),
 }
 
+#[must_use]
 pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => app_ctx.interaction.clone().into(),
@@ -800,6 +805,7 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 }
 
 #[allow(deprecated)]
+#[must_use]
 pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
         CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
@@ -845,6 +851,7 @@ pub fn count_command(command: &str, is_prefix: bool) {
 }
 
 /// Get the guild id from an interaction.
+#[must_use]
 pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
     match interaction {
         Interaction::Command(int) => int.guild_id,
@@ -857,20 +864,20 @@ pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
 }
 
 /// Convert a duration to a string.
+#[must_use]
 pub fn duration_to_string(duration: Duration) -> String {
     let mut secs = duration.as_secs();
     let hours = secs / 3600;
     secs %= 3600;
     let minutes = secs / 60;
     secs %= 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+    format!("{hours:02}:{minutes:02}:{secs:02}")
 }
 
 #[cfg(test)]
 mod test {
 
     use ::serenity::{all::Button, builder::CreateActionRow};
-
     use crate::messaging::interface::create_single_nav_btn;
     use crack_types::to_fixed;
 
@@ -909,7 +916,7 @@ mod test {
     fn test_build_single_nav_btn() {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
-        println!("s: {}", s);
+        println!("s: {s}");
         let btn = serde_json::from_str::<Button>(&*s).unwrap();
 
         assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
@@ -923,7 +930,7 @@ mod test {
             let mut btns = Vec::new();
             for btn in nav_btns.iter() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
-                println!("s: {}", s);
+                println!("s: {s}");
                 let btn = serde_json::from_str::<Button>(&s).unwrap();
                 btns.push(btn);
             }

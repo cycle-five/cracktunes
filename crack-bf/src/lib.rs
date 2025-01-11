@@ -247,7 +247,7 @@ mod tests {
 
         let res = bf.run_async(input, &mut output).await;
         match res {
-            Ok(n) => println!("Wooooo! {}", n),
+            Ok(n) => println!("Wooooo! {n}"),
             Err(_) => {
                 println!("Boooo!");
             },
@@ -268,7 +268,7 @@ mod tests {
         let stdout = std::io::stdout();
         let mut bf = BrainfuckProgram::new(program);
         if let Err(_) = bf.run(stdin, stdout) {
-            assert!(false)
+            assert!(false);
         }
     }
 
@@ -296,7 +296,7 @@ mod tests {
 
         let mut bf = BrainfuckProgram::new(program);
         if let Err(_) = bf.run_async(input, output).await {
-            assert!(false)
+            assert!(false);
         }
     }
 }

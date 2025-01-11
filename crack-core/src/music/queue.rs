@@ -87,7 +87,7 @@ pub async fn queue_resolved_track_back_old(
 }
 
 /// Data needed to queue a track.
-/// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
+/// TODO: This is mostly become redundant with `ResolvedTrack`, need to clean this up.
 pub struct TrackReadyData {
     pub source: SongbirdInput,
     pub metadata: NewAuxMetadata,
@@ -224,12 +224,12 @@ pub async fn queue_track_back(
         queue_resolved_track_back(call, resolved, http_utils::get_client_old().clone()).await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
-        r#"
+        r"
             after_ready: {:?}
             after_send: {:?}
             after_queue: {:?}
             total: {:?}
-        "#,
+        ",
         after_ready.duration_since(begin),
         after_send.duration_since(after_ready),
         after_queue.duration_since(after_send),
@@ -306,7 +306,7 @@ pub async fn queue_keyword_list_back(
             ))),
         )
         .await?;
-        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?
+        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?;
     }
     Ok(())
 }
@@ -336,7 +336,7 @@ pub async fn queue_vec_query_type(
 use crate::http_utils;
 use crack_types::YoutubeDl;
 /// Queue a list of queries to be played with a given offset.
-/// N.B. The offset must be 0 < offset < queue.len() + 1
+/// N.B. The offset must be 0 < offset < `queue.len()` + 1
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_query_list_offset(
     ctx: CrackContext<'_>,
@@ -365,7 +365,7 @@ pub async fn queue_query_list_offset(
     let mut tracks = Vec::new();
     for query in queries {
         let resolved = ctx.data().ct_client.resolve_track(query).await?;
-        tracks.push(resolved)
+        tracks.push(resolved);
     }
     // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
     // for query in queries {
@@ -438,15 +438,15 @@ pub fn get_mode(
         } else {
             Mode::End
         };
-        if mode != Mode::End {
-            let s = msg.clone().unwrap_or_default();
-            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
-            (mode, FixedString::from_str(s2).expect("wtf?"))
-        } else {
+        if mode == Mode::End {
             (
                 Mode::End,
                 FixedString::from_str(&msg.unwrap_or_default()).expect("wtf?"),
             )
+        } else {
+            let s = msg.clone().unwrap_or_default();
+            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
+            (mode, FixedString::from_str(s2).expect("wtf?"))
         }
     } else {
         let mode = match opt_mode
@@ -490,7 +490,7 @@ pub fn get_msg(
             .map(|s| s.replace("query_or_url:", ""))
             .unwrap_or_default()
             + " "
-            + &step1.unwrap_or("".to_string()))
+            + &step1.unwrap_or_default())
             .trim()
         {
             "" => None,

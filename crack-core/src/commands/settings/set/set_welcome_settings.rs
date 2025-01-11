@@ -113,10 +113,7 @@ pub async fn set_welcome_settings(
     };
     match res {
         Some(welcome_settings) => {
-            match &data.database_pool.clone() {
-                Some(pool) => welcome_settings.save(pool, guild_id.get()).await?,
-                None => tracing::warn!("No database pool to save welcome settings"),
-            }
+            if let Some(pool) = &data.database_pool.clone() { welcome_settings.save(pool, guild_id.get()).await? } else { tracing::warn!("No database pool to save welcome settings") }
             Ok(welcome_settings.to_string())
         },
         None => Err(CrackedError::Other("Welcome settings failed to update?!?")),

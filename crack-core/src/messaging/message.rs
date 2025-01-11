@@ -11,7 +11,26 @@ use std::time::Duration;
 
 //use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
 use crate::utils::duration_to_string;
-use crack_types::{errors::CrackedError, messaging::messages::*};
+use crack_types::{
+    errors::CrackedError,
+    messaging::messages::{
+        ADDED_QUEUE, AUTHORIZED, AUTOPAUSE_OFF, AUTOPAUSE_ON, AUTOPLAY_OFF, AUTOPLAY_ON, AUTO_ROLE,
+        BANNED, BUG, BUG_END, CATEGORY_CREATED, CHANNEL_DELETED, CHANNEL_SIZE_SET, CLEANED,
+        CLEARED, COINFLIP, DEAFENED, DEAFENED_FAIL, DEAUTHORIZED, ERROR, FAIL_INVALID_IP,
+        GRABBED_NOTICE, INVITE_LINK_TEXT, INVITE_TEXT, INVITE_URL, IP_DETAILS, JOINING, KICKED,
+        LEAVING, LOOP_DISABLED, LOOP_ENABLED, MUTED, NO_AUTO_ROLE, OLD_VOLUME, ONETWOFT,
+        OWNERS_ONLY, PAGINATION_COMPLETE, PASSWORD_PWNED, PASSWORD_SAFE, PAUSED,
+        PHONE_NUMBER_INFO_ERROR, PLAYLIST_ADD_FAILURE, PLAYLIST_ADD_SUCCESS, PLAYLIST_CREATED,
+        PLAYLIST_TRACKS, PLAY_ALL_FAILED, PLAY_FAILED_BLOCKED_DOMAIN, PLAY_LOG, PLAY_PLAYLIST,
+        PLAY_QUEUING, PREFIXES, PREMIUM, PREMIUM_PLUG, QUEUE_NOW_PLAYING, REMOVED_QUEUE_MULTIPLE,
+        RESUMED, ROLE_CREATED, ROLE_DELETED, ROLE_NOT_FOUND, SCAN_QUEUED, SEARCHING, SEEKED,
+        SEEK_FAIL, SETTINGS_RELOADED, SHUFFLED_SUCCESS, SKIPPED, SKIPPED_ALL, SKIPPED_TO,
+        SKIP_VOTE_EMOJI, SKIP_VOTE_MISSING, SKIP_VOTE_USER, SONG_MOVED, SONG_MOVED_FROM,
+        SONG_MOVED_TO, STOPPED, SUBCOMMAND_NOT_FOUND, TEXT_CHANNEL_CREATED, TIMEOUT, UNBANNED,
+        UNDEAFENED, UNDEAFENED_FAIL, UNMUTED, UNTIL, VERSION, VERSION_LATEST, VERSION_LATEST_HASH,
+        VOICE_CHANNEL_CREATED, VOLUME, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_VOTED, WAYBACK_SNAPSHOT,
+    },
+};
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -233,7 +252,7 @@ pub enum CrackedMessage {
 
 impl CrackedMessage {
     fn discriminant(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
+        unsafe { *std::ptr::from_ref::<Self>(self).cast::<u8>() }
     }
 }
 
@@ -249,8 +268,8 @@ impl Display for CrackedMessage {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
             Self::AutoRole(role_id) => f.write_str(&format!("{} {}", AUTO_ROLE, role_id.mention())),
-            Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
-            Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
+            Self::BugNone(variable) => f.write_str(&format!("{BUG} {variable} {BUG_END}")),
+            Self::InvalidIP(ip) => f.write_str(&format!("{ip} {FAIL_INVALID_IP}")),
             Self::InviteLink => {
                 f.write_str(&format!("{INVITE_TEXT} [{INVITE_LINK_TEXT}]({INVITE_URL})",))
             },
@@ -421,26 +440,17 @@ impl Display for CrackedMessage {
             Self::UserMuted { mention, id } => f.write_str(&format!("{MUTED}\n{mention} {id}")),
             Self::UserUnmuted { mention, id } => f.write_str(&format!("{UNMUTED}\n{mention} {id}")),
             Self::Version { current, hash } => f.write_str(&format!(
-                "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}tree/{})",
-                VERSION,
-                current,
-                RELEASES_LINK,
-                current,
-                VERSION_LATEST,
-                RELEASES_LINK,
-                VERSION_LATEST_HASH,
-                REPO_LINK,
-                hash,
+                "{VERSION} [{current}]({RELEASES_LINK}/tag/v{current})\n{VERSION_LATEST}({RELEASES_LINK}/latest)\n{VERSION_LATEST_HASH}({REPO_LINK}tree/{hash})",
             )),
             Self::VoiceChannelCreated { channel_name } => {
-                f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
+                f.write_str(&format!("{VOICE_CHANNEL_CREATED} {channel_name}"))
             },
             Self::VoteTopggVoted => f.write_str(VOTE_TOPGG_VOTED),
             Self::VoteTopggNotVoted => f.write_str(VOTE_TOPGG_NOT_VOTED),
             Self::Volume { vol, old_vol } => {
-                f.write_str(&format!("{}: {}\n{}: {}", VOLUME, vol, OLD_VOLUME, old_vol))
+                f.write_str(&format!("{VOLUME}: {vol}\n{OLD_VOLUME}: {old_vol}"))
             },
-            Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::WaybackSnapshot { url } => f.write_str(&format!("{WAYBACK_SNAPSHOT} {url}")),
             Self::WelcomeSettings(settings) => f.write_str(settings),
         }
     }

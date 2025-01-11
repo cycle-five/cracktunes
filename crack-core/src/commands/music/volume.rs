@@ -39,70 +39,61 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
 
     tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            tracing::error!("guild_id is None");
-            let embed =
-                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            let _ = send_embed_response_poise(ctx, embed).await?;
-            return Ok(());
-        },
+    let guild_id = if let Some(id) = ctx.guild_id() { id } else {
+        tracing::error!("guild_id is None");
+        let embed =
+            CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
+        let _ = send_embed_response_poise(ctx, embed).await?;
+        return Ok(());
     };
     tracing::error!("guild_id: {:?}", guild_id);
     let embed = {
         tracing::error!("embed");
         let manager = ctx.data().songbird.clone();
-        let call = match manager.get(guild_id) {
-            Some(call) => call,
-            None => {
-                tracing::error!("Can't get call from manager.");
-                let embed =
-                    CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-                let _ = send_embed_response_poise(ctx, embed).await?;
-                return Ok(());
-            },
+        let call = if let Some(call) = manager.get(guild_id) { call } else {
+            tracing::error!("Can't get call from manager.");
+            let embed =
+                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
+            let _ = send_embed_response_poise(ctx, embed).await?;
+            return Ok(());
         };
 
         let handler = call.lock().await;
 
         let track_handle: Option<TrackHandle> = handler.queue().current();
 
-        let to_set = match level {
-            Some(arg) => Some(arg as isize),
-            None => {
-                let volume_track = match track_handle {
-                    Some(handle) => handle.get_info().await.unwrap().volume,
-                    None => 0.1,
-                };
-                let prefix = Some(&prefix).map(|s| s.as_str());
-                let name = get_guild_name(ctx.serenity_context(), guild_id)
-                    .await
-                    .map(|s| s.to_string());
-                ctx.data()
-                    .get_or_create_guild_settings(guild_id, name, prefix)
-                    .await;
+        let to_set = if let Some(arg) = level { Some(arg as isize) } else {
+            let volume_track = match track_handle {
+                Some(handle) => handle.get_info().await.unwrap().volume,
+                None => 0.1,
+            };
+            let prefix = Some(std::string::String::as_str(&prefix));
+            let name = get_guild_name(ctx.serenity_context(), guild_id)
+                .await
+                .map(|s| s.to_string());
+            ctx.data()
+                .get_or_create_guild_settings(guild_id, name, prefix)
+                .await;
 
-                let guild_settings = ctx
-                    .get_guild_settings(guild_id)
-                    .await
-                    .ok_or(CrackedError::NoGuildSettings)?;
+            let guild_settings = ctx
+                .get_guild_settings(guild_id)
+                .await
+                .ok_or(CrackedError::NoGuildSettings)?;
 
-                let asdf = guild_settings.volume;
+            let asdf = guild_settings.volume;
 
-                tracing::warn!(
-                    "asdf: {} guild_settings: {:?}",
-                    format!("{:?}", guild_settings).white(),
-                    asdf,
-                );
-                let embed = CreateEmbed::default().description(format!(
-                    "Current volume is {:.0}% in settings, {:.0}% in track.",
-                    guild_settings.volume * 100.0,
-                    volume_track * 100.0
-                ));
-                let _ = send_embed_response_poise(ctx, embed).await?;
-                return Ok(());
-            },
+            tracing::warn!(
+                "asdf: {} guild_settings: {:?}",
+                format!("{guild_settings:?}").white(),
+                asdf,
+            );
+            let embed = CreateEmbed::default().description(format!(
+                "Current volume is {:.0}% in settings, {:.0}% in track.",
+                guild_settings.volume * 100.0,
+                volume_track * 100.0
+            ));
+            let _ = send_embed_response_poise(ctx, embed).await?;
+            return Ok(());
         };
 
         let name = get_guild_name(ctx.serenity_context(), guild_id).await;
@@ -122,25 +113,22 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
 
                     tracing::warn!(
                         "guild_settings: {:?}",
-                        format!("{:?}", guild_settings).white(),
+                        format!("{guild_settings:?}").white(),
                     );
 
                     guild_settings
                 });
             tracing::warn!(
                 "guild_settings: {}",
-                format!("{:?}", guild_settings).white(),
+                format!("{guild_settings:?}").white(),
             );
             guild_settings.old_volume
         };
 
         let embed = create_volume_embed(old_vol, new_vol);
-        let track_handle: TrackHandle = match track_handle {
-            Some(handle) => handle,
-            None => {
-                let _ = send_embed_response_poise(ctx, embed).await?;
-                return Ok(());
-            },
+        let track_handle: TrackHandle = if let Some(handle) = track_handle { handle } else {
+            let _ = send_embed_response_poise(ctx, embed).await?;
+            return Ok(());
         };
 
         track_handle.set_volume(new_vol).unwrap();
@@ -154,7 +142,7 @@ pub fn create_volume_embed<'a>(old: f32, new: f32) -> CreateEmbed<'a> {
     CreateEmbed::default().description(create_volume_desc(old, new))
 }
 
-pub fn create_volume_desc(old: f32, new: f32) -> String {
+#[must_use] pub fn create_volume_desc(old: f32, new: f32) -> String {
     format!(
         "Volume changed from {:.0}% to {:.0}%",
         old * 100.0,

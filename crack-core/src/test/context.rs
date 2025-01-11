@@ -34,6 +34,8 @@ impl ShardManagerOptionsBuilder {
         })
     }
 
+    /// Get the current builder's options.
+    #[must_use]
     pub fn build(self) -> ShardManagerOptions {
         self.0
     }

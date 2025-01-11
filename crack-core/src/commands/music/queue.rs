@@ -59,30 +59,27 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction_new(&ctx) {
-        Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
-            interaction
-                .create_response(
-                    ctx.http(),
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .embed(create_queue_embed(&tracks, 0).await)
-                            .components(create_nav_btns(0, num_pages)),
-                    ),
-                )
-                .await?;
-            interaction
-                .get_response(&ctx.serenity_context().http)
-                .await?
-        },
-        _ => {
-            let create_reply = CreateReply::default()
-                .embed(create_queue_embed(&tracks, 0).await)
-                .components(create_nav_btns(0, num_pages));
+    let mut message = if let Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) = get_interaction_new(&ctx) {
+        interaction
+            .create_response(
+                ctx.http(),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .embed(create_queue_embed(&tracks, 0).await)
+                        .components(create_nav_btns(0, num_pages)),
+                ),
+            )
+            .await?;
+        interaction
+            .get_response(&ctx.serenity_context().http)
+            .await?
+    } else {
+        let create_reply = CreateReply::default()
+            .embed(create_queue_embed(&tracks, 0).await)
+            .components(create_nav_btns(0, num_pages));
 
-            let reply = ctx.send(create_reply).await?;
-            reply.into_message().await?
-        },
+        let reply = ctx.send(create_reply).await?;
+        reply.into_message().await?
     };
 
     ctx.data().add_msg_to_cache(guild_id, message.clone()).await;

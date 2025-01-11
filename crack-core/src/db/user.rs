@@ -20,14 +20,14 @@ pub struct User {
     pub last_seen: chrono::NaiveDate,
 }
 
-/// UserTrace is a struct that represents a trace of a user's activity.
+/// `UserTrace` is a struct that represents a trace of a user's activity.
 pub struct UserTrace {
     pub user_id: i64,
     pub ts: chrono::NaiveDateTime,
     pub whence: Option<String>,
 }
 
-/// UserVote is a struct that represents a vote from a user for the bot on a toplist site.
+/// `UserVote` is a struct that represents a vote from a user for the bot on a toplist site.
 #[derive(sqlx::FromRow)]
 pub struct UserVote {
     pub id: i64,
@@ -58,7 +58,7 @@ impl User {
         .map(|_| ())
     }
 
-    /// Get a user from the database by user_id.
+    /// Get a user from the database by `user_id`.
     pub async fn get_user(pool: &PgPool, user_id: i64) -> Option<User> {
         let result = sqlx::query_as!(User, r#"SELECT * FROM public.user WHERE id = $1"#, user_id)
             .fetch_optional(pool)
@@ -67,7 +67,7 @@ impl User {
         match result {
             Ok(user) => Some(user?),
             Err(e) => {
-                println!("Failed to get user: {}", e);
+                println!("Failed to get user: {e}");
                 None
             },
         }
@@ -106,7 +106,7 @@ impl User {
     }
 }
 
-/// Implementations for the UserVote db actions.
+/// Implementations for the `UserVote` db actions.
 impl UserVote {
     /// Insert a user vote into the database.
     pub async fn insert_user_vote(

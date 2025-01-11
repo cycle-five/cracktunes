@@ -28,7 +28,7 @@ pub async fn auto_role_id(
     let auto_role_id = match auto_role_id_str.parse::<u64>() {
         Ok(x) => x,
         Err(e) => {
-            ctx.say(format!("Failed to parse role id: {}", e)).await?;
+            ctx.say(format!("Failed to parse role id: {e}")).await?;
             return Ok(());
         },
     };
@@ -72,8 +72,7 @@ pub async fn auto_role_internal(ctx: Context<'_>, auto_role: RoleId) -> Result<(
 
     //ctx.say(format!("Auto role set to {}", mention)).await?;
     let params = SendMessageParams::new(CrackedMessage::Other(format!(
-        "Auto role set to {}",
-        mention
+        "Auto role set to {mention}"
     )));
     ctx.send_message(params)
         .await

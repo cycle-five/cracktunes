@@ -47,7 +47,7 @@ pub async fn unban_internal(ctx: Context<'_>, user_id: UserId) -> CommandResult 
     let user = user_id.to_user(&ctx).await?;
     let mention = user.mention();
     let msg = if let Err(e) = guild_id.unban(ctx.http(), user_id, None).await {
-        CrackedMessage::Other(format!("Failed to unban user: {}", e))
+        CrackedMessage::Other(format!("Failed to unban user: {e}"))
     } else {
         CrackedMessage::UserUnbanned {
             id: user_id,

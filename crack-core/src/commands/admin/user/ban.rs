@@ -39,7 +39,7 @@ pub async fn ban(
         // Handle error, send error message
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Failed to ban user: {}", e)),
+            CrackedMessage::Other(format!("Failed to ban user: {e}")),
             true,
         )
         .await?;

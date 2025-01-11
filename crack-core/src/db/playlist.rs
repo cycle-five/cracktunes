@@ -11,7 +11,7 @@ pub struct Playlist {
     pub privacy: String,
 }
 
-/// PlaylistTrack db structure.
+/// `PlaylistTrack` db structure.
 #[derive(Debug, Default)]
 pub struct PlaylistTrack {
     pub id: i64,
@@ -207,7 +207,7 @@ impl Playlist {
         )
         .fetch_all(pool)
         .await
-        .map(|r| r.into_iter().map(|r| r.into()).collect())
+        .map(|r| r.into_iter().map(std::convert::Into::into).collect())
     }
 
     /// Gets the metadata for a playlist for a user by playlist name.

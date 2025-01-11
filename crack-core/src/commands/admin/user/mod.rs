@@ -35,6 +35,6 @@ pub async fn user(
         .map_err(Into::into)
 }
 
-pub fn user_commands() -> [Command; 4] {
+#[must_use] pub fn user_commands() -> [Command; 4] {
     [ban(), unban(), deafen(), undeafen()]
 }

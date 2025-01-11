@@ -41,8 +41,7 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let reply_handle = ctx
         .reply(format!(
-            "{}\n{} [{}]({})",
-            msg_str, VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
+            "{msg_str}\n{VOTE_TOPGG_TEXT} [{VOTE_TOPGG_LINK_TEXT}]({VOTE_TOPGG_URL})"
         ))
         .await?;
 
@@ -84,8 +83,7 @@ pub async fn has_voted_bot_id(
     user_id: u64,
 ) -> Result<bool, CrackedError> {
     let url = format!(
-        "https://top.gg/api/bots/{}/check?userId={}",
-        bot_id, user_id
+        "https://top.gg/api/bots/{bot_id}/check?userId={user_id}"
     );
     let token = std::env::var("TOPGG_TOKEN").map_err(|_| CrackedError::InvalidTopGGToken)?;
     let response = reqwest_client
@@ -93,7 +91,7 @@ pub async fn has_voted_bot_id(
         .header("Authorization", token)
         .send()
         .await?;
-    println!("response: {:?}", response);
+    println!("response: {response:?}");
     let response = response.json::<CheckResponse>().await?;
     response
         .voted
@@ -139,7 +137,7 @@ mod test {
         if has_voted.is_ok() {
             assert!(!has_voted.unwrap());
         } else {
-            println!("{:?}", has_voted)
+            println!("{has_voted:?}")
         }
     }
 }

@@ -81,15 +81,8 @@ async fn check_and_enforce_cams(
     let kick_conf = config_map
         .get(&cur_cam.chan_id.get())
         .ok_or(CrackedError::Other("Channel not found"))?;
-    tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
-    if cur_cam.status != new_cam.status {
-        let cam_event = CamPollEvent {
-            last_change: Instant::now(),
-            ..*new_cam
-        };
-
-        cam_states.insert(cam_event.key(), cam_event);
-    } else {
+    tracing::trace!("kick_conf: {}", format!("{kick_conf:?}").blue());
+    if cur_cam.status == new_cam.status {
         tracing::trace!("cur: {}, prev: {}", cur_cam.status, new_cam.status);
         tracing::trace!(
             "elapsed: {:?}, timeout: {}",
@@ -121,6 +114,13 @@ async fn check_and_enforce_cams(
                     .await;
             }
         }
+    } else {
+        let cam_event = CamPollEvent {
+            last_change: Instant::now(),
+            ..*new_cam
+        };
+
+        cam_states.insert(cam_event.key(), cam_event);
     };
     Ok(())
 }
@@ -191,18 +191,15 @@ async fn check_camera_status(
     guild_id: GuildId,
 ) -> (Vec<CamPollEvent>, String) {
     let (voice_states, guild_name): (ExtractMap<UserId, VoiceState>, String) =
-        match guild_id.to_guild_cached(&ctx.cache.clone()) {
-            Some(guild) => (guild.voice_states.clone(), guild.name.to_string()),
-            None => {
-                tracing::error!("Guild not found {guild_id}.");
-                return (vec![], "".to_string());
-            },
+        if let Some(guild) = guild_id.to_guild_cached(&ctx.cache.clone()) { (guild.voice_states.clone(), guild.name.to_string()) } else {
+            tracing::error!("Guild not found {guild_id}.");
+            return (vec![], String::new());
         };
 
     let mut cams = Vec::new();
     let mut output: String = format!("{}\n", guild_name.bright_green());
 
-    for voice_state in voice_states.iter() {
+    for voice_state in &voice_states {
         let user_id = voice_state.extract_key();
         let user = user_id.to_user(ctx.clone()).await;
         if let Some(chan_id) = voice_state.channel_id {
@@ -221,8 +218,8 @@ async fn check_camera_status(
                 },
                 Err(err) => {
                     tracing::error!(
-                        r#"Error getting channel name for channel
-                        {chan_id} in guild {guild_name}: {err}"#,
+                        r"Error getting channel name for channel
+                        {chan_id} in guild {guild_name}: {err}",
                     );
                     "Missing Access".to_string()
                 },
@@ -269,7 +266,7 @@ pub async fn cam_status_loop(
             .map(|x| (x.chan_id, x))
             .collect::<HashMap<_, _>>();
 
-        tracing::trace!("conf_guilds: {}", format!("{:?}", conf_guilds).green());
+        tracing::trace!("conf_guilds: {}", format!("{conf_guilds:?}").green());
         loop {
             // We clone Context again here, because Arc is owned, so it moves to the
             // new function.
@@ -289,7 +286,7 @@ pub async fn cam_status_loop(
             let mut new_cams = Vec::<&CamPollEvent>::new();
             //let mut status_changes = Vec::<CamStatusChangeEvent>::new();
 
-            for new_cam in new_cams.iter_mut() {
+            for new_cam in &mut new_cams {
                 if let Some(status) = cur_cams.get(&new_cam.key()) {
                     let _ =
                         check_and_enforce_cams(*status, new_cam, &mut cur_cams, &channels, &ctx)

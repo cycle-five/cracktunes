@@ -71,7 +71,7 @@ pub async fn create_skip_response(
         .await?
         .into_message()
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
 }
 
 /// Downvote and skip song causing it to *not* be used in music recommendations.

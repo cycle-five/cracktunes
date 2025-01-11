@@ -59,7 +59,7 @@ pub async fn reload(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn commands() -> Vec<crate::Command> {
+#[must_use] pub fn commands() -> Vec<crate::Command> {
     vec![
         settings(),
         set::set(),
@@ -70,7 +70,7 @@ pub fn commands() -> Vec<crate::Command> {
     //vec![settings()].into_iter().collect()
 }
 
-pub fn sub_commands() -> Vec<crate::Command> {
+#[must_use] pub fn sub_commands() -> Vec<crate::Command> {
     vec![]
         .into_iter()
         .chain(set::commands())

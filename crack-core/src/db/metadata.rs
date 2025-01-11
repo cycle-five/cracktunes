@@ -27,36 +27,36 @@ impl Display for Metadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
         if let Some(artist) = &self.artist {
-            s.push_str(&format!("{} - ", artist));
+            s.push_str(&format!("{artist} - "));
         }
         if let Some(title) = &self.title {
-            s.push_str(&format!("{} - ", title));
+            s.push_str(&format!("{title} - "));
         }
         if let Some(album) = &self.album {
-            s.push_str(&format!("{} - ", album));
+            s.push_str(&format!("{album} - "));
         }
         if let Some(track) = &self.track {
-            s.push_str(&format!("{} - ", track));
+            s.push_str(&format!("{track} - "));
         }
         if let Some(date) = &self.date {
-            s.push_str(&format!("{} - ", date));
+            s.push_str(&format!("{date} - "));
         }
         if let Some(channel) = &self.channel {
-            s.push_str(&format!("{} - ", channel));
+            s.push_str(&format!("{channel} - "));
         }
         if let Some(channels) = &self.channels {
-            s.push_str(&format!("{} - ", channels));
+            s.push_str(&format!("{channels} - "));
         }
         if let Some(sample_rate) = &self.sample_rate {
-            s.push_str(&format!("{} - ", sample_rate));
+            s.push_str(&format!("{sample_rate} - "));
         }
         if let Some(source_url) = &self.source_url {
-            s.push_str(&format!("{} - ", source_url));
+            s.push_str(&format!("{source_url} - "));
         }
         if let Some(thumbnail) = &self.thumbnail {
-            s.push_str(&format!("{} - ", thumbnail));
+            s.push_str(&format!("{thumbnail} - "));
         }
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -156,7 +156,7 @@ impl Metadata {
         .fetch_optional(pool)
         .await
         .map_err(CrackedError::SQLX)
-        .map(|r| r.map(|r| r.into()))
+        .map(|r| r.map(std::convert::Into::into))
         // match r {
         //     Some(r) => Ok(Some(r.into())),
         //     None => Ok(None),
@@ -244,12 +244,10 @@ pub fn aux_metadata_to_db_structures(
     let channels = metadata.channels;
     let start_time = metadata
         .start_time
-        .map(|d| d.as_secs_f64() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs_f64() as i64);
     let duration = metadata
         .duration
-        .map(|d| d.as_secs_f64() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs_f64() as i64);
     let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
     let thumbnail = metadata.thumbnail.clone();
     let source_url = metadata.source_url.clone();
@@ -262,7 +260,7 @@ pub fn aux_metadata_to_db_structures(
         album,
         date,
         channel,
-        channels: channels.map(|x| x as i16),
+        channels: channels.map(i16::from),
         start_time,
         duration,
         sample_rate,

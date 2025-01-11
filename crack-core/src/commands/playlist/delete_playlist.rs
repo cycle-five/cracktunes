@@ -24,8 +24,7 @@ pub async fn delete_playlist(ctx: Context<'_>, playlist_id: i32) -> Result<(), E
     send_reply(
         &ctx,
         CrackedMessage::Other(format!(
-            "Successfully deleted playlist with ID: {}",
-            playlist_id
+            "Successfully deleted playlist with ID: {playlist_id}"
         )),
         true,
     )

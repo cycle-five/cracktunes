@@ -47,7 +47,7 @@ fn main() -> Result<(), Error> {
         #[cfg(feature = "crack-tracing")]
         init_telemetry("").await;
         match main_async(event_log_async).await {
-            Ok(_) => (),
+            Ok(()) => (),
             Err(error) => {
                 tracing::error!("Error: {:?}", error);
             },
@@ -80,7 +80,7 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     let data_arc = client.data::<crack_core::Data>().clone();
     let guild_settings_map = data_arc.guild_settings_map.read().await.clone();
 
-    for (guild_id, guild_settings) in guild_settings_map.iter() {
+    for (guild_id, guild_settings) in &guild_settings_map {
         tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
     }
 
@@ -125,12 +125,11 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
 /// Load an environment variable
 fn load_key(k: String) -> Result<String, Error> {
-    match env::var(&k) {
-        Ok(token) => Ok(token),
-        Err(_) => {
-            tracing::warn!("{} not found in environment.", &k);
-            Err(format!("{} not found in environment.", &k).into())
-        },
+    if let Ok(token) = env::var(&k) {
+        Ok(token)
+    } else {
+        tracing::warn!("{} not found in environment.", &k);
+        Err(format!("{} not found in environment.", &k).into())
     }
 }
 
@@ -203,7 +202,7 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
             tracing_subscriber::fmt::layer().with_writer(file)
         },
         Err(error) => {
-            println!("warning: no log file available for output! {:?}", error);
+            println!("warning: no log file available for output! {error:?}");
             // let sink: std::io::Sink = std::io::sink();
             // let writer = Arc::new(sink);
             let sink = std::fs::File::open("/dev/null").unwrap();
@@ -258,6 +257,7 @@ const SERVICE_NAME: &str = "crack-tunes";
 // #[tracing::instrument]
 /// Initialize logging and tracing.
 #[cfg(feature = "crack-tracing")]
+#[allow(clippy::unused_async)]
 pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Create a gRPC exporter
     // let exporter = opentelemetry_otlp::new_exporter()
@@ -306,7 +306,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     let x = x.with(JsonStorageLayer).with(formatting_layer);
 
     #[cfg(any(feature = "crack-tracing", feature = "crack-telemetry"))]
-    x.init()
+    x.init();
 }
 
 #[cfg(test)]
@@ -339,9 +339,8 @@ mod test {
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
         let result = load_key(key);
-        match result {
-            Ok(token) => assert!(!token.is_empty()),
-            Err(_error) => assert!(true),
+        if let Ok(token) = result {
+            assert!(!token.is_empty());
         }
     }
 

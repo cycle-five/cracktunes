@@ -186,13 +186,13 @@ mod tests {
 
         let _ = container.get_handle();
 
-        println!("{:?}", container);
+        println!("{container:?}");
         // To use ReplyHandle:
         // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
         let wrapped_handle = ReplyHandleWrapperSimple;
         let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
         let container = Container::new(handle);
 
-        println!("{:?}", container);
+        println!("{container:?}");
     }
 }

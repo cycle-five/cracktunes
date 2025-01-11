@@ -53,7 +53,7 @@ pub use volume::*;
 pub use vote::*;
 pub use voteskip::*;
 
-pub fn music_commands() -> Vec<crate::Command> {
+#[must_use] pub fn music_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {
         vec![
             autopause(),
@@ -93,7 +93,7 @@ pub fn music_commands() -> Vec<crate::Command> {
 }
 
 /// Get the game commands.
-pub fn game_commands() -> Vec<crate::Command> {
+#[must_use] pub fn game_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {
         vec![coinflip(), rolldice()]
     } else {

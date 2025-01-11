@@ -87,7 +87,7 @@ pub struct CamKickConfig {
     pub msg_on_dc: bool,
 }
 
-/// Default for the CamKickConfig.
+/// Default for the `CamKickConfig`.
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
@@ -103,7 +103,7 @@ impl Default for CamKickConfig {
     }
 }
 
-/// Display impl for CamKickConfig
+/// Display impl for `CamKickConfig`
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
@@ -115,7 +115,7 @@ impl Display for CamKickConfig {
         result.push_str(&format!("msg_on_mute:   {}\n", self.msg_on_mute));
         result.push_str(&format!("msg_on_dc:     {}\n", self.msg_on_dc));
 
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
@@ -200,14 +200,13 @@ impl Display for BotConfig {
         result.push_str(&format!(
             "prefix: {}",
             self.prefix
-                .as_ref()
-                .cloned()
+                .clone()
                 .unwrap_or(DEFAULT_PREFIX.to_string())
         ));
         result.push_str(&format!("credentials: {:?}\n", self.credentials.is_some()));
         result.push_str(&format!("database_url: {:?}\n", self.database_url));
         result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
@@ -217,19 +216,18 @@ impl BotConfig {
         self
     }
 
-    pub fn get_prefix(&self) -> String {
+    #[must_use] pub fn get_prefix(&self) -> String {
         self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
-    pub fn get_video_status_poll_interval(&self) -> u64 {
+    #[must_use] pub fn get_video_status_poll_interval(&self) -> u64 {
         self.video_status_poll_interval
             .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
     }
 
-    pub fn get_database_url(&self) -> String {
+    #[must_use] pub fn get_database_url(&self) -> String {
         self.database_url
-            .as_ref()
-            .cloned()
+            .clone()
             .unwrap_or(DEFAULT_DB_URL.to_string())
     }
 }
@@ -244,7 +242,7 @@ pub struct PhoneCodeData {
     country_by_phone_code: HashMap<String, Vec<String>>,
 }
 
-/// impl of PhoneCodeData
+/// impl of `PhoneCodeData`
 impl PhoneCodeData {
     /// Load the phone code data from the local file, or download it if it doesn't exist
     pub fn load() -> Result<Self, CrackedError> {
@@ -299,7 +297,7 @@ impl PhoneCodeData {
 
     /// Get names of countries that match the given phone code.
     /// Due to edge cases, there may be multiples.
-    pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
+    #[must_use] pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
         self.country_by_phone_code.get(phone_code).cloned()
     }
 }
@@ -358,7 +356,7 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
@@ -380,6 +378,7 @@ impl DataInner {
     }
 
     /// Set the channel for the database pool communication.
+    #[must_use]
     pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
         Self {
             db_channel: Some(db_channel),
@@ -396,7 +395,7 @@ impl DataInner {
         }
     }
 
-    /// Set the CrackTrack client for the data.
+    /// Set the `CrackTrack` client for the data.
     pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
         Self {
             ct_client,
@@ -451,7 +450,7 @@ impl Default for EventLogAsync {
         let log_file = match File::create(log_path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Error creating log file: {}", e);
+                eprintln!("Error creating log file: {e}");
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
                 File::create("/dev/null").expect("Should have a file object to write too???")
@@ -462,8 +461,8 @@ impl Default for EventLogAsync {
 }
 
 impl EventLogAsync {
-    /// Create a new EventLog, calls default
-    pub fn new() -> Self {
+    /// Create a new `EventLog`, calls default
+    #[must_use] pub fn new() -> Self {
         Self::default()
     }
 
@@ -630,8 +629,8 @@ impl Data {
         Some(handle)
     }
 
-    /// Remove and return a message from the cache based on the guild_id and timestamp.
-    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    /// Remove and return a message from the cache based on the `guild_id` and timestamp.
+    #[must_use] pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         self.id_cache_map
             .get_mut(&guild_id.into())
             .unwrap()
@@ -695,9 +694,7 @@ impl Data {
     pub async fn check_music_permissions(&self, guild_id: GuildId, user: UserId) -> bool {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
-                .get_music_permissions()
-                .map(|x| x.is_user_allowed(user.get()))
-                .unwrap_or(true)
+                .get_music_permissions().is_none_or(|x| x.is_user_allowed(user.get()))
         } else {
             true
         }
@@ -734,7 +731,7 @@ impl Data {
 
     /// Builder method to set the bot settings for the user data.
     ///
-    pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+    #[must_use] pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 
@@ -742,7 +739,7 @@ impl Data {
         Self(self.arc_inner().with_songbird(songbird).into())
     }
 
-    pub fn arc_inner(&self) -> Arc<DataInner> {
+    #[must_use] pub fn arc_inner(&self) -> Arc<DataInner> {
         Into::into(self.0.clone())
     }
 }

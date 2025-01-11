@@ -69,7 +69,7 @@ pub async fn write_metadata_pg(
 
         match User::insert_or_update_user(
             database_pool,
-            user_id.map(|x| x.get() as i64).unwrap_or(1),
+            user_id.map_or(1, |x| x.get() as i64),
             username.unwrap_or_default(),
         )
         .await
@@ -83,9 +83,9 @@ pub async fn write_metadata_pg(
         };
         match PlayLog::create(
             database_pool,
-            user_id.map(|x| x.get() as i64).unwrap_or(1),
+            user_id.map_or(1, |x| x.get() as i64),
             guild_id.get() as i64,
-            updated_metadata.id as i64,
+            i64::from(updated_metadata.id),
         )
         .await
         {

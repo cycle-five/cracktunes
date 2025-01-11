@@ -124,7 +124,7 @@ pub async fn play(
     query: String,
 ) -> Result<(), Error> {
     // Split off the first part of the query for
-    let query = query.split("~").next().unwrap_or_default().to_string();
+    let query = query.split('~').next().unwrap_or_default().to_string();
     play_internal(ctx, None, None, Some(query)).await
 }
 
@@ -187,7 +187,7 @@ pub async fn enqueue_resolved_tracks(
     let mut out_tracks: Vec<TrackHandle> = Vec::new();
     match mode {
         crack_types::Mode::End => {
-            for track in tracks.iter() {
+            for track in &tracks {
                 let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
                 let res = handler
                     .enqueue_input(Into::<SongbirdInput>::into(ytdl))
@@ -266,7 +266,7 @@ pub async fn playytplaylist(
         .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
         .await?;
 
-    for track in tracks.iter() {
+    for track in &tracks {
         let query = track.query.clone();
         let ytdl = RustyYoutubeSearch::new_with_stuff(
             req_client.clone(),
@@ -477,7 +477,7 @@ pub async fn play_internal(
     let _after_edit_embed = std::time::Instant::now();
 
     tracing::warn!(
-        r#"
+        r"
         after_msg_parse: {:?}
         after_get_mode: {:?} (+{:?})
         after_call: {:?} (+{:?})
@@ -485,7 +485,7 @@ pub async fn play_internal(
         after_move_on: {:?} (+{:?})
         after_refetch_queue: {:?} (+{:?})
         after_embed: {:?} (+{:?})
-        after_edit_embed: {:?} (+{:?})"#,
+        after_edit_embed: {:?} (+{:?})",
         _after_msg_parse.duration_since(_start),
         _after_get_mode.duration_since(_start),
         _after_get_mode.duration_since(_after_msg_parse),
@@ -527,7 +527,7 @@ pub async fn resolve_query_to_tracks(
     let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;
     //let tracks = client.resolve_track(query_type).await?;
     let mut track_handles = Vec::new();
-    for track in tracks.iter() {
+    for track in &tracks {
         let ytdl = RustyYoutubeSearch::new_with_stuff(
             client.req_client.clone(),
             query_type.clone(),
@@ -609,24 +609,21 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         None => return Some(Duration::MAX),
     };
 
-    match mode {
-        Mode::Next => Some(top_track_duration - top_track_elapsed),
-        _ => {
-            let center = &queue[1..queue.len() - 1];
-            let livestreams =
-                center.len() - center.iter().filter_map(|_t| metadata.duration).count();
+    if mode == Mode::Next { Some(top_track_duration - top_track_elapsed) } else {
+        let center = &queue[1..queue.len() - 1];
+        let livestreams =
+            center.len() - center.iter().filter_map(|_t| metadata.duration).count();
 
-            // if any of the tracks before are livestreams, the new track will never play
-            if livestreams > 0 {
-                return Some(Duration::MAX);
-            }
+        // if any of the tracks before are livestreams, the new track will never play
+        if livestreams > 0 {
+            return Some(Duration::MAX);
+        }
 
-            let durations = center
-                .iter()
-                .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
+        let durations = center
+            .iter()
+            .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
 
-            Some(durations + top_track_duration - top_track_elapsed)
-        },
+        Some(durations + top_track_duration - top_track_elapsed)
     }
 }
 
@@ -698,7 +695,7 @@ pub async fn queue_aux_metadata(
             let search_query = build_query_aux_metadata(metadata.metadata());
             msg.edit(
                 &ctx,
-                EditMessage::default().content(format!("Queuing... {}", search_query)),
+                EditMessage::default().content(format!("Queuing... {search_query}")),
             )
             .await?;
 
@@ -714,8 +711,7 @@ pub async fn queue_aux_metadata(
         let source_url = metadata_final
             .metadata()
             .source_url
-            .as_ref()
-            .cloned()
+            .clone()
             .ok_or(CrackedError::Other("No source URL found"))?;
         let query_type = QueryType::VideoLink(source_url);
         let _ = queue_track_back(ctx, &call, &query_type).await?;

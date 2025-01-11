@@ -97,7 +97,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .await?
         .into_message()
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }?;
     Ok(())
 }

@@ -280,17 +280,17 @@ mod tests {
     // use url::Url;
     use super::*;
     use ::http::response::Builder;
-    use crack_types::CrackedError;
-    use crack_types::CrackedResult;
-    use mockall::mock;
+    
+    
+    
     use mockall::predicate::*;
-    use poise::serenity_prelude::http;
+    
     use reqwest::Response;
     use reqwest::ResponseBuilderExt;
     use reqwest::StatusCode;
     use reqwest::Url;
     use serde_json::json;
-    use std::os::unix::fs::DirBuilderExt;
+    
 
     #[test]
     fn test_from_http_response() {
@@ -461,28 +461,19 @@ mod tests {
         }
 
         // Get API credentials from environment
-        let api_key = match check_get_env_var("SCAMALYTICS_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                println!("Skipping test: SCAMALYTICS_API_KEY not set");
-                return;
-            },
+        let api_key = if let Ok(key) = check_get_env_var("SCAMALYTICS_API_KEY") { key } else {
+            println!("Skipping test: SCAMALYTICS_API_KEY not set");
+            return;
         };
 
-        let api_host = match check_get_env_var("SCAMALYTICS_API_HOST") {
-            Ok(host) => host,
-            Err(_) => {
-                println!("Skipping test: SCAMALYTICS_API_HOST not set");
-                return;
-            },
+        let api_host = if let Ok(host) = check_get_env_var("SCAMALYTICS_API_HOST") { host } else {
+            println!("Skipping test: SCAMALYTICS_API_HOST not set");
+            return;
         };
 
-        let api_user = match check_get_env_var("SCAMALYTICS_API_USER") {
-            Ok(user) => user,
-            Err(_) => {
-                println!("Skipping test: SCAMALYTICS_API_USER not set");
-                return;
-            },
+        let api_user = if let Ok(user) = check_get_env_var("SCAMALYTICS_API_USER") { user } else {
+            println!("Skipping test: SCAMALYTICS_API_USER not set");
+            return;
         };
 
         let client = ScamalyticsClient::new(api_host, api_user, api_key);
@@ -491,7 +482,7 @@ mod tests {
         let result = match client.check_ip("8.8.8.8", false).await {
             Ok(response) => response,
             Err(e) => {
-                panic!("Live API call failed: {}", e);
+                panic!("Live API call failed: {e}");
             },
         };
 

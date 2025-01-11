@@ -54,7 +54,7 @@ pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get all settings-set commands
-pub fn commands() -> Vec<crate::Command> {
+#[must_use] pub fn commands() -> Vec<crate::Command> {
     vec![
         set(),
         auto_role(),

@@ -9,10 +9,10 @@ use serenity::{
 pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_settings_map = ctx.data().guild_settings_map.read().await.clone(); //.unwrap().clone();
 
-    for (guild_id, settings) in guild_settings_map.iter() {
+    for (guild_id, settings) in &guild_settings_map {
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+            CrackedMessage::Other(format!("Settings for guild {guild_id}: {settings:?}")),
             true,
         )
         .await?;
@@ -22,10 +22,10 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
     //let guild_settings_map = guild_settings_map.get::<GuildSettingsMap>().unwrap();
     let guild_settings_map = ctx.data().guild_settings_map.read().await.clone();
 
-    for (guild_id, settings) in guild_settings_map.iter() {
+    for (guild_id, settings) in &guild_settings_map {
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Settings for guild {}: {:?}", guild_id, settings)),
+            CrackedMessage::Other(format!("Settings for guild {guild_id}: {settings:?}")),
             true,
         )
         .await?;
@@ -83,12 +83,12 @@ async fn get_messages(
                 Some(n),
             )
             .await?;
-        if next_step.len() != n_usize {
-            messages.extend(next_step);
-            break;
-        } else {
+        if next_step.len() == n_usize {
             messages.extend(next_step);
             last_id = messages.last().unwrap().id;
+        } else {
+            messages.extend(next_step);
+            break;
         }
     }
     if filter_user.is_none() {
@@ -99,8 +99,8 @@ async fn get_messages(
     }
 }
 
-/// Get the print_settings commands
-pub fn commands() -> Vec<crate::Command> {
+/// Get the `print_settings` commands
+#[must_use] pub fn commands() -> Vec<crate::Command> {
     vec![print_settings(), get_channel_messages()]
         .into_iter()
         .collect()

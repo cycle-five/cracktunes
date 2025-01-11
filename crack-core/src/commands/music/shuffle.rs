@@ -74,7 +74,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
         fisher_yates(
             queue.make_contiguous()[1..].as_mut(),
             &mut rand::thread_rng(),
-        )
+        );
     });
 
     // refetch the queue after modification
@@ -93,7 +93,7 @@ where
     let mut index = values.len();
     while index >= 2 {
         index -= 1;
-        values.swap(index, rng.gen_range(0..(index + 1)));
+        values.swap(index, rng.gen_range(0..=index));
     }
 }
 

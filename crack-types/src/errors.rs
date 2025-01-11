@@ -469,47 +469,47 @@ mod test {
     #[test]
     fn test_cracked_error_display() {
         let err = CrackedError::NoGuildCached;
-        assert_eq!(format!("{}", err), NO_GUILD_CACHED);
+        assert_eq!(format!("{err}"), NO_GUILD_CACHED);
 
         let err = CrackedError::NoGuildId;
-        assert_eq!(format!("{}", err), NO_GUILD_ID);
+        assert_eq!(format!("{err}"), NO_GUILD_ID);
 
         let err = CrackedError::NoGuildSettings;
-        assert_eq!(format!("{}", err), NO_GUILD_SETTINGS);
+        assert_eq!(format!("{err}"), NO_GUILD_SETTINGS);
 
         let err = CrackedError::NoLogChannel;
-        assert_eq!(format!("{}", err), "No log channel");
+        assert_eq!(format!("{err}"), "No log channel");
 
         let err = CrackedError::NoUserAutoplay;
-        assert_eq!(format!("{}", err), "(auto)");
+        assert_eq!(format!("{err}"), "(auto)");
 
         let err = CrackedError::WrongVoiceChannel;
-        assert_eq!(format!("{}", err), FAIL_WRONG_CHANNEL);
+        assert_eq!(format!("{err}"), FAIL_WRONG_CHANNEL);
 
         let err = CrackedError::NothingPlaying;
-        assert_eq!(format!("{}", err), FAIL_NOTHING_PLAYING);
+        assert_eq!(format!("{err}"), FAIL_NOTHING_PLAYING);
 
         let err = CrackedError::PlayListFail;
-        assert_eq!(format!("{}", err), FAIL_PLAYLIST_FETCH);
+        assert_eq!(format!("{err}"), FAIL_PLAYLIST_FETCH);
 
         let err = CrackedError::ParseTimeFail;
-        assert_eq!(format!("{}", err), FAIL_PARSE_TIME);
+        assert_eq!(format!("{err}"), FAIL_PARSE_TIME);
 
         let err_err = Error::from("test");
         let err = CrackedError::TrackFail(err_err);
-        assert_eq!(format!("{}", err), "test");
+        assert_eq!(format!("{err}"), "test");
 
         // let err = CrackedError::Serenity(SerenityError::Other("test"));
         // assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "no rows returned by a query that expected to return at least one row"
         );
 
         let err = CrackedError::SpotifyAuth;
-        assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
+        assert_eq!(format!("{err}"), SPOTIFY_AUTH_FAILED);
 
         /// WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
@@ -520,21 +520,21 @@ mod test {
         let response = client.get("http://notreallol").send();
         if response.is_err() {
             let err = CrackedError::Reqwest(response.unwrap_err());
-            assert!(format!("{}", err).starts_with("error sending request for url"));
+            assert!(format!("{err}").starts_with("error sending request for url"));
         }
 
         let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-        assert_eq!(format!("{}", err), "Token is not valid");
+        assert_eq!(format!("{err}"), "Token is not valid");
 
         let err = CrackedError::UnauthorizedUser;
-        assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
+        assert_eq!(format!("{err}"), UNAUTHORIZED_USER);
 
         let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
-        assert_eq!(format!("{}", err), "test");
+        assert_eq!(format!("{err}"), "test");
 
         let err = CrackedError::NotInRange("test", 1, 2, 3);
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "`test` should be between 2 and 3 but was 1"
         );
     }

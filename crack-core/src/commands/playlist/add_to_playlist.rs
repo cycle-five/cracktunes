@@ -78,11 +78,11 @@ pub async fn add_to_playlist(
         ctx.reply(CrackedMessage::PlaylistAddSuccess { track, playlist })
             .await
             .map(|_| ())
-            .map_err(|e| e.into())
+            .map_err(std::convert::Into::into)
     } else {
         ctx.reply(CrackedMessage::PlaylistAddFailure { track, playlist })
             .await
             .map(|_| ())
-            .map_err(|e| e.into())
+            .map_err(std::convert::Into::into)
     }
 }

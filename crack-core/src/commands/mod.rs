@@ -45,12 +45,12 @@ pub trait ConvertToEmptyResult {
 
 impl ConvertToEmptyResult for MessageResult {
     fn convert(self) -> EmptyResult {
-        self.map(|_| ()).map_err(|e| e.into())
+        self.map(|_| ()).map_err(std::convert::Into::into)
     }
 }
 
 /// Return all the commands that are available in the bot.
-pub fn all_commands() -> Vec<crate::Command> {
+#[must_use] pub fn all_commands() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
@@ -72,7 +72,7 @@ pub fn all_commands() -> Vec<crate::Command> {
 }
 
 /// Return all the commands that are available in the bot.
-pub fn commands_to_register() -> Vec<crate::Command> {
+#[must_use] pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
@@ -93,11 +93,11 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     .collect()
 }
 
-pub fn all_command_names() -> Vec<Cow<'static, str>> {
+#[must_use] pub fn all_command_names() -> Vec<Cow<'static, str>> {
     all_commands().into_iter().map(|c| c.name).collect()
 }
 
-pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
+#[must_use] pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
     all_commands()
         .into_iter()
         .map(|c| (c.name.clone(), c))

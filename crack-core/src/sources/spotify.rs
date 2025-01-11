@@ -53,7 +53,7 @@ pub enum MediaType {
     Playlist,
 }
 
-/// Implementation of FromStr for MediaType.
+/// Implementation of `FromStr` for `MediaType`.
 impl FromStr for MediaType {
     type Err = ();
 
@@ -106,7 +106,7 @@ impl Spotify {
                 .map_err(|_| CrackedError::Other("missing spotify client ID"))?,
         };
         let spotify_client_secret = match opt_creds {
-            Some(creds) => creds.secret.unwrap_or("".to_string()),
+            Some(creds) => creds.secret.unwrap_or(String::new()),
             None => env::var("SPOTIFY_CLIENT_SECRET")
                 .map_err(|_| CrackedError::Other("missing spotify client secret"))?,
         };
@@ -138,7 +138,7 @@ impl Spotify {
             .as_str();
 
         let media_type = MediaType::from_str(media_type)
-            .map_err(|_| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
+            .map_err(|()| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
 
         let media_id = captures
             .name("media_id")
@@ -255,7 +255,7 @@ impl Spotify {
     fn _search_result_to_track_ids(search_result: SearchResult) -> Vec<TrackId<'static>> {
         match search_result {
             SearchResult::Tracks(tracks) => {
-                tracks.items.iter().flat_map(|x| x.id.clone()).collect()
+                tracks.items.iter().filter_map(|x| x.id.clone()).collect()
             },
             _ => Vec::new(),
         }
@@ -267,14 +267,14 @@ impl Spotify {
             SearchResult::Tracks(tracks) => tracks
                 .items
                 .iter()
-                .flat_map(|x| x.id.clone())
+                .filter_map(|x| x.id.clone())
                 .take(1)
                 .collect(),
             _ => Vec::new(),
         }
     }
 
-    /// SearchResult to a QueryType.
+    /// `SearchResult` to a `QueryType`.
     fn extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
         match search_result {
             SearchResult::Albums(albums) => {
@@ -312,7 +312,7 @@ impl Spotify {
         }
     }
 
-    /// Get a search query as a QueryType from a spotify track id.
+    /// Get a search query as a `QueryType` from a spotify track id.
     async fn get_track_info(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -385,7 +385,7 @@ impl Spotify {
         Ok(QueryType::KeywordList(query_list))
     }
 
-    /// Get a list of SpotifyTracks from a Spotify playlist.
+    /// Get a list of `SpotifyTracks` from a Spotify playlist.
     pub async fn get_playlist_tracks(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -413,12 +413,12 @@ impl Spotify {
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(artists: &str, track_name: &str) -> String {
-        format!("{} {}", artists, track_name)
+        format!("{artists} {track_name}")
     }
 
     /// Build a query for searching, from the artist names and the track name.
     fn _build_query_lyric(artists: &str, track_name: &str) -> String {
-        format!("{} {} {}", artists, track_name, MUSIC_SEARCH_SUFFIX)
+        format!("{artists} {track_name} {MUSIC_SEARCH_SUFFIX}")
     }
 
     /// Join the artist names into a single string.
@@ -449,9 +449,9 @@ pub trait SpotifyTrackTrait {
     fn build_query(&self) -> String;
 }
 
-/// Implementation of our SpotifyTrackTrait.
+/// Implementation of our `SpotifyTrackTrait`.
 impl SpotifyTrackTrait for SpotifyTrack {
-    /// Create a new SpotifyTrack.
+    /// Create a new `SpotifyTrack`.
     fn new(full_track: rspotify::model::FullTrack) -> Self {
         Self { full_track }
     }
@@ -531,8 +531,8 @@ impl SpotifyTrackTrait for SpotifyTrack {
     }
 }
 
-/// Implementation of From for SpotifyTrack.
-pub fn build_fake_spotify_track() -> SpotifyTrack {
+/// Implementation of From for `SpotifyTrack`.
+#[must_use] pub fn build_fake_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
         name: "asdf".to_string(),

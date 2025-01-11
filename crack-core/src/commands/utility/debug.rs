@@ -25,14 +25,14 @@ impl fmt::Display for BotStatus<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            r#"
+            r"
             BotStatus {{
               name: {},
               play_mode: {:?},
               queue_len: {},
               current_channel: {:?},
               uptime: {:?}
-            }}"#,
+            }}",
             self.name, self.play_mode, self.queue_len, self.current_channel, self.uptime
         )
     }

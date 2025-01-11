@@ -115,7 +115,7 @@ mod test {
         let client = VirusTotalClient::new(&api_key, reqwest_client);
         let url = "https://www.google.com".to_string();
         let result = scan_url(&client, url).await;
-        println!("{:?}", result);
+        println!("{result:?}");
         if api_key != "NO_KEY" {
             assert!(result.is_ok());
         }

@@ -49,9 +49,9 @@ impl Receiver {
             data,
             buf_size: DEFAULT_BUFFER_SIZE,
             cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
-            http: ctx.map(|x| x.http.clone()).unwrap_or(Arc::new(Http::new(
+            http: ctx.map_or(Arc::new(Http::new(
                 DEFAULT_VALID_TOKEN.parse::<Token>().expect(INVALID_TOKEN),
-            ))),
+            )), |x| x.http.clone()),
         }
     }
 
@@ -164,7 +164,7 @@ impl VoiceEventHandler for Receiver {
                     return None;
                 }
                 tracing::warn!("{:?}", track_data);
-                for &(track_state, track_handle) in track_data.iter() {
+                for &(track_state, track_handle) in *track_data {
                     match track_state.playing {
                         PlayMode::Play => {
                             tracing::warn!(

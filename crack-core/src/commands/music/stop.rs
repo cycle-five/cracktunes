@@ -24,7 +24,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 pub async fn stop_internal(ctx: Context<'_>) -> Result<Vec<TrackHandle>, Error> {
     let (call, guild_id) = ctx.get_call_guild_id().await?;
-    let _ = ctx.data().set_autoplay(guild_id, false).await;
+    let () = ctx.data().set_autoplay(guild_id, false).await;
 
     let handler = call.lock().await;
     let queue = handler.queue();
