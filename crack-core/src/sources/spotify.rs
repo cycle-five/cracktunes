@@ -532,7 +532,8 @@ impl SpotifyTrackTrait for SpotifyTrack {
 }
 
 /// Implementation of From for `SpotifyTrack`.
-#[must_use] pub fn build_fake_spotify_track() -> SpotifyTrack {
+#[must_use]
+pub fn build_fake_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
         name: "asdf".to_string(),
@@ -654,7 +655,7 @@ mod test {
     fn test_track_build_query() {
         let track = build_fake_spotify_track();
         let query = track.build_query();
-        assert_eq!(query, r#"asdf qwer"#);
+        assert_eq!(query, r"asdf qwer");
     }
 
     #[test]

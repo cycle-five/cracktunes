@@ -191,7 +191,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     async fn add_msg_to_cache(self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg).await
+        self.data().add_msg_to_cache(guild_id, msg)
     }
 
     /// Gets the channel id that the bot is currently playing in for a given guild.
@@ -327,7 +327,8 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 
     /// Gets the primary id used for the message cache for that guild or user.
     fn get_cache_id(&self) -> u64 {
-        self.guild_id().map_or_else(|| self.author().id.get(), serenity::all::GuildId::get)
+        self.guild_id()
+            .map_or_else(|| self.author().id.get(), serenity::all::GuildId::get)
     }
 
     /// Creates an embed from a `CrackedMessage` and sends it as an embed.
@@ -399,7 +400,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let id = self.get_cache_id();
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
-            self.data().add_msg_to_cache_int(id, msg).await;
+            self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }
@@ -432,7 +433,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
             let id = self.get_cache_id();
-            self.data().add_msg_to_cache_int(id, msg).await;
+            self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }
@@ -576,7 +577,8 @@ pub trait OwnedContextExt {}
 ///Struct to represent everything needed to join a voice call.
 pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
 impl JoinVCToken {
-    #[must_use] pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
+    #[must_use]
+    pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
         let lock = data
             .join_vc_tokens
             .entry(guild_id)
@@ -618,7 +620,8 @@ impl SongbirdManagerExt for songbird::Songbird {
 
 use poise::serenity_prelude::Context as SerenityContext;
 use std::collections::HashSet;
-#[must_use] pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool {
+#[must_use]
+pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool {
     let allowed_bots = HashSet::from([1_111_844_110_597_374_042, 1_124_707_756_750_934_159]);
     let author_id = msg.author.id;
     allowed_bots.contains(&author_id.get())

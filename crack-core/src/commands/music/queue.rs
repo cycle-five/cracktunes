@@ -59,7 +59,9 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = if let Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) = get_interaction_new(&ctx) {
+    let mut message = if let Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) =
+        get_interaction_new(&ctx)
+    {
         interaction
             .create_response(
                 ctx.http(),
@@ -82,7 +84,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         reply.into_message().await?
     };
 
-    ctx.data().add_msg_to_cache(guild_id, message.clone()).await;
+    ctx.data().add_msg_to_cache(guild_id, message.clone());
 
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
