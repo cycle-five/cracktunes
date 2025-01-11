@@ -280,17 +280,14 @@ mod tests {
     // use url::Url;
     use super::*;
     use ::http::response::Builder;
-    
-    
-    
+
     use mockall::predicate::*;
-    
+
     use reqwest::Response;
     use reqwest::ResponseBuilderExt;
     use reqwest::StatusCode;
     use reqwest::Url;
     use serde_json::json;
-    
 
     #[test]
     fn test_from_http_response() {
@@ -461,17 +458,18 @@ mod tests {
         }
 
         // Get API credentials from environment
-        let api_key = if let Ok(key) = check_get_env_var("SCAMALYTICS_API_KEY") { key } else {
+
+        let Ok(api_key) = check_get_env_var("SCAMALYTICS_API_KEY") else {
             println!("Skipping test: SCAMALYTICS_API_KEY not set");
             return;
         };
 
-        let api_host = if let Ok(host) = check_get_env_var("SCAMALYTICS_API_HOST") { host } else {
+        let Ok(api_host) = check_get_env_var("SCAMALYTICS_API_HOST") else {
             println!("Skipping test: SCAMALYTICS_API_HOST not set");
             return;
         };
 
-        let api_user = if let Ok(user) = check_get_env_var("SCAMALYTICS_API_USER") { user } else {
+        let Ok(api_user) = check_get_env_var("SCAMALYTICS_API_USER") else {
             println!("Skipping test: SCAMALYTICS_API_USER not set");
             return;
         };

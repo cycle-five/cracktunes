@@ -269,7 +269,7 @@ mod test {
                             "harmless": 74,
                             "timeout": 0,
                         },
-                        "date": 1709984912,
+                        "date": 1_709_984_912,
                         "results": {},
                         "status": "completed",
                     },

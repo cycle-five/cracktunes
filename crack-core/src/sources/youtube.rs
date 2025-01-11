@@ -265,9 +265,9 @@ mod test {
         ]));
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
-        if Err(e) = res {
+        if let Err(e) = res {
             println!("{e}");
-        }
+        };
     }
 
     /// FIXME: Mock the response.
