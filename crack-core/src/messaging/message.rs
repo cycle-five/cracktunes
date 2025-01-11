@@ -1,12 +1,13 @@
 use crack_types::DICE_ROLL;
 use std::{borrow::Cow, fmt::Display};
 
-use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
+use ::serenity::{
+    builder::CreateEmbed, small_fixed_array::FixedString, Mention, Mentionable, UserId,
+};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
 #[cfg(feature = "crack-osint")]
 use poise::serenity_prelude as serenity;
-use serenity::{Mention, Mentionable, UserId};
 use songbird::error::ControlError;
 use std::time::Duration;
 

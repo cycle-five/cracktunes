@@ -1,6 +1,18 @@
 use std::sync::Arc;
 
-use super::event_log_impl::{log_automod_command_execution, log_automod_rule_create, log_automod_rule_update, log_channel_delete, log_command_permissions_update, log_guild_ban_addition, log_guild_ban_removal, log_guild_create, log_guild_delete_event, log_guild_member_addition, log_guild_member_removal, log_guild_role_create, log_guild_role_delete, log_guild_role_update, log_guild_scheduled_event_create, log_guild_scheduled_event_delete, log_guild_scheduled_event_update, log_guild_scheduled_event_user_add, log_guild_scheduled_event_user_remove, log_guild_stickers_update, log_integration_create, log_integration_delete, log_integration_update, log_interaction_create, log_invite_create, log_invite_delete, log_message, log_message_delete, log_message_update, log_reaction_add, log_reaction_remove, log_typing_start_noop, log_unimplemented_event, log_user_update, log_voice_channel_status_update, log_voice_state_update};
+use super::event_log_impl::{
+    log_automod_command_execution, log_automod_rule_create, log_automod_rule_update,
+    log_channel_delete, log_command_permissions_update, log_guild_ban_addition,
+    log_guild_ban_removal, log_guild_create, log_guild_delete_event, log_guild_member_addition,
+    log_guild_member_removal, log_guild_role_create, log_guild_role_delete, log_guild_role_update,
+    log_guild_scheduled_event_create, log_guild_scheduled_event_delete,
+    log_guild_scheduled_event_update, log_guild_scheduled_event_user_add,
+    log_guild_scheduled_event_user_remove, log_guild_stickers_update, log_integration_create,
+    log_integration_delete, log_integration_update, log_interaction_create, log_invite_create,
+    log_invite_delete, log_message, log_message_delete, log_message_update, log_reaction_add,
+    log_reaction_remove, log_typing_start_noop, log_unimplemented_event, log_user_update,
+    log_voice_channel_status_update, log_voice_state_update,
+};
 use crate::{
     guild::settings::GuildSettings, log_event, log_event2,
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
@@ -17,7 +29,7 @@ use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
 pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> =
-    Some(ChannelId::new(1191633527763116039));
+    Some(ChannelId::new(1_191_633_527_763_116_039));
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -911,9 +923,7 @@ pub async fn handle_event(
             event,
         } => {
             if new.as_ref().is_some_and(|x| x.author.bot())
-                || old_if_available
-                    .as_ref()
-                    .is_some_and(|x| x.author.bot())
+                || old_if_available.as_ref().is_some_and(|x| x.author.bot())
             {
                 return Ok(());
             }
