@@ -28,6 +28,7 @@ use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
+use crack_types::messages::CAM_VIOLATION_MSG;
 use crack_types::CrackedError;
 use dashmap::DashMap;
 use db::worker_pool::MetadataMsg;
@@ -96,7 +97,7 @@ impl Default for CamKickConfig {
             guild_id: 0,
             chan_id: 0,
             // FIXME: This should be a const or a static
-            dc_msg: CAM_VIOLATION_MSG,
+            dc_msg: CAM_VIOLATION_MSG.to_string(),
             msg_on_deafen: false,
             msg_on_mute: false,
             msg_on_dc: false,

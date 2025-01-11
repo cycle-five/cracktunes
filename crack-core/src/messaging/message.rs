@@ -4,7 +4,6 @@ use std::{borrow::Cow, fmt::Display};
 use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
-use crack_types::messages::SCAN_QUEUED;
 use poise::serenity_prelude as serenity;
 use serenity::{Mention, Mentionable, UserId};
 use songbird::error::ControlError;

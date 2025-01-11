@@ -3,7 +3,7 @@ use serenity::all::{
     Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions, TransportCompression,
 };
 use std::{
-    num::{NonZeroU16, NonZeroUsize},
+    num::NonZeroU16,
     sync::{Arc, OnceLock},
 };
 

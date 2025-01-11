@@ -234,7 +234,7 @@ pub async fn init_http_client() -> Result<(), CrackedError> {
 pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
     let tune_titan_id = UserId::new(1_124_707_756_750_934_159);
     let rusty_bot_id = UserId::new(1_111_844_110_597_374_042);
-    let cracktunes_id = UserId::new(1_115_229_568_006_1031_22);
+    let cracktunes_id = UserId::new(1_115_229_568_006_103_122);
     let bot_id = if let Some(cache) = cache_http.cache() {
         cache.current_user().id
     } else {
