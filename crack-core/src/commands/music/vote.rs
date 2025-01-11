@@ -82,9 +82,7 @@ pub async fn has_voted_bot_id(
     bot_id: u64,
     user_id: u64,
 ) -> Result<bool, CrackedError> {
-    let url = format!(
-        "https://top.gg/api/bots/{bot_id}/check?userId={user_id}"
-    );
+    let url = format!("https://top.gg/api/bots/{bot_id}/check?userId={user_id}");
     let token = std::env::var("TOPGG_TOKEN").map_err(|_| CrackedError::InvalidTopGGToken)?;
     let response = reqwest_client
         .get(&url)
@@ -116,8 +114,8 @@ mod test {
 
     #[tokio::test]
     async fn test_fail() {
-        let bot_id = 1115229568006103122;
-        let my_id = 285219649921220608;
+        let bot_id = 1_115_229_568_006_103_122;
+        let my_id = 285_219_649_921_220_608;
         let client = http_utils::get_client().clone();
 
         let has_voted = has_voted_bot_id(client, bot_id, my_id).await;

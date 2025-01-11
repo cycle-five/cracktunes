@@ -3,6 +3,7 @@ pub const AUTOPAUSE_OFF: &str = "🤖 Autopause OFF!";
 pub const AUTOPAUSE_ON: &str = "🤖 Autopause ON!";
 pub const AUTOPLAY_OFF: &str = "🤖 Autoplay OFF!";
 pub const AUTOPLAY_ON: &str = "🤖 Autoplay ON!";
+pub const CAM_VIOLATION_MSG: &str = "📷 You have been violated for being cammed down for too long.";
 pub const CLEARED: &str = "🗑️ Cleared!";
 pub const CLEANED: &str = "🗑️ Messages Cleaned: ";
 pub const CHANNEL_SIZE_SET: &str = "🗑️ Channel size set!";

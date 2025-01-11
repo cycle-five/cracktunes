@@ -29,6 +29,7 @@ use chrono::{DateTime, Utc};
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
 use crack_types::CrackedError;
+use dashmap::DashMap;
 use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;
@@ -95,7 +96,7 @@ impl Default for CamKickConfig {
             guild_id: 0,
             chan_id: 0,
             // FIXME: This should be a const or a static
-            dc_msg: "You have been violated for being cammed down for too long.".to_string(),
+            dc_msg: CAM_VIOLATION_MSG,
             msg_on_deafen: false,
             msg_on_mute: false,
             msg_on_dc: false,
@@ -199,9 +200,7 @@ impl Display for BotConfig {
         ));
         result.push_str(&format!(
             "prefix: {}",
-            self.prefix
-                .clone()
-                .unwrap_or(DEFAULT_PREFIX.to_string())
+            self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
         ));
         result.push_str(&format!("credentials: {:?}\n", self.credentials.is_some()));
         result.push_str(&format!("database_url: {:?}\n", self.database_url));
@@ -216,16 +215,19 @@ impl BotConfig {
         self
     }
 
-    #[must_use] pub fn get_prefix(&self) -> String {
+    #[must_use]
+    pub fn get_prefix(&self) -> String {
         self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
-    #[must_use] pub fn get_video_status_poll_interval(&self) -> u64 {
+    #[must_use]
+    pub fn get_video_status_poll_interval(&self) -> u64 {
         self.video_status_poll_interval
             .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
     }
 
-    #[must_use] pub fn get_database_url(&self) -> String {
+    #[must_use]
+    pub fn get_database_url(&self) -> String {
         self.database_url
             .clone()
             .unwrap_or(DEFAULT_DB_URL.to_string())
@@ -297,7 +299,8 @@ impl PhoneCodeData {
 
     /// Get names of countries that match the given phone code.
     /// Due to edge cases, there may be multiples.
-    #[must_use] pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
+    #[must_use]
+    pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
         self.country_by_phone_code.get(phone_code).cloned()
     }
 }
@@ -309,12 +312,12 @@ pub struct DataInner {
     pub start_time: SystemTime,
     // Why is Arc needed? Why dashmap instead of Mutex<HashMap>?
     #[cfg(feature = "crack-activity")]
-    pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
+    pub user_activity_map: Arc<DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
-    pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
+    pub activity_user_map: Arc<DashMap<String, DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
     // Why not Arc here?
-    pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
+    pub join_vc_tokens: DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
@@ -323,12 +326,13 @@ pub struct DataInner {
     pub db_channel: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
-    //RwLock, then Mutex, why?
+    //pub guild_settings_map: Arc<DashMap<GuildId, guild::settings::GuildSettings>>,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    // pub guild_cache_map: Arc<DashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
-    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
-    pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
+    pub id_cache_map: DashMap<u64, guild::cache::GuildCache>,
+    pub guild_command_msg_queue: DashMap<GuildId, Vec<MessageOrReplyHandle>>,
+    pub guild_cnt_map: DashMap<GuildId, u64>,
     // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
@@ -462,7 +466,8 @@ impl Default for EventLogAsync {
 
 impl EventLogAsync {
     /// Create a new `EventLog`, calls default
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -532,6 +537,7 @@ impl Default for DataInner {
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
+            // guild_settings_map: Arc::new(DashMap::new()),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             id_cache_map: dashmap::DashMap::default(),
@@ -594,24 +600,19 @@ impl Data {
     }
 
     /// Add a message to the cache
-    pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(guild_id.into(), now, msg).await
+        self.add_msg_to_cache_ts(guild_id.into(), now, msg)
     }
 
     /// Add a message to the cache
-    pub async fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
+    pub fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(id, now, msg).await
+        self.add_msg_to_cache_ts(id, now, msg)
     }
 
     /// Add msg to the cache with a timestamp.
-    pub async fn add_msg_to_cache_ts(
-        &self,
-        id: u64,
-        ts: DateTime<Utc>,
-        msg: Message,
-    ) -> Option<Message> {
+    pub fn add_msg_to_cache_ts(&self, id: u64, ts: DateTime<Utc>, msg: Message) -> Option<Message> {
         self.id_cache_map
             .entry(id)
             .or_default()
@@ -619,7 +620,8 @@ impl Data {
             .insert(ts, msg)
     }
 
-    pub async fn add_reply_handle_to_cache(
+    /// Add a reply handle to the cache with a timestamp.
+    pub fn add_reply_handle_to_cache(
         &self,
         guild_id: GuildId,
         handle: MessageOrReplyHandle,
@@ -630,7 +632,8 @@ impl Data {
     }
 
     /// Remove and return a message from the cache based on the `guild_id` and timestamp.
-    #[must_use] pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
+    #[must_use]
+    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         self.id_cache_map
             .get_mut(&guild_id.into())
             .unwrap()
@@ -694,7 +697,8 @@ impl Data {
     pub async fn check_music_permissions(&self, guild_id: GuildId, user: UserId) -> bool {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
-                .get_music_permissions().is_none_or(|x| x.is_user_allowed(user.get()))
+                .get_music_permissions()
+                .is_none_or(|x| x.is_user_allowed(user.get()))
         } else {
             true
         }
@@ -731,7 +735,8 @@ impl Data {
 
     /// Builder method to set the bot settings for the user data.
     ///
-    #[must_use] pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+    #[must_use]
+    pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 
@@ -739,7 +744,8 @@ impl Data {
         Self(self.arc_inner().with_songbird(songbird).into())
     }
 
-    #[must_use] pub fn arc_inner(&self) -> Arc<DataInner> {
+    #[must_use]
+    pub fn arc_inner(&self) -> Arc<DataInner> {
         Into::into(self.0.clone())
     }
 }

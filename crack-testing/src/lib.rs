@@ -79,7 +79,7 @@ static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient<'static>> = Lazy::new(|| {
 });
 
 /// Build a configured reqwest client for use in the `CrackTrackClient`.
-/// 
+///
 /// # Panics
 /// Panics if the reqwest client cannot be built.
 #[must_use]
@@ -160,7 +160,7 @@ impl<'a> CrackTrackClient<'a> {
 
     /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
     /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
-    /// 
+    ///
     /// # Panics
     /// Panics if the `YouTube` client cannot be created.
     #[must_use]
@@ -184,7 +184,7 @@ impl<'a> CrackTrackClient<'a> {
     }
 
     /// Resolve a query to a vector of tracks.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if:
     /// - The query type is not implemented
@@ -269,7 +269,7 @@ impl<'a> CrackTrackClient<'a> {
             QueryType::Keywords(ref keywords) => {
                 let search_results = self.yt_client.search_one(keywords, None).await?;
                 let Some(SearchResult::Video(video)) = search_results else {
-                    return Err(TrackResolveError::NotFound.into())
+                    return Err(TrackResolveError::NotFound.into());
                 };
                 let video_url = video.url.clone();
                 self.resolve_url(&video_url).await
@@ -799,7 +799,7 @@ mod tests {
                 let disp: String = client.get_display(guild);
                 println!("{disp}");
             } else if std::env::var("CI").is_err() {
-                assert!(false);
+                panic!();
             }
         }
 
@@ -816,9 +816,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_yt_url_type() {
-        let urls = ["https://www.youtube.com/watch?v=X9ukSm5gmKk",
+        let urls = [
+            "https://www.youtube.com/watch?v=X9ukSm5gmKk",
             "https://www.youtube.com/watch?v=X9ukSm5gmKk&list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
-            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP"];
+            "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
+        ];
         let want_playlist = vec![false, true, true];
         let urls = urls
             .iter()

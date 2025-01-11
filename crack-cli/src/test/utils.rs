@@ -48,7 +48,7 @@ fn test_load_config() {
     assert_eq!(cam_kick[0].guild_id, GuildId::new(1).get());
     assert_eq!(guild_settings_map.len(), 2);
     assert!(guild_settings_map[0].welcome_settings.is_some());
-    assert!(!guild_settings_map[1].welcome_settings.is_some());
+    assert!(guild_settings_map[1].welcome_settings.is_none());
 }
 
 #[test]
