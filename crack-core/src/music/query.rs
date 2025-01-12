@@ -212,7 +212,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 Ok((status, file_name))
@@ -224,7 +224,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.as_ref().unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 tracing::warn!("file_name: {}", file_name);
@@ -246,7 +246,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -263,7 +263,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -283,7 +283,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -299,8 +299,8 @@ impl NewQueryType {
                 let file_name = format!(
                     "{}/{} [{}].{}",
                     prefix,
-                    metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    metadata.title.expect("no title"),
+                    url.split('=').next_back().unwrap_or_default(),
                     extension,
                 );
                 let status = output.status.success();
@@ -918,7 +918,9 @@ pub async fn query_type_from_url(
                         }
                     })
                     .next();
-                if let Some(query) = opt_query { Some(query) } else {
+                if let Some(query) = opt_query {
+                    Some(query)
+                } else {
                     tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
                     Some(QueryType::VideoLink(url.to_string()))
                 }

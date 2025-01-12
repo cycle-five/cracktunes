@@ -123,7 +123,7 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
 /// Load an environment variable
 fn load_key(k: &str) -> Result<String, Error> {
-    if let Ok(token) = env::var(&k) {
+    if let Ok(token) = env::var(k) {
         Ok(token)
     } else {
         tracing::warn!("{k} not found in environment.");
@@ -132,6 +132,8 @@ fn load_key(k: &str) -> Result<String, Error> {
 }
 
 /// Load the bot's config
+/// TODO: This should be in crack-core and maybe take a list of keys to load
+/// for the modules to be able to load their own keys.
 fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN")?;
     let discord_app_id = load_key("DISCORD_APP_ID")?;

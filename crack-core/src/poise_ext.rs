@@ -267,7 +267,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 }
 
-use serenity::Colour;
+//use serenity::model::Colour;
 /// Extension trait for the `poise::Context`.
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
@@ -401,7 +401,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let id = self.get_cache_id();
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
-            self.data().add_msg_to_cache_int(id, msg);
+            let _ = self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }
@@ -434,7 +434,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
             let id = self.get_cache_id();
-            self.data().add_msg_to_cache_int(id, msg);
+            let _ = self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }

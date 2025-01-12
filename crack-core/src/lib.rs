@@ -31,6 +31,8 @@ use crack_testing::CrackTrackClient;
 use crack_types::messages::CAM_VIOLATION_MSG;
 use crack_types::CrackedError;
 use dashmap::DashMap;
+#[cfg(feature = "crack-activity")]
+use dashmap::DashSet;
 use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;
@@ -121,6 +123,10 @@ impl Display for CamKickConfig {
     }
 }
 
+/// Struct for all the credentials needed for the bot.
+/// TODO: This should be moved to crack-types
+/// TODO: How to make this flexible enough to be extensible
+/// by plugins or other modules like crack-osint?
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotCredentials {
     pub discord_token: String,

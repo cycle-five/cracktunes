@@ -84,7 +84,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         reply.into_message().await?
     };
 
-    ctx.data().add_msg_to_cache(guild_id, message.clone());
+    let _ = ctx.data().add_msg_to_cache(guild_id, message.clone());
 
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 

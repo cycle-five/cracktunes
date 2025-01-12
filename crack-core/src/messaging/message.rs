@@ -4,14 +4,15 @@ use std::{borrow::Cow, fmt::Display};
 use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
-#[cfg(feature = "crack-osint")]
 use poise::serenity_prelude as serenity;
-use serenity::{Mention, Mentionable, UserId};
+use serenity::all::{GuildId, Mention, Mentionable, UserId};
 use songbird::error::ControlError;
 use std::time::Duration;
 
 //use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
 use crate::utils::duration_to_string;
+#[cfg(feature = "crack-osint")]
+use crack_types::messaging::messages::SCAN_QUEUED;
 use crack_types::{
     errors::CrackedError,
     messaging::messages::{
@@ -24,12 +25,12 @@ use crack_types::{
         PHONE_NUMBER_INFO_ERROR, PLAYLIST_ADD_FAILURE, PLAYLIST_ADD_SUCCESS, PLAYLIST_CREATED,
         PLAYLIST_TRACKS, PLAY_ALL_FAILED, PLAY_FAILED_BLOCKED_DOMAIN, PLAY_LOG, PLAY_PLAYLIST,
         PLAY_QUEUING, PREFIXES, PREMIUM, PREMIUM_PLUG, QUEUE_NOW_PLAYING, REMOVED_QUEUE_MULTIPLE,
-        RESUMED, ROLE_CREATED, ROLE_DELETED, ROLE_NOT_FOUND, SCAN_QUEUED, SEARCHING, SEEKED,
-        SEEK_FAIL, SETTINGS_RELOADED, SHUFFLED_SUCCESS, SKIPPED, SKIPPED_ALL, SKIPPED_TO,
-        SKIP_VOTE_EMOJI, SKIP_VOTE_MISSING, SKIP_VOTE_USER, SONG_MOVED, SONG_MOVED_FROM,
-        SONG_MOVED_TO, STOPPED, SUBCOMMAND_NOT_FOUND, TEXT_CHANNEL_CREATED, TIMEOUT, UNBANNED,
-        UNDEAFENED, UNDEAFENED_FAIL, UNMUTED, UNTIL, VERSION, VERSION_LATEST, VERSION_LATEST_HASH,
-        VOICE_CHANNEL_CREATED, VOLUME, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_VOTED, WAYBACK_SNAPSHOT,
+        RESUMED, ROLE_CREATED, ROLE_DELETED, ROLE_NOT_FOUND, SEARCHING, SEEKED, SEEK_FAIL,
+        SETTINGS_RELOADED, SHUFFLED_SUCCESS, SKIPPED, SKIPPED_ALL, SKIPPED_TO, SKIP_VOTE_EMOJI,
+        SKIP_VOTE_MISSING, SKIP_VOTE_USER, SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, STOPPED,
+        SUBCOMMAND_NOT_FOUND, TEXT_CHANNEL_CREATED, TIMEOUT, UNBANNED, UNDEAFENED, UNDEAFENED_FAIL,
+        UNMUTED, UNTIL, VERSION, VERSION_LATEST, VERSION_LATEST_HASH, VOICE_CHANNEL_CREATED,
+        VOLUME, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_VOTED, WAYBACK_SNAPSHOT,
     },
 };
 
@@ -178,13 +179,13 @@ pub enum CrackedMessage {
     UserAuthorized {
         id: UserId,
         mention: Mention,
-        guild_id: serenity::GuildId,
+        guild_id: GuildId,
         guild_name: FixedString,
     },
     UserDeauthorized {
         id: UserId,
         mention: Mention,
-        guild_id: serenity::GuildId,
+        guild_id: GuildId,
         guild_name: FixedString,
     },
     UserTimeout {
@@ -520,7 +521,7 @@ impl From<&CrackedMessage> for Color {
     }
 }
 
-use serenity::Colour;
+use serenity::model::Colour;
 impl From<CrackedMessage> for Colour {
     fn from(message: CrackedMessage) -> Colour {
         match message {
