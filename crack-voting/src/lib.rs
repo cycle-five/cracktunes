@@ -264,15 +264,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod test {
-    
-    
-
-    
-    
-
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
-
-    
+    pub static _MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     // #[sqlx::test(migrator = "MIGRATOR")]
     // async fn test_voting_context_creation(pool: PgPool) -> sqlx::Result<()> {

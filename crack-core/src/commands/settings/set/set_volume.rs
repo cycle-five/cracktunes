@@ -96,8 +96,8 @@ mod test {
         );
 
         let (vol, old_vol) = set_volume(&guild_settings_map, guild_id, 0.6).await;
-        assert_eq!(vol, 0.6 as f32);
-        assert_eq!(old_vol, 0.5 as f32);
+        assert_eq!(vol, 0.6_f32);
+        assert_eq!(old_vol, 0.5_f32);
         assert_eq!(
             guild_settings_map
                 .read()

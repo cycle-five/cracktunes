@@ -43,6 +43,8 @@ pub async fn get_rusty_search(
 
 /// Search youtube for a query and return the source (playable)
 /// and metadata.
+/// Errors:
+/// - `VideoError` if the video is not found.
 pub async fn search_query_to_source_and_metadata(
     client: reqwest::Client,
     query: String,

@@ -30,7 +30,7 @@ use std::time::Duration;
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
-fn main() -> () {
+fn main() {
     config::install_crypto_provider();
     // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();

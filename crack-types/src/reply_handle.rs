@@ -157,7 +157,7 @@ mod tests {
     #[tokio::test]
     async fn test_into_message() {
         let message = Message::default();
-        let _handle = MessageOrReplyHandle::Message(message);
+        let _ = MessageOrReplyHandle::Message(message);
 
         // let message = handle.into_message().await.unwrap();
         // assert_eq!(message.id, 0);

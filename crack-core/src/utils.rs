@@ -195,14 +195,11 @@ pub async fn yt_search_select(
     // Wait for the user to make a selection
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
-    let interaction = if let Some(x) =
-        m.id.collect_component_interactions(ctx.shard.clone())
+    let Some(interaction) = m.id.collect_component_interactions(ctx.shard.clone())
             .timeout(Duration::from_secs(60 * 3))
             .await
     {
-        x
-    } else {
-        m.reply(ctx.http(), "Timed out").await.unwrap();
+        m.reply(ctx.http(), "Timed out").await?;
         return Err(CrackedError::Other("Timed out").into());
     };
 
