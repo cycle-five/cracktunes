@@ -32,7 +32,8 @@ use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
     serenity_prelude::{
-        self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
+        self as serenity, CollectComponentInteractions, CommandInteraction,
+        Context as SerenityContext, CreateMessage,
     },
     CreateReply, ReplyHandle,
 };
@@ -106,6 +107,8 @@ pub async fn send_reply_owned(
 }
 
 /// Sends a regular reply response.
+/// # Errors
+/// Returns a `CrackedError` if the message fails to send.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_nonembed_reply(
     ctx: &CrackContext<'_>,
@@ -124,6 +127,8 @@ pub async fn send_nonembed_reply(
 
 #[cfg(not(tarpaulin_include))]
 /// Edit an embed response with a `CrackedMessage`.
+/// # Errors
+/// Returns a `CrackedError` if the message fails to send.
 pub async fn edit_response_poise(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
@@ -149,8 +154,6 @@ pub async fn edit_response_text(
     let embed = CreateEmbed::default().description(content);
     edit_embed_response(http, interaction, embed).await
 }
-
-use poise::serenity_prelude::CollectComponentInteractions;
 
 #[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
@@ -208,7 +211,7 @@ pub async fn yt_search_select(
     // so we retrieve the first
     let url = match &interaction.data.kind {
         ComponentInteractionDataKind::StringSelect { values } => &values[0],
-        _ => panic!("unexpected interaction data kind"),
+        _ => return Err(CrackedError::Other("Invalid interaction").into()),
     };
 
     tracing::error!("url: {}", url);
@@ -236,6 +239,8 @@ pub async fn yt_search_select(
 }
 
 /// Sends a reply response with an embed.
+/// # Errors
+/// Returns a `CrackedError` if the message fails to send.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
@@ -251,6 +256,9 @@ pub async fn send_embed_response_poise<'ctx>(
     ctx.send_message_owned(params).await
 }
 
+/// Edits the embed response of the given interaction.
+/// # Errors
+/// Returns a `CrackedError` if the interaction fails to edit.
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
     interaction: &Interaction,
@@ -289,6 +297,8 @@ pub async fn edit_reponse_interaction(
 }
 
 /// Edit the embed response of the given message.
+/// # Errors
+/// Returns a `CrackedError` if the message edit fails.
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
@@ -315,6 +325,9 @@ pub async fn edit_embed_response2(
 }
 
 /// WHY ARE THERE TWO OF THESE?
+/// Edit the embed response of the given message.
+/// # Errors
+/// Returns a `CrackedError` if the message edit fails.
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
@@ -337,6 +350,8 @@ pub async fn edit_embed_response(
 }
 
 /// Edit the embed response of the given contexts interaction.
+/// # Errors
+/// Returns a `CrackedError` if the interaction fails to edit.
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed<'_>,
@@ -409,7 +424,9 @@ impl TrackData {
 // }
 
 /// Gets the requesting user from the typemap of the track handle.
-pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
+/// # Errors
+/// Returns a `CrackedError::NoUserAutoply` if the user is not found.
+pub async fn get_requesting_user(track: &TrackHandle) -> Result<UserId, CrackedError> {
     let data: Arc<TrackData> = track.data::<TrackData>();
     let lock = data.user_id.read().await;
     lock.ok_or(CrackedError::NoUserAutoplay)

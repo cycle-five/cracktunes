@@ -39,6 +39,8 @@ use std::{borrow::Cow, cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, RwLock};
 
 /// Get the guild name.
+/// # Errors
+/// This function can error if the guild name can't be found.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
@@ -72,10 +74,12 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn playnext(
     ctx: Context<'_>,
     #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
+    #[description = "Song link or search query."]
+    #[autocomplete = "autocomplete"]
+    query: String,
 ) -> Result<(), Error> {
-    play_internal(ctx, Some("next".to_string()), None, query_or_url).await
+    let query = query.split('~').next().unwrap_or_default().to_string();
+    play_internal(ctx, Some("next".to_string()), None, Some(query)).await
 }
 
 /// Search interactively for a song
@@ -91,7 +95,7 @@ pub async fn playnext(
 pub async fn search(
     ctx: Context<'_>,
     #[rest]
-    #[description = "search query."]
+    #[description = "Search query."]
     query: String,
 ) -> Result<(), Error> {
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
@@ -609,10 +613,11 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         None => return Some(Duration::MAX),
     };
 
-    if mode == Mode::Next { Some(top_track_duration - top_track_elapsed) } else {
+    if mode == Mode::Next {
+        Some(top_track_duration - top_track_elapsed)
+    } else {
         let center = &queue[1..queue.len() - 1];
-        let livestreams =
-            center.len() - center.iter().filter_map(|_t| metadata.duration).count();
+        let livestreams = center.len() - center.iter().filter_map(|_t| metadata.duration).count();
 
         // if any of the tracks before are livestreams, the new track will never play
         if livestreams > 0 {

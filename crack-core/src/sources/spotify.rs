@@ -570,7 +570,7 @@ pub fn build_fake_spotify_track() -> SpotifyTrack {
         external_ids: HashMap::new(),
         is_local: false,
         available_markets: vec![],
-        duration: chrono::TimeDelta::new(60, 0).unwrap(),
+        duration: chrono::TimeDelta::new(60, 0).unwrap_or_default(),
     })
 }
 

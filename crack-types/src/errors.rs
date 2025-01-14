@@ -511,7 +511,7 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{err}"), SPOTIFY_AUTH_FAILED);
 
-        /// WTF Why the blocking client? We never use it in the code??
+        // WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()
