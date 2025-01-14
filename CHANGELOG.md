@@ -8,10 +8,29 @@
       pre-curated and use in my own server.
 - [ ] Codebase architecture documentation.
 - [ ] Support discordbotlist.com (voting service).
-- [ ] Decide on whether to use ephemeral for admin messages.
+- ~~[ ] Decide on whether to use ephemeral for admin messages.~~
 
-## v0.3.16 (2024/12/12)
-- Commands each show up and work only where they are supposed to (guilds, dms, etc).
+## v0.3.16 (2025/01/13)
+
+### Major refactoring and OSINT enhancements
+
+#### BREAKING CHANGES:
+
+- Moved type definitions from crack-core to new crack-types crate
+- Restructured messaging and error handling systems
+
+#### New Features:
+- Added IP Quality Score integration with fraud detection capabilities
+- Added Scamalytics endpoint for additional fraud detection
+- Enhanced music command error handling and user feedback
+- Improved voting system implementation
+
+#### Improvements
+
+- Significant code cleanup and organization
+- Enhanced test infrastructure and coverage
+- Updated dependencies and build scripts
+- Improved error handling across all modules
 
 ## v0.3.16-alpha.3 (2024/12/09)
 - re-enable the commands that were disabled in the last release
