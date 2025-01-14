@@ -195,10 +195,11 @@ pub async fn yt_search_select(
     // Wait for the user to make a selection
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
-    let Some(interaction) = m.id.collect_component_interactions(ctx.shard.clone())
+    let Some(interaction) =
+        m.id.collect_component_interactions(ctx.shard.clone())
             .timeout(Duration::from_secs(60 * 3))
             .await
-    {
+    else {
         m.reply(ctx.http(), "Timed out").await?;
         return Err(CrackedError::Other("Timed out").into());
     };
@@ -335,50 +336,28 @@ pub async fn edit_embed_response(
     }
 }
 
-// #[allow(deprecated)]
-// pub enum ApplicationCommandOrMessageInteraction {
-//     Command(CommandInteraction),
-//     Message(MessageReaction),
-// }
-
-// #[allow(deprecated)]
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageReaction) -> Self {
-//         Self::Message(message)
-//     }
-// }
-
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageInteraction) -> Self {
-//         Self::ApplicationCommand(message)
-//     }
-// }
-
+/// Edit the embed response of the given contexts interaction.
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
     embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
-    let reply_handle = match get_interaction_new(&ctx) {
-        Some(interaction1) => match interaction1 {
-            CommandOrMessageInteraction::Command(interaction2) => {
-                return interaction2
-                    .edit_response(
-                        &ctx.serenity_context().http,
-                        EditInteractionResponse::new().content(" ").embed(embed),
-                    )
-                    .await
-                    .map_err(Into::into);
-                //     },
-                //     _ => Err(CrackedError::Other("not implemented")),
-            },
-            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
+    let message = match get_interaction_new(&ctx) {
+        Some(CommandOrMessageInteraction::Command(interaction)) => {
+            interaction
+                .edit_response(
+                    &ctx.serenity_context().http,
+                    EditInteractionResponse::new().content(" ").embed(embed),
+                )
+                .await
         },
-        None => send_embed_response_poise(ctx, embed).await,
+        Some(CommandOrMessageInteraction::Message(_)) | None => {
+            let reply_handle = send_embed_response_poise(ctx, embed).await;
+            reply_handle?.into_message().await
+        },
     };
-    reply_handle?.into_message().await.map_err(Into::into)
+    message.map_err(Into::into)
 }
 
-//use tokio::sync::RwLock;
 /// Modifiable data struct for the track information.
 #[derive(Clone, Debug, Default)]
 pub struct TrackData {
@@ -386,6 +365,7 @@ pub struct TrackData {
     pub aux_metadata: Arc<RwLock<Option<AuxMetadata>>>,
 }
 
+/// FIXME: Why?
 unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
 
