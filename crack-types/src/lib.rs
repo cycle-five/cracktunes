@@ -1,4 +1,4 @@
-#[allow(clippy::no_effect_underscore_binding)]
+#![allow(clippy::no_effect_underscore_binding)]
 // ------------------------------------------------------------------
 // Modules
 // ------------------------------------------------------------------

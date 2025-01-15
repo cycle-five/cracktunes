@@ -31,7 +31,7 @@ impl CrackClientCredsSpotify {
         Ok(Self(creds))
     }
 
-    pub async fn get(&self) -> Result<&ClientCredsSpotify, CrackedError> {
+    pub fn get(&self) -> Result<&ClientCredsSpotify, CrackedError> {
         Ok(&self.0)
     }
 
@@ -127,7 +127,9 @@ impl Spotify {
     }
 
     /// Parse a Spotify URL.
-    pub async fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] (TODO: Make this it's own error type) if the URL is invalid.
+    pub fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
         let captures = SPOTIFY_QUERY_REGEX
             .captures(query)
             .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
@@ -152,6 +154,9 @@ impl Spotify {
     }
 
     /// Extract tracks from a Spotify query.
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] (TODO: Make this it's own error type) if the URL is invalid
+    /// OR if the query is not a playlist. (TODO: Support other media types)
     pub async fn extract_tracks(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -159,7 +164,7 @@ impl Spotify {
         let ParsedSpotifyUrl {
             media_type,
             media_id,
-        } = Self::parse_spotify_url(query).await?;
+        } = Self::parse_spotify_url(query)?;
 
         let media_id = media_id.as_str();
 
@@ -169,7 +174,9 @@ impl Spotify {
         }
     }
 
-    /// Extract a `QueryType` from a Spotify query.
+    /// Extract a [`QueryType`] from a Spotify query.
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] if the URL is invalid.
     pub async fn extract(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -177,7 +184,7 @@ impl Spotify {
         let ParsedSpotifyUrl {
             media_type,
             media_id,
-        } = Self::parse_spotify_url(query).await?;
+        } = Self::parse_spotify_url(query)?;
 
         let media_id = media_id.as_str();
 
@@ -189,6 +196,8 @@ impl Spotify {
     }
 
     /// Search Spotify for a query.
+    /// # Errors
+    /// Returns a [`CrackedError::RSpotify`] if the search fails.
     pub async fn search(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -598,33 +607,33 @@ mod test {
     #[tokio::test]
     async fn test_parse_spotify_url() {
         let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Track);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Album);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Playlist);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Track);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Album);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url =
             "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Playlist);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
     }
