@@ -36,10 +36,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
     let guild_name = crate::http_utils::get_guild_name(http, channel_id, guild_id).await?;
     tracing::info!(
         "{}",
-        format!(
-            "Unimplemented Event: {guild_name}, {channel_id}, {log_data:?}"
-        )
-        .blue()
+        format!("Unimplemented Event: {guild_name}, {channel_id}, {log_data:?}").blue()
     );
     Ok(())
 }
@@ -87,9 +84,7 @@ pub async fn log_integration_delete(
     log_data: &(&IntegrationId, &GuildId, &Option<ApplicationId>),
 ) -> Result<(), Error> {
     let &(integration_id, _guild_id, _application_id) = log_data;
-    let title = format!(
-        "Integration Delete Event {integration_id} {guild_id} {channel_id}"
-    );
+    let title = format!("Integration Delete Event {integration_id} {guild_id} {channel_id}");
     let description = serde_json::to_string_pretty(log_data).unwrap_or_default();
     let avatar_url = "";
     let guild_name = get_guild_name(cache_http, channel_id, guild_id).await?;
@@ -702,7 +697,10 @@ pub async fn log_channel_delete(
     let title = format!("Channel Deleted: {del_channel_id}");
     let description = format!(
         "messages deleted: {}",
-        messages.as_ref().map(std::collections::VecDeque::len).unwrap_or_default()
+        messages
+            .as_ref()
+            .map(std::collections::VecDeque::len)
+            .unwrap_or_default()
     );
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -755,10 +753,13 @@ pub async fn log_user_update(
     let &(old, new) = log_data;
     let title = format!("User Updated: {}", new.name);
     let description = format!(
-            "Old User: {}\nNew User: {}",
-            old.clone().map_or_else(|| FixedString::from_str("None").expect("Failed to create FixedString"), |x| x.name.clone()),
-            new.name
-        );
+        "Old User: {}\nNew User: {}",
+        old.clone().map_or_else(
+            || FixedString::from_str("None").expect("Failed to create FixedString"),
+            |x| x.name.clone()
+        ),
+        new.name
+    );
 
     let name = new.name.clone();
     let avatar_url = new.avatar_url().unwrap_or_default();
@@ -864,7 +865,12 @@ pub async fn log_message_update(
 ) -> Result<(), Error> {
     // Don't log message updates from bots
     // TODO: Make this configurable
-    if log_data.2.author.as_ref().is_some_and(serenity::all::User::bot) {
+    if log_data
+        .2
+        .author
+        .as_ref()
+        .is_some_and(serenity::all::User::bot)
+    {
         return Ok(());
     }
 
@@ -924,7 +930,8 @@ pub async fn log_message_update(
     .map(|_| ())
 }
 
-#[must_use] pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
+#[must_use]
+pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
     let title = "Message Updated".to_string();
     let description = msg.id.to_string();
     let avatar_url = String::new();
@@ -987,7 +994,8 @@ pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
 }
 
 /// Guild Role to a string.
-#[must_use] pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
+#[must_use]
+pub fn guild_role_to_string(role: &serenity::model::prelude::Role) -> String {
     format!(
         "Role: {}\nID: {}\nColor: {:#?}\nHoist: {}\nMentionable: {}\nPermissions: {:?}\nPosition: {}\n",
         role.name,
@@ -1001,7 +1009,8 @@ pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
 }
 
 /// Diff two guild roles.
-#[must_use] pub fn guild_role_diff(
+#[must_use]
+pub fn guild_role_diff(
     old: &serenity::model::prelude::Role,
     new: &serenity::model::prelude::Role,
 ) -> String {
@@ -1047,7 +1056,8 @@ pub async fn log_guild_role_update(
     let &(old, new) = log_data;
     let title = format!("Role Updated: {}", new.name);
     let description = old
-        .as_ref().map_or_else(|| guild_role_to_string(new), |r| guild_role_diff(r, new));
+        .as_ref()
+        .map_or_else(|| guild_role_to_string(new), |r| guild_role_diff(r, new));
     // FIXME: Use icon or emoji
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
@@ -1462,7 +1472,14 @@ macro_rules! log_event_async {
         $event_log
             .write_log_obj_async($event_name, $log_data)
             .await?;
-        let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        // let channel_id = get_channel_id($guild_settings, $guild_id, $event).await?;
+        let channel_id = match get_channel_id($guild_settings, $guild_id, $event).await {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::debug!("Failed to get channel id: {:?}", e);
+                return Ok(());
+            },
+        };
         $log_func(channel_id, $guild_id, $http, $log_data)
             .await
             .map(|_| ())

@@ -6,6 +6,7 @@ pub use resolve::*;
 //------------------------------------
 // crack_types imports
 //------------------------------------
+use crack_osint::ipqs::IpqsClient;
 use crack_types::SpotifyTrackTrait;
 use crack_types::TrackResolveError;
 use crack_types::{parse_url, video_info_to_aux_metadata};
@@ -159,10 +160,9 @@ impl<'a> CrackTrackClient<'a> {
     }
 
     /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
-    /// Create a new [`CrackTrackClient`] with a given [`reqwest::Client`].
     ///
     /// # Panics
-    /// Panics if the `YouTube` client cannot be created.
+    /// Panics if the [`YouTube`] client cannot be created.
     #[must_use]
     pub fn new_with_req_client(req_client: reqwest::Client) -> Self {
         let opts = RequestOptions {
@@ -529,7 +529,7 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
 #[command(
     version = "1.0",
     author = "Cycle Five <cycle.five@proton.me>",
-    about = "A simple CLI to get autocomplete suggestions from YouTube."
+    about = "A simple CLI harness for testing new modules for Crack Tunes."
 )]
 struct Cli {
     /// The command to run
@@ -568,8 +568,6 @@ fn yt_url_type(url: &url::Url) -> QueryType {
         QueryType::VideoLink(url.to_string())
     }
 }
-
-use crack_osint::ipqs::IpqsClient;
 
 /// Match the CLI command and run the appropriate function.
 #[tracing::instrument]
