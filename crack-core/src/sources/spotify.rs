@@ -592,15 +592,15 @@ mod test {
     #[tokio::test]
     async fn test_parse_spotify_url_fail() {
         let url = "https://open.spotify.com/trak/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
 
         let url = "https://open.spoify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
 
         let url = "https://open.spotify.com/playlis/";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
     }
 

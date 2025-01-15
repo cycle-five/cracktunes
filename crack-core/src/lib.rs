@@ -797,7 +797,7 @@ mod lib_test {
         let want = r#"timeout:       0
 guild_id:      0
 chan_id:       0
-dc_msg:        "You have been violated for being cammed down for too long."
+dc_msg:        "📷\u{2002}You have been violated for being cammed down for too long."
 msg_on_deafen: false
 msg_on_mute:   false
 msg_on_dc:     false
