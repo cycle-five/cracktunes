@@ -1222,6 +1222,7 @@ dependencies = [
  "once_cell",
  "poise",
  "rand",
+ "regex",
  "reqwest",
  "rspotify",
  "rusty_ytdl",

@@ -16,6 +16,7 @@ pub use errors::*;
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
 use rspotify::model::TrackId;
+use rusty_ytdl::search::Channel;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
@@ -415,6 +416,43 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     }
 }
 
+use rusty_ytdl::search::Channel as RustyYTChannel;
+use rusty_ytdl::search::Video as RustyYTVideo;
+use rusty_ytdl::VideoDetails as RustyYTVideoDetails;
+
+/// Builds a fake [`RustyYTVideo`] for testing purposes.
+#[must_use]
+pub fn build_fake_search_video() -> RustyYTVideo {
+    RustyYTVideo {
+        id: "id".to_string(),
+        title: "title".to_string(),
+        description: "description".to_string(),
+        duration: 14400,
+        thumbnails: build_mock_thumbnails(),
+        channel: RustyYTChannel {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            url: "url".to_string(),
+            verified: false,
+            subscribers: 0,
+            icon: build_mock_thumbnails(),
+        },
+        views: 0,
+        url: "youtube.com".to_string(),
+        duration_raw: "60".to_string(),
+        uploaded_at: Some("uploaded_at".to_string()),
+    }
+}
+
+#[must_use]
+pub fn build_mock_thumbnails() -> Vec<rusty_ytdl::Thumbnail> {
+    vec![rusty_ytdl::Thumbnail {
+        url: "url".to_string(),
+        width: 0,
+        height: 0,
+    }]
+}
+
 /// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
 #[must_use]
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
@@ -451,11 +489,11 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
         likes: 0,
         dislikes: 0,
         age_restricted: false,
-        video_url: "video_url".to_string(),
+        video_url: "youtube.com".to_string(),
         storyboards: vec![],
         chapters: vec![],
         embed: build_fake_rusty_embed(),
-        title: "title".to_string(),
+        title: "Title".to_string(),
         description: "description".to_string(),
         length_seconds: "60".to_string(),
         owner_profile_url: "owner_profile_url".to_string(),
@@ -478,11 +516,7 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
         is_private: false,
         is_unplugged_corpus: false,
         is_live_content: false,
-        thumbnails: vec![rusty_ytdl::Thumbnail {
-            url: "thumbnail_url".to_string(),
-            width: 0,
-            height: 0,
-        }],
+        thumbnails: build_mock_thumbnails(),
     }
 }
 
