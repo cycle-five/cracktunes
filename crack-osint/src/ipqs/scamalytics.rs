@@ -1,7 +1,5 @@
 use crack_types::{CrackedError, CrackedResult};
-#[cfg(test)]
-use mockall::automock;
-use reqwest::{Client, Error as ReqwestError, Response};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
@@ -213,7 +211,7 @@ impl ScamalyticsClient {
         debug!("Making request to Scamalytics API {url}");
         println!("Making request to Scamalytics API {url}");
 
-        let response = self.client.get(&url).await.map_err(|e| {
+        let response = self.client.get2(&url).await.map_err(|e| {
             #[cfg(feature = "crack-tracing")]
             error!("Request failed: {}", e);
             ScamalyticsError::RequestError(e.to_string())
@@ -344,7 +342,7 @@ mod tests {
 
         // Set up the mock expectation with reqwest Response directly
         mock_client
-            .expect_get()
+            .expect_get2()
             .with(str::contains("8.8.8.8"))
             .returning(move |_| {
                 Ok(Response::from(
@@ -388,7 +386,7 @@ mod tests {
             "ip": "167.99.90.43"
         });
 
-        mock_client.expect_get().returning(move |_| {
+        mock_client.expect_get2().returning(move |_| {
             Ok(Response::from(
                 Builder::new()
                     .status(StatusCode::OK)
@@ -416,7 +414,7 @@ mod tests {
     async fn test_http_error_response() {
         let mut mock_client = MockHttpClient::new();
 
-        mock_client.expect_get().returning(|_| {
+        mock_client.expect_get2().returning(|_| {
             Ok(Response::from(
                 Builder::new()
                     .status(StatusCode::UNAUTHORIZED)

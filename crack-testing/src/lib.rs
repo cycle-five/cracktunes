@@ -654,7 +654,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cli3() {
-        let cli = Cli::parse_from(vec!["crack_testing", "suggest-new", "molly nilsson"]);
+        let cli = Cli::parse_from(vec!["crack_testing", "suggest", "molly nilsson"]);
         match match_cli(cli).await {
             Ok(_) => (),
             Err(e) => eprintln!("{e}"),

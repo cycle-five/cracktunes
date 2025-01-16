@@ -21,17 +21,31 @@
 		},
 		{
 			"type": "cargo",
+			"command": "clippy",
+			"args": [
+				"--all",
+				"--workspace",
+				"--",
+				"-D",
+				"clippy::all",
+				"-D",
+				"clippy::pedantic",
+				"-D",
+				"warnings"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo clippy pedantic"
+		},
+		{
+			"type": "cargo",
 			"command": "test",
 			"args": [
 				"--package",
 				"crack-core",
 				"--lib",
-				"--features",
-				"crack-gpt",
-				"--features",
-				"crack-osint",
-				"--features",
-				"crack-bf",
 				"--profile=release",
 				"--",
 				"--exact",
@@ -50,8 +64,6 @@
 			"command": "check",
 			"args": [
 				"--all",
-				"--features",
-				"crack-bf,crack-osint,crack-gpt",
 				"--profile=release",
 				"--workspace"
 			],
@@ -66,8 +78,6 @@
 			"command": "build",
 			"args": [
 				"--all",
-				"--features",
-				"crack-bf,crack-osint,crack-gpt",
 				"--profile=release",
 				"--workspace"
 			],

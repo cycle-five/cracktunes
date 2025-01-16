@@ -4,6 +4,7 @@ pub mod scamalytics;
 pub use scamalytics::*;
 
 use async_trait::async_trait;
+#[cfg(test)]
 use mockall::automock;
 use reqwest::{Client, Error as ReqwestError, Response};
 use std::collections::HashMap;
@@ -23,16 +24,16 @@ pub trait HttpClient: std::fmt::Debug + Send + Sync + 'static {
     /// ```
     /// use std::sync::Arc;
     /// use reqwest::Client;
-    /// use crate::ipqs::HttpClient;
-    /// 
+    /// use crack_osint::HttpClient;
+    ///
     /// async fn example() -> Result<(), reqwest::Error> {
-    ///     let client = Arc::new(Client::new());
-    ///     let response = client.get("https://api.example.com/data").await?;
+    ///     let client = Client::new();
+    ///     let response = client.get2("https://api.example.com/data").await?;
     ///     assert!(response.status().is_success());
     ///     Ok(())
     /// }
     /// ```
-    async fn get(&self, url: &str) -> Result<Response, ReqwestError>;
+    async fn get2(&self, url: &str) -> Result<Response, ReqwestError>;
     /// Get's the response from the given URL with query parameters.
     /// # Arguments
     /// * `url` - A string slice that holds the URL to get the response from.
@@ -46,10 +47,10 @@ pub trait HttpClient: std::fmt::Debug + Send + Sync + 'static {
     /// use std::sync::Arc;
     /// use std::collections::HashMap;
     /// use reqwest::Client;
-    /// use crate::ipqs::HttpClient;
-    /// 
+    /// use crack_osint::HttpClient;
+    ///
     /// async fn example() -> Result<(), reqwest::Error> {
-    ///     let client = Arc::new(Client::new());
+    ///     let client = Box::new(Client::new());
     ///     let mut params = HashMap::new();
     ///     params.insert("key".to_string(), "value".to_string());
     ///     let response = client.get_with_headers("https://api.example.com/data", params).await?;
@@ -67,7 +68,7 @@ pub trait HttpClient: std::fmt::Debug + Send + Sync + 'static {
 // Implement the trait for reqwest::Client
 #[async_trait]
 impl HttpClient for Client {
-    async fn get(&self, url: &str) -> Result<Response, ReqwestError> {
+    async fn get2(&self, url: &str) -> Result<Response, ReqwestError> {
         self.get(url).send().await
     }
 
