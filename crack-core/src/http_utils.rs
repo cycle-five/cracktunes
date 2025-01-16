@@ -166,22 +166,13 @@ impl<T: CacheHttp> CacheHttpExt for T {
 /// This is a hack to get around the fact that we can't use async in statics. Is it?
 static CLIENT: Lazy<Client> = Lazy::new(|| {
     println!("Creating a new reqwest client...");
-    reqwest::ClientBuilder::new()
-        .use_rustls_tls()
-        .cookie_store(true)
-        .build()
-        .expect("Failed to build reqwest client")
+    build_client()
+    // reqwest::ClientBuilder::new()
+    //     .use_rustls_tls()
+    //     .cookie_store(true)
+    //     .build()
+    //     .expect("Failed to build reqwest client")
 });
-
-// /// This is a hack to get around the fact that we can't use async in statics. Is it?
-// static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
-//     println!("Creating a new (old) reqwest client...");
-//     reqwest_old::ClientBuilder::new()
-//         .use_rustls_tls()
-//         .cookie_store(true)
-//         .build()
-//         .expect("Failed to build reqwest client")
-// });
 
 /// Build a reqwest client with rustls.
 #[must_use]
