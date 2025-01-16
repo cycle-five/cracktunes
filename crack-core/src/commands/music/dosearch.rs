@@ -39,7 +39,7 @@ async fn do_yt_search_internal(
 ) -> Result<ReplyHandle, CrackedError> {
     use crate::http_utils;
 
-    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), search_query);
+    let mut ytdl = YoutubeDl::new(http_utils::get_client().clone(), search_query);
     let results = ytdl.search(None).await?;
 
     let embeds = results

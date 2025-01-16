@@ -199,30 +199,20 @@ pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
-/// Get a reference to an old version client.
-#[must_use]
-pub fn get_client_old() -> &'static reqwest::Client {
-    &CLIENT
-}
-
 /// Initialize the static, global reqwest client.
 /// This is reused across the entire application.
 /// # Errors
 /// Returns a [`CrackedError`] if the client fails to initialize.
 pub async fn init_http_client() -> Result<(), CrackedError> {
     let client = get_client();
-    // let client_old = get_client_old();
-    let res1 = client.get("https://httpbin.org/ip").send().await?;
+    let res = client.get("https://httpbin.org/ip").send().await?;
     // This is really weird, it causes a bug if you don't implement the conversion
     // for the error type in both the new and old version of the library.
     // let res2 = client_old.get("https://httpbin.org/ip").send().await?;
-    let status1 = res1.status();
+    let status = res.status();
     // let status2 = res2.status();
     // let body = res.text().await?;
-    tracing::info!(
-        "HTTP client initialized successfully: {:?}",
-        status1.clone()
-    );
+    tracing::info!("HTTP client initialized successfully: {:?}", status.clone());
     // tracing::info!(
     //     "HTTP client initialized successfully: {:?}",
     //     status2.clone()

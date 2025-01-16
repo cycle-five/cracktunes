@@ -81,7 +81,7 @@ pub async fn search_query_to_source_and_metadata(
         Some(url) => url.clone(),
         None => String::new(),
     };
-    let ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), source_url);
+    let ytdl = YoutubeDl::new(http_utils::get_client().clone(), source_url);
     let my_metadata = NewAuxMetadata(metadata);
 
     Ok((ytdl.into(), vec![my_metadata]))
@@ -144,7 +144,7 @@ pub async fn search_query_to_source_and_metadata_ytdl(
     } else {
         format!("ytsearch:{query}")
     };
-    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
+    let mut ytdl = YoutubeDl::new(http_utils::get_client().clone(), query);
     let metadata = ytdl.aux_metadata().await?;
     let my_metadata = NewAuxMetadata(metadata);
 

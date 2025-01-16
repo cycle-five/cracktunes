@@ -220,8 +220,7 @@ pub async fn queue_track_back(
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
-    let queue =
-        queue_resolved_track_back(call, resolved, http_utils::get_client_old().clone()).await;
+    let queue = queue_resolved_track_back(call, resolved, http_utils::get_client().clone()).await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r"
@@ -376,7 +375,7 @@ pub async fn queue_query_list_offset(
     // }
 
     let mut cur_q = Default::default();
-    let client = http_utils::get_client_old();
+    let client = http_utils::get_client();
     let len = tracks.len();
     for (idx, resolved) in tracks.into_iter().enumerate() {
         let metadata = resolved.get_metadata().unwrap();
@@ -405,6 +404,8 @@ pub async fn queue_query_list_offset(
 }
 
 /// Get the play mode and the message from the parameters to the play command.
+/// # Panics
+/// If the FixedString conversion fails.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
 #[tracing::instrument]
 pub fn get_mode(
@@ -414,11 +415,12 @@ pub fn get_mode(
 ) -> (Mode, FixedString) {
     let opt_mode = mode.clone();
     if is_prefix {
-        let asdf2 = msg
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default();
-        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        // let asdf2 = msg
+        //     .clone()
+        //     .map(|s| s.replace("query_or_url:", ""))
+        //     .unwrap_or_default();
+        // let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        let asdf = msg.clone().unwrap_or_default();
         let mode = if asdf.starts_with("next") {
             Mode::Next
         } else if asdf.starts_with("all") {

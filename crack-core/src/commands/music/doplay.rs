@@ -187,7 +187,7 @@ pub async fn enqueue_resolved_tracks(
     mode: crack_types::Mode,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
-    let http_client = http_utils::get_client_old();
+    let http_client = http_utils::get_client();
     let mut out_tracks: Vec<TrackHandle> = Vec::new();
     match mode {
         crack_types::Mode::End => {
