@@ -240,7 +240,7 @@ impl PartialEq for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`TrackResovleError`] to a [`CrackedError`].
+/// Provides an implementation to convert a [`TrackResolveError`] to a [`CrackedError`].
 impl From<TrackResolveError> for CrackedError {
     fn from(err: TrackResolveError) -> Self {
         Self::TrackResolveError(err)
@@ -375,7 +375,7 @@ impl From<Elapsed> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`JsonError`] to a [`CrackedError`].
+/// Provides an implementation to convert a [`JoinError`] to a [`CrackedError`].
 impl From<JoinError> for CrackedError {
     fn from(err: JoinError) -> Self {
         CrackedError::JoinChannelError(err)

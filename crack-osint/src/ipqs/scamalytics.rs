@@ -129,20 +129,21 @@ impl Default for ScamalyticsError {
     }
 }
 
-// Add this trait to abstract the HTTP client functionality
-#[cfg_attr(test, automock)]
-#[async_trait::async_trait]
-pub trait HttpClient: std::fmt::Debug + Send + Sync + 'static {
-    async fn get(&self, url: &str) -> Result<Response, ReqwestError>;
-}
+// // Add this trait to abstract the HTTP client functionality
+// #[cfg_attr(test, automock)]
+// #[async_trait::async_trait]
+// pub trait HttpClient: std::fmt::Debug + Send + Sync + 'static {
+//     async fn get(&self, url: &str) -> Result<Response, ReqwestError>;
+// }
 
-// Implement the trait for reqwest::Client
-#[async_trait::async_trait]
-impl HttpClient for Client {
-    async fn get(&self, url: &str) -> Result<Response, ReqwestError> {
-        self.get(url).send().await
-    }
-}
+// // Implement the trait for reqwest::Client
+// #[async_trait::async_trait]
+// impl HttpClient for Client {
+//     async fn get(&self, url: &str) -> Result<Response, ReqwestError> {
+//         self.get(url).send().await
+//     }
+// }
+use crate::HttpClient;
 
 // Updated ScamalyticsClient to use the trait
 #[derive(Debug)]
@@ -279,6 +280,7 @@ fn check_get_env_var(key: &str) -> CrackedResult<String> {
 mod tests {
     // use url::Url;
     use super::*;
+    use crate::MockHttpClient;
     use ::http::response::Builder;
 
     use mockall::predicate::*;

@@ -1,3 +1,4 @@
+use crate::HttpClient;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -90,17 +91,17 @@ impl std::fmt::Display for IpqsError {
 
 impl std::error::Error for IpqsError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IpqsClient {
     api_key: String,
-    client: Client,
+    client: Box<dyn HttpClient>,
 }
 
 impl Default for IpqsClient {
     fn default() -> Self {
         Self {
             api_key: String::default(),
-            client: Client::new(),
+            client: Box::new(Client::new()),
         }
     }
 }
@@ -110,13 +111,16 @@ impl IpqsClient {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            client: Client::new(),
+            client: Box::new(Client::new()),
         }
     }
 
     #[must_use]
     pub fn new_with_client(api_key: String, client: Client) -> Self {
-        Self { api_key, client }
+        Self {
+            api_key,
+            client: Box::new(client),
+        }
     }
 
     #[cfg_attr(feature = "crack-tracing", instrument(skip(self, params)))]
@@ -133,21 +137,29 @@ impl IpqsClient {
             self.api_key, ip
         );
 
-        let request = self.client.get(&url);
+        let response = self
+            .client
+            .get_with_headers(&url, params.unwrap_or_default())
+            .await
+            .map_err(|e| {
+                #[cfg(feature = "crack-tracing")]
+                error!("Request failed: {}", e);
+                IpqsError::RequestError(e.to_string())
+            })?;
 
-        let request = if let Some(params) = params {
-            #[cfg(feature = "crack-tracing")]
-            debug!("Adding query parameters: {:?}", params);
-            request.query(&params)
-        } else {
-            request
-        };
+        // let request = if let Some(params) = params {
+        //     #[cfg(feature = "crack-tracing")]
+        //     debug!("Adding query parameters: {:?}", params);
+        //     request.query(&params)
+        // } else {
+        //     request
+        // };
 
-        let response = request.send().await.map_err(|e| {
-            #[cfg(feature = "crack-tracing")]
-            error!("Request failed: {}", e);
-            IpqsError::RequestError(e.to_string())
-        })?;
+        // let response = request.send().await.map_err(|e| {
+        //     #[cfg(feature = "crack-tracing")]
+        //     error!("Request failed: {}", e);
+        //     IpqsError::RequestError(e.to_string())
+        // })?;
 
         if !response.status().is_success() {
             let error_msg = format!("API request failed with status: {}", response.status());
@@ -169,38 +181,100 @@ impl IpqsClient {
 
 #[cfg(test)]
 mod tests {
-    
-
     use super::*;
+    use crate::MockHttpClient;
+    use mockall::predicate::*;
+    use reqwest::{Response, StatusCode};
+    use std::convert::TryFrom;
 
     #[tokio::test]
-    async fn test_ip_check() {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .unwrap();
+    async fn test_successful_ip_check() {
+        let mut mock_client = MockHttpClient::new();
 
-        let ipqs = IpqsClient::new_with_client("your_api_key".to_string(), client);
+        // Create a successful response
+        let expected_response = IpqsResponse {
+            success: true,
+            fraud_score: 25,
+            country_code: "US".to_string(),
+            city: "San Francisco".to_string(),
+            ..Default::default()
+        };
 
-        let mut params = HashMap::new();
-        params.insert(
-            "user_agent".to_string(),
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7_2 like Mac OS X)".to_string(),
-        );
-        params.insert("user_language".to_string(), "en-US".to_string());
-        params.insert("strictness".to_string(), "1".to_string());
+        mock_client
+            .expect_get_with_headers()
+            .with(
+                eq("https://ipqualityscore.com/api/json/ip/test_key/1.1.1.1"),
+                always(),
+            )
+            .returning(move |_, _| {
+                Ok(Response::from(
+                    http::Response::builder()
+                        .status(200)
+                        .body(serde_json::to_string(&expected_response).unwrap())
+                        .unwrap(),
+                ))
+            });
 
-        let result = ipqs
-            .check_ip("fe80::4d90:b5d1:ddc8:ec14", Some(params))
-            .await;
+        let ipqs = IpqsClient {
+            api_key: "test_key".to_string(),
+            client: Box::new(mock_client),
+        };
 
-        match result {
-            Ok(response) => {
-                assert!(response.success, "Test failed: {response:?}");
-                // Add more assertions as needed
-            },
-            Err(e) => panic!("Test failed: {e}"),
-        }
+        let result = ipqs.check_ip("1.1.1.1", None).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.fraud_score, 25);
+        assert_eq!(result.country_code, "US");
+        assert_eq!(result.city, "San Francisco");
+    }
+
+    // #[tokio::test]
+    // async fn test_request_error() {
+    //     let mut mock_client = MockHttpClient::new();
+
+    //     mock_client.expect_get_with_headers().returning(|_, _| {
+    //         // let builder = http::Response::builder().status(500);
+    //         // let response = builder.body("Connection refused").unwrap();
+    //         // Err(reqwest::Error::from(response))
+    //         Ok(Response::from(
+    //             http::Response::builder()
+    //                 .status(500)
+    //                 .body("Connection refused".to_string())
+    //                 .unwrap(),
+    //         ))
+    //     });
+
+    //     let ipqs = IpqsClient {
+    //         api_key: "test_key".to_string(),
+    //         client: Box::new(mock_client),
+    //     };
+
+    //     let result = ipqs.check_ip("1.1.1.1", None).await;
+
+    //     assert!(matches!(result, Err(IpqsError::RequestError(_))));
+    // }
+
+    #[tokio::test]
+    async fn test_invalid_response() {
+        let mut mock_client = MockHttpClient::new();
+
+        mock_client.expect_get_with_headers().returning(|_, _| {
+            Ok(Response::from(
+                http::Response::builder()
+                    .status(403)
+                    .body("Invalid API key".to_string())
+                    .unwrap(),
+            ))
+        });
+
+        let ipqs = IpqsClient {
+            api_key: "invalid_key".to_string(),
+            client: Box::new(mock_client),
+        };
+
+        let result = ipqs.check_ip("1.1.1.1", None).await;
+
+        assert!(matches!(result, Err(IpqsError::InvalidResponse(_))));
     }
 
     #[test]

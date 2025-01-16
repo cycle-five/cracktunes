@@ -78,7 +78,7 @@ impl NewAuxMetadata {
         })
     }
 
-    /// Set the [`source_url`].
+    /// Set the [`AuxMetadata::source_url`].
     #[must_use]
     pub fn with_source_url(self, source_url: String) -> Self {
         NewAuxMetadata(AuxMetadata {
