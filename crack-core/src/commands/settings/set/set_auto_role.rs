@@ -71,9 +71,8 @@ pub async fn auto_role_internal(ctx: Context<'_>, auto_role: RoleId) -> Result<(
     res.save(&ctx.data().database_pool.clone().unwrap()).await?;
 
     //ctx.say(format!("Auto role set to {}", mention)).await?;
-    let params = SendMessageParams::new(CrackedMessage::Other(format!(
-        "Auto role set to {mention}"
-    )));
+    let params =
+        SendMessageParams::new(CrackedMessage::Other(format!("Auto role set to {mention}")));
     ctx.send_message(params)
         .await
         .map(|_| ())

@@ -137,7 +137,8 @@ pub struct GenericPermissionSettingsRead {
 
 /// Implementation of `GenericPermissionSettingsRead`.
 impl GenericPermissionSettingsRead {
-    #[must_use] pub fn convert(self) -> GenericPermissionSettings {
+    #[must_use]
+    pub fn convert(self) -> GenericPermissionSettings {
         GenericPermissionSettings {
             id: self.id,
             default_allow_all_commands: self.default_allow_all_commands,
@@ -198,7 +199,8 @@ impl GenericPermissionSettings {
     // }
 
     /// Check if a role is allowed by the permission settings.
-    #[must_use] pub fn is_role_allowed(&self, role: u64) -> bool {
+    #[must_use]
+    pub fn is_role_allowed(&self, role: u64) -> bool {
         (self.allowed_roles.is_empty()
             && self.denied_roles.is_empty()
             && self.default_allow_all_roles)
@@ -209,7 +211,8 @@ impl GenericPermissionSettings {
     }
 
     /// Check if a user is allowed by the permission settings.
-    #[must_use] pub fn is_user_allowed(&self, user: u64) -> bool {
+    #[must_use]
+    pub fn is_user_allowed(&self, user: u64) -> bool {
         (self.allowed_users.is_empty()
             && self.denied_users.is_empty()
             && self.default_allow_all_users)
@@ -219,7 +222,8 @@ impl GenericPermissionSettings {
             || self.allowed_users.contains(&user) && !self.denied_users.contains(&user)
     }
 
-    #[must_use] pub fn is_channel_allowed(&self, channel: u64) -> bool {
+    #[must_use]
+    pub fn is_channel_allowed(&self, channel: u64) -> bool {
         (self.allowed_channels.is_empty() && self.denied_channels.is_empty())
             || (self.allowed_channels.is_empty() && !self.denied_channels.contains(&channel))
             || (self.allowed_channels.contains(&channel)

@@ -100,7 +100,8 @@ async fn get_messages(
 }
 
 /// Get the `print_settings` commands
-#[must_use] pub fn commands() -> Vec<crate::Command> {
+#[must_use]
+pub fn commands() -> Vec<crate::Command> {
     vec![print_settings(), get_channel_messages()]
         .into_iter()
         .collect()

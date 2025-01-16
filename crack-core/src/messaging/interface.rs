@@ -117,7 +117,8 @@ pub async fn send_log_embed(
 // ------ Queue Display / Interaction ------ //
 
 /// Converts a user id to a string, with special handling for autoplay.
-#[must_use] pub fn requesting_user_to_string(user_id: UserId) -> String {
+#[must_use]
+pub fn requesting_user_to_string(user_id: UserId) -> String {
     match user_id.get() {
         1 => "(auto)".to_string(),
         _ => user_id.mention().to_string(),
@@ -238,7 +239,10 @@ pub async fn send_now_playing(
         None => CreateMessage::new().content("Nothing playing"),
     };
     tracing::warn!("sending message: {:?}", msg);
-    channel.send_message(&http, msg).await.map_err(std::convert::Into::into)
+    channel
+        .send_message(&http, msg)
+        .await
+        .map_err(std::convert::Into::into)
 }
 
 /// Creates an embed from a `CrackedMessage` and sends it as an embed.
@@ -259,11 +263,13 @@ pub fn build_now_playing_embed_metadata<'a>(
 
     let progress_field = (PROGRESS, format!(">>> {position} / {duration}"), true);
 
-    let channel_field: (&'static str, String, bool) = if let Some(user_id) = requesting_user { (
-        REQUESTED_BY,
-        format!(">>> {}", requesting_user_to_string(user_id)),
-        true,
-    ) } else {
+    let channel_field: (&'static str, String, bool) = if let Some(user_id) = requesting_user {
+        (
+            REQUESTED_BY,
+            format!(">>> {}", requesting_user_to_string(user_id)),
+            true,
+        )
+    } else {
         tracing::info!("No user id, we're autoplaying");
         (REQUESTED_BY, ">>> N/A".to_string(), true)
     };
@@ -349,11 +355,13 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_>
     CreateButton::new(label.to_string().to_ascii_lowercase())
         .label(label)
         .style(ButtonStyle::Primary)
-        .disabled(is_disabled).clone()
+        .disabled(is_disabled)
+        .clone()
 }
 
 /// Builds the four navigation buttons for the queue.
-#[must_use] pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
+#[must_use]
+pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
     vec![CreateActionRow::Buttons(Cow::Owned(vec![
         create_single_nav_btn("<<", cant_left),

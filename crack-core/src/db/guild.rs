@@ -341,7 +341,8 @@ impl GuildEntity {
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
-    #[must_use] pub fn new_guild(id: i64, name: String) -> GuildEntity {
+    #[must_use]
+    pub fn new_guild(id: i64, name: String) -> GuildEntity {
         GuildEntity {
             id,
             name,

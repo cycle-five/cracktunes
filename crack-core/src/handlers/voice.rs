@@ -49,9 +49,12 @@ impl Receiver {
             data,
             buf_size: DEFAULT_BUFFER_SIZE,
             cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
-            http: ctx.map_or(Arc::new(Http::new(
-                DEFAULT_VALID_TOKEN.parse::<Token>().expect(INVALID_TOKEN),
-            )), |x| x.http.clone()),
+            http: ctx.map_or(
+                Arc::new(Http::new(
+                    DEFAULT_VALID_TOKEN.parse::<Token>().expect(INVALID_TOKEN),
+                )),
+                |x| x.http.clone(),
+            ),
         }
     }
 

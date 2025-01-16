@@ -93,10 +93,12 @@ impl EventHandler for SerenityHandler {
         // let guild_settings = guild_settings_map.get_mut(&guild_id);
         // guild_settings.cloned()
 
-        let (_guild_settings, welcome) = if let Some(guild_settings) = guild_settings { match guild_settings.clone().welcome_settings {
-            None => return,
-            Some(welcome_settings) => (guild_settings, welcome_settings),
-        } } else {
+        let (_guild_settings, welcome) = if let Some(guild_settings) = guild_settings {
+            match guild_settings.clone().welcome_settings {
+                None => return,
+                Some(welcome_settings) => (guild_settings, welcome_settings),
+            }
+        } else {
             tracing::error!("Guild settings not found for guild {}", guild_id);
             return;
         };
@@ -163,7 +165,8 @@ impl EventHandler for SerenityHandler {
                 .guild_settings_map
                 .read()
                 .await
-                .get(&new.guild_id.unwrap()).map_or_else(|| true, |x| x.self_deafen);
+                .get(&new.guild_id.unwrap())
+                .map_or_else(|| true, |x| x.self_deafen);
             if !do_i_deafen {
                 return self.self_deafen(&ctx, new.guild_id, new).await;
             }
@@ -344,7 +347,9 @@ impl SerenityHandler {
 
         for guild in &ready.guilds {
             let guild_id = guild.id;
-            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) { guild_match.name.clone() } else {
+            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) {
+                guild_match.name.clone()
+            } else {
                 tracing::error!("Guild not found in cache");
                 continue;
             };
@@ -384,7 +389,9 @@ impl SerenityHandler {
 
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
-            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) { guild_match.name.clone() } else {
+            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) {
+                guild_match.name.clone()
+            } else {
                 tracing::error!("Guild not found in cache");
                 continue;
             };
@@ -562,7 +569,9 @@ pub async fn voice_state_diff_str(
         None => None,
     };
     let premium = true; //DEFAULT_PREMIUM;
-    let old = if let Some(old) = old { old } else {
+    let old = if let Some(old) = old {
+        old
+    } else {
         let user_name = &new.member.as_ref().unwrap().user.name;
         let result = match channel {
             Some(channel) => format!(
@@ -570,9 +579,7 @@ pub async fn voice_state_diff_str(
                 user_name,
                 channel.mention()
             ),
-            None => format!(
-                "Member joined voice channel\n{user_name} joined unknown channel"
-            ),
+            None => format!("Member joined voice channel\n{user_name} joined unknown channel"),
         };
         return Ok(result);
     };

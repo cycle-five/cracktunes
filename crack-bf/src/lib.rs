@@ -293,6 +293,9 @@ mod tests {
         let output = Cursor::new(vec![]);
 
         let mut bf = BrainfuckProgram::new(program);
-        assert!(Box::pin(bf.run_async(input, output)).await.is_ok(), "Error running program");
+        assert!(
+            Box::pin(bf.run_async(input, output)).await.is_ok(),
+            "Error running program"
+        );
     }
 }

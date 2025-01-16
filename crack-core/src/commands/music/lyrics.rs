@@ -48,7 +48,9 @@ pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
     use crate::utils::TrackData;
 
-    if let Some(query) = query { Ok(query) } else {
+    if let Some(query) = query {
+        Ok(query)
+    } else {
         let call = ctx.get_call().await?;
         let handler = call.lock().await;
         let track_handle = handler

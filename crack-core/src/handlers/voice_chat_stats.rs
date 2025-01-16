@@ -191,7 +191,9 @@ async fn check_camera_status(
     guild_id: GuildId,
 ) -> (Vec<CamPollEvent>, String) {
     let (voice_states, guild_name): (ExtractMap<UserId, VoiceState>, String) =
-        if let Some(guild) = guild_id.to_guild_cached(&ctx.cache.clone()) { (guild.voice_states.clone(), guild.name.to_string()) } else {
+        if let Some(guild) = guild_id.to_guild_cached(&ctx.cache.clone()) {
+            (guild.voice_states.clone(), guild.name.to_string())
+        } else {
             tracing::error!("Guild not found {guild_id}.");
             return (vec![], String::new());
         };
@@ -315,7 +317,7 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
-    
+
     use crack_types::get_valid_token;
 
     #[test]

@@ -17,7 +17,8 @@ pub enum Connection {
 }
 
 /// Check the voice connection relationship to anopther `user_id` (bot).
-#[must_use] pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId) -> Connection {
+#[must_use]
+pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId) -> Connection {
     let user_channel = get_voice_channel_for_user(guild, user_id).ok();
     let bot_channel = get_voice_channel_for_user(guild, bot_id).ok();
 
@@ -53,7 +54,9 @@ pub fn get_voice_channel_for_user_summon(
     guild: &Guild,
     user_id: &UserId,
 ) -> Result<ChannelId, Error> {
-    if let Ok(channel_id) = get_voice_channel_for_user(guild, user_id) { Ok(channel_id) } else {
+    if let Ok(channel_id) = get_voice_channel_for_user(guild, user_id) {
+        Ok(channel_id)
+    } else {
         tracing::warn!(
             "User {} is not in a voice channel in guild {}",
             user_id,

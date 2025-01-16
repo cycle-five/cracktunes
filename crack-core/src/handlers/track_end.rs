@@ -101,9 +101,10 @@ impl EventHandler for TrackEndHandler {
                 .get(&self.guild_id)
                 .is_some_and(|guild_settings| guild_settings.autopause);
             tracing::error!("Autopause: {}", autopause);
-            let volume = settings
-                .get(&self.guild_id)
-                .map_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL, |guild_settings| guild_settings.volume);
+            let volume = settings.get(&self.guild_id).map_or(
+                crate::guild::settings::DEFAULT_VOLUME_LEVEL,
+                |guild_settings| guild_settings.volume,
+            );
             tracing::error!("Volume: {}", volume);
             (autopause, volume)
         };

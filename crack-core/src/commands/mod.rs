@@ -50,7 +50,8 @@ impl ConvertToEmptyResult for MessageResult {
 }
 
 /// Return all the commands that are available in the bot.
-#[must_use] pub fn all_commands() -> Vec<crate::Command> {
+#[must_use]
+pub fn all_commands() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
@@ -72,7 +73,8 @@ impl ConvertToEmptyResult for MessageResult {
 }
 
 /// Return all the commands that are available in the bot.
-#[must_use] pub fn commands_to_register() -> Vec<crate::Command> {
+#[must_use]
+pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
@@ -93,11 +95,13 @@ impl ConvertToEmptyResult for MessageResult {
     .collect()
 }
 
-#[must_use] pub fn all_command_names() -> Vec<Cow<'static, str>> {
+#[must_use]
+pub fn all_command_names() -> Vec<Cow<'static, str>> {
     all_commands().into_iter().map(|c| c.name).collect()
 }
 
-#[must_use] pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
+#[must_use]
+pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
     all_commands()
         .into_iter()
         .map(|c| (c.name.clone(), c))

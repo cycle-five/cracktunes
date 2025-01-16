@@ -216,7 +216,9 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         let remainder = cmd_str.split_off(n);
 
         let opt_find_cmd = poise::find_command(commands, &cmd_str, true, &mut Vec::new());
-        let command_obj = if let Some((cmd, _, _)) = opt_find_cmd { cmd } else {
+        let command_obj = if let Some((cmd, _, _)) = opt_find_cmd {
+            cmd
+        } else {
             let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone()));
             let _ = send_reply_owned(ctx, msg.into(), true).await?;
             return Ok(());
@@ -276,7 +278,8 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
 
 // /set calls /help set
 pub use command_func as command;
-#[must_use] pub fn help_commands() -> [Command; 1] {
+#[must_use]
+pub fn help_commands() -> [Command; 1] {
     [help()]
 }
 

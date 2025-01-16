@@ -20,7 +20,7 @@ pub async fn saychan(
     #[description = "Message to send"] msg: String,
 ) -> Result<(), Error> {
     //return help::wrapper(ctx).await;
-assert!(!help, "help menu not implemented");
+    assert!(!help, "help menu not implemented");
     say_internal(ctx, chan.id(), msg).await
 }
 
@@ -42,7 +42,7 @@ pub async fn saychanid(
     #[description = "Message to send"] msg: String,
 ) -> Result<(), Error> {
     // return help::wrapper(ctx).await;
-assert!(!help, "help menu not implemented");
+    assert!(!help, "help menu not implemented");
     say_internal(ctx, chan, msg).await
 }
 

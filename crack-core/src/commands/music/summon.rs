@@ -126,9 +126,7 @@ mod test {
             parse_channel_id(None, Some("123".to_string())).unwrap(),
             Some(ChannelId::new(123))
         );
-        assert!(
-            parse_channel_id(None, Some("abc".to_string())).is_err()
-        );
+        assert!(parse_channel_id(None, Some("abc".to_string())).is_err());
         assert_eq!(parse_channel_id(None, None).unwrap(), None);
     }
 }

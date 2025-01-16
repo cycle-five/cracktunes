@@ -66,7 +66,7 @@ impl<'a> CrackTrackQueue<'a> {
 
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the display string cannot be built.
     pub async fn build_display(&mut self) -> Result<(), Error> {

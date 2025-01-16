@@ -242,12 +242,8 @@ pub fn aux_metadata_to_db_structures(
         .map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_default());
     let channel = metadata.channel.clone();
     let channels = metadata.channels;
-    let start_time = metadata
-        .start_time
-        .map_or(0, |d| d.as_secs_f64() as i64);
-    let duration = metadata
-        .duration
-        .map_or(0, |d| d.as_secs_f64() as i64);
+    let start_time = metadata.start_time.map_or(0, |d| d.as_secs_f64() as i64);
+    let duration = metadata.duration.map_or(0, |d| d.as_secs_f64() as i64);
     let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);
     let thumbnail = metadata.thumbnail.clone();
     let source_url = metadata.source_url.clone();

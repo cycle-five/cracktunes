@@ -114,7 +114,9 @@ pub async fn register_application_commands_cracked<U: Sync + Send + 'static, E>(
             .await?;
         serenity::Command::set_global_commands(ctx.http(), commands_builder.as_slice()).await?;
     } else {
-        let guild_id = if let Some(x) = ctx.guild_id() { x } else {
+        let guild_id = if let Some(x) = ctx.guild_id() {
+            x
+        } else {
             ctx.say("Must be called in guild").await?;
             return Ok(());
         };
@@ -213,7 +215,9 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
                 .content("Processing... Please wait."),
         )
         .await?; // remove buttons after button press and edit message
-    let pressed_button_id = if let Some(m) = &interaction { &m.data.custom_id } else {
+    let pressed_button_id = if let Some(m) = &interaction {
+        &m.data.custom_id
+    } else {
         ctx.say(":warning: You didn't interact in time - please run the command again.")
             .await?;
         return Ok(());
@@ -245,7 +249,9 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
             serenity::Command::set_global_commands(ctx.http(), vec![].as_slice()).await?;
         }
     } else {
-        let guild_id = if let Some(x) = ctx.guild_id() { x } else {
+        let guild_id = if let Some(x) = ctx.guild_id() {
+            x
+        } else {
             ctx.say(":x: Must be called in guild").await?;
             return Ok(());
         };

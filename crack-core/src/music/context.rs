@@ -41,22 +41,26 @@ impl QueryContext<'_> {
     }
 
     /// Get the poise context.
-    #[must_use] pub fn ctx(&self) -> &CrackContext {
+    #[must_use]
+    pub fn ctx(&self) -> &CrackContext {
         &self.ctx
     }
 
     /// Get the call.
-    #[must_use] pub fn call(&self) -> Arc<Mutex<Call>> {
+    #[must_use]
+    pub fn call(&self) -> Arc<Mutex<Call>> {
         self.call.clone()
     }
 
     /// Get the playmode.
-    #[must_use] pub fn mode(&self) -> Mode {
+    #[must_use]
+    pub fn mode(&self) -> Mode {
         self.mode
     }
 
     /// Get the query type.
-    #[must_use] pub fn query_type(&self) -> &QueryType {
+    #[must_use]
+    pub fn query_type(&self) -> &QueryType {
         &self.query_type
     }
 

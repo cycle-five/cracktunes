@@ -39,10 +39,11 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
 
     tracing::error!("volume");
     let prefix = ctx.data().bot_settings.get_prefix();
-    let guild_id = if let Some(id) = ctx.guild_id() { id } else {
+    let guild_id = if let Some(id) = ctx.guild_id() {
+        id
+    } else {
         tracing::error!("guild_id is None");
-        let embed =
-            CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
+        let embed = CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
         let _ = send_embed_response_poise(ctx, embed).await?;
         return Ok(());
     };
@@ -50,7 +51,9 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
     let embed = {
         tracing::error!("embed");
         let manager = ctx.data().songbird.clone();
-        let call = if let Some(call) = manager.get(guild_id) { call } else {
+        let call = if let Some(call) = manager.get(guild_id) {
+            call
+        } else {
             tracing::error!("Can't get call from manager.");
             let embed =
                 CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
@@ -62,7 +65,9 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
 
         let track_handle: Option<TrackHandle> = handler.queue().current();
 
-        let to_set = if let Some(arg) = level { Some(arg as isize) } else {
+        let to_set = if let Some(arg) = level {
+            Some(arg as isize)
+        } else {
             let volume_track = match track_handle {
                 Some(handle) => handle.get_info().await.unwrap().volume,
                 None => 0.1,
@@ -118,15 +123,14 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
 
                     guild_settings
                 });
-            tracing::warn!(
-                "guild_settings: {}",
-                format!("{guild_settings:?}").white(),
-            );
+            tracing::warn!("guild_settings: {}", format!("{guild_settings:?}").white(),);
             guild_settings.old_volume
         };
 
         let embed = create_volume_embed(old_vol, new_vol);
-        let track_handle: TrackHandle = if let Some(handle) = track_handle { handle } else {
+        let track_handle: TrackHandle = if let Some(handle) = track_handle {
+            handle
+        } else {
             let _ = send_embed_response_poise(ctx, embed).await?;
             return Ok(());
         };
@@ -142,7 +146,8 @@ pub fn create_volume_embed<'a>(old: f32, new: f32) -> CreateEmbed<'a> {
     CreateEmbed::default().description(create_volume_desc(old, new))
 }
 
-#[must_use] pub fn create_volume_desc(old: f32, new: f32) -> String {
+#[must_use]
+pub fn create_volume_desc(old: f32, new: f32) -> String {
     format!(
         "Volume changed from {:.0}% to {:.0}%",
         old * 100.0,

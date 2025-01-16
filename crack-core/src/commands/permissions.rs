@@ -52,7 +52,9 @@ pub fn is_authorized_music(
     member: Option<Cow<'_, Member>>,
     role: Option<RoleId>,
 ) -> Result<bool, Error> {
-    let member = if let Some(m) = member { m } else {
+    let member = if let Some(m) = member {
+        m
+    } else {
         tracing::warn!("No member found");
         return Ok(true);
     };
