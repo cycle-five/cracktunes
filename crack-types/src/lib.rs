@@ -17,9 +17,12 @@ use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
 use rspotify::model::TrackId;
 use rusty_ytdl::search::Channel;
+
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
+use serenity::all::Token;
+use serenity::model::id::{ChannelId, GuildId};
 use serenity::small_fixed_array::FixedString;
 use serenity::small_fixed_array::ValidLength;
 use songbird::Call;
@@ -28,6 +31,7 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
+
 // ------------------------------------------------------------------
 // Public types we use to simplify return and parameter types.
 // ------------------------------------------------------------------
@@ -48,6 +52,7 @@ pub type SongbirdCall = Arc<Mutex<Call>>;
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
 pub use serenity::all::UserId;
+
 pub use thiserror::Error as ThisError;
 pub use typemap_rev::TypeMapKey;
 
@@ -88,8 +93,6 @@ pub enum Mode {
     Search,
 }
 
-use serenity::all::Token;
-use serenity::model::id::{ChannelId, GuildId};
 /// Enum for 64 bit integer Ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiscId {
@@ -416,20 +419,20 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     }
 }
 
-use rusty_ytdl::search::Channel as RustyYTChannel;
-use rusty_ytdl::search::Video as RustyYTVideo;
-use rusty_ytdl::VideoDetails as RustyYTVideoDetails;
+// use rusty_ytdl::search::Channel as RustyYTChannel;
+// use rusty_ytdl::search::Video as RustyYTVideo;
+// use rusty_ytdl::VideoDetails as RustyYTVideoDetails;
 
 /// Builds a fake [`RustyYTVideo`] for testing purposes.
 #[must_use]
-pub fn build_fake_search_video() -> RustyYTVideo {
-    RustyYTVideo {
+pub fn build_fake_search_video() -> rusty_ytdl::search::Video {
+    rusty_ytdl::search::Video {
         id: "id".to_string(),
         title: "title".to_string(),
         description: "description".to_string(),
         duration: 14400,
         thumbnails: build_mock_thumbnails(),
-        channel: RustyYTChannel {
+        channel: rusty_ytdl::search::Channel {
             id: "id".to_string(),
             name: "name".to_string(),
             url: "url".to_string(),
