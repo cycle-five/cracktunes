@@ -656,13 +656,10 @@ async fn build_queued_embed<'att>(
 
     // let title_text = &format!("[**{}**]({})", meta_title, source_url);
 
-    let footer_text = format!(
-        "{} {}\n{} {}",
-        TRACK_DURATION,
-        get_human_readable_timestamp(metadata.duration),
-        TRACK_TIME_TO_PLAY,
-        get_human_readable_timestamp(Some(estimated_time))
-    );
+    let duration_ts = get_human_readable_timestamp(metadata.duration);
+    let estimate_time_ts = get_human_readable_timestamp(Some(estimated_time));
+    let footer_text =
+        format!("{TRACK_DURATION} {duration_ts}\n{TRACK_TIME_TO_PLAY} {estimate_time_ts}",);
 
     let author = CreateEmbedAuthor::new(author_title);
 
