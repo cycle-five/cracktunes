@@ -1,5 +1,6 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
 use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
@@ -9,7 +10,14 @@ use std::{
     time::Duration,
 };
 
-static YOUTUBE_URL_REGEX: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
+static YOUTUBE_URL_REGEX_STR: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
+// This is lazy static because it's used in a function that returns a Regex
+static YOUTUBE_URL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(YOUTUBE_URL_REGEX_STR).unwrap());
+
+pub fn is_youtube_url(url: &str) -> bool {
+    let regex = YOUTUBE_URL_REGEX.clone();
+    regex.is_match(url)
+}
 
 /// [`ResolvedTrack`] struct for holding resolved track information, this
 /// should be enough to play the track or enqueue it with the bot.
@@ -133,7 +141,7 @@ impl ResolvedTrack<'_> {
             return UNKNOWN_URL.to_string();
         };
 
-        if url.contains("youtube.com") {
+        if YOUTUBE_URL_REGEX.is_match(&url) {
             url
         } else {
             format!("https://www.youtube.com/watch?v={url}")

@@ -47,6 +47,8 @@ pub trait ContextExt<'ctx> {
     fn get_queue(self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
     fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError>;
+    /// Return the reuseable http client for various operations.
+    fn get_http_client(self) -> reqwest::Client;
     /// Add a message to the cache
     fn add_msg_to_cache(
         self,
@@ -188,6 +190,11 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Get the database pool
     fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError> {
         self.data().get_db_pool()
+    }
+
+    /// Get the http client
+    fn get_http_client(self) -> reqwest::Client {
+        self.data().http_client.clone()
     }
 
     async fn add_msg_to_cache(self, guild_id: GuildId, msg: Message) -> Option<Message> {

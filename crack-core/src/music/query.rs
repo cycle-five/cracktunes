@@ -2,6 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
+use crate::poise_ext::ContextExt;
 use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
@@ -359,8 +360,8 @@ impl NewQueryType {
         call: Arc<Mutex<Call>>,
         keywords: String,
     ) -> Result<Vec<TrackHandle>, CrackedError> {
-        //let reqwest_client = ctx.data().http_client.clone();
-        let search_results = YoutubeDl::new_search(http_utils::get_client().clone(), keywords)
+        let client = ctx.get_http_client();
+        let search_results = YoutubeDl::new_search(client, keywords)
             .search(None)
             .await?
             .collect::<Vec<_>>();

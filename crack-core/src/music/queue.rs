@@ -220,7 +220,7 @@ pub async fn queue_track_back(
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
-    let queue = queue_resolved_track_back(call, resolved, http_utils::get_client().clone()).await;
+    let queue = queue_resolved_track_back(call, resolved, ctx.data().http_client.clone()).await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r"

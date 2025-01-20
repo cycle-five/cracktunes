@@ -3,6 +3,7 @@ use crate::guild::settings::DEFAULT_PREFIX;
 use crack_types::to_fixed;
 // #[cfg(feature = "crack-metrics")]
 // use crate::metrics::COMMAND_ERRORS;
+use crate::http_utils;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
@@ -248,6 +249,7 @@ pub async fn poise_framework(
         event_log_async,
         database_pool,
         db_channel,
+        http_client: http_utils::get_client().clone(),
         ..Default::default()
     }));
 

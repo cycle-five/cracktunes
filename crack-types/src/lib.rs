@@ -16,7 +16,10 @@ pub use errors::*;
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
 use rspotify::model::TrackId;
-use rusty_ytdl::search::Channel;
+use rusty_ytdl::search::Channel as RustyYtChannel;
+use rusty_ytdl::search::Video as RustyYtVideo;
+use rusty_ytdl::Thumbnail as RustyYtThumbnail;
+// use rusty_ytdl::VideoDetails as RustyYTVideoDetails;
 
 // ------------------------------------------------------------------
 // Non-public imports
@@ -418,21 +421,16 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
         None => "∞".to_string(),
     }
 }
-
-// use rusty_ytdl::search::Channel as RustyYTChannel;
-// use rusty_ytdl::search::Video as RustyYTVideo;
-// use rusty_ytdl::VideoDetails as RustyYTVideoDetails;
-
 /// Builds a fake [`RustyYTVideo`] for testing purposes.
 #[must_use]
-pub fn build_fake_search_video() -> rusty_ytdl::search::Video {
-    rusty_ytdl::search::Video {
+pub fn build_fake_search_video() -> RustyYtVideo {
+    RustyYtVideo {
         id: "id".to_string(),
         title: "title".to_string(),
         description: "description".to_string(),
         duration: 14400,
         thumbnails: build_mock_thumbnails(),
-        channel: rusty_ytdl::search::Channel {
+        channel: RustyYtChannel {
             id: "id".to_string(),
             name: "name".to_string(),
             url: "url".to_string(),
@@ -448,8 +446,8 @@ pub fn build_fake_search_video() -> rusty_ytdl::search::Video {
 }
 
 #[must_use]
-pub fn build_mock_thumbnails() -> Vec<rusty_ytdl::Thumbnail> {
-    vec![rusty_ytdl::Thumbnail {
+pub fn build_mock_thumbnails() -> Vec<RustyYtThumbnail> {
+    vec![RustyYtThumbnail {
         url: "url".to_string(),
         width: 0,
         height: 0,
@@ -537,6 +535,13 @@ pub fn get_valid_token() -> Token {
 pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
     FixedString::from_str(&s.into()).unwrap()
 }
+
+// /// Convert Option<CrackedError> to CrackedError.
+// impl From<Option<CrackedError>> for CrackedError {
+//     fn from(e: Option<CrackedError>) -> Self {
+//         e.unwrap_or(CrackedError::Unknown)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

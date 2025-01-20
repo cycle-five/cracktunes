@@ -254,7 +254,7 @@ pub async fn playytplaylist(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut crack_client = ctx.data().ct_client.clone();
-    let req_client = ctx.data().http_client.clone();
+    let req_client = ctx.get_http_client();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
@@ -682,7 +682,7 @@ pub async fn queue_aux_metadata(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
-    let client = &ctx.data().http_client;
+    let client = &ctx.get_http_client();
     let manager = ctx.data().songbird.clone();
 
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
