@@ -9,7 +9,6 @@ use crate::{
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
 use ::serenity::all::MessageInteractionMetadata;
-use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
@@ -38,6 +37,7 @@ use poise::{
     CreateReply, ReplyHandle,
 };
 use serenity::all::UserId;
+use small_fixed_array::FixedString;
 #[allow(deprecated)]
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::sync::Arc;
@@ -234,7 +234,7 @@ pub async fn yt_search_select(
         .map_err(std::convert::Into::into)
         .map(|()| qt);
 
-    channel_id.delete_message(ctx.http(), m.id, None).await?;
+    channel_id.delete_message(ctx.http(), m.id).await?;
     res
 }
 
@@ -244,7 +244,7 @@ pub async fn yt_search_select(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
-    embed: CreateEmbed<'ctx>,
+    embed: CreateEmbed,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
@@ -262,7 +262,7 @@ pub async fn send_embed_response_poise<'ctx>(
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
     interaction: &Interaction,
-    embed: CreateEmbed<'_>,
+    embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
@@ -302,7 +302,7 @@ pub async fn edit_reponse_interaction(
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed<'_>,
+    embed: CreateEmbed,
     msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     msg.edit(ctx, CreateReply::default().embed(embed)).await?;
@@ -331,7 +331,7 @@ pub async fn edit_embed_response2(
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed<'_>,
+    embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
@@ -354,7 +354,7 @@ pub async fn edit_embed_response(
 /// Returns a `CrackedError` if the interaction fails to edit.
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed<'_>,
+    embed: CreateEmbed,
 ) -> Result<Message, CrackedError> {
     let message = match get_interaction_new(&ctx) {
         Some(CommandOrMessageInteraction::Command(interaction)) => {

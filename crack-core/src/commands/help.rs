@@ -48,13 +48,13 @@ impl Default for HelpConfiguration<'_> {
 pub async fn autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
-) -> CreateAutocompleteResponse<'a> {
+) -> CreateAutocompleteResponse {
     let commands = ctx.framework.options().commands.as_slice();
     // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
     let choices = get_matching_commands(commands, searching)
         .await
         .unwrap_or_default();
-    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+    CreateAutocompleteResponse::new().set_choices(choices).
 }
 
 /// Gets takes the given str and returns the top matching autocomplete choices.
@@ -63,17 +63,13 @@ pub async fn get_matching_commands(
     //ctx: poise::ApplicationContext<'_, Data, Error>,
     commands: &[poise::Command<Data, Error>],
     searching: &str,
-) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
+) -> Result<Vec<AutocompleteChoice>, Error> {
     let result = get_matching_command_strs(commands, searching).await?;
 
-    let result: Vec<AutocompleteChoice<'static>> = result
+    let result: Vec<AutocompleteChoice> = result
         .into_iter()
-        .map(|command| AutocompleteChoice {
-            name: command.clone(),
-            name_localizations: None,
-            value: serenity::AutocompleteValue::String(command),
-        })
-        .collect::<Vec<AutocompleteChoice<'static>>>();
+        .map(|command| AutocompleteChoice::new(command.clone(), command))
+        .collect::<Vec<AutocompleteChoice>>();
     Ok(result)
 }
 

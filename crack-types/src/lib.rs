@@ -24,10 +24,11 @@ use rusty_ytdl::Thumbnail as RustyYtThumbnail;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
-use serenity::all::Token;
 use serenity::model::id::{ChannelId, GuildId};
-use serenity::small_fixed_array::FixedString;
-use serenity::small_fixed_array::ValidLength;
+// use serenity::token::Token;
+use serenity::all::token::validate;
+use small_fixed_array::FixedString;
+use small_fixed_array::ValidLength;
 use songbird::Call;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -262,7 +263,7 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
@@ -525,8 +526,9 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
 /// # Panics
 /// * If the token is invalid.
 #[must_use]
-pub fn get_valid_token() -> Token {
-    DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
+pub fn get_valid_token() -> &'static str {
+    validate(DEFAULT_VALID_TOKEN).expect("Invalid token");
+    DEFAULT_VALID_TOKEN
 }
 
 /// Convert a string to a fixed string.
@@ -545,7 +547,7 @@ pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
 
 #[cfg(test)]
 mod tests {
-    use serenity::small_fixed_array::FixedString;
+    use small_fixed_array::FixedString;
 
     use super::*;
 

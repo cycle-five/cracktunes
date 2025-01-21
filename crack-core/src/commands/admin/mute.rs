@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::connection::get_voice_channel_for_user;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
@@ -74,16 +76,16 @@ pub async fn mute_others(
 pub async fn mute_others_internal(
     ctx: impl AsRef<serenity::Cache> + CacheHttp,
     guild_id: GuildId,
-    voice_states: ExtractMap<UserId, VoiceState>,
+    voice_states: HashMap<UserId, VoiceState>,
     user_id: UserId,
     voice_channel: ChannelId,
     mute: bool,
 ) -> Result<CrackedMessage, Error> {
     let members = voice_states
         .iter()
-        .filter(|vs| vs.channel_id == Some(voice_channel))
-        .map(|vs| vs.user_id)
-        .filter(|id| id != &user_id)
+        .filter(|&(uid, vs)| vs.channel_id == Some(voice_channel))
+        .map(|(user_id, vs)| user_id)
+        .filter(|&id| *id != user_id)
         .collect::<Vec<_>>();
 
     for member_id in members {

@@ -52,6 +52,12 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     assert!(queue.len() == 1);
 
     send_reply(&ctx, CrackedMessage::Clear, true).await?;
-    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    update_queue_messages(
+        &ctx.serenity_context().http,
+        Arc::clone(ctx.data()),
+        &queue,
+        guild_id,
+    )
+    .await;
     Ok(())
 }

@@ -66,7 +66,9 @@ pub async fn summon_internal(
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
-            let chan_id = handler.current_channel().map(|c| ChannelId::new(c.get()));
+            let chan_id = handler
+                .current_channel()
+                .map(|c| serenity::all::ChannelId::new(c.0.get()));
 
             match (has_current_connection, chan_id) {
                 (true, Some(chan_id)) => {
@@ -82,7 +84,7 @@ pub async fn summon_internal(
         .lock()
         .await
         .current_channel()
-        .map(|c| ChannelId::new(c.get()));
+        .map(|c| ChannelId::new(c.0.get()));
     if let Some(c) = chan_id {
         tracing::info!("joined channel: {c}");
     } else {

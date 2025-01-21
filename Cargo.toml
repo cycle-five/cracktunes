@@ -47,13 +47,14 @@ features = [
 [workspace.dependencies.serenity]
 # Broken? try self-host.
 # version = "0.12.3"
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
+# git = "https://github.com/CycleFive/serenity"
+# branch = "next"
+version = "0.12.4"
 default-features = false
 # features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
 features = [
   "full",
-  # "typesize",
+  "typesize",
   "builder",
   "cache",
   "temp_cache",
@@ -67,14 +68,13 @@ features = [
   "rustls_backend",
   "voice",
   "chrono",
-  "unstable",
+  "unstable_discord_api",
 ]
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-git = "https://github.com/CycleFive/songbird"
-branch = "serenity-next"
-version = "0.4.5"
+# git = "https://github.com/CycleFive/songbird"
+version = "0.4.6"
 features = [
   "driver",
   "gateway",
@@ -96,13 +96,13 @@ version = "1.42.0"
 features = ["full"]
 
 [workspace.dependencies]
+small-fixed-array = "0.4.7"
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
 # crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-# poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
-poise = { branch = "serenity-next", git = "https://github.com/CycleFive/poise", default-features = true, features = [
+poise = { version = "0.6.1", default-features = true, features = [
   "cache",
   "collector",
 ] }
@@ -144,8 +144,9 @@ lto = "thin"
 backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
 async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
-poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
-serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+# poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
+# serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
 whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }
 
-serenity-voice-model = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+# serenity-voice-model = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+# branch = "serenity-next"

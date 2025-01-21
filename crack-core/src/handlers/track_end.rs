@@ -152,7 +152,7 @@ impl EventHandler for TrackEndHandler {
                 Some(c) => c,
                 _ => handler
                     .current_channel()
-                    .map(|c| ChannelId::new(c.get()))
+                    .map(|c| ChannelId::new(c.0.get()))
                     .unwrap(),
             };
             let track = handler.queue().current().clone();
@@ -235,7 +235,7 @@ impl EventHandler for ModifyQueueHandler {
         };
 
         vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
-        let cache_http = (Some(&self.cache), self.http.as_ref());
+        let cache_http = (&self.cache, self.http.as_ref());
         update_queue_messages(&cache_http, self.data.clone(), &queue, self.guild_id).await;
 
         None
