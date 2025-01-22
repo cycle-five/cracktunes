@@ -48,13 +48,14 @@ impl Default for HelpConfiguration<'_> {
 pub async fn autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &str,
-) -> CreateAutocompleteResponse {
+) -> Vec<AutocompleteChoice> {
     let commands = ctx.framework.options().commands.as_slice();
     // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
     let choices = get_matching_commands(commands, searching)
         .await
         .unwrap_or_default();
-    CreateAutocompleteResponse::new().set_choices(choices).
+    //vec![CreateAutocompleteResponse::new().set_choices(choices)]
+    choices
 }
 
 /// Gets takes the given str and returns the top matching autocomplete choices.

@@ -53,7 +53,7 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
                 .into_message()
                 .await
             {
-                Ok(x) => x.delete(&ctx).await,
+                Ok(x) => x.delete(&ctx, None).await,
                 Err(_) => Ok(()),
             }
         })
@@ -152,7 +152,7 @@ pub async fn run() {
 mod tests {
     use super::*;
     use crate::DEFAULT_VALID_TOKEN;
-    use ::serenity::all::token::validate;
+    use ::serenity::all::Token;
 
     #[tokio::test]
     async fn test_into_message() {
@@ -168,11 +168,9 @@ mod tests {
         // let message = Message::default();
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
         let x = wrapper
-            .delete(Http::new(if validate(DEFAULT_VALID_TOKEN).is_ok() {
-                DEFAULT_VALID_TOKEN
-            } else {
-                ""
-            }))
+            .delete(Http::new(
+                Token::from_env("TOKEN").unwrap_or(DEFAULT_VALID_TOKEN),
+            ))
             .await;
 
         assert!(x.is_ok());

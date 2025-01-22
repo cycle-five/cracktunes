@@ -48,7 +48,7 @@ colored = "3"
 const-random = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 cfg-if = "1"
-dashmap = "6"
+dashmap = {workspace = true}
 either = "1.13"
 extract_map = "0.1"
 futures = "0.3"

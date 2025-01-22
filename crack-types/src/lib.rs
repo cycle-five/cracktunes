@@ -25,8 +25,8 @@ use rusty_ytdl::Thumbnail as RustyYtThumbnail;
 // Non-public imports
 // ------------------------------------------------------------------
 use serenity::model::id::{ChannelId, GuildId};
-// use serenity::token::Token;
-use serenity::all::token::validate;
+use serenity::token::Token;
+// use serenity::all::token::validate;
 use small_fixed_array::FixedString;
 use small_fixed_array::ValidLength;
 use songbird::Call;
@@ -256,19 +256,19 @@ impl SpotifyTrackTrait for SpotifyTrack {
 //           -> KeywordList    -> Vec<ResolvedTrack>
 //           -> YoutubeSearch  -> Vec<ResolvedTrack>
 #[derive(Clone, Debug)]
-pub enum QueryType {
+pub enum QueryType<'a> {
     Keywords(String),
     KeywordList(Vec<String>),
     VideoLink(String),
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'a>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
 
-impl std::str::FromStr for QueryType {
+impl std::str::FromStr for QueryType<'_> {
     type Err = TrackResolveError;
     /// Get the query type from a string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -280,7 +280,7 @@ impl std::str::FromStr for QueryType {
     }
 }
 
-impl Display for QueryType {
+impl Display for QueryType<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             QueryType::Keywords(keywords) => write!(f, "{keywords}"),
@@ -305,7 +305,7 @@ impl Display for QueryType {
     }
 }
 
-impl QueryType {
+impl QueryType<'_> {
     /// Build a query string from the query type.
     #[must_use]
     pub fn build_query(&self) -> Option<String> {
@@ -342,7 +342,7 @@ impl QueryType {
 // }
 
 /// [`Default`] implementation for [`QueryType`].
-impl Default for QueryType {
+impl Default for QueryType<'_> {
     fn default() -> Self {
         QueryType::None
     }

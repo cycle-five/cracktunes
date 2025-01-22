@@ -16,20 +16,33 @@ edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
+[workspace.dependencies.dashmap]
+version = "6"
+features = ["serde", "typesize", "raw-api"]
+
 [workspace.dependencies.typesize]
-version = "0.1"
+version = "0.1.11"
+# branch = "next"
+# git = "https://github.com/GnomedDev/typesize"
 features = [
-  "dervice",
+  "derive",
   "details",
   "chrono",
   "url",
-  "time",
   "serde_json",
   "secrecy",
   "parking_lot",
   "nonmax",
   "extract_map_01",
+  "bool_to_bitflags",
+  "mini_moka",
+  "dashmap",
 ]
+
+[workspace.dependencies.typesize-derive]
+features = ["derive"]
+version = "0.1.11"
+
 
 [workspace.dependencies.sqlx]
 version = "0.8.3"
@@ -47,8 +60,8 @@ features = [
 [workspace.dependencies.serenity]
 # Broken? try self-host.
 # version = "0.12.3"
-# git = "https://github.com/CycleFive/serenity"
-# branch = "next"
+git = "https://github.com/CycleFive/serenity"
+branch = "next"
 version = "0.12.4"
 default-features = false
 # features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
@@ -56,8 +69,8 @@ features = [
   "full",
   "typesize",
   "builder",
+  #"temp_cache",
   "cache",
-  "temp_cache",
   "collector",
   "framework",
   "http",
@@ -68,13 +81,17 @@ features = [
   "rustls_backend",
   "voice",
   "chrono",
-  "unstable_discord_api",
+  "unstable",
+  "interactions_endpoint",
+  "tokio_task_builder",
 ]
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-# git = "https://github.com/CycleFive/songbird"
-version = "0.4.6"
+git = "https://github.com/CycleFive/songbird"
+# git = "https://github.com/serenity-rs/songbird"
+branch = "serenity-next"
+version = "0.4.5"
 features = [
   "driver",
   "gateway",
@@ -102,7 +119,7 @@ small-fixed-array = "0.4.7"
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-poise = { version = "0.6.1", default-features = true, features = [
+poise = { branch = "serenity-next", git = "https://github.com/CycleFive/poise", version = "0.6.1", default-features = true, features = [
   "cache",
   "collector",
 ] }
