@@ -151,7 +151,7 @@ pub async fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_VALID_TOKEN;
+    use crate::DEFAULT_VALID_TOKEN_TOKEN;
     use ::serenity::all::Token;
 
     #[tokio::test]
@@ -169,7 +169,7 @@ mod tests {
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
         let x = wrapper
             .delete(Http::new(
-                Token::from_env("TOKEN").unwrap_or(DEFAULT_VALID_TOKEN),
+                Token::from_env("TOKEN").unwrap_or(DEFAULT_VALID_TOKEN_TOKEN.clone()),
             ))
             .await;
 

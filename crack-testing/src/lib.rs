@@ -263,6 +263,7 @@ impl<'a> CrackTrackClient<'a> {
     /// Resolve a track from a query. This does not start or ready the track for playback.
     /// # Errors
     /// Returns an error if the track cannot be resolved.
+    #[instrument(skip(self))]
     pub async fn resolve_track(&self, query: QueryType) -> Result<ResolvedTrack<'a>, Error> {
         match query {
             QueryType::VideoLink(ref url) => self.resolve_url(url).await,
@@ -272,6 +273,7 @@ impl<'a> CrackTrackClient<'a> {
                     return Err(TrackResolveError::NotFound.into());
                 };
                 let video_url = video.url.clone();
+                tracing::info!("Resolved: {video_url}");
                 self.resolve_url(&video_url).await
             },
             _ => {
@@ -365,28 +367,46 @@ impl<'a> CrackTrackClient<'a> {
         Ok(queue)
     }
 
-    /// Get a vector of [`AutocompleteChoice`] from a search query.
+    // /// Get a vector of [`AutocompleteChoice`] from a search query.
+    // /// # Errors
+    // /// Returns an error if the search fails.
+    // #[cfg_attr(feature = "crack-tracing", instrument(skip(self)))]
+    // pub async fn resolve_suggestion_search(
+    //     &self,
+    //     query: &str,
+    // ) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
+    //     let tracks = self.resolve_search(query).await?;
+    //     let autocomplete_choices: Vec<AutocompleteChoice<'static>> = tracks
+    //         .iter()
+    //         .map(|track| Cow::Owned(track.clone()))
+    //         .collect::<Vec<Cow<'a, ResolvedTrack>>>()
+    //         .into_iter()
+    //         .map(|track| track.clone().autocomplete_option())
+    //         .collect::<Vec<AutocompleteChoice>>();
+    //     Ok(autocomplete_choices)
+    // }
+
+    /// Get a suggestion autocomplete from a search instead of the suggestion api.
     /// # Errors
-    /// Returns an error if the search fails.
-    #[cfg_attr(feature = "crack-tracing", instrument(skip(self)))]
+    /// Returns an [`Error`] if the search fails.
     pub async fn resolve_suggestion_search(
         &self,
         query: &str,
-    ) -> Result<Vec<AutocompleteChoice>, Error> {
+    ) -> Result<Vec<AutocompleteChoice<'a>>, Error> {
         let tracks = self.resolve_search(query).await?;
-        let autocomplete_choices: Vec<AutocompleteChoice> = tracks
+        let autocomplete_choices: Vec<AutocompleteChoice<'a>> = tracks
             .iter()
             .map(|track| Cow::Owned(track.clone()))
             .collect::<Vec<Cow<'a, ResolvedTrack>>>()
             .into_iter()
             .map(|track| track.clone().autocomplete_option())
-            .collect::<Vec<AutocompleteChoice>>();
+            .collect::<Vec<AutocompleteChoice<'a>>>();
         Ok(autocomplete_choices)
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
     /// # Errors
-    /// Returns an error if the playlist cannot be resolved.
+    /// Returns an [`Error`] if the playlist cannot be resolved.
     pub async fn resolve_playlist<'b>(
         &self,
         url: &'b str,
@@ -398,7 +418,7 @@ impl<'a> CrackTrackClient<'a> {
     /// Resolve a playlist from a URL. Limit must be given, this is intended to be used primarily by
     /// a helper method in the [`CrackTrackClient`].
     /// # Errors
-    /// Returns an error if the playlist cannot be resolved.
+    /// Returns an [`Error`] if the playlist cannot be resolved.
     pub async fn resolve_playlist_limit<'b>(
         &self,
         url: &'b str,
@@ -450,7 +470,7 @@ impl<'a> CrackTrackClient<'a> {
 
     /// Resolve a track from a query and enqueue it.
     /// # Errors
-    /// Can return an error if the track cannot be resolved.
+    /// Can return an [`Error`] if the track cannot be resolved.
     pub async fn enqueue_query(
         &mut self,
         guild: GuildId,
@@ -496,7 +516,7 @@ impl<'a> CrackTrackClient<'a> {
 /// Get a suggestion from a query. Use the global static client.
 /// # Errors
 /// Returns an error if the query fails.
-pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice>, Error> {
+pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
     let client = CRACK_TRACK_CLIENT.clone();
     client.resolve_suggestion_search(query).await
 }
@@ -570,7 +590,7 @@ fn yt_url_type(url: &url::Url) -> QueryType {
 }
 
 /// Match the CLI command and run the appropriate function.
-#[tracing::instrument]
+#[cfg_attr(feature = "crack-tracing", instrument())]
 async fn match_cli(cli: Cli) -> Result<String, Error> {
     let guild = GuildId::new(1);
     let client = Box::leak(Box::new(CrackTrackClient::new()));

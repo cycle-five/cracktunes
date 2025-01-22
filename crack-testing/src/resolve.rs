@@ -3,14 +3,15 @@ use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
-use serenity::all::{AutocompleteChoice, UserId};
+use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},
     time::Duration,
 };
 
-static YOUTUBE_URL_REGEX_STR: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
+//static YOUTUBE_URL_REGEX_STR: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
+static YOUTUBE_URL_REGEX_STR: &str = r"((?:https?:)?\/\/)?(?:youtube(-nocookie)?\.com|youtu\.be)";
 // This is lazy static because it's used in a function that returns a Regex
 static YOUTUBE_URL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(YOUTUBE_URL_REGEX_STR).unwrap());
 
@@ -198,10 +199,10 @@ impl ResolvedTrack<'_> {
     }
 
     /// autocomplete option for the track.
-    pub fn autocomplete_option(&self) -> AutocompleteChoice {
+    pub fn autocomplete_option(&self) -> AutocompleteChoice<'static> {
         AutocompleteChoice::new(
-            Cow::Owned(self.suggest_string()),
-            Cow::Owned(self.get_url()),
+            Cow::Owned(self.suggest_string().clone()),
+            AutocompleteValue::String(Cow::Owned(self.get_url().clone())),
         )
     }
 }
@@ -246,15 +247,15 @@ impl Display for ResolvedTrack<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crack_types::{build_fake_rusty_video_details, build_fake_search_video};
+    use crack_types::{build_mock_rusty_video_details, build_mock_search_video};
     use std::time::Duration;
 
     fn create_mock_video_details() -> VideoDetails {
-        build_fake_rusty_video_details()
+        build_mock_rusty_video_details()
     }
 
     fn create_mock_search_video() -> search::Video {
-        build_fake_search_video()
+        build_mock_search_video()
     }
 
     fn create_mock_aux_metadata() -> AuxMetadata {
@@ -436,60 +437,73 @@ mod tests {
 
     #[test]
     fn test_regex1() {
-        let regex = Regex::new(r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$").unwrap();
-        let string = r#"https://www.youtube.com/watch?v=DFYRQ_zQ-gk&feature=featured
-https://www.youtube.com/watch?v=DFYRQ_zQ-gk
-http://www.youtube.com/watch?v=DFYRQ_zQ-gk
-//www.youtube.com/watch?v=DFYRQ_zQ-gk
-www.youtube.com/watch?v=DFYRQ_zQ-gk
-https://youtube.com/watch?v=DFYRQ_zQ-gk
-http://youtube.com/watch?v=DFYRQ_zQ-gk
-//youtube.com/watch?v=DFYRQ_zQ-gk
-youtube.com/watch?v=DFYRQ_zQ-gk
+        //let regex = Regex::new(r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$").unwrap();
+        let regex = YOUTUBE_URL_REGEX.clone();
+        let string = r"
+            https://www.youtube.com/watch?v=DFYRQ_zQ-gk&feature=featured
+            https://www.youtube.com/watch?v=DFYRQ_zQ-gk
+            http://www.youtube.com/watch?v=DFYRQ_zQ-gk
+            //www.youtube.com/watch?v=DFYRQ_zQ-gk
+            www.youtube.com/watch?v=DFYRQ_zQ-gk
+            https://youtube.com/watch?v=DFYRQ_zQ-gk
+            http://youtube.com/watch?v=DFYRQ_zQ-gk
+            //youtube.com/watch?v=DFYRQ_zQ-gk
+            youtube.com/watch?v=DFYRQ_zQ-gk
 
-https://m.youtube.com/watch?v=DFYRQ_zQ-gk
-http://m.youtube.com/watch?v=DFYRQ_zQ-gk
-//m.youtube.com/watch?v=DFYRQ_zQ-gk
-m.youtube.com/watch?v=DFYRQ_zQ-gk
+            https://m.youtube.com/watch?v=DFYRQ_zQ-gk
+            http://m.youtube.com/watch?v=DFYRQ_zQ-gk
+            //m.youtube.com/watch?v=DFYRQ_zQ-gk
+            m.youtube.com/watch?v=DFYRQ_zQ-gk
 
-https://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
-http://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
-//www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
-www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
-youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            https://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            http://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            //www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
 
-https://www.youtube.com/embed/DFYRQ_zQ-gk?autoplay=1
-https://www.youtube.com/embed/DFYRQ_zQ-gk
-http://www.youtube.com/embed/DFYRQ_zQ-gk
-//www.youtube.com/embed/DFYRQ_zQ-gk
-www.youtube.com/embed/DFYRQ_zQ-gk
-https://youtube.com/embed/DFYRQ_zQ-gk
-http://youtube.com/embed/DFYRQ_zQ-gk
-//youtube.com/embed/DFYRQ_zQ-gk
-youtube.com/embed/DFYRQ_zQ-gk
+            https://www.youtube.com/embed/DFYRQ_zQ-gk?autoplay=1
+            https://www.youtube.com/embed/DFYRQ_zQ-gk
+            http://www.youtube.com/embed/DFYRQ_zQ-gk
+            //www.youtube.com/embed/DFYRQ_zQ-gk
+            www.youtube.com/embed/DFYRQ_zQ-gk
+            https://youtube.com/embed/DFYRQ_zQ-gk
+            http://youtube.com/embed/DFYRQ_zQ-gk
+            //youtube.com/embed/DFYRQ_zQ-gk
+            youtube.com/embed/DFYRQ_zQ-gk
 
-https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk?autoplay=1
-https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
-http://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
-//www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
-www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
-https://youtube-nocookie.com/embed/DFYRQ_zQ-gk
-http://youtube-nocookie.com/embed/DFYRQ_zQ-gk
-//youtube-nocookie.com/embed/DFYRQ_zQ-gk
-youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk?autoplay=1
+            https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            http://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            //www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            https://youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            http://youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            //youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            youtube-nocookie.com/embed/DFYRQ_zQ-gk
 
-https://youtu.be/DFYRQ_zQ-gk?t=120
-https://youtu.be/DFYRQ_zQ-gk
-http://youtu.be/DFYRQ_zQ-gk
-//youtu.be/DFYRQ_zQ-gk
-youtu.be/DFYRQ_zQ-gk
+            https://youtu.be/DFYRQ_zQ-gk?t=120
+            https://youtu.be/DFYRQ_zQ-gk
+            http://youtu.be/DFYRQ_zQ-gk
+            //youtu.be/DFYRQ_zQ-gk
+            youtu.be/DFYRQ_zQ-gk
 
-https://www.youtube.com/HamdiKickProduction?v=DFYRQ_zQ-gk"#;
+            https://www.youtube.com/HamdiKickProduction?v=DFYRQ_zQ-gk
+            ";
 
+        let string2 = r"
+            youtube.com
+            http://youtube.com
+            https://youtube.com/
+            youtu.be
+        ";
         let result = regex.captures_iter(string);
-
         let num_matches = result.count();
-        println!("{:?}", num_matches);
-        assert!(num_matches > 0);
+        assert_eq!(num_matches, 42);
+
+        let result2 = regex.captures_iter(string2);
+        let num_matches2 = result2.count();
+        assert_eq!(num_matches2, 4);
+        assert!(regex.is_match("https://www.youtube.com/watch?v=DFYRQ_zQ-gk"));
+        assert!(regex.is_match("youtube.com"));
     }
 }

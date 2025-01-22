@@ -269,19 +269,19 @@ pub async fn poise_framework(
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
     let framework = poise::Framework::new(
         options,
-        Box::pin(async move {
-            tracing::info!("Logged in as {}", ready.user.name);
-            crate::commands::register::register_globally_cracked(
-                &ctx,
-                &crate::commands::commands_to_register(),
-            )
-            .await?;
-            ctx.data
-                .write()
-                .await
-                .insert::<GuildSettingsMap>(guild_settings_map.clone());
-            Ok(data.clone())
-        }),
+        // Box::pin(async move {
+        //     tracing::info!("Logged in as {}", ready.user.name);
+        //     crate::commands::register::register_globally_cracked(
+        //         &ctx,
+        //         &crate::commands::commands_to_register(),
+        //     )
+        //     .await?;
+        //     ctx.data
+        //         .write()
+        //         .await
+        //         .insert::<GuildSettingsMap>(guild_settings_map.clone());
+        //     Ok(data.clone())
+        // }),
     );
 
     // songbird::register_serenity!(framework, songbird_config);

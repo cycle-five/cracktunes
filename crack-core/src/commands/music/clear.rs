@@ -6,7 +6,6 @@ use crate::{
     Context, Error,
 };
 use crack_types::errors::{verify, CrackedError};
-use std::sync::Arc;
 
 /// Clear the queue.
 #[cfg(not(tarpaulin_include))]
@@ -53,12 +52,6 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     assert!(queue.len() == 1);
 
     send_reply(&ctx, CrackedMessage::Clear, true).await?;
-    update_queue_messages(
-        &ctx.serenity_context().http,
-        Arc::new(ctx.data().clone()),
-        &queue,
-        guild_id,
-    )
-    .await;
+    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
 }

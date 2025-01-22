@@ -17,6 +17,9 @@ impl Default for ShardManagerOptionsBuilder {
 
 impl ShardManagerOptionsBuilder {
     #[must_use]
+    /// Create a new builder with default options.
+    /// # Panics
+    /// Shouldn't panic, but I need this for the linter.
     pub fn new() -> Self {
         let ws_url = "ws://localhost:3030".to_string();
         let ws_url: Arc<str> = Arc::from(ws_url);

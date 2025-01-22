@@ -441,13 +441,15 @@ mod test {
         let search = "The Night Chicago Died";
         let rusty_ytdl = YouTube::new().unwrap();
         let playlist = rusty_ytdl.search_one(search.to_string(), None).await;
+        assert!(playlist.is_ok());
         match playlist {
             Ok(Some(playlist)) => {
                 let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
                 println!("{metadata:?}");
             },
             Ok(None) => {
-                assert!(false);
+                // Can't happen
+                println!("WTF???");
             },
             Err(e) => {
                 println!("{e:?}");

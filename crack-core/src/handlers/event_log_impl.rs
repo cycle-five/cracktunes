@@ -859,40 +859,35 @@ pub async fn log_message_update(
     http: &impl CacheHttp,
     log_data: &(
         &Option<serenity::model::prelude::Message>,
-        &Option<serenity::model::prelude::Message>,
         &MessageUpdateEvent,
     ),
 ) -> Result<(), Error> {
     // Don't log message updates from bots
     // TODO: Make this configurable
-    if log_data
-        .2
-        .author
-        .as_ref()
-        .is_some_and(serenity::all::User::bot)
-    {
+    if log_data.1.message.author.bot() {
         return Ok(());
     }
 
-    let (id, title, description, avatar_url) = if let &(Some(old), Some(new), _msg) = log_data {
-        let title = format!("Message Updated: {}", new.author.name);
-        let description = format!(
-            "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: {}",
-            new.author.name, new.author.id, new.channel_id, old.content, new.content
-        );
-        let avatar_url = new.author.avatar_url().unwrap_or_default();
-        let id = new.author.id.to_string();
-        (id, title, description, avatar_url)
-    } else if let &(None, Some(new), _msg) = log_data {
-        let title = format!("Message Updated: {}", new.author.name);
-        let description = format!(
-            "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: {}",
-            new.author.name, new.author.id, new.channel_id, new.content
-        );
-        let avatar_url = new.author.avatar_url().unwrap_or_default();
-        let id = new.author.id.to_string();
-        (id, title, description, avatar_url)
-    } else if let &(Some(old), None, _msg) = log_data {
+    // let (id, title, description, avatar_url) = if let &(Some(old), _msg) = log_data {
+    //     let title = format!("Message Updated: {}", new.author.name);
+    //     let description = format!(
+    //         "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: {}",
+    //         new.author.name, new.author.id, new.channel_id, old.content, new.content
+    //     );
+    //     let avatar_url = new.author.avatar_url().unwrap_or_default();
+    //     let id = new.author.id.to_string();
+    //     (id, title, description, avatar_url)
+    // } else if let &(None, _msg) = log_data {
+    //     let title = format!("Message Updated: {}", new.author.name);
+    //     let description = format!(
+    //         "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: {}",
+    //         new.author.name, new.author.id, new.channel_id, new.content
+    //     );
+    //     let avatar_url = new.author.avatar_url().unwrap_or_default();
+    //     let id = new.author.id.to_string();
+    //     (id, title, description, avatar_url)
+    // } else if let &(Some(old), _msg) = log_data {
+    let (id, title, description, avatar_url) = if let &(Some(old), _msg) = log_data {
         let title = format!("Message Updated: {}", old.author.name);
         let description = format!(
             "User: {}\nID: {}\nChannel: {}\nOld Message: {}\nNew Message: None",
@@ -902,19 +897,19 @@ pub async fn log_message_update(
         let id = old.author.id.to_string();
         (id, title, description, avatar_url)
     } else {
-        let &(_, _, msg) = log_data;
-        if let Some(author) = &msg.author {
-            let title = format!("Message Updated: {}", author.name);
-            let description = format!(
-                "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: None",
-                author.name, author.id, channel_id
-            );
-            let avatar_url = author.avatar_url().unwrap_or_default();
-            let id = author.id.to_string();
-            (id, title, description, avatar_url)
-        } else {
-            default_msg_string(msg)
-        }
+        let &(_, msg) = log_data;
+        let author = &msg.message.author;
+        let title = format!("Message Updated: {}", author.name);
+        let description = format!(
+            "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: None",
+            author.name, author.id, channel_id
+        );
+        let avatar_url = author.avatar_url().unwrap_or_default();
+        let id = author.id.to_string();
+        (id, title, description, avatar_url)
+        // } else {
+        //     default_msg_string(msg)
+        // }
     };
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
@@ -933,7 +928,7 @@ pub async fn log_message_update(
 #[must_use]
 pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
     let title = "Message Updated".to_string();
-    let description = msg.id.to_string();
+    let description = msg.message.id.to_string();
     let avatar_url = String::new();
     let id = String::new();
     (id, title, description, avatar_url)

@@ -1,5 +1,4 @@
-use crate::http_utils::CacheHttpExt;
-use crate::http_utils::SendMessageParams;
+use crate::http_utils::{CacheHttpExt, SendMessageParams};
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -8,11 +7,11 @@ use crate::{
     messaging::{interface::create_nav_btns, message::CrackedMessage},
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
-use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::{
     all::{
         CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
         CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction,
+        MessageInteractionMetadata,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -27,8 +26,7 @@ use crack_types::messaging::messages::{
     INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE,
     QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
 };
-use crack_types::NewAuxMetadata;
-use crack_types::QueryType;
+use crack_types::{NewAuxMetadata, QueryType};
 use poise::{
     serenity_prelude::{
         self as serenity, CollectComponentInteractions, CommandInteraction,
@@ -37,15 +35,16 @@ use poise::{
     CreateReply, ReplyHandle,
 };
 use serenity::all::UserId;
-use small_fixed_array::FixedString;
+use serenity::small_fixed_array::FixedString;
 #[allow(deprecated)]
 use songbird::{input::AuxMetadata, tracks::TrackHandle};
-use std::sync::Arc;
 use std::{
+    borrow::Cow,
     cmp::{max, min},
     collections::HashMap,
     fmt::Write,
     ops::Add,
+    sync::Arc,
     time::Duration,
 };
 use tokio::sync::RwLock;
@@ -145,18 +144,23 @@ pub async fn edit_response_poise(
 }
 
 #[cfg(not(tarpaulin_include))]
-/// Edit an embed response from a `CommandOrMessageInteraction` with a str.
+/// Edit an embed response from a [`CommandOrMessageInteraction`] with a str.
+/// # Errors
+/// Returns a `CrackedError` if the message fails to send.
 pub async fn edit_response_text(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
-    content: &str,
+    content: impl Into<Cow<'_, str>>,
 ) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(content);
+    let embed = CreateEmbed::default().description(content.into());
     edit_embed_response(http, interaction, embed).await
 }
 
 #[cfg(not(tarpaulin_include))]
+#[cfg_attr(feature = "crack-tracing", tracing::instrument(skip(ctx)))]
 /// Interactive youtube search and selection.
+/// # Errors
+/// Returns a [`Error`] if the interaction fails.
 pub async fn yt_search_select(
     ctx: SerenityContext,
     channel_id: ChannelId,
@@ -234,7 +238,7 @@ pub async fn yt_search_select(
         .map_err(std::convert::Into::into)
         .map(|()| qt);
 
-    channel_id.delete_message(ctx.http(), m.id).await?;
+    channel_id.delete_message(ctx.http(), m.id, None).await?;
     res
 }
 
@@ -244,7 +248,7 @@ pub async fn yt_search_select(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'ctx>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let is_ephemeral = false;
     let is_reply = true;
@@ -262,7 +266,7 @@ pub async fn send_embed_response_poise<'ctx>(
 pub async fn edit_reponse_interaction(
     http: &impl CacheHttp,
     interaction: &Interaction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         Interaction::Command(int) => int
@@ -302,7 +306,7 @@ pub async fn edit_reponse_interaction(
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
 ) -> Result<Message, Error> {
     msg.edit(ctx, CreateReply::default().embed(embed)).await?;
@@ -331,7 +335,7 @@ pub async fn edit_embed_response2(
 pub async fn edit_embed_response(
     http: &impl CacheHttp,
     interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
@@ -354,7 +358,7 @@ pub async fn edit_embed_response(
 /// Returns a `CrackedError` if the interaction fails to edit.
 pub async fn edit_embed_response_poise(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed,
+    embed: CreateEmbed<'_>,
 ) -> Result<Message, CrackedError> {
     let message = match get_interaction_new(&ctx) {
         Some(CommandOrMessageInteraction::Command(interaction)) => {

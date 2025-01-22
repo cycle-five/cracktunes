@@ -209,7 +209,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         let call = call_lock.lock().await;
 
         let channel_id = call.current_channel()?;
-        let serenity_channel_id = ChannelId::new(channel_id.0.get());
+        let serenity_channel_id = ChannelId::new(channel_id.get());
 
         Some(serenity_channel_id)
     }

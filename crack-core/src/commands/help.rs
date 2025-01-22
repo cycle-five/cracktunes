@@ -46,31 +46,31 @@ impl Default for HelpConfiguration<'_> {
 
 #[allow(clippy::unused_async)]
 pub async fn autocomplete<'a>(
-    ctx: poise::ApplicationContext<'_, Data, Error>,
-    searching: &str,
-) -> Vec<AutocompleteChoice> {
+    ctx: poise::ApplicationContext<'a, Data, Error>,
+    searching: &'a str,
+) -> CreateAutocompleteResponse<'a> {
     let commands = ctx.framework.options().commands.as_slice();
     // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
     let choices = get_matching_commands(commands, searching)
         .await
         .unwrap_or_default();
-    //vec![CreateAutocompleteResponse::new().set_choices(choices)]
-    choices
+    CreateAutocompleteResponse::new().set_choices(choices)
+    // choices
 }
 
 /// Gets takes the given str and returns the top matching autocomplete choices.
 #[allow(clippy::unused_async)]
-pub async fn get_matching_commands(
+pub async fn get_matching_commands<'a>(
     //ctx: poise::ApplicationContext<'_, Data, Error>,
-    commands: &[poise::Command<Data, Error>],
-    searching: &str,
-) -> Result<Vec<AutocompleteChoice>, Error> {
+    commands: &'a [poise::Command<Data, Error>],
+    searching: &'a str,
+) -> Result<Vec<AutocompleteChoice<'a>>, Error> {
     let result = get_matching_command_strs(commands, searching).await?;
 
-    let result: Vec<AutocompleteChoice> = result
+    let result: Vec<AutocompleteChoice<'_>> = result
         .into_iter()
         .map(|command| AutocompleteChoice::new(command.clone(), command))
-        .collect::<Vec<AutocompleteChoice>>();
+        .collect::<Vec<AutocompleteChoice<'_>>>();
     Ok(result)
 }
 

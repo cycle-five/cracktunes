@@ -919,25 +919,22 @@ pub async fn handle_event(
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,
-            new,
             event,
         } => {
-            if new.as_ref().is_some_and(|x| x.author.bot())
-                || old_if_available.as_ref().is_some_and(|x| x.author.bot())
-            {
+            //if new.as_ref().is_some_and(|x| x.author.bot()) ||
+            if old_if_available.as_ref().is_some_and(|x| x.author.bot()) {
                 return Ok(());
             }
             let log_data: (
                 &Option<serenity::model::prelude::Message>,
-                &Option<serenity::model::prelude::Message>,
                 &serenity::model::prelude::MessageUpdateEvent,
-            ) = (old_if_available, new, event);
+            ) = (old_if_available, event);
             log_event!(
                 log_message_update,
                 guild_settings,
                 event_in,
                 &log_data,
-                event.guild_id.unwrap_or_default(),
+                event.message.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name

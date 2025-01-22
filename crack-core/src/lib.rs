@@ -1,6 +1,7 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
 #![feature(formatting_options)]
+#![feature(file_buffered)]
 pub mod commands;
 pub mod config;
 pub mod connection;
@@ -135,6 +136,7 @@ pub struct BotCredentials {
     pub spotify_client_secret: Option<String>,
     pub openai_api_key: Option<String>,
     pub virustotal_api_key: Option<String>,
+    pub ipqs_api_key: Option<String>,
 }
 
 impl Default for BotCredentials {
@@ -146,6 +148,7 @@ impl Default for BotCredentials {
             spotify_client_secret: None,
             openai_api_key: None,
             virustotal_api_key: None,
+            ipqs_api_key: None,
         }
     }
 }
@@ -372,6 +375,7 @@ impl std::fmt::Debug for DataInner {
 }
 
 impl DataInner {
+    #[must_use]
     /// Set the bot settings for the data.
     pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self {
@@ -380,6 +384,7 @@ impl DataInner {
         }
     }
 
+    #[must_use]
     /// Set the database pool for the data.
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
@@ -398,6 +403,7 @@ impl DataInner {
     }
 
     /// Set the GPT context for the data.
+    #[must_use]
     #[cfg(feature = "crack-gpt")]
     pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
         Self {
@@ -407,6 +413,7 @@ impl DataInner {
     }
 
     /// Set the `CrackTrack` client for the data.
+    #[must_use]
     pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
         Self {
             ct_client,
@@ -415,6 +422,7 @@ impl DataInner {
     }
 
     /// Set the Songbird instance for the data.
+    #[must_use]
     pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self {
             songbird,
@@ -423,6 +431,7 @@ impl DataInner {
     }
 
     /// Set the guild settings map for the data.
+    #[must_use]
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {
             guild_settings_map: guild_settings,
@@ -438,10 +447,10 @@ impl DataInner {
 
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
-pub struct EventLogAsync(pub ArcTMutex<File>);
+pub struct EventLogAsync(pub ArcTMutex<std::io::BufWriter<File>>);
 
 impl std::ops::Deref for EventLogAsync {
-    type Target = ArcTMutex<File>;
+    type Target = ArcTMutex<std::io::BufWriter<File>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -455,16 +464,21 @@ impl std::ops::DerefMut for EventLogAsync {
 }
 
 impl Default for EventLogAsync {
+    /// Default implementation for the [`EventLogAsync`].
+    /// # Panics
+    /// Panics if the log file cannot be created.
+    #[must_use]
     fn default() -> Self {
         let log_path = format!("{}/events2.log", get_log_prefix());
         let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
-        let log_file = match File::create(log_path) {
+        let log_file = match File::create_buffered(log_path) {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("Error creating log file: {e}");
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
-                File::create("/dev/null").expect("Should have a file object to write too???")
+                File::create_buffered("/dev/null")
+                    .expect("Should have a file object to write too???")
             },
         };
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))
@@ -787,7 +801,7 @@ mod lib_test {
     async fn test_event_log_default() {
         let event_log = EventLogAsync::default();
         let file = event_log.lock().await;
-        assert_eq!(file.metadata().unwrap().len(), 0);
+        assert_eq!(file.capacity(), 0);
     }
 
     /// Test the creation and printing of `CamKickConfig`

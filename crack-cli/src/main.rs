@@ -121,18 +121,10 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 //     ))
 // }
 
-/// Load an environment variable
-fn load_key(k: &str) -> Result<String, Error> {
-    if let Ok(token) = env::var(k) {
-        Ok(token)
-    } else {
-        tracing::warn!("{k} not found in environment.");
-        Err(format!("{k} not found in environment.").into())
-    }
-}
 
+use crack_types::load_key;
 /// Load the bot's config
-/// TODO: This should be in crack-core and maybe take a list of keys to load
+/// TODO: This should maybe take a list of keys to load
 /// for the modules to be able to load their own keys.
 fn load_bot_config() -> Result<BotConfig, Error> {
     let discord_token = load_key("DISCORD_TOKEN")?;
@@ -141,6 +133,7 @@ fn load_bot_config() -> Result<BotConfig, Error> {
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET").ok();
     let openai_api_key = load_key("OPENAI_API_KEY").ok();
     let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY").ok();
+    let ipqs_api_key = load_key("IPQS_API_KEY").ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -157,6 +150,7 @@ fn load_bot_config() -> Result<BotConfig, Error> {
         spotify_client_secret,
         openai_api_key,
         virustotal_api_key,
+        ipqs_api_key,
     });
 
     Ok(config_with_creds.clone())

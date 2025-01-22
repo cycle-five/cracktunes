@@ -48,7 +48,7 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
         .await?
         .into_message()
         .await?;
-    ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
+    let _ = ctx.data().add_msg_to_cache(ctx.guild_id().unwrap(), msg);
     tracing::warn!("{}", msg_str.clone());
 
     Ok(())
@@ -150,14 +150,14 @@ pub async fn checkpass(ctx: Context<'_>, password: String) -> Result<(), Error> 
 
 /// Check if a password has been pwned.
 #[poise::command(category = "OsInt", slash_command)]
-pub async fn ipqs_ip_score(ctx: Context<'_>, ip: String) -> Result<(), Error> {
+pub async fn ipqs_ip_score(ctx: Context<'_>, _ip: String) -> Result<(), Error> {
     // Get reqwest client from the context
     let data = ctx.data();
     let client = &data.http_client;
     // Get the Ipqs API key from the environment
     let api_key =
         std::env::var("IPQS_API_KEY").map_err(|_| crate::CrackedError::Other("IPQS_API_KEY"))?;
-    let client = IpqsClient::new_with_client(api_key, client.clone());
+    let _client = IpqsClient::new_with_client(api_key, client.clone());
     Ok(())
 }
 
@@ -172,6 +172,6 @@ mod test {
 
     #[test]
     fn it_works() {
-        osint();
+        osint::osint();
     }
 }

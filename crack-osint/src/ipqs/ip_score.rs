@@ -184,8 +184,7 @@ mod tests {
     use super::*;
     use crate::MockHttpClient;
     use mockall::predicate::*;
-    use reqwest::{Response, StatusCode};
-    use std::convert::TryFrom;
+    use reqwest::Response;
 
     #[tokio::test]
     async fn test_successful_ip_check() {

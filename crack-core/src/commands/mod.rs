@@ -22,11 +22,11 @@ pub use chatgpt::*;
 pub use help::sub_help;
 pub use music::*;
 pub use music_utils::*;
-#[cfg(feature = "crack-osint")]
-pub use osint::*;
+//#[cfg(feature = "crack-osint")]
+//pub use osint::*;
 pub use permissions::*;
 pub use register::*;
-pub use settings::*;
+//pub use settings::*;
 pub use utility::*;
 
 pub use crack_types::CrackedError;
@@ -57,7 +57,7 @@ pub fn all_commands() -> Vec<crate::Command> {
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]
-        osint(),
+        osint::osint(),
         #[cfg(feature = "crack-gpt")]
         chat(),
     ]
@@ -80,7 +80,7 @@ pub fn commands_to_register() -> Vec<crate::Command> {
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]
-        osint(),
+        osint::osint(),
         #[cfg(feature = "crack-gpt")]
         chat(),
     ]

@@ -1,4 +1,4 @@
-#![allow(clippy::no_effect_underscore_binding)]
+// #![allow(clippy::no_effect_underscore_binding)]
 // ------------------------------------------------------------------
 // Modules
 // ------------------------------------------------------------------
@@ -24,8 +24,9 @@ use rusty_ytdl::Thumbnail as RustyYtThumbnail;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
+use once_cell::sync::Lazy;
+use serenity::all::Token;
 use serenity::model::id::{ChannelId, GuildId};
-use serenity::token::Token;
 // use serenity::all::token::validate;
 use small_fixed_array::FixedString;
 use small_fixed_array::ValidLength;
@@ -65,8 +66,11 @@ pub use typemap_rev::TypeMapKey;
 // ------------------------------------------------------------------
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
-pub(crate) const DEFAULT_VALID_TOKEN: &str =
+pub(crate) static DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
+
+pub(crate) static DEFAULT_VALID_TOKEN_TOKEN: Lazy<Token> =
+    Lazy::new(|| Token::from_str(DEFAULT_VALID_TOKEN).expect("Invalid token"));
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
@@ -256,19 +260,19 @@ impl SpotifyTrackTrait for SpotifyTrack {
 //           -> KeywordList    -> Vec<ResolvedTrack>
 //           -> YoutubeSearch  -> Vec<ResolvedTrack>
 #[derive(Clone, Debug)]
-pub enum QueryType<'a> {
+pub enum QueryType {
     Keywords(String),
     KeywordList(Vec<String>),
     VideoLink(String),
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl<'a>, AuxMetadata)),
+    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
 
-impl std::str::FromStr for QueryType<'_> {
+impl std::str::FromStr for QueryType {
     type Err = TrackResolveError;
     /// Get the query type from a string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -280,7 +284,7 @@ impl std::str::FromStr for QueryType<'_> {
     }
 }
 
-impl Display for QueryType<'_> {
+impl Display for QueryType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             QueryType::Keywords(keywords) => write!(f, "{keywords}"),
@@ -305,7 +309,7 @@ impl Display for QueryType<'_> {
     }
 }
 
-impl QueryType<'_> {
+impl QueryType {
     /// Build a query string from the query type.
     #[must_use]
     pub fn build_query(&self) -> Option<String> {
@@ -342,7 +346,7 @@ impl QueryType<'_> {
 // }
 
 /// [`Default`] implementation for [`QueryType`].
-impl Default for QueryType<'_> {
+impl Default for QueryType {
     fn default() -> Self {
         QueryType::None
     }
@@ -422,9 +426,9 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
         None => "∞".to_string(),
     }
 }
-/// Builds a fake [`RustyYTVideo`] for testing purposes.
+/// Builds a mock [`RustyYTVideo`] for testing purposes.
 #[must_use]
-pub fn build_fake_search_video() -> RustyYtVideo {
+pub fn build_mock_search_video() -> RustyYtVideo {
     RustyYtVideo {
         id: "id".to_string(),
         title: "title".to_string(),
@@ -446,16 +450,17 @@ pub fn build_fake_search_video() -> RustyYtVideo {
     }
 }
 
+/// Builds a mock [`RustyYtChannel`] for testing purposes.
 #[must_use]
 pub fn build_mock_thumbnails() -> Vec<RustyYtThumbnail> {
     vec![RustyYtThumbnail {
-        url: "url".to_string(),
+        url: "thumbnail_url".to_string(),
         width: 0,
         height: 0,
     }]
 }
 
-/// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
+/// Builds a mock [`rusty_ytdl::Author`] for testing purposes.
 #[must_use]
 pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
     rusty_ytdl::Author {
@@ -473,7 +478,7 @@ pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
 
 /// Builds a fake [`rusty_ytdl::Embed`] for testing purposes.
 #[must_use]
-pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
+pub fn build_mock_rusty_embed() -> rusty_ytdl::Embed {
     rusty_ytdl::Embed {
         flash_secure_url: "flash_secure_url".to_string(),
         flash_url: "flash_url".to_string(),
@@ -483,18 +488,18 @@ pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
     }
 }
 
-/// Builds a fake [`VideoDetails`] for testing purposes.
+/// Builds a mock [`VideoDetails`] for testing purposes.
 #[must_use]
-pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
+pub fn build_mock_rusty_video_details() -> rusty_ytdl::VideoDetails {
     rusty_ytdl::VideoDetails {
         author: Some(build_fake_rusty_author()),
         likes: 0,
         dislikes: 0,
         age_restricted: false,
-        video_url: "youtube.com".to_string(),
+        video_url: "https://www.youtube.com/watch?v=meta123".to_string(),
         storyboards: vec![],
         chapters: vec![],
-        embed: build_fake_rusty_embed(),
+        embed: build_mock_rusty_embed(),
         title: "Title".to_string(),
         description: "description".to_string(),
         length_seconds: "60".to_string(),
@@ -509,7 +514,7 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
         publish_date: "publish_date".to_string(),
         owner_channel_name: "owner_channel_name".to_string(),
         upload_date: "upload_date".to_string(),
-        video_id: "video_id".to_string(),
+        video_id: "meta123".to_string(),
         keywords: vec![],
         channel_id: "channel_id".to_string(),
         is_owner_viewing: false,
@@ -526,9 +531,9 @@ pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
 /// # Panics
 /// * If the token is invalid.
 #[must_use]
-pub fn get_valid_token() -> &'static str {
-    validate(DEFAULT_VALID_TOKEN).expect("Invalid token");
-    DEFAULT_VALID_TOKEN
+pub fn get_valid_token() -> Token {
+    //validate(DEFAULT_VALID_TOKEN).expect("Invalid token");
+    DEFAULT_VALID_TOKEN_TOKEN.clone()
 }
 
 /// Convert a string to a fixed string.
@@ -544,6 +549,19 @@ pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
 //         e.unwrap_or(CrackedError::Unknown)
 //     }
 // }
+
+/// Load an environment variable if it exists.
+/// # Errors
+/// * If the environment variable does not exist.
+pub fn load_key(k: &str) -> Result<String, Error> {
+    if let Ok(token) = std::env::var(k) {
+        Ok(token)
+    } else {
+        #[cfg(feature = "crack-tracing")]
+        warn!("{k} not found in environment.");
+        Err(format!("{k} not found in environment.").into())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -591,10 +609,13 @@ mod tests {
 
     #[test]
     fn test_video_details_to_aux_metadata() {
-        let details = build_fake_rusty_video_details();
+        let details = build_mock_rusty_video_details();
         let metadata = video_details_to_aux_metadata(&details);
-        assert_eq!(metadata.title, Some("title".to_string()));
-        assert_eq!(metadata.source_url, Some("video_url".to_string()));
+        assert_eq!(metadata.title, Some("Title".to_string()));
+        assert_eq!(
+            metadata.source_url,
+            Some("https://www.youtube.com/watch?v=meta123".to_string())
+        );
         assert_eq!(metadata.channel, Some("owner_channel_name".to_string()));
         assert_eq!(metadata.duration, Some(Duration::from_secs(60)));
         assert_eq!(metadata.date, Some("publish_date".to_string()));
@@ -603,7 +624,7 @@ mod tests {
 
     #[test]
     fn test_video_info_to_aux_metadata() {
-        let details = build_fake_rusty_video_details();
+        let details = build_mock_rusty_video_details();
         let info = VideoInfo {
             video_details: details,
             dash_manifest_url: Some("dash_manifest_url".to_string()),
@@ -612,8 +633,11 @@ mod tests {
             related_videos: vec![],
         };
         let metadata = video_info_to_aux_metadata(&info);
-        assert_eq!(metadata.title, Some("title".to_string()));
-        assert_eq!(metadata.source_url, Some("video_url".to_string()));
+        assert_eq!(metadata.title, Some("Title".to_string()));
+        assert_eq!(
+            metadata.source_url,
+            Some("https://www.youtube.com/watch?v=meta123".to_string())
+        );
         assert_eq!(metadata.channel, Some("owner_channel_name".to_string()));
         assert_eq!(metadata.duration, Some(Duration::from_secs(60)));
         assert_eq!(metadata.date, Some("publish_date".to_string()));
