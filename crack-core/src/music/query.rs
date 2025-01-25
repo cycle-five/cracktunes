@@ -477,7 +477,9 @@ impl NewQueryType {
             QueryType::Keywords(_) | QueryType::VideoLink(_) | QueryType::NewYoutubeDl(_) => {
                 let NewQueryType(qt) = self;
                 tracing::warn!("### Mode::End, QueryType::Keywords | QueryType::VideoLink");
-                match queue_track_back(ctx, &call, qt).await {
+                let ready_track = crate::music::queue::ready_query(ctx, qt.clone()).await?;
+                // match queue_track_back(ctx, &call, qt).await {
+                match crate::music::queue::_queue_track_ready_back(&call, ready_track).await {
                     Ok(_) => (),
                     Err(e) => {
                         tracing::error!("queue_track_back error: {:?}", e);

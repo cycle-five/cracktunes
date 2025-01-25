@@ -193,7 +193,7 @@ impl ResolvedTrack<'_> {
             while !str.is_char_boundary(truncate_index) {
                 truncate_index -= 1;
             }
-            str.truncate(100 - dur_len);
+            str.truncate(truncate_index);
         }
         str
     }

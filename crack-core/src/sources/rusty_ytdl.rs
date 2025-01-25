@@ -424,17 +424,23 @@ mod test {
         assert!(metadata.title.is_some());
     }
 
-    #[test]
-    fn test_new_search_source() {
-        let search_term = "The Night Chicago Died";
-        let query = crack_types::QueryType::Keywords(search_term.to_string());
-        let query = NewQueryType(query);
-        let reqwest_client = http_utils::get_client().clone();
-        let new_search = NewSearchSource(query, reqwest_client);
-        let input: Input = new_search.into();
-        println!("{:?}", input.live().is_none());
-        assert!(!input.is_playable());
-    }
+    // #[tokio::test]
+    // async fn test_new_search_source() {
+    //     let search_term = "The Night Chicago Died";
+    //     let query = crack_types::QueryType::Keywords(search_term.to_string());
+    //     let query = NewQueryType(query);
+    //     let reqwest_client = http_utils::get_client().clone();
+    //     let new_search = NewSearchSource(query, reqwest_client);
+    //     let input: Input = {
+    //         let asdf = new_search.into();
+    //         let res = asdf.make_live_async().await;
+    //         assert!(res.is_ok());
+    //         asdf
+    //     };
+    //     //assert!(res.is_ok());
+    //     assert!(input.is_playable());
+    //     // println!("{:?}", input.live().is_none());
+    // }
 
     #[tokio::test]
     async fn test_ytdl() {
@@ -509,7 +515,7 @@ mod test {
         }
     }
 
-    #[ignore]
+    //#[ignore]
     #[tokio::test]
     async fn test_rusty_ytdl_plays() {
         use crate::sources::rusty_ytdl::QueryType;

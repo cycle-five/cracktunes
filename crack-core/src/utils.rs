@@ -443,27 +443,27 @@ pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadat
     lock.clone().ok_or(CrackedError::NoMetadata)
 }
 
-/// Sets the metadata for a track.
-pub async fn set_track_handle_metadata(
-    track: &mut TrackHandle,
-    metadata: AuxMetadata,
-) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
-    let mut lock = data.aux_metadata.write().await;
-    *lock = Some(metadata);
-    Ok(())
-}
+// /// Sets the metadata for a track.
+// pub async fn set_track_handle_metadata(
+//     track: &mut TrackHandle,
+//     metadata: AuxMetadata,
+// ) -> Result<(), CrackedError> {
+//     let data: Arc<TrackData> = track.data::<TrackData>();
+//     let mut lock = data.aux_metadata.write().await;
+//     *lock = Some(metadata);
+//     Ok(())
+// }
 
-/// Sets the requesting user for a track.
-pub async fn set_track_handle_requesting_user(
-    track: &mut TrackHandle,
-    user_id: serenity::UserId,
-) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
-    let mut lock = data.user_id.write().await;
-    *lock = Some(user_id);
-    Ok(())
-}
+// /// Sets the requesting user for a track.
+// pub async fn set_track_handle_requesting_user(
+//     track: &mut TrackHandle,
+//     user_id: serenity::UserId,
+// ) -> Result<(), CrackedError> {
+//     let data: Arc<TrackData> = track.data::<TrackData>();
+//     let mut lock = data.user_id.write().await;
+//     *lock = Some(user_id);
+//     Ok(())
+// }
 
 /// Creates an embed for the first N metadata in the queue.
 async fn build_queue_page_metadata(metadata: &[NewAuxMetadata], page: usize) -> String {

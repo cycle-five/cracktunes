@@ -1,14 +1,3 @@
-use crate::{
-    handlers::track_end::update_queue_messages,
-    http_utils::CacheHttpExt,
-    music::NewQueryType,
-    sources::rusty_ytdl::RustyYoutubeSearch,
-    utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
-    Context as CrackContext, Error,
-};
-use crack_testing::ResolvedTrack;
-use crack_types::{verify, CrackedError};
-use crack_types::{Mode, NewAuxMetadata, QueryType};
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
@@ -22,12 +11,21 @@ use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 
+use crate::{
+    handlers::track_end::update_queue_messages, http_utils::CacheHttpExt, music::NewQueryType,
+    sources::rusty_ytdl::RustyYoutubeSearch, utils::TrackData, Context as CrackContext, Error,
+};
+use crack_testing::ResolvedTrack;
+use crack_types::{verify, CrackedError};
+use crack_types::{Mode, NewAuxMetadata, QueryType};
+
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
 /// # Errors
 /// Returns a [`CrackedError`] if the track cannot be queued.
 /// Can fail during the search itself, or when adding the metadata to the track,
 /// or when adding the track to the internal queue.
+#[allow(dead_code)]
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
     track_resolved: ResolvedTrack<'static>,
@@ -59,7 +57,8 @@ pub async fn resolved_track_to_songbird(
         user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
         aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
     });
-    Ok(Track::new_with_data(ytdl.clone().into(), track_data))
+    let songbird_input = Into::<SongbirdInput>::into(ytdl);
+    Ok(Track::new_with_data(songbird_input, track_data))
 }
 
 /// Takes a resolved track and queues it to the back of the queue.
@@ -75,13 +74,18 @@ pub async fn queue_resolved_track_back_old(
     let mut handler = call.lock().await;
     let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
 
-    let mut track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
+    let track_data = TrackData::new()
+        .with_user_id(track.get_requesting_user())
+        .with_metadata(track.get_metadata().unwrap());
+    let asdf_track = Track::new_with_data(ytdl.into(), track_data);
+
+    let _track_handle = handler.enqueue(asdf_track).await;
+    //.enqueue_input(Into::<SongbirdInput>::into(ytdl))
+    //.await;
     let new_q = handler.queue().current_queue();
     drop(handler);
-    set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
-    set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
+    // set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
+    // set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
 
     Ok(new_q)
 }
@@ -93,6 +97,20 @@ pub struct TrackReadyData {
     pub metadata: NewAuxMetadata,
     pub user_id: Option<UserId>,
     pub username: Option<String>,
+}
+
+/// Takes a track that is ready to be queued and returns a [`TrackData`] for it.
+pub fn ready_data_to_track(ready_track: TrackReadyData) -> Track {
+    let TrackReadyData {
+        source,
+        metadata,
+        user_id,
+        username: _,
+    } = ready_track;
+    let track_data = TrackData::new()
+        .with_user_id(user_id.unwrap_or(UserId::new(1)))
+        .with_metadata(metadata.into());
+    Track::new_with_data(source, track_data)
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -130,7 +148,9 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let track = ready_data_to_track(ready_track);
+    //let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let _track_handle = handler.enqueue(track).await;
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -144,8 +164,8 @@ pub async fn queue_track_ready_front(
     }
 
     drop(handler);
-    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
-    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
+    // set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
+    // set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
     Ok(new_q)
 }
 
@@ -156,17 +176,18 @@ pub async fn _queue_track_ready_back(
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
 
-    let TrackReadyData {
-        source,
-        metadata,
-        user_id,
-        ..
-    } = ready_track;
+    // let TrackReadyData {
+    //     source,
+    //     metadata,
+    //     user_id,
+    //     ..
+    // } = ready_track;
 
-    let track_data = TrackData::new()
-        .with_user_id(user_id.unwrap())
-        .with_metadata(metadata.into());
-    let track = Track::new_with_data(source, track_data);
+    // let track_data = TrackData::new()
+    //     .with_user_id(user_id.unwrap())
+    //     .with_metadata(metadata.into());
+    // let track = Track::new_with_data(source, track_data);
+    let track = ready_data_to_track(ready_track);
 
     let _track_handle = handler.enqueue(track).await;
     let new_q = handler.queue().current_queue();
@@ -220,7 +241,8 @@ pub async fn queue_track_back(
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
-    let queue = queue_resolved_track_back(call, resolved, ctx.data().http_client.clone()).await;
+    let queue =
+        queue_resolved_track_back_old(call, resolved, ctx.data().http_client.clone()).await?;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r"
@@ -234,7 +256,7 @@ pub async fn queue_track_back(
         after_queue.duration_since(after_send),
         after_queue.duration_since(begin)
     );
-    queue
+    Ok(queue)
 }
 
 /// Queue a list of tracks to be played.
@@ -252,9 +274,14 @@ pub async fn queue_ready_track_list(
             user_id,
             ..
         } = ready_track;
-        let mut track_handle = handler.enqueue_input(source).await;
-        set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
+        let track_data = TrackData::new()
+            .with_user_id(user_id.unwrap())
+            .with_metadata(metadata.into());
+        let track = Track::new_with_data(source, track_data);
+        let _track_handle = handler.enqueue(track).await;
+        // let mut track_handle = handler.enqueue_input(source).await;
+        // set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
+        // set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
                 let back = queue.pop_back().unwrap();
@@ -381,17 +408,25 @@ pub async fn queue_query_list_offset(
         let metadata = resolved.get_metadata().unwrap();
         let user_id = resolved.get_requesting_user();
         let ytdl = YoutubeDl::new(client.clone(), resolved.get_url());
+
         let input = ytdl.into();
 
+        let track = Track::new_with_data(
+            input,
+            TrackData::new()
+                .with_user_id(user_id)
+                .with_metadata(metadata),
+        );
+
         let mut handler = call.lock().await;
-        let mut track_handle = handler.enqueue_input(input).await;
+        let mut _track_handle = handler.enqueue(track).await;
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();
             q.insert(idx + offset, back);
         });
         //let mut map = track_handle.typemap().write().await;
-        set_track_handle_metadata(&mut track_handle, metadata).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id).await?;
+        // set_track_handle_metadata(&mut track_handle, metadata).await?;
+        // set_track_handle_requesting_user(&mut track_handle, user_id).await?;
 
         if idx == len - 1 {
             cur_q = handler.queue().current_queue();

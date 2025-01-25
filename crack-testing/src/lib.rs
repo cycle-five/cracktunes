@@ -47,7 +47,7 @@ pub const NEW_FAILED: &str = "New failed";
 pub const REQ_CLIENT_STR: &str = "Reqwest client";
 pub const UNKNOWN_TITLE: &str = "Unknown title";
 pub const UNKNOWN_URL: &str = "";
-pub const UNKNOWN_DURATION: &str = "Unknown duration";
+pub const UNKNOWN_DURATION: &str = "??:??:??";
 pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
 
 //------------------------------------
@@ -621,7 +621,13 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
                     Vec::new()
                 },
             };
+            for track in &tracks {
+                println!("{track}");
+            }
             let () = client.append_queue(guild, tracks).await;
+            client.build_display(guild).await?;
+            let disp = client.get_display(guild);
+            println!("{disp}");
         },
         Commands::Query { query } => {
             let queries = query.split(',');

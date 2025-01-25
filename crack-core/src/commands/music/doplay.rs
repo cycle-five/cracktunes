@@ -373,7 +373,6 @@ pub async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    // FIXME: This should be generalized.
     // Get current time for timing purposes.
 
     let _start = std::time::Instant::now();

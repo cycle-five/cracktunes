@@ -1,13 +1,11 @@
+use crate::utils::TrackData;
 use crate::{
     db::PgPoolExtPlayLog,
     guild::operations::GuildSettingsOperations,
     messaging::interface::{create_nav_btns, create_queue_embed, send_now_playing},
     music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{
-        calculate_num_pages, forget_queue_message, set_track_handle_metadata,
-        set_track_handle_requesting_user,
-    },
+    utils::{calculate_num_pages, forget_queue_message},
     CrackedResult,
     Data, //, Error,
 };
@@ -22,8 +20,9 @@ use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use crack_types::{verify, CrackedError};
-use serenity::all::{CacheHttp, UserId};
-use songbird::input::AuxMetadata;
+use serenity::all::CacheHttp;
+use songbird::input::Input as SongbirdInput;
+use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -135,7 +134,17 @@ impl EventHandler for TrackEndHandler {
             //if is_stopped(x) || is_errored(x) {
             if states.errored {
                 self.data.set_autoplay(self.guild_id, false).await;
-                // FIXME: Send error message
+                // FIXME: Send error message to the channel the bot is in, or the music channel.
+                let channel_id = self
+                    .call
+                    .lock()
+                    .await
+                    .current_channel()
+                    .map(|c| ChannelId::new(c.get()))
+                    .unwrap();
+                let msg = format!("Error: {x:#?}");
+                self.http.send_message(channel_id, vec![], &msg).await.ok();
+
                 return None;
             }
         }
@@ -196,7 +205,6 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
-use songbird::input::Input as SongbirdInput;
 /// Queues a query and returns the track handle.
 pub async fn queue_query(
     query: QueryType,
@@ -213,10 +221,16 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
-    let mut track = call.as_ref().lock().await.enqueue_input(source).await;
-    if let Some(metadata) = metadata_vec.first() {
-        add_metadata_to_track(&mut track, metadata.clone().into()).await?;
-    }
+    let track_data = if let Some(NewAuxMetadata(metadata)) = metadata_vec.into_iter().next() {
+        TrackData::new().with_metadata(metadata)
+    } else {
+        TrackData::new()
+    };
+    let track = Track::new_with_data(source, track_data);
+    let track = call.as_ref().lock().await.enqueue(track).await;
+    // if let Some(metadata) = metadata_vec.first() {
+    //     add_metadata_to_track(&mut track, metadata.clone().into()).await?;
+    // }
     Ok(track)
 }
 
@@ -242,15 +256,15 @@ impl EventHandler for ModifyQueueHandler {
     }
 }
 
-/// Adds metadata to a track handle with a default requesting user.
-pub async fn add_metadata_to_track(
-    track: &mut TrackHandle,
-    metadata: AuxMetadata,
-) -> CrackedResult<()> {
-    set_track_handle_metadata(track, metadata).await?;
-    set_track_handle_requesting_user(track, UserId::new(1)).await?;
-    Ok(())
-}
+// /// Adds metadata to a track handle with a default requesting user.
+// pub async fn add_metadata_to_track(
+//     track: &mut TrackHandle,
+//     metadata: AuxMetadata,
+// ) -> CrackedResult<()> {
+//     set_track_handle_metadata(track, metadata).await?;
+//     set_track_handle_requesting_user(track, UserId::new(1)).await?;
+//     Ok(())
+// }
 
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.

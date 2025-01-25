@@ -1,5 +1,6 @@
 use config_file::FromConfigFile;
 use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
+use crack_types::load_key;
 use tokio::runtime::Handle;
 
 #[cfg(feature = "crack-tracing")]
@@ -119,9 +120,6 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 //         encoder.format_type(),
 //     ))
 // }
-
-
-use crack_types::load_key;
 /// Load the bot's config
 /// TODO: This should maybe take a list of keys to load
 /// for the modules to be able to load their own keys.
