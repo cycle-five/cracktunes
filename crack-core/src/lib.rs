@@ -799,9 +799,10 @@ mod lib_test {
     /// Test the creation of a default EventLog
     #[tokio::test]
     async fn test_event_log_default() {
+        let default_buffered_file_size = 8192;
         let event_log = EventLogAsync::default();
         let file = event_log.lock().await;
-        assert_eq!(file.capacity(), 0);
+        assert_eq!(file.capacity(), default_buffered_file_size);
     }
 
     /// Test the creation and printing of `CamKickConfig`

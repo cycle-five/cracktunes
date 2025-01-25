@@ -20,7 +20,9 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [features]
+default = ["crack-tracing"]
 crack-gpt = []
+crack-tracing = ["tracing", "tracing-subscriber"]
 
 [dependencies]
 poise = { workspace = true }
@@ -44,8 +46,12 @@ reqwest = { version = "0.12.12", default-features = false, features = [
   "macos-system-configuration",
 ] }
 url = ">=2.5.4"
-thiserror = "2.0.8"
 humantime = "2.1"
+thiserror = "2.0.11"
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+], optional = true }
 
 [dependencies.rspotify]
 version = "0.14"

@@ -542,7 +542,7 @@ impl SpotifyTrackTrait for SpotifyTrack {
 
 /// Implementation of From for `SpotifyTrack`.
 #[must_use]
-pub fn build_fake_spotify_track() -> SpotifyTrack {
+pub fn build_mock_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
         name: "asdf".to_string(),
@@ -651,7 +651,7 @@ mod test {
     // }
     #[test]
     fn test_from_spotify_track() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let res = NewAuxMetadata::from_spotify_track(&track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
@@ -662,14 +662,14 @@ mod test {
 
     #[test]
     fn test_track_build_query() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let query = track.build_query();
         assert_eq!(query, r"asdf qwer");
     }
 
     #[test]
     fn test_track_build_query_lyric() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let query = track.build_query_lyric();
         assert_eq!(query, r#"asdf qwer \"topic\""#);
     }

@@ -1,6 +1,5 @@
 use config_file::FromConfigFile;
 use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
-use std::env;
 use tokio::runtime::Handle;
 
 #[cfg(feature = "crack-tracing")]
