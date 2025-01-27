@@ -255,16 +255,6 @@ impl EventHandler for ModifyQueueHandler {
     }
 }
 
-// /// Adds metadata to a track handle with a default requesting user.
-// pub async fn add_metadata_to_track(
-//     track: &mut TrackHandle,
-//     metadata: AuxMetadata,
-// ) -> CrackedResult<()> {
-//     set_track_handle_metadata(track, metadata).await?;
-//     set_track_handle_requesting_user(track, UserId::new(1)).await?;
-//     Ok(())
-// }
-
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.
 pub async fn update_queue_messages(
