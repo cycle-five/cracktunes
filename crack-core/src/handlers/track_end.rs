@@ -1,29 +1,28 @@
-use crate::utils::TrackData;
 use crate::{
     db::PgPoolExtPlayLog,
     guild::operations::GuildSettingsOperations,
     messaging::interface::{create_nav_btns, create_queue_embed, send_now_playing},
     music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{calculate_num_pages, forget_queue_message},
+    utils::{calculate_num_pages, forget_queue_message, TrackData},
     CrackedResult,
     Data, //, Error,
 };
 use ::serenity::{
-    all::{Cache, ChannelId},
+    all::{Cache, CacheHttp, ChannelId},
     async_trait,
     builder::EditMessage,
     http::Http,
     model::id::GuildId,
 };
-use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
-use crack_types::NewAuxMetadata;
-use crack_types::QueryType;
-use crack_types::{verify, CrackedError};
-use serenity::all::CacheHttp;
-use songbird::input::Input as SongbirdInput;
-use songbird::tracks::Track;
-use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
+use crack_types::{
+    messaging::messages::SPOTIFY_AUTH_FAILED, verify, CrackedError, NewAuxMetadata, QueryType,
+};
+use songbird::{
+    input::Input as SongbirdInput,
+    tracks::{Track, TrackHandle},
+    Call, Event, EventContext, EventHandler,
+};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
