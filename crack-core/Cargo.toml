@@ -48,16 +48,16 @@ colored = "3"
 const-random = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 cfg-if = "1"
-dashmap = {workspace = true}
+dashmap = { workspace = true }
 either = "1.13"
 extract_map = "0.1"
 futures = "0.3"
 indexmap = "2.2"
-itertools = "0.14"
+itertools = "0.13"
 lazy_static = "1.5"
 once_cell = "1.20"
 prometheus = { version = "0.13", features = ["process"], optional = true }
-rand = "0.8"
+rand = "0.9"
 rustls = "0.23"
 regex = "1.11"
 serde = { workspace = true }
@@ -111,7 +111,7 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 ctor = "0.2"
 tungstenite = "0.26"
 async-tungstenite = "0.28"
-sqlx = { version = "0.8.2", features = [
+sqlx = { version = "0.8.3", features = [
   "runtime-tokio",
   "tls-rustls",
   "macros",
