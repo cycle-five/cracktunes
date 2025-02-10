@@ -125,6 +125,24 @@ pub async fn update_activity_map(data: Arc<Data>, presence: serenity::Presence) 
 
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
+#[tracing::instrument(skip(_ctx, _framework, _data_global))]
+#[cfg(not(tarpaulin_include))]
+pub async fn handle_event_noop(
+    _ctx: &serenity::all::Context,
+    event_in: &FullEvent,
+    _framework: FrameworkContext<'_, Data, Error>,
+    _data_global: Arc<Data>,
+) -> Result<(), Error> {
+    let event_name = event_in.snake_case_name();
+    let event_name_green = event_name.bright_green();
+
+    tracing::trace!("{event_name_green}");
+
+    Ok(())
+}
+
+/// Handles (routes and logs) an event.
+/// Currently doesn't handle all events.
 #[tracing::instrument(skip(ctx, _framework, data_global))]
 #[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
@@ -206,7 +224,6 @@ pub async fn handle_event(
         },
         FullEvent::Message { new_message } => {
             let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
-            // let my_id = ctx.get_bot_id().await.unwrap_or(UserId::new(1));
 
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();

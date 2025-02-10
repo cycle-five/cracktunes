@@ -1,19 +1,20 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
 use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},
+    sync::LazyLock,
     time::Duration,
 };
 
 //static YOUTUBE_URL_REGEX_STR: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
 static YOUTUBE_URL_REGEX_STR: &str = r"((?:https?:)?\/\/)?(?:youtube(-nocookie)?\.com|youtu\.be)";
 // This is lazy static because it's used in a function that returns a Regex
-static YOUTUBE_URL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(YOUTUBE_URL_REGEX_STR).unwrap());
+static YOUTUBE_URL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(YOUTUBE_URL_REGEX_STR).unwrap());
 
 pub fn is_youtube_url(url: &str) -> bool {
     let regex = YOUTUBE_URL_REGEX.clone();

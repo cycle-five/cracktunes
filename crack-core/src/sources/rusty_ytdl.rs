@@ -330,11 +330,23 @@ impl Seek for MediaSourceStream {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match pos {
             SeekFrom::End(offset) => {
-                let len = self.byte_len().ok_or(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Invalid seek position",
-                ))?;
-                let new_position = len as i64 + offset;
+                let len = self
+                    .byte_len()
+                    .ok_or(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid seek position",
+                    ))?
+                    .try_into();
+                let len: i64 = match len {
+                    Ok(len) => len,
+                    Err(_) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Invalid seek position",
+                        ))
+                    },
+                };
+                let new_position = len + offset;
                 if new_position < 0 {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -394,9 +406,10 @@ impl From<NewSearchSource> for Input {
 mod test {
     use crate::{
         http_utils,
-        music::NewQueryType,
+        //music::NewQueryType,
         sources::{
-            rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
+            //rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
+            rusty_ytdl::RustyYoutubeSearch,
             youtube::search_query_to_source_and_metadata_rusty,
         },
     };
@@ -515,7 +528,7 @@ mod test {
         }
     }
 
-    //#[ignore]
+    #[ignore]
     #[tokio::test]
     async fn test_rusty_ytdl_plays() {
         use crate::sources::rusty_ytdl::QueryType;

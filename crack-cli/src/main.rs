@@ -183,20 +183,13 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
 
-    // let log_file = std::fs::File::create("my_cool_trace.log")?;
-    // let subscriber = tracing_subscriber::fmt::layer().with_writer(Mutex::new(log_file));
-
     match debug_file {
-        Ok(file) => {
-            //let xyz: tracing_subscriber::fmt::Layer<Registry> =
-            //.with_writer(Box::make_writer(&Box::new(Mutex::new(file))));
-            tracing_subscriber::fmt::layer().with_writer(file)
-        },
+        Ok(file) => tracing_subscriber::fmt::layer().with_writer(file),
         Err(error) => {
-            println!("warning: no log file available for output! {error:?}");
-            // let sink: std::io::Sink = std::io::sink();
-            // let writer = Arc::new(sink);
-            let sink = std::fs::File::open("/dev/null").unwrap();
+            println!("Error making tracing subscriber with log file: {error:?}");
+            println!("Falling back to /dev/null");
+            let sink = std::fs::File::open("/dev/null")
+                .unwrap_or_else(|e| panic!("Error opening /dev/null: {e:?}"));
             tracing_subscriber::fmt::layer().with_writer(sink)
         },
     }

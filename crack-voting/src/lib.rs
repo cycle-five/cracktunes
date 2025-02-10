@@ -1,18 +1,15 @@
 use dbl::types::Webhook;
-use lazy_static::lazy_static;
 use sqlx::PgPool;
 use std::env;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
 
-lazy_static! {
-    static ref WEBHOOK_SECRET: String =
-        env::var("WEBHOOK_SECRET").unwrap_or(WEBHOOK_SECRET_DEFAULT.to_string());
-    static ref DATABASE_URL: String =
-        env::var("DATABASE_URL").unwrap_or(DATABASE_URL_DEFAULT.to_string());
-}
+static WEBHOOK_SECRET: LazyLock<String> =
+    LazyLock::new(|| env::var("WEBHOOK_SECRET").unwrap_or(WEBHOOK_SECRET_DEFAULT.to_string()));
+static DATABASE_URL: LazyLock<String> =
+    LazyLock::new(|| env::var("DATABASE_URL").unwrap_or(DATABASE_URL_DEFAULT.to_string()));
 
 /// Struct to hold the context for the voting server.
 #[allow(dead_code)]

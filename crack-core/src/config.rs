@@ -8,7 +8,7 @@ use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
     guild::settings::GuildSettings,
-    handlers::{handle_event, SerenityHandler},
+    handlers::{handle_event_noop, SerenityHandler},
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -17,6 +17,7 @@ use crate::{
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
+use crack_types::messaging::messages::FAIL_RUSTLS_PROVIDER_LOAD;
 use crack_types::CrackedError;
 use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
@@ -72,7 +73,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 pub fn install_crypto_provider() {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
-        .expect("Failed to install AWS LC provider");
+        .expect(FAIL_RUSTLS_PROVIDER_LOAD);
 }
 
 /// Create the poise framework from the bot config.
@@ -204,7 +205,7 @@ pub async fn poise_framework(
         event_handler: |framework, event| {
             Box::pin(async move {
                 let ctx = framework.serenity_context;
-                handle_event(ctx, event, framework, framework.user_data()).await
+                handle_event_noop(ctx, event, framework, framework.user_data()).await
             })
         },
         // Enforce command checks even for owners (enforced by default)

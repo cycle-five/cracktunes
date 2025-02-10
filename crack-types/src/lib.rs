@@ -22,7 +22,6 @@ use rspotify::model::TrackId;
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
-use once_cell::sync::Lazy;
 use serenity::all::Token;
 use serenity::model::id::{ChannelId, GuildId};
 use small_fixed_array::{FixedString, ValidLength};
@@ -30,7 +29,7 @@ use songbird::Call;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::{Mutex, RwLock};
 #[cfg(feature = "crack-tracing")]
 use tracing::error;
@@ -67,8 +66,8 @@ pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 pub(crate) static DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
-pub(crate) static DEFAULT_VALID_TOKEN_TOKEN: Lazy<Token> =
-    Lazy::new(|| Token::from_str(DEFAULT_VALID_TOKEN).expect("Invalid token"));
+pub(crate) static DEFAULT_VALID_TOKEN_TOKEN: LazyLock<Token> =
+    LazyLock::new(|| Token::from_str(DEFAULT_VALID_TOKEN).expect("Invalid token"));
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]

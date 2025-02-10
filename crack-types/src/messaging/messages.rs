@@ -81,6 +81,7 @@ pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";
 pub const FAIL_NOTHING_PLAYING: &str = "🔈 Nothing is playing!";
 pub const FAIL_REMOVE_RANGE: &str = "⚠️ `until` needs to be higher than `index`!";
 pub const FAIL_RESUME: &str = "⚠️ Failed to Resume Queue!";
+pub const FAIL_RUSTLS_PROVIDER_LOAD: &str = "Failed to install AWS LC provider";
 pub const FAIL_SECONDS_PARSING: &str = "⚠️ Invalid formatting for 'seconds'";
 pub const FAIL_TO_SET_CHANNEL_SIZE: &str = "⚠️ Failed to set channel size!";
 pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channel!";

@@ -158,8 +158,8 @@ inherits = "release-with-performance"
 lto = "thin"
 
 [patch.crates-io]
-backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
-async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
+# backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
+# async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
 # poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
 # serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }

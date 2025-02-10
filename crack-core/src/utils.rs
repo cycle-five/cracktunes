@@ -63,6 +63,7 @@ fn create_err(line: u32, file: &str) -> anyhow::Error {
 }
 
 pub trait OptionTryUnwrap<T> {
+    /// Unwrap an option, returning an error if it's None.
     fn try_unwrap(self) -> CrackedResult<T>;
 }
 
@@ -86,6 +87,8 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
 }
 
 /// Sends a reply response, possibly as an embed.
+/// # Errors
+/// Returns a `CrackedError` if the message fails to send.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
     ctx: &'ctx CrackContext<'_>,

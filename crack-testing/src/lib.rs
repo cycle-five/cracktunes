@@ -10,7 +10,7 @@ use crack_osint::ipqs::IpqsClient;
 use crack_types::SpotifyTrackTrait;
 use crack_types::TrackResolveError;
 use crack_types::{parse_url, video_info_to_aux_metadata};
-use crack_types::{Error, QueryType, SearchResult};
+use crack_types::{CrackedError, Error, QueryType, SearchResult};
 //------------------------------------
 // External library imports
 //------------------------------------
@@ -18,7 +18,6 @@ use clap::{Parser, Subcommand};
 use dashmap::DashMap;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use once_cell::sync::Lazy;
 use rusty_ytdl::search::{
     Playlist as RustyYTPlaylist, PlaylistSearchOptions as RustyYTPlaylistSearchOptions,
 };
@@ -26,6 +25,7 @@ use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use serenity::all::{AutocompleteChoice, GuildId};
 use std::borrow::Cow;
+use std::sync::LazyLock;
 #[cfg(feature = "crack-tracing")]
 use tracing::{debug, error, instrument};
 //------------------------------------
@@ -58,12 +58,12 @@ pub const YOUTUBE_CLIENT_STR: &str = "YouTube client";
 // the clients in a context struct and pass it around everywhere. Other than the potential
 // problems from it getting out of hand if the module is too big, I don't see a problem with it.
 //------------------------------------
-static REQ_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+static REQ_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     println!("{CREATING}: {REQ_CLIENT_STR}...");
     build_configured_reqwest_client()
 });
 
-static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
+static YOUTUBE_CLIENT: LazyLock<rusty_ytdl::search::YouTube> = LazyLock::new(|| {
     println!("{CREATING}: {YOUTUBE_CLIENT_STR}...");
     let req_client = REQ_CLIENT.clone();
     let opts = RequestOptions {
@@ -74,7 +74,7 @@ static YOUTUBE_CLIENT: Lazy<rusty_ytdl::search::YouTube> = Lazy::new(|| {
         .unwrap_or_else(|_| panic!("{NEW_FAILED} {YOUTUBE_CLIENT_STR}"))
 });
 
-static CRACK_TRACK_CLIENT: Lazy<CrackTrackClient<'static>> = Lazy::new(|| {
+static CRACK_TRACK_CLIENT: LazyLock<CrackTrackClient<'static>> = LazyLock::new(|| {
     println!("{CREATING}: CrackTrackClient...");
     CrackTrackClient::new_with_clients(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone())
 });
@@ -594,7 +594,10 @@ fn yt_url_type(url: &url::Url) -> QueryType {
 async fn match_cli(cli: Cli) -> Result<String, Error> {
     let guild = GuildId::new(1);
     let client = Box::leak(Box::new(CrackTrackClient::new()));
-    let osint_key = std::env::var("IPQS_API_KEY").expect("No Ipqs API key");
+    let osint_key = std::env::var("IPQS_API_KEY").map_err(|_| {
+        tracing::error!("IPQS_API_KEY not found in environment.");
+        CrackedError::MissingEnvVar("IPQS_API_KEY".to_string())
+    })?;
     let osint_client = IpqsClient::new(osint_key);
     let cli_str = format!("{cli:?}");
     tracing::info!("Running CLI command: {cli_str}");

@@ -134,7 +134,7 @@ impl GptContext {
     pub fn load_key_if_empty(&mut self) -> Result<String, Error> {
         if let Some(key) = &self.key {
             return Ok(key.clone());
-        };
+        }
 
         match std::env::var("OPENAI_API_KEY") {
             Ok(key) => {

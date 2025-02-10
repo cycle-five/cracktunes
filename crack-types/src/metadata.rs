@@ -130,7 +130,7 @@ impl From<&SearchResult> for NewAuxMetadata {
                 metadata.thumbnail = playlist.thumbnails.first().map(|x| x.url.clone());
             },
             SearchResult::Channel(_) => {},
-        };
+        }
         NewAuxMetadata(metadata)
     }
 }

@@ -1,5 +1,6 @@
 [build]
-rustflags = ['--cfg', 'proc_macro_c_str_literals', '-A', 'warnings']
+# rustflags = ['--cfg', 'proc_macro_c_str_literals', '-A', 'warnings']
+rustflags = ['--cfg', 'proc_macro_c_str_literals']
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]

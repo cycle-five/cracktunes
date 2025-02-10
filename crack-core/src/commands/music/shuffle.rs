@@ -71,10 +71,7 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
         // skip the first track on queue because it's being played
-        fisher_yates(
-            queue.make_contiguous()[1..].as_mut(),
-            &mut rand::thread_rng(),
-        );
+        fisher_yates(queue.make_contiguous()[1..].as_mut(), &mut rand::rng());
     });
 
     // refetch the queue after modification
@@ -93,7 +90,7 @@ where
     let mut index = values.len();
     while index >= 2 {
         index -= 1;
-        values.swap(index, rng.gen_range(0..=index));
+        values.swap(index, rng.random_range(0..=index));
     }
 }
 
@@ -104,7 +101,7 @@ mod test {
     #[test]
     fn test_fisher_yates() {
         let mut values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        fisher_yates(&mut values, &mut rand::thread_rng());
+        fisher_yates(&mut values, &mut rand::rng());
         assert_ne!(values, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 }

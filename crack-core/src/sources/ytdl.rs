@@ -1,11 +1,10 @@
 use crate::guild::settings::VIDEO_WATCH_URL;
 use crack_types::CrackedError;
 use std::fmt::Display;
-use tokio::process::Command;
-use tokio::runtime::Handle;
+use std::sync::LazyLock;
+use tokio::{process::Command, runtime::Handle};
 
-use once_cell::sync::Lazy; // 1.5.2
-pub static HANDLE: Lazy<std::sync::Mutex<Option<Handle>>> = Lazy::new(Default::default);
+pub static HANDLE: LazyLock<std::sync::Mutex<Option<Handle>>> = LazyLock::new(Default::default);
 const YOUTUBE_DL_COMMAND: &str = "yt-dlp";
 
 #[derive(Clone, Debug)]
