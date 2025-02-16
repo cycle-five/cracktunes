@@ -49,16 +49,19 @@ impl EventHandler for IdleHandler {
             self.count.store(0, Ordering::Relaxed);
             return None;
         }
+
+        if !self.no_timeout.load(Ordering::Relaxed) {
+            return None;
+        }
         // tracing::warn!(
         //     "is_playing: {:?}, time_not_playing: {:?}",
         //     bot_is_playing,
         //     self.count.load(Ordering::Relaxed)
         // );
 
-        if !self.no_timeout.load(Ordering::Relaxed)
-            && self.limit > 0
-            && self.count.fetch_add(60, Ordering::Relaxed) >= self.limit
-        {
+        let time_since_last_play = self.count.fetch_add(1, Ordering::Relaxed);
+        // if the bot has been idle for longer than the limit, then remove it from the voice channel
+        if self.limit > 0 && time_since_last_play > self.limit {
             match manager.remove(self.guild_id).await {
                 Ok(()) => {
                     match self
@@ -69,20 +72,20 @@ impl EventHandler for IdleHandler {
                         Ok(_) => {},
                         Err(e) => {
                             tracing::error!("Error sending idle alert: {:?}", e);
-                            return Some(Event::Cancel);
                         },
                     };
                 },
                 Err(JoinError::NoCall) => {
                     tracing::warn!("No call found for guild: {:?}", self.guild_id);
-                    return Some(Event::Cancel);
                 },
                 Err(e) => {
                     tracing::error!("Error removing bot from voice channel: {:?}", e);
-                    return Some(Event::Cancel);
                 },
             };
+            // And this is important! Cancel this event so it doesn't keep firing and removing the bot.
+            return Some(Event::Cancel);
+        } else {
+            return None;
         }
-        None
     }
 }
