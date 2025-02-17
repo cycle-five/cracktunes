@@ -166,6 +166,18 @@ pub async fn poise_framework(
                         }
                     } else {
                         tracing::warn!("Guild not found in guild settings map");
+                        // Insert a default guild settings object
+                        let guild_name = ctx
+                            .guild_name_from_guild_id(guild_id)
+                            .await
+                            .unwrap_or_default();
+                        let guild_settings = GuildSettings::new(guild_id, None, Some(guild_name));
+                        let res = data.insert_guild(guild_id, guild_settings).await;
+                        if res.is_none() {
+                            tracing::warn!("Error inserting guild settings");
+                        } else {
+                            tracing::warn!("Inserted guild settings: {guild_settings:?}");
+                        }
                         Ok(None)
                     }
                 })

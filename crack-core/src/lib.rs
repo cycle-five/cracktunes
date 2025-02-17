@@ -26,6 +26,7 @@ use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
+use commands::settings::prefix;
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
@@ -593,16 +594,37 @@ impl std::ops::Deref for Data {
 
 /// Impl for our custom [`Data`] struct
 impl Data {
+    pub async fn insert_guild_db(
+        &self,
+        guild_id: GuildId,
+        guild_settings: GuildSettings,
+    ) -> CrackedResult<GuildSettings> {
+        let name = guild_settings.guild_name.clone();
+        let prefix = guild_settings.prefix.clone();
+        let pool = self.get_db_pool()?;
+        let (_entity, settings) =
+            GuildEntity::get_or_create(&pool, guild_id.into(), name, prefix).await?;
+
+        Ok(settings)
+    }
+
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
         guild_id: GuildId,
         guild_settings: GuildSettings,
-    ) -> Option<GuildSettings> {
-        self.guild_settings_map
+    ) -> CrackedResult<GuildSettings> {
+        let settings = self.insert_guild_db(guild_id, guild_settings).await?;
+
+        match self
+            .guild_settings_map
             .write()
             .await
-            .insert(guild_id, guild_settings)
+            .insert(guild_id, settings)
+        {
+            Some(settings) => Ok(settings),
+            None => Err(CrackedError::FailedToInsert.into()),
+        }
     }
 
     /// Create a new Data, calls default

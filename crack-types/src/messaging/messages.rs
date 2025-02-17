@@ -68,13 +68,14 @@ pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice 
 pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
+pub const FAIL_INSERT_GUILD_SETTINGS: &str = "⚠️ Failed to insert guild settings!";
 pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";
 pub const FAIL_INVALID_PERMS: &str = "⚠️ Invalid permissions!!";
 pub const FAIL_MINUTES_PARSING: &str = "⚠️ Invalid formatting for 'minutes'";
 pub const FAIL_NO_SONG_ON_INDEX: &str = "⚠️ There is no queued song on that index!";
 pub const FAIL_NO_SONGBIRD: &str = "⚠️ Failed to get songbird!";
 pub const FAIL_NO_VIRUSTOTAL_API_KEY: &str =
-    "⚠️ The VIRUSTOTAL_API_KEY environment variable is not set!";
+    "⚠️ VIRUSTOTAL_API_KEY environment variable is not set!";
 pub const FAIL_NO_VOICE_CONNECTION: &str = "⚠️ I'm not connected to any voice channel!";
 pub const FAIL_NO_QUERY_PROVIDED: &str = "⚠️ No query provided!";
 pub const FAIL_NOT_IMPLEMENTED: &str = "⚠️ Function is not implemented!";

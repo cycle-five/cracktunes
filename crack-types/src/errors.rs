@@ -1,18 +1,16 @@
 use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA, FAIL_AUTHOR_DISCONNECTED,
-    FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT, FAIL_INVALID_PERMS,
-    FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_QUERY_PROVIDED,
-    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
-    FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
-    MISSING_ENV_VAR, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED,
-    NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_TRACK_NAME, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
-    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT, FAIL_INSERT_GUILD_SETTINGS,
+    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
+    FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
+    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_ENV_VAR, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_TRACK_NAME,
+    NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
-use std::borrow::Cow;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
-use crate::TrackResolveError;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId, Mentionable};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
@@ -21,6 +19,7 @@ use serenity::Error as SerenityError;
 use songbird::error::JoinError;
 use songbird::input::{AudioStreamError, AuxMetadataError};
 use songbird::tracks::ControlError;
+use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};
 use std::process::ExitStatus;
 use tokio::time::error::Elapsed;
@@ -45,6 +44,7 @@ pub enum CrackedError {
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
+    FailedToInsertGuildSettings,
     FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
@@ -147,6 +147,7 @@ impl Display for CrackedError {
             Self::EmptyVector(msg) => f.write_str(&format!("{FAIL_EMPTY_VECTOR} {msg}")),
             Self::FailedResume => f.write_str(FAIL_RESUME),
             Self::FailedToInsert => f.write_str(FAIL_INSERT),
+            Self::FailedToInsertGuildSettings => f.write_str(FAIL_INSERT_GUILD_SETTINGS),
             Self::FailedToSetChannelSize(name, id, size, err) => f.write_str(&format!(
                 "{FAIL_TO_SET_CHANNEL_SIZE} {name}, {id}, {size}\n{err}"
             )),
