@@ -229,7 +229,7 @@ pub async fn queue_track_back(
                     return _queue_track_ready_back(call, ready_track).await;
                 },
                 None => {
-                    return Err(CrackedError::TrackResolveError(
+                    return Err(CrackedError::ResolveError(
                         TrackResolveError::UnknownQueryType,
                     ));
                 },

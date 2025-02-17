@@ -8,6 +8,7 @@ use crate::messaging::messages::{
     NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_TRACK_NAME,
     NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
+use crate::TrackResolveError;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
@@ -93,7 +94,7 @@ pub enum CrackedError {
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
-    TrackResolveError(TrackResolveError),
+    ResolveError(TrackResolveError),
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
@@ -208,7 +209,7 @@ impl Display for CrackedError {
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
-            Self::TrackResolveError(err) => f.write_str(&format!("{err}")),
+            Self::ResolveError(err) => f.write_str(&format!("{err}")),
             Self::TrackFail(err) => f.write_str(&format!("{err}")),
             Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::UrlParse(err) => f.write_str(&format!("{err}")),
@@ -244,7 +245,7 @@ impl PartialEq for CrackedError {
 /// Provides an implementation to convert a [`TrackResolveError`] to a [`CrackedError`].
 impl From<TrackResolveError> for CrackedError {
     fn from(err: TrackResolveError) -> Self {
-        Self::TrackResolveError(err)
+        Self::ResolveError(err)
     }
 }
 

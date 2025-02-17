@@ -26,7 +26,6 @@ use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
-use commands::settings::prefix;
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
@@ -623,7 +622,7 @@ impl Data {
             .insert(guild_id, settings)
         {
             Some(settings) => Ok(settings),
-            None => Err(CrackedError::FailedToInsert.into()),
+            None => Err(CrackedError::FailedToInsert),
         }
     }
 
