@@ -123,9 +123,9 @@ pub async fn poise_framework(
                             || ctx.cache.current_user().name.starts_with("Crack")
                         {
                             return Ok(None);
-                        } else {
-                            return Ok(Some(msg.content.split_at(7)));
                         }
+                        // Why 7???
+                        return Ok(Some(msg.content.split_at(7)));
                     }
                     let guild_id = match msg.guild_id {
                         Some(id) => id,

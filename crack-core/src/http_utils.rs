@@ -1,5 +1,7 @@
-use once_cell::sync::Lazy;
 use reqwest::Client;
+use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
+use serenity::small_fixed_array::FixedString;
+use std::sync::LazyLock;
 use std::future::Future;
 
 use crate::guild::settings::GuildSettings;
@@ -9,8 +11,6 @@ use crate::serenity::Color;
 use crate::CrackedResult;
 use crack_types::messaging::messages::UNKNOWN;
 use crack_types::CrackedError;
-use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
-use serenity::small_fixed_array::FixedString;
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
@@ -164,7 +164,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
 }
 
 /// This is a hack to get around the fact that we can't use async in statics. Is it?
-static CLIENT: Lazy<Client> = Lazy::new(|| {
+static CLIENT: LazyLock<Client> = LazyLock::new(|| {
     println!("Creating a new reqwest client...");
     build_client()
     // reqwest::ClientBuilder::new()

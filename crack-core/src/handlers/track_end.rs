@@ -115,11 +115,7 @@ impl EventHandler for TrackEndHandler {
         }
 
         tracing::trace!("Forgetting skip votes");
-        // FIXME
-        match self.data.forget_skip_votes(self.guild_id).await {
-            Ok(()) => tracing::trace!("Forgot skip votes"),
-            Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
-        };
+        self.data.forget_skip_votes(self.guild_id).await;
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 

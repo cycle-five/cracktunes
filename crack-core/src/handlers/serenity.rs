@@ -625,21 +625,21 @@ pub async fn voice_state_diff_str(
             return Ok(format!(
                 "Member joined voice channel\n{user_name} joined {channel_mention}\n"
             ));
-        } else {
-            let old_channel_id = old.channel_id.unwrap();
-            let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            let new_channel_mention = new_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            result.push_str(&format!(
-                "Switched voice channels: {old_channel_mention} -> {new_channel_mention}\n"
-            ));
         }
+        // Neither channel id is None
+        let old_channel_id = old.channel_id.unwrap();
+        let new_channel_id = new.channel_id.unwrap();
+        let old_channel_mention = old_channel_id
+            .to_channel(cache.clone(), guild_id)
+            .await?
+            .mention();
+        let new_channel_mention = new_channel_id
+            .to_channel(cache.clone(), guild_id)
+            .await?
+            .mention();
+        result.push_str(&format!(
+            "Switched voice channels: {old_channel_mention} -> {new_channel_mention}\n"
+        ));
     }
     if old.deaf() != new.deaf() {
         if new.deaf() {

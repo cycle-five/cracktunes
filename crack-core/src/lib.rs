@@ -767,29 +767,29 @@ impl Data {
     // This is used when a track ends, or when a user leaves the voice channel.
     // This is to prevent users from voting to skip a track, then leaving the voice channel.
     // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
-    pub async fn forget_skip_votes(&self, guild_id: GuildId) -> Result<(), Error> {
-        let _res = self
+    pub async fn forget_skip_votes(&self, guild_id: GuildId) {
+        self
             .guild_cache_map
             .lock()
             .await
             .entry(guild_id)
             .and_modify(|cache| cache.current_skip_votes = HashSet::new())
             .or_default();
-
-        Ok(())
     }
 
     /// Builder method to set the bot settings for the user data.
-    ///
     #[must_use]
     pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 
+    /// Builder method to set the songbird manager instance for the user data.
+    #[must_use]
     pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self(self.arc_inner().with_songbird(songbird).into())
     }
 
+    /// Method to get the inner data in an Arc.
     #[must_use]
     pub fn arc_inner(&self) -> Arc<DataInner> {
         Into::into(self.0.clone())
