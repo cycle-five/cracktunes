@@ -5,9 +5,9 @@ FROM rust:1.81.0-alpine3.20 AS builder
 # RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
 RUN apk add --no-cache \
   build-base=0.5-r3 \
-  musl-dev=1.2.5-r0 \
+  musl-dev=1.2.5-r1 \
   cmake=3.29.3-r0 \
-  git=2.45.2-r0
+  git=2.45.3-r0
 
 # Default directory
 WORKDIR /app
