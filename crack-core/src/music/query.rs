@@ -4,7 +4,7 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
 use crate::poise_ext::ContextExt;
 use crate::sources::rusty_ytdl::NewSearchSource;
-use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
+use crate::sources::youtube::{get_rusty_search, search_query_to_source_and_metadata_rusty};
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     http_utils,
@@ -633,7 +633,7 @@ impl NewQueryType {
             QueryType::PlaylistLink(url) => {
                 // FIXME: What limit should we use?
                 let search_options = SearchOptions {
-                    limit: 30,
+                    limit: PLAYLIST_SEARCH_LIMIT,
                     search_type: SearchType::Playlist,
                     ..Default::default()
                 };
@@ -673,30 +673,64 @@ impl NewQueryType {
     /// Get the source (playable track) for this query.
     pub async fn get_track_source(
         &self,
-        client_old: reqwest::Client,
+        client: reqwest::Client,
     ) -> CrackedResult<songbird::input::Input> {
+        let use_rusty_ytdl = true;
         let NewQueryType(qt) = self;
         match qt {
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
-                let ytdl = YoutubeDl::new_search(client_old, query.clone());
+                let ytdl = YoutubeDl::new_search(client, query.clone());
                 Ok(ytdl.into())
             },
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                let ytdl = YoutubeDl::new(client_old, url.clone());
-                Ok(ytdl.into())
+                // let ytdl = YoutubeDl::new(client_old, url.clone());
+                // Ok(ytdl.into())
+                let (source, _metadata) = if !use_rusty_ytdl {
+                    let mut ytdl = YoutubeDl::new(client, url.clone());
+                    let metadata = ytdl.aux_metadata().await?;
+                    (ytdl.into(), vec![NewAuxMetadata(metadata)])
+                } else {
+                    let search = get_rusty_search(client.clone(), url.clone()).await?;
+                    let metadata = search.metadata.clone();
+                    let my_metadata = match metadata {
+                        Some(metadata) => NewAuxMetadata(metadata),
+                        None => NewAuxMetadata::default(),
+                    };
+                    (search.into(), vec![my_metadata])
+                };
+                Ok(source)
             },
             QueryType::Keywords(query) => {
-                let ytdl = YoutubeDl::new(client_old, query.clone());
+                let ytdl = YoutubeDl::new(client, query.clone());
                 Ok(ytdl.into())
             },
-            QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
+            QueryType::File(file) => Ok(HttpRequest::new(client, file.url.to_string()).into()),
             QueryType::NewYoutubeDl(data) => Ok(data.clone().0.into()),
-            QueryType::PlaylistLink(_)
-            | QueryType::SpotifyTracks(_)
-            | QueryType::KeywordList(_)
-            | QueryType::None => unimplemented!(),
+            QueryType::PlaylistLink(url) => {
+                let req_options = RequestOptions {
+                    client: Some(client.clone()),
+                    ..Default::default()
+                };
+                let rusty_ytdl = YouTube::new_with_options(&req_options)?;
+                let search_options = SearchOptions {
+                    limit: PLAYLIST_SEARCH_LIMIT,
+                    search_type: SearchType::Playlist,
+                    ..Default::default()
+                };
+
+                let res = rusty_ytdl.search(url, Some(&search_options)).await?;
+                let mut metadata = Vec::with_capacity(res.len());
+                for r in res {
+                    metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
+                }
+                let input = self.get_query_source(client.clone());
+                Ok(input)
+            },
+            QueryType::SpotifyTracks(_) | QueryType::KeywordList(_) | QueryType::None => {
+                unimplemented!()
+            },
         }
     }
 
@@ -705,7 +739,7 @@ impl NewQueryType {
         &self,
         client: Option<reqwest::Client>,
     ) -> CrackedResult<(SongbirdInput, Vec<NewAuxMetadata>)> {
-        use colored::Colorize;
+        let use_rusty_ytdl = true;
         let client = client.unwrap_or_else(|| http_utils::get_client().clone());
         tracing::warn!("{}", format!("query_type: {self:?}").red());
         let NewQueryType(qt) = self;
@@ -723,26 +757,24 @@ impl NewQueryType {
             },
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                let mut ytdl = YoutubeDl::new(client, url.clone());
-                let metadata = ytdl.aux_metadata().await?;
-                let input = ytdl.into();
-                // let client = crate::http_utils::get_client();
-                // let search =
-                //     crate::sources::youtube::get_rusty_search(client.clone(), query.clone())
-                //         .await?;
-                // search.
-                // This call, this is what does all the work
-                // let mut input = self.get_query_source(client.clone());
-                // let metadata = input
-                //     .aux_metadata()
-                //     .await
-                //     .map_err(CrackedError::AuxMetadataError)?;
-                let my_metadata = NewAuxMetadata(metadata);
-                Ok((input, vec![my_metadata]))
+                // self.get_query_source(client)
+                let (source, metadata) = if !use_rusty_ytdl {
+                    let mut ytdl = YoutubeDl::new(client, url.clone());
+                    let metadata = ytdl.aux_metadata().await?;
+                    (ytdl.into(), vec![NewAuxMetadata(metadata)])
+                } else {
+                    let search = get_rusty_search(client.clone(), url.clone()).await?;
+                    let metadata = search.metadata.clone();
+                    let my_metadata = match metadata {
+                        Some(metadata) => NewAuxMetadata(metadata),
+                        None => NewAuxMetadata::default(),
+                    };
+                    (search.into(), vec![my_metadata])
+                };
+                Ok((source, metadata))
             },
             QueryType::Keywords(_query) => {
                 tracing::warn!("In Keywords");
-                //get_rusty_search(client.clone(), query.clone()).await
                 let (input, metadata) =
                     search_query_to_source_and_metadata_rusty(client.clone(), qt.clone()).await?;
                 Ok((input, metadata))
@@ -762,26 +794,27 @@ impl NewQueryType {
                 let (ytdl, aux_metadata) = data.clone();
                 Ok((ytdl.into(), vec![NewAuxMetadata(aux_metadata)]))
             },
-            QueryType::PlaylistLink(url) => {
-                tracing::warn!("In PlaylistLink");
-                let req_options = RequestOptions {
-                    client: Some(client.clone()),
-                    ..Default::default()
-                };
-                let rusty_ytdl = YouTube::new_with_options(&req_options)?;
-                let search_options = SearchOptions {
-                    limit: PLAYLIST_SEARCH_LIMIT,
-                    search_type: SearchType::Playlist,
-                    ..Default::default()
-                };
+            QueryType::PlaylistLink(_url) => {
+                tracing::error!("In PlaylistLink");
+                unimplemented!();
+                // let req_options = RequestOptions {
+                //     client: Some(client.clone()),
+                //     ..Default::default()
+                // };
+                // let rusty_ytdl = YouTube::new_with_options(&req_options)?;
+                // let search_options = SearchOptions {
+                //     limit: PLAYLIST_SEARCH_LIMIT,
+                //     search_type: SearchType::Playlist,
+                //     ..Default::default()
+                // };
 
-                let res = rusty_ytdl.search(url, Some(&search_options)).await?;
-                let mut metadata = Vec::with_capacity(res.len());
-                for r in res {
-                    metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
-                }
-                let input = self.get_query_source(client.clone());
-                Ok((input, metadata))
+                // let res = rusty_ytdl.search(url, Some(&search_options)).await?;
+                // let mut metadata = Vec::with_capacity(res.len());
+                // for r in res {
+                //     metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
+                // }
+                // let input = self.get_query_source(client.clone());
+                // Ok((input, metadata))
             },
             QueryType::SpotifyTracks(tracks) => {
                 tracing::error!("In SpotifyTracks, this is broken");
