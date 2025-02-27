@@ -467,7 +467,6 @@ impl Default for EventLogAsync {
     /// Default implementation for the [`EventLogAsync`].
     /// # Panics
     /// Panics if the log file cannot be created.
-    #[must_use]
     fn default() -> Self {
         let log_path = format!("{}/events2.log", get_log_prefix());
         let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
@@ -768,8 +767,7 @@ impl Data {
     // This is to prevent users from voting to skip a track, then leaving the voice channel.
     // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
     pub async fn forget_skip_votes(&self, guild_id: GuildId) {
-        self
-            .guild_cache_map
+        self.guild_cache_map
             .lock()
             .await
             .entry(guild_id)
