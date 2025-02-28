@@ -21,7 +21,7 @@ version = "6"
 features = ["serde", "typesize", "raw-api"]
 
 [workspace.dependencies.typesize]
-version = "0.1.11"
+version = "0.1.13"
 # branch = "next"
 # git = "https://github.com/GnomedDev/typesize"
 features = [
@@ -88,10 +88,10 @@ features = [
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-git = "https://github.com/CycleFive/songbird"
-# git = "https://github.com/serenity-rs/songbird"
+# git = "https://github.com/CycleFive/songbird"
+git = "https://github.com/serenity-rs/songbird"
 branch = "serenity-next"
-version = "0.4.5"
+version = "0.5.0"
 features = [
   "driver",
   "gateway",
@@ -113,7 +113,7 @@ version = "1.42.0"
 features = ["full"]
 
 [workspace.dependencies]
-small-fixed-array = "0.4.7"
+small-fixed-array = "0.4.8"
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
 # crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
