@@ -23,7 +23,7 @@ use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{gateway::Ready, id::GuildId, prelude::VoiceState},
-    ChannelId, {Context as SerenityContext, EventHandler},
+    ChannelId, Context as SerenityContext,
 };
 use std::{
     sync::{atomic::Ordering, Arc},
@@ -37,7 +37,7 @@ pub struct SerenityHandler {
 }
 
 #[async_trait]
-impl EventHandler for SerenityHandler {
+impl serenity::prelude::EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!("{} {}", ready.user.name, CONNECTED);
 
@@ -190,10 +190,16 @@ impl EventHandler for SerenityHandler {
         // A: We don't
         // Q: Fuck you :(
         // A:
-        if manager.get(guild_id).is_some() {
-            manager.remove(guild_id).await.ok();
+        if let Some(call) = manager.get(guild_id) {
+            match call.lock().await.leave().await {
+                Ok(()) => {
+                    tracing::info!("Removed bot successfully");
+                },
+                Err(e) => {
+                    tracing::error!("{e}");
+                },
+            }
         }
-
         // update_queue_messages(&ctx, &self.data, &[], guild_id).await;
     }
 

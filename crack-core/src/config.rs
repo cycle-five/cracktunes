@@ -8,7 +8,7 @@ use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
     guild::settings::GuildSettings,
-    handlers::{handle_event_noop, SerenityHandler},
+    handlers::SerenityHandler,
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -16,10 +16,9 @@ use crate::{
     BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use ::serenity::secrets::Token;
-use colored::Colorize;
 use crack_types::messaging::messages::FAIL_RUSTLS_PROVIDER_LOAD;
 use crack_types::CrackedError;
-use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
+use poise::serenity_prelude::{Client, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
@@ -33,18 +32,48 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // and forward the rest to the default handler
     match error {
         //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
-            },
-            _ => {
-                tracing::warn!(
-                    "{} {} {} {}",
-                    "In event handler for ".yellow(),
-                    event.snake_case_name().yellow().italic(),
-                    " event: ".yellow(),
-                    error.to_string().yellow().bold(),
-                );
-            },
+        // poise::FrameworkError::EventHandler { error, event, .. } => match event {
+        //     FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
+        //     },
+        //     _ => {
+        //         tracing::warn!(
+        //             "{} {} {} {}",
+        //             "In event handler for ".yellow(),
+        //             event.snake_case_name().yellow().italic(),
+        //             " event: ".yellow(),
+        //             error.to_string().yellow().bold(),
+        //         );
+        //     },
+        // },
+        poise::FrameworkError::MissingBotPermissions {
+            missing_permissions,
+            ctx,
+            ..
+        } => {
+            tracing::warn!(
+                "<<< {} Missing bot permissions: {:?}",
+                ctx.command().qualified_name,
+                missing_permissions,
+            );
+            let myerr = CrackedError::MissingBotPermissions(Some(missing_permissions));
+            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+
+            check_reply(ctx.send_message(params).await.map_err(Into::into));
+        },
+        poise::FrameworkError::MissingUserPermissions {
+            missing_permissions,
+            ctx,
+            ..
+        } => {
+            tracing::warn!(
+                "<<< {} Missing user permissions: {:?}",
+                ctx.command().qualified_name,
+                missing_permissions,
+            );
+            let myerr = CrackedError::MissingUserPermissions(missing_permissions);
+            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+
+            check_reply(ctx.send_message(params).await.map_err(Into::into));
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::warn!(
@@ -214,12 +243,12 @@ pub async fn poise_framework(
             })
         }),
         //event_handler: |ctx, event, framework, data_global| {
-        event_handler: |framework, event| {
-            Box::pin(async move {
-                let ctx = framework.serenity_context;
-                handle_event_noop(ctx, event, framework, framework.user_data()).await
-            })
-        },
+        // event_handler: |framework, event| {
+        //     Box::pin(async move {
+        //         let ctx = framework.serenity_context;
+        //         handle_event_noop(ctx, event, framework, framework.user_data()).await
+        //     })
+        // },
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,

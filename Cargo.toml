@@ -60,38 +60,35 @@ features = [
 [workspace.dependencies.serenity]
 # Broken? try self-host.
 # version = "0.12.3"
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
-version = "0.12.4"
+git = "https://github.com/serenity-rs/serenity"
+# branch = "next"
+rev = "09bea563"
 default-features = false
-# features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
 features = [
-  "full",
-  "typesize",
+  "default",
   "builder",
-  #"temp_cache",
   "cache",
   "collector",
   "framework",
-  "http",
   "gateway",
+  "http",
   "model",
   "voice_model",
   "utils",
-  "rustls_backend",
   "voice",
-  "chrono",
-  "unstable",
-  "interactions_endpoint",
   "tokio_task_builder",
-]
+  "interactions_endpoint",
+  "chrono",
+  #  "typesize",
+  "rustls_backend",
+] # features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-# git = "https://github.com/CycleFive/songbird"
-git = "https://github.com/serenity-rs/songbird"
-branch = "serenity-next"
-version = "0.5.0"
+# git = "https://github.com/serenity-rs/songbird"
+# branch = "serenity-next"
+# version = "0.5.0"
+path = "../songbird"
 features = [
   "driver",
   "gateway",
@@ -112,6 +109,14 @@ version = "0.5.4"
 version = "1.42.0"
 features = ["full"]
 
+[workspace.dependencies.poise]
+# git = "https://github.com/serenity-rs/poise"
+# branch = "serenity-next"
+# version = "0.6.1"
+path = "../poise"
+default-features = true
+features = ["cache", "collector"]
+
 [workspace.dependencies]
 small-fixed-array = "0.4.8"
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
@@ -119,10 +124,8 @@ small-fixed-array = "0.4.8"
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-poise = { branch = "serenity-next", git = "https://github.com/CycleFive/poise", version = "0.6.1", default-features = true, features = [
-  "cache",
-  "collector",
-] }
+
+
 reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
   "json",
@@ -158,12 +161,5 @@ inherits = "release-with-performance"
 lto = "thin"
 
 [patch.crates-io]
-# backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
-# async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
-# poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
-# serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
 whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }
-
-# serenity-voice-model = { git = "https://github.com/CycleFive/serenity", branch = "next" }
-# branch = "serenity-next"

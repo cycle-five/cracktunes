@@ -1,7 +1,9 @@
+use crate::messages::COULD_NOT_FIND_PERMS;
 use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA, FAIL_AUTHOR_DISCONNECTED,
     FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT, FAIL_INSERT_GUILD_SETTINGS,
-    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
+    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_MISSING_BOT_PERMISSIONS,
+    FAIL_MISSING_USER_PERMISSIONS, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
     FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
     FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
     FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_ENV_VAR, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
@@ -15,6 +17,7 @@ pub type Error = Box<dyn StdError + Send + Sync>;
 use poise::serenity_prelude::{self as serenity, ChannelId, GuildId, Mentionable};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
+use serenity::all::Permissions;
 use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
@@ -60,6 +63,8 @@ pub enum CrackedError {
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     MissingEnvVar(String),
+    MissingUserPermissions(Option<Permissions>),
+    MissingBotPermissions(Option<Permissions>),
     NotInRange(&'static str, isize, isize, isize),
     NotInMusicChannel(ChannelId),
     NotConnected,
@@ -166,6 +171,18 @@ impl Display for CrackedError {
                 "No log channel set for {event_name} in {guild_id}",
             )),
             Self::MissingEnvVar(var) => f.write_str(&format!("{MISSING_ENV_VAR} {var}")),
+            Self::MissingUserPermissions(perm) => {
+                let perm_str = perm
+                    .map(|p| p.to_string())
+                    .unwrap_or(COULD_NOT_FIND_PERMS.to_string());
+                f.write_str(&format!("{FAIL_MISSING_USER_PERMISSIONS}: {perm_str}"))
+            },
+            Self::MissingBotPermissions(perm) => {
+                let perm_str = perm
+                    .map(|p| p.to_string())
+                    .unwrap_or(COULD_NOT_FIND_PERMS.to_string());
+                f.write_str(&format!("{FAIL_MISSING_BOT_PERMISSIONS}: {perm_str}"))
+            },
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),

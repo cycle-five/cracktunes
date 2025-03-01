@@ -312,9 +312,9 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.12.4"
+version = "1.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cd755adf9707cf671e31d944a189be3deaaeee11c8bc1d669bb8022ac90fbd0"
+checksum = "5e4e8200b9a4a5801a769d50eeabc05670fec7e959a8cb7a63a93e4e519942ae"
 dependencies = [
  "aws-lc-sys",
  "paste",
@@ -1085,7 +1085,7 @@ dependencies = [
  "ctor",
  "dashmap",
  "either",
- "extract_map 0.1.2",
+ "extract_map",
  "futures",
  "indexmap",
  "itertools 0.13.0",
@@ -1103,7 +1103,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "serenity 0.12.4 (git+https://github.com/CycleFive/serenity?branch=next)",
+ "serenity",
  "serenity-voice-model 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "songbird",
  "sqlx",
@@ -1169,7 +1169,7 @@ dependencies = [
  "reqwest",
  "rspotify",
  "rusty_ytdl",
- "serenity 0.12.4 (git+https://github.com/CycleFive/serenity?branch=next)",
+ "serenity",
  "songbird",
  "thiserror 2.0.11",
  "tokio",
@@ -1190,7 +1190,7 @@ dependencies = [
  "rspotify",
  "rusty_ytdl",
  "serde_json",
- "serenity 0.12.4 (git+https://github.com/CycleFive/serenity?branch=next)",
+ "serenity",
  "small-fixed-array",
  "songbird",
  "sqlx",
@@ -1839,17 +1839,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abf7509ab567289c5422ef33dd4982673b8a32d373c2abb6e7fce8ef8b2dc968"
 dependencies = [
  "gat-lending-iterator",
- "serde",
-]
-
-[[package]]
-name = "extract_map"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c2f18bbb5aac54b10f5877e404b332383d2412b0ce809c99a38efd10371fdd7"
-dependencies = [
- "gat-lending-iterator",
- "hashbrown 0.15.2",
  "serde",
 ]
 
@@ -3527,7 +3516,6 @@ dependencies = [
 [[package]]
 name = "poise"
 version = "0.6.1"
-source = "git+https://github.com/CycleFive/poise?branch=serenity-next#3c69b9ec780a062849b9f51a108ec79de84d32f6"
 dependencies = [
  "async-trait",
  "derivative",
@@ -3536,7 +3524,7 @@ dependencies = [
  "parking_lot 0.12.3",
  "poise_macros",
  "regex",
- "serenity 0.12.4 (git+https://github.com/CycleFive/serenity?branch=next)",
+ "serenity",
  "tokio",
  "tracing",
  "trim-in-place",
@@ -3545,7 +3533,6 @@ dependencies = [
 [[package]]
 name = "poise_macros"
 version = "0.6.1"
-source = "git+https://github.com/CycleFive/poise?branch=serenity-next#3c69b9ec780a062849b9f51a108ec79de84d32f6"
 dependencies = [
  "darling 0.20.10",
  "proc-macro2",
@@ -4652,7 +4639,7 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.12.4"
-source = "git+https://github.com/CycleFive/serenity?branch=next#e034024fdc4d55172eb53a41a30bff5d899d2943"
+source = "git+https://github.com/serenity-rs/serenity?rev=09bea563#09bea5638cc4c6a2150901c6dfa700b092bdbfc0"
 dependencies = [
  "aformat",
  "arrayvec",
@@ -4664,10 +4651,10 @@ dependencies = [
  "chrono",
  "dashmap",
  "ed25519-dalek",
- "extract_map 0.1.2",
+ "extract_map",
  "flate2",
+ "foldhash",
  "futures",
- "fxhash",
  "mime_guess",
  "nonmax",
  "parking_lot 0.12.3",
@@ -4676,53 +4663,18 @@ dependencies = [
  "serde",
  "serde_cow",
  "serde_json",
- "serenity-voice-model 0.2.0 (git+https://github.com/CycleFive/serenity?branch=next)",
+ "serenity-voice-model 0.2.0 (git+https://github.com/serenity-rs/serenity?rev=09bea563)",
  "small-fixed-array",
  "strum 0.26.3",
  "time",
  "to-arraystring",
  "tokio",
- "tokio-tungstenite 0.24.0",
+ "tokio-tungstenite",
  "tracing",
  "typesize",
  "url",
  "zeroize",
  "zstd-safe",
-]
-
-[[package]]
-name = "serenity"
-version = "0.12.4"
-source = "git+https://github.com/serenity-rs/serenity?branch=next#db6b4d0d2109af8312a591c9c31dafde8c59834c"
-dependencies = [
- "aformat",
- "arrayvec",
- "async-trait",
- "base64",
- "bitflags 2.8.0",
- "bool_to_bitflags",
- "bytes",
- "dashmap",
- "extract_map 0.2.0",
- "flate2",
- "futures",
- "mime_guess",
- "nonmax",
- "parking_lot 0.12.3",
- "percent-encoding",
- "reqwest",
- "serde",
- "serde_cow",
- "serde_json",
- "small-fixed-array",
- "strum 0.26.3",
- "time",
- "to-arraystring",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "url",
- "zeroize",
 ]
 
 [[package]]
@@ -4741,7 +4693,7 @@ dependencies = [
 [[package]]
 name = "serenity-voice-model"
 version = "0.2.0"
-source = "git+https://github.com/CycleFive/serenity?branch=next#e034024fdc4d55172eb53a41a30bff5d899d2943"
+source = "git+https://github.com/serenity-rs/serenity?rev=09bea563#09bea5638cc4c6a2150901c6dfa700b092bdbfc0"
 dependencies = [
  "bitflags 2.8.0",
  "num-traits",
@@ -4861,7 +4813,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8311fa212af82bdee69d5332af52dc8b09e77f5777258999a9339adfe2d345f9"
 dependencies = [
  "serde",
- "typesize",
 ]
 
 [[package]]
@@ -4886,7 +4837,6 @@ dependencies = [
 [[package]]
 name = "songbird"
 version = "0.5.0"
-source = "git+https://github.com/serenity-rs/songbird?branch=serenity-next#1e5b26924fabb9968aae90226384a6f4848a8302"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -4914,7 +4864,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
- "serenity 0.12.4 (git+https://github.com/serenity-rs/serenity?branch=next)",
+ "serenity",
  "serenity-voice-model 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "socket2",
  "stream_lib",
@@ -4922,7 +4872,7 @@ dependencies = [
  "symphonia",
  "symphonia-core",
  "tokio",
- "tokio-tungstenite 0.26.2",
+ "tokio-tungstenite",
  "tokio-util",
  "tokio-websockets",
  "tracing",
@@ -5810,22 +5760,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
-dependencies = [
- "futures-util",
- "log",
- "rustls",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tungstenite 0.24.0",
- "webpki-roots",
-]
-
-[[package]]
-name = "tokio-tungstenite"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
@@ -6046,11 +5980,8 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.8.5",
- "rustls",
- "rustls-pki-types",
  "sha1",
  "thiserror 1.0.69",
- "url",
  "utf-8",
 ]
 
@@ -6147,7 +6078,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e29e4cac0f1acdbbe7b4deb46876a04246dc6abf60b6f2587bef8ae327cd134c"
 dependencies = [
  "chrono",
- "extract_map 0.1.2",
+ "extract_map",
  "nonmax",
  "parking_lot 0.12.3",
  "secrecy 0.8.0",
