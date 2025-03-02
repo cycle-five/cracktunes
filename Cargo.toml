@@ -87,8 +87,8 @@ features = [
 # Broken? try self-hosted?
 # git = "https://github.com/serenity-rs/songbird"
 # branch = "serenity-next"
-# version = "0.5.0"
-path = "../songbird"
+version = "0.5.0"
+# path = "../songbird"
 features = [
   "driver",
   "gateway",
@@ -110,12 +110,12 @@ version = "1.42.0"
 features = ["full"]
 
 [workspace.dependencies.poise]
-# git = "https://github.com/serenity-rs/poise"
-# branch = "serenity-next"
-# version = "0.6.1"
-path = "../poise"
-default-features = true
+version = "0.6.1"
 features = ["cache", "collector"]
+# branch = "serenity-next"
+# git = "https://github.com/serenity-rs/poise"
+#path = "../poise"
+#default-features = true
 
 [workspace.dependencies]
 small-fixed-array = "0.4.8"
@@ -163,3 +163,5 @@ lto = "thin"
 [patch.crates-io]
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
 whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }
+songbird = { git = "https://github.com/CycleFive/songbird", branch = "serenity-next", version = "0.5.0" }
+poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next", version = "0.6.1" }
