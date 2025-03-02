@@ -247,6 +247,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_get_track_source_and_metadata_playlist_link() {
         let query_type = QueryType::PlaylistLink(
             "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),

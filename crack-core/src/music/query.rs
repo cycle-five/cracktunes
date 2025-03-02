@@ -794,8 +794,8 @@ impl NewQueryType {
                 let (ytdl, aux_metadata) = data.clone();
                 Ok((ytdl.into(), vec![NewAuxMetadata(aux_metadata)]))
             },
-            QueryType::PlaylistLink(_url) => {
-                tracing::error!("In PlaylistLink");
+            QueryType::PlaylistLink(url) => {
+                tracing::error!("In PlaylistLink: {url}");
                 unimplemented!();
                 // let req_options = RequestOptions {
                 //     client: Some(client.clone()),

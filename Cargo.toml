@@ -88,7 +88,6 @@ features = [
 # git = "https://github.com/serenity-rs/songbird"
 # branch = "serenity-next"
 version = "0.5.0"
-# path = "../songbird"
 features = [
   "driver",
   "gateway",
@@ -114,8 +113,6 @@ version = "0.6.1"
 features = ["cache", "collector"]
 # branch = "serenity-next"
 # git = "https://github.com/serenity-rs/poise"
-#path = "../poise"
-#default-features = true
 
 [workspace.dependencies]
 small-fixed-array = "0.4.8"
