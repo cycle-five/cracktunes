@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serenity::all::GuildId;
 use serenity::model::id::RoleId;
 
@@ -39,6 +41,6 @@ pub async fn get_auto_role(
 }
 
 /// Get the auto role for the server.
-pub async fn get_auto_role_internal(data: &Data, guild_id: GuildId) -> Option<RoleId> {
+pub async fn get_auto_role_internal(data: Arc<Data>, guild_id: GuildId) -> Option<RoleId> {
     data.get_auto_role(guild_id).await.map(RoleId::from)
 }

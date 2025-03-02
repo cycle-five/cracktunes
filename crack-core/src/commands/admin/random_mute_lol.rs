@@ -1,8 +1,8 @@
 use super::mute::mute_internal;
-use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
 use async_trait::async_trait;
+use crack_types::CrackedError;
 use rand::Rng;
 use serenity::all::{Context as SerenityContext, GuildId, User};
 use songbird::{Call, Event, EventContext, EventHandler};
@@ -60,7 +60,7 @@ impl EventHandler for RandomMuteHandler {
         // let guild_id = self.guild_id.unwrap();
         // let guild = guild_id.to_guild_cached(&self.ctx).await.unwrap();
         // let member = guild.member(&self.ctx, self.user.id).await.unwrap();
-        let r = rand::thread_rng().gen_range(0..100);
+        let r = rand::rng().random_range(0..100);
         if r < 50 {
             let _msg = mute_internal(&self.ctx, self.user.clone(), self.guild_id, true)
                 .await

@@ -1,14 +1,10 @@
 use songbird::tracks::TrackHandle;
 
 use crate::{
-    commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    guild::operations::GuildSettingsOperations,
-    messaging::message::CrackedMessage,
-    poise_ext::ContextExt,
-    utils::send_reply,
-    Context, Error,
+    commands::cmd_check_music, guild::operations::GuildSettingsOperations,
+    messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
 
 /// Stop the current track and clear the queue.
 #[cfg(not(tarpaulin_include))]
@@ -28,7 +24,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(not(tarpaulin_include))]
 pub async fn stop_internal(ctx: Context<'_>) -> Result<Vec<TrackHandle>, Error> {
     let (call, guild_id) = ctx.get_call_guild_id().await?;
-    let _ = ctx.data().set_autoplay(guild_id, false).await;
+    let () = ctx.data().set_autoplay(guild_id, false).await;
 
     let handler = call.lock().await;
     let queue = handler.queue();

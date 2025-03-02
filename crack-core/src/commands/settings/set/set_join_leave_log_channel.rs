@@ -1,9 +1,9 @@
-use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::CrackedError;
 use serenity::all::Channel;
 
 /// Set the join-leave log channel.
@@ -63,7 +63,7 @@ pub async fn join_leave_log_channel(
 
     send_reply(
         &ctx,
-        CrackedMessage::Other(format!("Join-leave log channel set to {}", channel_id)),
+        CrackedMessage::Other(format!("Join-leave log channel set to {channel_id}")),
         true,
     )
     .await?;

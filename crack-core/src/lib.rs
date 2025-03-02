@@ -1,11 +1,11 @@
 #![allow(internal_features)]
 #![feature(fmt_internals)]
 #![feature(formatting_options)]
+#![feature(file_buffered)]
 pub mod commands;
 pub mod config;
 pub mod connection;
 pub mod db;
-pub mod errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
@@ -29,9 +29,13 @@ use chrono::{DateTime, Utc};
 #[cfg(feature = "crack-gpt")]
 use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
+use crack_types::messages::CAM_VIOLATION_MSG;
+use crack_types::CrackedError;
+use dashmap::DashMap;
+#[cfg(feature = "crack-activity")]
+use dashmap::DashSet;
 use db::worker_pool::MetadataMsg;
-use db::{PlayLog, TrackReaction};
-use errors::CrackedError;
+use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;
 use guild::settings::{GuildSettings, GuildSettingsMapParam};
 use guild::settings::{
@@ -42,7 +46,6 @@ use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use serenity::all::{GuildId, Message, UserId};
 use songbird::Songbird;
-use std::time::SystemTime;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -51,36 +54,31 @@ use std::{
     io::Write,
     path::Path,
     sync::Arc,
+    time::SystemTime,
 };
 use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 // ------------------------------------------------------------------
 // Our public types used throughout cracktunes.
 // Probably want to move these to crack-types...
+// Update: 2024-12-29 most have been, need to move Data and DataInner
+// for the rest.
 // ------------------------------------------------------------------
 
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
-pub type ArcTRwLock<T> = Arc<tokio::sync::RwLock<T>>;
-pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
-pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
-pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
-pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
-pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
-pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
+pub use crack_types::reply_handle::MessageOrReplyHandle;
+pub use crack_types::{
+    ArcMutDMap, ArcRwMap, ArcTMutex, ArcTRwLock, ArcTRwMap, CrackedHowResult, CrackedResult, Error,
+};
+pub use crack_types::{CommandError, CommandResult};
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;
 pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, CommandError>;
 pub type PartialContext<'a> = poise::PartialContext<'a, Data, CommandError>;
 pub type ApplicationContext<'a> = poise::ApplicationContext<'a, Data, CommandError>;
-
-pub type CommandError = Error;
-pub type CommandResult<E = Error> = Result<(), E>;
 pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
-// use crate::serenity::prelude::SerenityError;
-use crack_types::reply_handle::MessageOrReplyHandle;
 
 /// Struct for the cammed down kicking configuration.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,7 +92,7 @@ pub struct CamKickConfig {
     pub msg_on_dc: bool,
 }
 
-/// Default for the CamKickConfig.
+/// Default for the `CamKickConfig`.
 impl Default for CamKickConfig {
     fn default() -> Self {
         Self {
@@ -102,7 +100,7 @@ impl Default for CamKickConfig {
             guild_id: 0,
             chan_id: 0,
             // FIXME: This should be a const or a static
-            dc_msg: "You have been violated for being cammed down for too long.".to_string(),
+            dc_msg: CAM_VIOLATION_MSG.to_string(),
             msg_on_deafen: false,
             msg_on_mute: false,
             msg_on_dc: false,
@@ -110,7 +108,7 @@ impl Default for CamKickConfig {
     }
 }
 
-/// Display impl for CamKickConfig
+/// Display impl for `CamKickConfig`
 impl Display for CamKickConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
@@ -122,10 +120,14 @@ impl Display for CamKickConfig {
         result.push_str(&format!("msg_on_mute:   {}\n", self.msg_on_mute));
         result.push_str(&format!("msg_on_dc:     {}\n", self.msg_on_dc));
 
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
+/// Struct for all the credentials needed for the bot.
+/// TODO: This should be moved to crack-types
+/// TODO: How to make this flexible enough to be extensible
+/// by plugins or other modules like crack-osint?
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BotCredentials {
     pub discord_token: String,
@@ -134,6 +136,7 @@ pub struct BotCredentials {
     pub spotify_client_secret: Option<String>,
     pub openai_api_key: Option<String>,
     pub virustotal_api_key: Option<String>,
+    pub ipqs_api_key: Option<String>,
 }
 
 impl Default for BotCredentials {
@@ -145,6 +148,7 @@ impl Default for BotCredentials {
             spotify_client_secret: None,
             openai_api_key: None,
             virustotal_api_key: None,
+            ipqs_api_key: None,
         }
     }
 }
@@ -206,15 +210,12 @@ impl Display for BotConfig {
         ));
         result.push_str(&format!(
             "prefix: {}",
-            self.prefix
-                .as_ref()
-                .cloned()
-                .unwrap_or(DEFAULT_PREFIX.to_string())
+            self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
         ));
         result.push_str(&format!("credentials: {:?}\n", self.credentials.is_some()));
         result.push_str(&format!("database_url: {:?}\n", self.database_url));
         result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
@@ -224,19 +225,21 @@ impl BotConfig {
         self
     }
 
+    #[must_use]
     pub fn get_prefix(&self) -> String {
         self.prefix.clone().unwrap_or(DEFAULT_PREFIX.to_string())
     }
 
+    #[must_use]
     pub fn get_video_status_poll_interval(&self) -> u64 {
         self.video_status_poll_interval
             .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
     }
 
+    #[must_use]
     pub fn get_database_url(&self) -> String {
         self.database_url
-            .as_ref()
-            .cloned()
+            .clone()
             .unwrap_or(DEFAULT_DB_URL.to_string())
     }
 }
@@ -251,7 +254,7 @@ pub struct PhoneCodeData {
     country_by_phone_code: HashMap<String, Vec<String>>,
 }
 
-/// impl of PhoneCodeData
+/// impl of `PhoneCodeData`
 impl PhoneCodeData {
     /// Load the phone code data from the local file, or download it if it doesn't exist
     pub fn load() -> Result<Self, CrackedError> {
@@ -306,6 +309,7 @@ impl PhoneCodeData {
 
     /// Get names of countries that match the given phone code.
     /// Due to edge cases, there may be multiples.
+    #[must_use]
     pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
         self.country_by_phone_code.get(phone_code).cloned()
     }
@@ -318,12 +322,12 @@ pub struct DataInner {
     pub start_time: SystemTime,
     // Why is Arc needed? Why dashmap instead of Mutex<HashMap>?
     #[cfg(feature = "crack-activity")]
-    pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
+    pub user_activity_map: Arc<DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
-    pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
+    pub activity_user_map: Arc<DashMap<String, DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
     // Why not Arc here?
-    pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
+    pub join_vc_tokens: DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
@@ -332,12 +336,13 @@ pub struct DataInner {
     pub db_channel: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
-    //RwLock, then Mutex, why?
+    //pub guild_settings_map: Arc<DashMap<GuildId, guild::settings::GuildSettings>>,
     pub guild_settings_map: Arc<RwLock<HashMap<GuildId, guild::settings::GuildSettings>>>,
+    // pub guild_cache_map: Arc<DashMap<GuildId, guild::cache::GuildCache>>>,
     pub guild_cache_map: Arc<Mutex<HashMap<GuildId, guild::cache::GuildCache>>>,
-    pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
-    pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
-    pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
+    pub id_cache_map: DashMap<u64, guild::cache::GuildCache>,
+    pub guild_command_msg_queue: DashMap<GuildId, Vec<MessageOrReplyHandle>>,
+    pub guild_cnt_map: DashMap<GuildId, u64>,
     // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
@@ -365,11 +370,12 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
 impl DataInner {
+    #[must_use]
     /// Set the bot settings for the data.
     pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self {
@@ -378,6 +384,7 @@ impl DataInner {
         }
     }
 
+    #[must_use]
     /// Set the database pool for the data.
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
@@ -387,6 +394,7 @@ impl DataInner {
     }
 
     /// Set the channel for the database pool communication.
+    #[must_use]
     pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
         Self {
             db_channel: Some(db_channel),
@@ -395,6 +403,7 @@ impl DataInner {
     }
 
     /// Set the GPT context for the data.
+    #[must_use]
     #[cfg(feature = "crack-gpt")]
     pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
         Self {
@@ -403,7 +412,8 @@ impl DataInner {
         }
     }
 
-    /// Set the CrackTrack client for the data.
+    /// Set the `CrackTrack` client for the data.
+    #[must_use]
     pub fn with_ct_client(&self, ct_client: CrackTrackClient<'static>) -> Self {
         Self {
             ct_client,
@@ -412,6 +422,7 @@ impl DataInner {
     }
 
     /// Set the Songbird instance for the data.
+    #[must_use]
     pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self {
             songbird,
@@ -420,20 +431,26 @@ impl DataInner {
     }
 
     /// Set the guild settings map for the data.
+    #[must_use]
     pub fn with_guild_settings_map(&self, guild_settings: GuildSettingsMapParam) -> Self {
         Self {
             guild_settings_map: guild_settings,
             ..self.clone()
         }
     }
+
+    /// Get the http client.
+    pub fn get_http_client(&self) -> reqwest::Client {
+        self.http_client.clone()
+    }
 }
 
 /// General log for events that the bot reveices from Discord.
 #[derive(Clone, Debug)]
-pub struct EventLogAsync(pub ArcTMutex<File>);
+pub struct EventLogAsync(pub ArcTMutex<std::io::BufWriter<File>>);
 
 impl std::ops::Deref for EventLogAsync {
-    type Target = ArcTMutex<File>;
+    type Target = ArcTMutex<std::io::BufWriter<File>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -447,17 +464,20 @@ impl std::ops::DerefMut for EventLogAsync {
 }
 
 impl Default for EventLogAsync {
+    /// Default implementation for the [`EventLogAsync`].
+    /// # Panics
+    /// Panics if the log file cannot be created.
     fn default() -> Self {
         let log_path = format!("{}/events2.log", get_log_prefix());
         let _ = fs::create_dir_all(Path::new(&log_path).parent().unwrap());
-        let log_file = match File::create(log_path) {
+        let log_file = match File::create_buffered(log_path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Error creating log file: {}", e);
+                eprintln!("Error creating log file: {e}");
                 // FIXME: Maybe use io::null()?
                 // I went down this path with sink and it was a mistake.
-                File::create("/dev/null")
-                    .expect("Should have a file object to write too??? (three bcz real confused).")
+                File::create_buffered("/dev/null")
+                    .expect("Should have a file object to write too???")
             },
         };
         Self(Arc::new(tokio::sync::Mutex::new(log_file)))
@@ -465,7 +485,8 @@ impl Default for EventLogAsync {
 }
 
 impl EventLogAsync {
-    /// Create a new EventLog, calls default
+    /// Create a new `EventLog`, calls default
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -536,6 +557,7 @@ impl Default for DataInner {
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
             authorized_users: Default::default(),
+            // guild_settings_map: Arc::new(DashMap::new()),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             id_cache_map: dashmap::DashMap::default(),
@@ -570,16 +592,37 @@ impl std::ops::Deref for Data {
 
 /// Impl for our custom [`Data`] struct
 impl Data {
+    pub async fn insert_guild_db(
+        &self,
+        guild_id: GuildId,
+        guild_settings: GuildSettings,
+    ) -> CrackedResult<GuildSettings> {
+        let name = guild_settings.guild_name.clone();
+        let prefix = guild_settings.prefix.clone();
+        let pool = self.get_db_pool()?;
+        let (_entity, settings) =
+            GuildEntity::get_or_create(&pool, guild_id.into(), name, prefix).await?;
+
+        Ok(settings)
+    }
+
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
         guild_id: GuildId,
         guild_settings: GuildSettings,
-    ) -> Option<GuildSettings> {
-        self.guild_settings_map
+    ) -> CrackedResult<GuildSettings> {
+        let settings = self.insert_guild_db(guild_id, guild_settings).await?;
+
+        match self
+            .guild_settings_map
             .write()
             .await
-            .insert(guild_id, guild_settings)
+            .insert(guild_id, settings)
+        {
+            Some(settings) => Ok(settings),
+            None => Err(CrackedError::FailedToInsert),
+        }
     }
 
     /// Create a new Data, calls default
@@ -598,24 +641,22 @@ impl Data {
     }
 
     /// Add a message to the cache
-    pub async fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
+    #[must_use]
+    pub fn add_msg_to_cache(&self, guild_id: GuildId, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(guild_id.into(), now, msg).await
+        self.add_msg_to_cache_ts(guild_id.into(), now, msg)
     }
 
     /// Add a message to the cache
-    pub async fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
+    #[must_use]
+    pub fn add_msg_to_cache_int(&self, id: u64, msg: Message) -> Option<Message> {
         let now = chrono::Utc::now();
-        self.add_msg_to_cache_ts(id, now, msg).await
+        self.add_msg_to_cache_ts(id, now, msg)
     }
 
     /// Add msg to the cache with a timestamp.
-    pub async fn add_msg_to_cache_ts(
-        &self,
-        id: u64,
-        ts: DateTime<Utc>,
-        msg: Message,
-    ) -> Option<Message> {
+    #[must_use]
+    pub fn add_msg_to_cache_ts(&self, id: u64, ts: DateTime<Utc>, msg: Message) -> Option<Message> {
         self.id_cache_map
             .entry(id)
             .or_default()
@@ -623,7 +664,9 @@ impl Data {
             .insert(ts, msg)
     }
 
-    pub async fn add_reply_handle_to_cache(
+    /// Add a reply handle to the cache with a timestamp.
+    #[must_use]
+    pub fn add_reply_handle_to_cache(
         &self,
         guild_id: GuildId,
         handle: MessageOrReplyHandle,
@@ -633,12 +676,9 @@ impl Data {
         Some(handle)
     }
 
-    /// Remove and return a message from the cache based on the guild_id and timestamp.
-    pub async fn remove_msg_from_cache(
-        &self,
-        guild_id: GuildId,
-        ts: DateTime<Utc>,
-    ) -> Option<Message> {
+    /// Remove and return a message from the cache based on the `guild_id` and timestamp.
+    #[must_use]
+    pub fn remove_msg_from_cache(&self, guild_id: GuildId, ts: DateTime<Utc>) -> Option<Message> {
         self.id_cache_map
             .get_mut(&guild_id.into())
             .unwrap()
@@ -667,6 +707,22 @@ impl Data {
             .cloned()
     }
 
+    /// Reload the guild settings from the database.
+    pub async fn reload_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
+        let pool = self.get_db_pool()?;
+        let guild_entity = GuildEntity::get(&pool, guild_id.into())
+            .await?
+            .ok_or(CrackedError::NoGuildId)?;
+        let guild_settings = guild_entity.get_settings(&pool).await?;
+        self.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, guild_settings);
+        //let settings = GuildSettings::get_by_guild_id(&pool, guild_id.into()).await?;
+        //self.add_guild_settings(guild_id, settings).await;
+        Ok(())
+    }
+
     /// Deny a user permission to use the music commands.
     pub async fn add_denied_music_user(
         &self,
@@ -687,15 +743,14 @@ impl Data {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
                 .get_music_permissions()
-                .map(|x| x.is_user_allowed(user.get()))
-                .unwrap_or(true)
+                .is_none_or(|x| x.is_user_allowed(user.get()))
         } else {
             true
         }
     }
 
     /// Push a message to the command message queue.
-    pub async fn push_latest_msg(
+    pub fn push_latest_msg(
         &self,
         guild_id: GuildId,
         msg: MessageOrReplyHandle,
@@ -711,26 +766,29 @@ impl Data {
     // This is used when a track ends, or when a user leaves the voice channel.
     // This is to prevent users from voting to skip a track, then leaving the voice channel.
     // TODO: Should this be moved to a separate module? Or should it be moved to a separate file?
-    pub async fn forget_skip_votes(&self, guild_id: GuildId) -> Result<(), Error> {
-        let _res = self
-            .guild_cache_map
+    pub async fn forget_skip_votes(&self, guild_id: GuildId) {
+        self.guild_cache_map
             .lock()
             .await
             .entry(guild_id)
             .and_modify(|cache| cache.current_skip_votes = HashSet::new())
             .or_default();
-
-        Ok(())
     }
 
-    pub async fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
+    /// Builder method to set the bot settings for the user data.
+    #[must_use]
+    pub fn with_bot_settings(&self, bot_settings: BotConfig) -> Self {
         Self(Arc::new(self.0.with_bot_settings(bot_settings)))
     }
 
+    /// Builder method to set the songbird manager instance for the user data.
+    #[must_use]
     pub fn with_songbird(&self, songbird: Arc<songbird::Songbird>) -> Self {
         Self(self.arc_inner().with_songbird(songbird).into())
     }
 
+    /// Method to get the inner data in an Arc.
+    #[must_use]
     pub fn arc_inner(&self) -> Arc<DataInner> {
         Into::into(self.0.clone())
     }
@@ -750,7 +808,7 @@ mod lib_test {
 
         assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
         assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
-        let want = &vec!["CA".to_string(), "UM".to_string(), "US".to_string()];
+        let want = ["CA".to_string(), "UM".to_string(), "US".to_string()];
         let got = country_by_phone_code.get("1").unwrap();
         // This would be cheaper using a heap or tree
         assert!(got.iter().all(|x| want.contains(x)));
@@ -760,19 +818,20 @@ mod lib_test {
     /// Test the creation of a default EventLog
     #[tokio::test]
     async fn test_event_log_default() {
+        let default_buffered_file_size = 8192;
         let event_log = EventLogAsync::default();
         let file = event_log.lock().await;
-        assert_eq!(file.metadata().unwrap().len(), 0);
+        assert_eq!(file.capacity(), default_buffered_file_size);
     }
 
-    /// Test the creation and printing of CamKickConfig
+    /// Test the creation and printing of `CamKickConfig`
     #[test]
     fn test_display_cam_kick_config() {
         let cam_kick = CamKickConfig::default();
         let want = r#"timeout:       0
 guild_id:      0
 chan_id:       0
-dc_msg:        "You have been violated for being cammed down for too long."
+dc_msg:        "📷\u{2002}You have been violated for being cammed down for too long."
 msg_on_deafen: false
 msg_on_mute:   false
 msg_on_dc:     false

@@ -7,7 +7,7 @@ use songbird::Call;
 
 use std::sync::{Arc, Mutex};
 
-/// QueryContext is the context for a query to the bot for a song.
+/// `QueryContext` is the context for a query to the bot for a song.
 pub struct QueryContext<'a> {
     // The poise context for the bot.
     ctx: CrackContext<'a>,
@@ -23,7 +23,7 @@ pub struct QueryContext<'a> {
 
 /// Implementation of `[QueryContext]``.
 impl QueryContext<'_> {
-    /// Create a new QueryContext.
+    /// Create a new `QueryContext`.
     pub fn new<'a>(
         ctx: CrackContext<'a>,
         call: Arc<Mutex<Call>>,
@@ -41,21 +41,25 @@ impl QueryContext<'_> {
     }
 
     /// Get the poise context.
+    #[must_use]
     pub fn ctx(&self) -> &CrackContext {
         &self.ctx
     }
 
     /// Get the call.
+    #[must_use]
     pub fn call(&self) -> Arc<Mutex<Call>> {
         self.call.clone()
     }
 
     /// Get the playmode.
+    #[must_use]
     pub fn mode(&self) -> Mode {
         self.mode
     }
 
     /// Get the query type.
+    #[must_use]
     pub fn query_type(&self) -> &QueryType {
         &self.query_type
     }

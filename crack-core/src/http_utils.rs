@@ -1,15 +1,16 @@
-use once_cell::sync::Lazy;
 use reqwest::Client;
+use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
+use serenity::small_fixed_array::FixedString;
+use std::sync::LazyLock;
 use std::future::Future;
 
-use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
+use crate::messaging::message::CrackedMessage;
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
-use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
-use serenity::small_fixed_array::FixedString;
+use crack_types::messaging::messages::UNKNOWN;
+use crack_types::CrackedError;
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
@@ -97,7 +98,7 @@ impl<'a> SendMessageParams<'a> {
     }
 }
 
-/// Extension trait for CacheHttp to add some utility functions.
+/// Extension trait for `CacheHttp` to add some utility functions.
 pub trait CacheHttpExt {
     fn get_bot_id(&self) -> impl Future<Output = CrackedResult<UserId>> + Send;
     fn user_id_to_username_or_default(
@@ -119,7 +120,7 @@ pub trait CacheHttpExt {
     ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
 }
 
-/// Implement the CacheHttpExt trait for any type that implements CacheHttp.
+/// Implement the `CacheHttpExt` trait for any type that implements `CacheHttp`.
 impl<T: CacheHttp> CacheHttpExt for T {
     async fn get_bot_id(&self) -> CrackedResult<UserId> {
         get_bot_id(self).await
@@ -163,26 +164,18 @@ impl<T: CacheHttp> CacheHttpExt for T {
 }
 
 /// This is a hack to get around the fact that we can't use async in statics. Is it?
-static CLIENT: Lazy<Client> = Lazy::new(|| {
+static CLIENT: LazyLock<Client> = LazyLock::new(|| {
     println!("Creating a new reqwest client...");
-    reqwest::ClientBuilder::new()
-        .use_rustls_tls()
-        .cookie_store(true)
-        .build()
-        .expect("Failed to build reqwest client")
+    build_client()
+    // reqwest::ClientBuilder::new()
+    //     .use_rustls_tls()
+    //     .cookie_store(true)
+    //     .build()
+    //     .expect("Failed to build reqwest client")
 });
 
-// /// This is a hack to get around the fact that we can't use async in statics. Is it?
-// static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
-//     println!("Creating a new (old) reqwest client...");
-//     reqwest_old::ClientBuilder::new()
-//         .use_rustls_tls()
-//         .cookie_store(true)
-//         .build()
-//         .expect("Failed to build reqwest client")
-// });
-
 /// Build a reqwest client with rustls.
+#[must_use]
 pub fn build_client() -> Client {
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
@@ -192,48 +185,42 @@ pub fn build_client() -> Client {
 }
 
 /// Get a reference to the lazy, static, global reqwest client.
+#[must_use]
 pub fn get_client() -> &'static Client {
     &CLIENT
 }
 
-/// Get a reference to an old version client.
-pub fn get_client_old() -> &'static reqwest::Client {
-    &CLIENT
-}
-
 /// Initialize the static, global reqwest client.
+/// This is reused across the entire application.
+/// # Errors
+/// Returns a [`CrackedError`] if the client fails to initialize.
 pub async fn init_http_client() -> Result<(), CrackedError> {
     let client = get_client();
-    let client_old = get_client_old();
-    let res1 = client.get("https://httpbin.org/ip").send().await?;
+    let res = client.get("https://httpbin.org/ip").send().await?;
     // This is really weird, it causes a bug if you don't implement the conversion
     // for the error type in both the new and old version of the library.
-    let res2 = client_old.get("https://httpbin.org/ip").send().await?;
-    let status1 = res1.status();
-    let status2 = res2.status();
+    // let res2 = client_old.get("https://httpbin.org/ip").send().await?;
+    let status = res.status();
+    // let status2 = res2.status();
     // let body = res.text().await?;
-    tracing::info!(
-        "HTTP client initialized successfully: {:?}",
-        status1.clone()
-    );
-    tracing::info!(
-        "HTTP client initialized successfully: {:?}",
-        status2.clone()
-    );
+    tracing::info!("HTTP client initialized successfully: {:?}", status.clone());
+    // tracing::info!(
+    //     "HTTP client initialized successfully: {:?}",
+    //     status2.clone()
+    // );
     Ok(())
 }
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
-    let tune_titan_id = UserId::new(1124707756750934159);
-    let rusty_bot_id = UserId::new(1111844110597374042);
-    let cracktunes_id = UserId::new(1115229568006103122);
-    let bot_id = match cache_http.cache() {
-        Some(cache) => cache.current_user().id,
-        None => {
-            tracing::warn!("cache_http.cache() returned None");
-            return Err(CrackedError::Other("cache_http.cache() returned None"));
-        },
+    let tune_titan_id = UserId::new(1_124_707_756_750_934_159);
+    let rusty_bot_id = UserId::new(1_111_844_110_597_374_042);
+    let cracktunes_id = UserId::new(1_115_229_568_006_103_122);
+    let bot_id = if let Some(cache) = cache_http.cache() {
+        cache.current_user().id
+    } else {
+        tracing::warn!("cache_http.cache() returned None");
+        return Err(CrackedError::Other("cache_http.cache() returned None"));
     };
 
     // If the bot is tune titan or rusty bot, return cracktunes ID
@@ -247,12 +234,11 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
 #[cfg(not(tarpaulin_include))]
 pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
-    match user_id.to_user(cache_http).await {
-        Ok(x) => x.name.to_string(),
-        Err(_) => {
-            tracing::warn!("cache.user returned None");
-            UNKNOWN.to_string()
-        },
+    if let Ok(x) = user_id.to_user(cache_http).await {
+        x.name.to_string()
+    } else {
+        tracing::warn!("cache.user returned None");
+        UNKNOWN.to_string()
     }
 }
 
@@ -275,7 +261,7 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
     Ok(final_url.into())
 }
 
-/// Gets the guild_name for a channel_id.
+/// Gets the `guild_name` for a `channel_id`.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,
@@ -359,15 +345,15 @@ mod test {
             .with_embed(None);
 
         assert_eq!(params.channel, channel_id);
-        assert_eq!(params.as_embed, true);
-        assert_eq!(params.ephemeral, false);
-        assert_eq!(params.reply, true);
+        assert!(params.as_embed);
+        assert!(!params.ephemeral);
+        assert!(params.reply);
         assert_eq!(params.color, Colour::BLUE);
-        assert_eq!(params.cache_msg, true);
+        assert!(params.cache_msg);
         assert_eq!(
             params.msg,
             CrackedMessage::Other("Hello, world!".to_string())
         );
-        assert_eq!(params.embed.is_none(), true);
+        assert!(params.embed.is_none());
     }
 }

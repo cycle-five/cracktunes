@@ -3,11 +3,15 @@ use reqwest::Client;
 use url::Url;
 
 /// Parse a URL string into a URL object.
+/// # Errors
+/// Returns an error if the URL is invalid.
 pub fn parse_url(url: &str) -> Result<Url, Error> {
     Url::parse(url).map_err(Into::into)
 }
 
 /// Gets the final URL after following all redirects.
+/// # Errors
+/// Returns an error if the URL is invalid or if there was an error making the request.
 pub async fn resolve_final_url(client: Client, url: &str) -> Result<String, Error> {
     resolve_final_url2(client, parse_url(url)?)
         .await
@@ -15,6 +19,8 @@ pub async fn resolve_final_url(client: Client, url: &str) -> Result<String, Erro
 }
 
 /// Gets the final URL after following all redirects.
+/// # Errors
+/// Returns an error if the URL is invalid or if there was an error making the request.
 pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> {
     // Make a GET request, which will follow redirects by default
     let response = client.get(url.to_string()).send().await?;

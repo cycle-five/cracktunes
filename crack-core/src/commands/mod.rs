@@ -9,9 +9,9 @@ pub mod music_utils;
 #[cfg(feature = "crack-osint")]
 pub mod osint;
 pub mod permissions;
-//pub mod playlist;
+pub mod playlist;
 pub mod register;
-//pub mod settings;
+pub mod settings;
 pub mod utility;
 
 //pub use admin::commands;
@@ -22,14 +22,14 @@ pub use chatgpt::*;
 pub use help::sub_help;
 pub use music::*;
 pub use music_utils::*;
-#[cfg(feature = "crack-osint")]
-pub use osint::*;
+//#[cfg(feature = "crack-osint")]
+//pub use osint::*;
 pub use permissions::*;
 pub use register::*;
 //pub use settings::*;
 pub use utility::*;
 
-pub use crate::errors::CrackedError;
+pub use crack_types::CrackedError;
 use dashmap;
 use serenity::all::Message;
 
@@ -45,58 +45,62 @@ pub trait ConvertToEmptyResult {
 
 impl ConvertToEmptyResult for MessageResult {
     fn convert(self) -> EmptyResult {
-        self.map(|_| ()).map_err(|e| e.into())
+        self.map(|_| ()).map_err(std::convert::Into::into)
     }
 }
 
 /// Return all the commands that are available in the bot.
+#[must_use]
 pub fn all_commands() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]
-        osint(),
+        osint::osint(),
         #[cfg(feature = "crack-gpt")]
         chat(),
     ]
     .into_iter()
-    //.chain(help::help_commands())
+    .chain(help::help_commands())
     .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    //.chain(settings::commands())
-    //.chain(admin::commands())
-    //.chain(playlist::commands())
+    .chain(settings::commands())
+    .chain(admin::commands())
+    .chain(playlist::commands())
     .collect()
 }
 
 /// Return all the commands that are available in the bot.
+#[must_use]
 pub fn commands_to_register() -> Vec<crate::Command> {
     vec![
         register(),
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]
-        osint(),
+        osint::osint(),
         #[cfg(feature = "crack-gpt")]
         chat(),
     ]
     .into_iter()
-    //.chain(help::help_commands())
+    .chain(help::help_commands())
     .chain(music::music_commands())
     // .chain(music::game_commands())
     .chain(utility::utility_commands())
-    //.chain(settings::commands())
+    .chain(settings::commands())
     //.chain(admin::commands())
-    //.chain(playlist::commands())
+    .chain(playlist::commands())
     .collect()
 }
 
+#[must_use]
 pub fn all_command_names() -> Vec<Cow<'static, str>> {
     all_commands().into_iter().map(|c| c.name).collect()
 }
 
+#[must_use]
 pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command> {
     all_commands()
         .into_iter()

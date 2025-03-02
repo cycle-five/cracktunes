@@ -1,5 +1,4 @@
 use crate::{
-    errors::CrackedError,
     guild::{
         permissions::{GenericPermissionSettings, GenericPermissionSettingsReadWCommand},
         settings::{GuildSettings, WelcomeSettings},
@@ -7,6 +6,7 @@ use crate::{
     CrackedResult, Error as SerenityError,
 };
 use chrono::NaiveDateTime;
+use crack_types::errors::CrackedError;
 use serde::{Deserialize, Serialize};
 use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
@@ -341,6 +341,7 @@ impl GuildEntity {
     }
 
     /// Create a new guild entity struct, which can be used to interact with the database.
+    #[must_use]
     pub fn new_guild(id: i64, name: String) -> GuildEntity {
         GuildEntity {
             id,
@@ -447,7 +448,7 @@ impl GuildEntity {
         .execute(pool)
         .await
         .map(|_| ())
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Load the command settings for a guild.
@@ -471,7 +472,7 @@ impl GuildEntity {
                 .map(|row| (row.command.clone(), GenericPermissionSettings::from(row)))
                 .collect()
         })
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 }
 

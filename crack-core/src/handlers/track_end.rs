@@ -1,32 +1,28 @@
 use crate::{
     db::PgPoolExtPlayLog,
-    errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
-    messaging::{
-        interface::{create_nav_btns, create_queue_embed, send_now_playing},
-        messages::SPOTIFY_AUTH_FAILED,
-    },
+    messaging::interface::{create_nav_btns, create_queue_embed, send_now_playing},
     music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
-    utils::{
-        calculate_num_pages, forget_queue_message, set_track_handle_metadata,
-        set_track_handle_requesting_user,
-    },
+    utils::{calculate_num_pages, forget_queue_message, TrackData},
     CrackedResult,
     Data, //, Error,
 };
 use ::serenity::{
-    all::{Cache, ChannelId},
+    all::{Cache, CacheHttp, ChannelId},
     async_trait,
     builder::EditMessage,
     http::Http,
     model::id::GuildId,
 };
-use crack_types::NewAuxMetadata;
-use crack_types::QueryType;
-use serenity::all::{CacheHttp, UserId};
-use songbird::input::AuxMetadata;
-use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
+use crack_types::{
+    messaging::messages::SPOTIFY_AUTH_FAILED, verify, CrackedError, NewAuxMetadata, QueryType,
+};
+use songbird::{
+    input::Input as SongbirdInput,
+    tracks::{Track, TrackHandle},
+    Call, Event, EventContext, EventHandler,
+};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -72,7 +68,7 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
         end: false,
     };
 
-    for (state, _) in track_states.iter() {
+    for (state, _) in track_states {
         match state.playing {
             PlayMode::Play => union.playing = true,
             PlayMode::Pause => union.paused = true,
@@ -101,13 +97,12 @@ impl EventHandler for TrackEndHandler {
             let settings = self.data.guild_settings_map.read().await.clone();
             let autopause = settings
                 .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.autopause)
-                .unwrap_or_default();
+                .is_some_and(|guild_settings| guild_settings.autopause);
             tracing::error!("Autopause: {}", autopause);
-            let volume = settings
-                .get(&self.guild_id)
-                .map(|guild_settings| guild_settings.volume)
-                .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
+            let volume = settings.get(&self.guild_id).map_or(
+                crate::guild::settings::DEFAULT_VOLUME_LEVEL,
+                |guild_settings| guild_settings.volume,
+            );
             tracing::error!("Volume: {}", volume);
             (autopause, volume)
         };
@@ -120,11 +115,7 @@ impl EventHandler for TrackEndHandler {
         }
 
         tracing::trace!("Forgetting skip votes");
-        // FIXME
-        match self.data.forget_skip_votes(self.guild_id).await {
-            Ok(_) => tracing::trace!("Forgot skip votes"),
-            Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
-        };
+        self.data.forget_skip_votes(self.guild_id).await;
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 
@@ -138,7 +129,17 @@ impl EventHandler for TrackEndHandler {
             //if is_stopped(x) || is_errored(x) {
             if states.errored {
                 self.data.set_autoplay(self.guild_id, false).await;
-                // FIXME: Send error message
+                // FIXME: Send error message to the channel the bot is in, or the music channel.
+                let channel_id = self
+                    .call
+                    .lock()
+                    .await
+                    .current_channel()
+                    .map(|c| ChannelId::new(c.get()))
+                    .unwrap();
+                let msg = format!("Error: {x:#?}");
+                self.http.send_message(channel_id, vec![], &msg).await.ok();
+
                 return None;
             }
         }
@@ -173,7 +174,7 @@ impl EventHandler for TrackEndHandler {
             Ok(query) => query,
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
+                let msg = format!("Error: {e}");
                 tracing::warn!("{}", msg);
                 return None;
             },
@@ -184,7 +185,7 @@ impl EventHandler for TrackEndHandler {
             Ok(_) => (),
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
+                let msg = format!("Error: {e}");
                 tracing::warn!("{}", msg);
             },
         }
@@ -199,7 +200,6 @@ impl EventHandler for TrackEndHandler {
     }
 }
 
-use songbird::input::Input as SongbirdInput;
 /// Queues a query and returns the track handle.
 pub async fn queue_query(
     query: QueryType,
@@ -216,10 +216,16 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
-    let mut track = call.as_ref().lock().await.enqueue_input(source).await;
-    if let Some(metadata) = metadata_vec.first() {
-        add_metadata_to_track(&mut track, metadata.clone().into()).await?;
-    }
+    let track_data = if let Some(NewAuxMetadata(metadata)) = metadata_vec.into_iter().next() {
+        TrackData::new().with_metadata(metadata)
+    } else {
+        TrackData::new()
+    };
+    let track = Track::new_with_data(source, track_data);
+    let track = call.as_ref().lock().await.enqueue(track).await;
+    // if let Some(metadata) = metadata_vec.first() {
+    //     add_metadata_to_track(&mut track, metadata.clone().into()).await?;
+    // }
     Ok(track)
 }
 
@@ -245,16 +251,6 @@ impl EventHandler for ModifyQueueHandler {
     }
 }
 
-/// Adds metadata to a track handle with a default requesting user.
-pub async fn add_metadata_to_track(
-    track: &mut TrackHandle,
-    metadata: AuxMetadata,
-) -> CrackedResult<()> {
-    set_track_handle_metadata(track, metadata).await?;
-    set_track_handle_requesting_user(track, UserId::new(1)).await?;
-    Ok(())
-}
-
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.
 pub async fn update_queue_messages(
@@ -270,7 +266,7 @@ pub async fn update_queue_messages(
         None => return,
     };
 
-    for (message, page_lock) in messages.iter_mut() {
+    for (message, page_lock) in &mut messages {
         // has the page size shrunk?
         let num_pages = calculate_num_pages(tracks);
         let page = *page_lock.read().await;

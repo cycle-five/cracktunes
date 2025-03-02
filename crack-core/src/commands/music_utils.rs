@@ -3,8 +3,8 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::poise_ext::PoiseContextExt;
-use crate::CrackedError;
 use crate::{Context, Error};
+use crack_types::CrackedError;
 // use crack_testing::ReplyHandleWrapper;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::{ChannelId, GuildId};
@@ -80,7 +80,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
         do_join(ctx, &manager, guild_id, channel_id)
             .await
-            .map_err(|err| err.into())
+            .map_err(std::convert::Into::into)
     }
     // // Return the call if it already exists
     // if let Some(call) = manager.get(guild_id) {
@@ -99,7 +99,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 
 /// Join a voice channel.
 #[cfg(not(tarpaulin_include))]
-#[tracing::instrument]
+#[tracing::instrument(skip(ctx, manager))]
 pub async fn do_join(
     ctx: Context<'_>,
     manager: &songbird::Songbird,
@@ -123,9 +123,10 @@ pub async fn do_join(
     );
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
-        Err(err) => match manager.get(guild_id) {
-            Some(call) => call,
-            None => {
+        Err(err) => {
+            if let Some(call) = manager.get(guild_id) {
+                call
+            } else {
                 tracing::warn!("Error joining channel: {:?}", err);
                 // let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
@@ -137,7 +138,7 @@ pub async fn do_join(
                 //     MessageOrReplyHandle::from(ReplyHandleWrapper { handle: msg.into() });
                 // ctx.data().push_latest_msg(guild_id, msg_or_reply).await;
                 return Err(Box::new(my_err));
-            },
+            }
         },
     };
     set_global_handlers(ctx, call.clone(), guild_id, channel_id).await;

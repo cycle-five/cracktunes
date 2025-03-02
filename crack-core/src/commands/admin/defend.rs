@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::guild::settings::AtomicU16Key;
 use crate::Context;
 use crate::Error;

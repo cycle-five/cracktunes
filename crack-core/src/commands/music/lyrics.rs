@@ -1,11 +1,11 @@
 use crate::{
     commands::{cmd_check_music, help},
-    errors::CrackedError,
     http_utils,
     messaging::interface::create_lyrics_embed,
     poise_ext::ContextExt,
     Context, Error,
 };
+use crack_types::errors::CrackedError;
 
 /// Search for song lyrics.
 #[cfg(not(tarpaulin_include))]
@@ -48,24 +48,23 @@ pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
     use crate::utils::TrackData;
 
-    match query {
-        Some(query) => Ok(query),
-        None => {
-            let call = ctx.get_call().await?;
-            let handler = call.lock().await;
-            let track_handle = handler
-                .queue()
-                .current()
-                .ok_or(CrackedError::NothingPlaying)?;
+    if let Some(query) = query {
+        Ok(query)
+    } else {
+        let call = ctx.get_call().await?;
+        let handler = call.lock().await;
+        let track_handle = handler
+            .queue()
+            .current()
+            .ok_or(CrackedError::NothingPlaying)?;
 
-            let data = track_handle.data::<TrackData>();
-            let metadata = data.aux_metadata.read().await.clone().unwrap_or_default();
-            tracing::info!("metadata: {:?}", metadata);
-            metadata
-                .track
-                .clone()
-                .or(metadata.title.clone())
-                .ok_or(CrackedError::NoTrackName.into())
-        },
+        let data = track_handle.data::<TrackData>();
+        let metadata = data.aux_metadata.read().await.clone().unwrap_or_default();
+        tracing::info!("metadata: {:?}", metadata);
+        metadata
+            .track
+            .clone()
+            .or(metadata.title.clone())
+            .ok_or(CrackedError::NoTrackName.into())
     }
 }

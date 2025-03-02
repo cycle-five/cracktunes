@@ -1,11 +1,11 @@
 use crate::{
     //commands::sub_help as help,
-    errors::CrackedError,
     messaging::message::CrackedMessage,
     utils::send_reply,
     Context,
     Error,
 };
+use crack_types::CrackedError;
 
 const CHAT_CLEANUP_SECONDS: u64 = 15; // 60 * 60 * 24 * 7;
 

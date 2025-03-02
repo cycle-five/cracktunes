@@ -21,7 +21,7 @@ pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<
     let embed = build_tracks_embed_metadata(playlist_name, aux_metadata.as_slice(), 0).await;
 
     // Send the embed
-    send_embed_response_poise(&ctx, embed).await?;
+    send_embed_response_poise(ctx, embed).await?;
 
     Ok(())
 }
@@ -31,8 +31,8 @@ pub async fn get_playlist_(
     ctx: Context<'_>,
     playlist: String,
 ) -> Result<(Vec<NewAuxMetadata>, String), Error> {
-    let pool = ctx
-        .data()
+    let data = ctx.data();
+    let pool = data
         .database_pool
         .as_ref()
         .ok_or(CrackedError::NoDatabasePool)?;
@@ -49,7 +49,7 @@ pub async fn get_playlist_(
     // Assuming you have a way to fetch the user_id of the command issuer
     let aux_metadata = metadata
         .iter()
-        .flat_map(|m| match aux_metadata_from_db(m) {
+        .filter_map(|m| match aux_metadata_from_db(m) {
             Ok(aux) => Some(NewAuxMetadata(aux.clone())),
             Err(e) => {
                 tracing::error!("Error converting metadata to aux metadata: {}", e);

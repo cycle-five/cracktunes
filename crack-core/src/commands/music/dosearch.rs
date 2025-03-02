@@ -1,9 +1,9 @@
 use crate::{
     commands::{cmd_check_music, sub_help as help},
-    errors::CrackedError,
     messaging::interface::create_search_results_reply,
     Context, Error,
 };
+use crack_types::errors::CrackedError;
 use poise::ReplyHandle;
 use serenity::builder::CreateEmbed;
 use songbird::input::YoutubeDl;
@@ -39,7 +39,7 @@ async fn do_yt_search_internal(
 ) -> Result<ReplyHandle, CrackedError> {
     use crate::http_utils;
 
-    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), search_query);
+    let mut ytdl = YoutubeDl::new(http_utils::get_client().clone(), search_query);
     let results = ytdl.search(None).await?;
 
     let embeds = results

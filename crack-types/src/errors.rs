@@ -1,31 +1,30 @@
+use crate::messages::COULD_NOT_FIND_PERMS;
 use crate::messaging::messages::{
-    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
-    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT,
-    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
+    EMPTY_SEARCH_RESULT, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA, FAIL_AUTHOR_DISCONNECTED,
+    FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_INSERT, FAIL_INSERT_GUILD_SETTINGS,
+    FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN, FAIL_MISSING_BOT_PERMISSIONS,
+    FAIL_MISSING_USER_PERMISSIONS, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
     FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
     FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
-    FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID, NO_DATABASE_POOL,
-    NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_USER_AUTOPLAY, QUEUE_IS_EMPTY,
-    ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_ENV_VAR, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_TRACK_NAME,
+    NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
-use std::borrow::Cow;
+use crate::TrackResolveError;
 pub use std::error::Error as StdError;
 pub type Error = Box<dyn StdError + Send + Sync>;
 
-use audiopus::error::Error as AudiopusError;
-use crack_types::TrackResolveError;
-use poise::serenity_prelude::Mentionable;
-use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
+use poise::serenity_prelude::{self as serenity, ChannelId, GuildId, Mentionable};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
+use serenity::all::Permissions;
 use serenity::model::mention::Mention;
 use serenity::Error as SerenityError;
 use songbird::error::JoinError;
-use songbird::input::AudioStreamError;
-use songbird::input::AuxMetadataError;
+use songbird::input::{AudioStreamError, AuxMetadataError};
 use songbird::tracks::ControlError;
-use std::fmt::{self};
-use std::fmt::{Debug, Display};
+use std::borrow::Cow;
+use std::fmt::{self, Debug, Display};
 use std::process::ExitStatus;
 use tokio::time::error::Elapsed;
 
@@ -49,21 +48,30 @@ pub enum CrackedError {
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
+    FailedToInsertGuildSettings,
     FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
+    IndexOutOfBounds {
+        name: &'static str,
+        index: usize,
+    },
     InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
+    MissingEnvVar(String),
+    MissingUserPermissions(Option<Permissions>),
+    MissingBotPermissions(Option<Permissions>),
     NotInRange(&'static str, isize, isize, isize),
     NotInMusicChannel(ChannelId),
     NotConnected,
     NoChannelId,
     NotImplemented,
     NoTrackName,
+    NoTrackPlaying,
     NoDatabasePool,
     NoGuildCached,
     NoGuildId,
@@ -91,7 +99,7 @@ pub enum CrackedError {
     Songbird(Error),
     Serenity(SerenityError),
     SpotifyAuth,
-    TrackResolveError(crack_types::TrackResolveError),
+    ResolveError(TrackResolveError),
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
@@ -122,11 +130,11 @@ impl Display for CrackedError {
             },
             Self::AuxMetadataError(err) => f.write_str(&format!("{err}")),
             Self::AuthorDisconnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
+                f.write_fmt(format_args!("{FAIL_AUTHOR_DISCONNECTED} {mention}"))
             },
             Self::AuthorNotFound => f.write_str(FAIL_AUTHOR_NOT_FOUND),
             Self::AlreadyConnected(mention) => {
-                f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
+                f.write_fmt(format_args!("{FAIL_AUTHOR_NOT_FOUND} {mention}"))
             },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
             #[cfg(feature = "crack-gpt")]
@@ -135,22 +143,26 @@ impl Display for CrackedError {
                 "Command `{program}` failed with status `{status}` and output `{output}`"
             )),
             Self::CommandNotFound(command) => {
-                f.write_fmt(format_args!("Command does not exist: {}", command))
+                f.write_fmt(format_args!("Command does not exist: {command}"))
             },
             Self::Control(err) => f.write_str(&format!("{err}")),
             Self::DurationParseError(d, u) => {
                 f.write_str(&format!("Failed to parse duration `{d}` and `{u}`",))
             },
             Self::EmptySearchResult => f.write_str(EMPTY_SEARCH_RESULT),
-            Self::EmptyVector(msg) => f.write_str(&format!("{} {}", FAIL_EMPTY_VECTOR, msg)),
+            Self::EmptyVector(msg) => f.write_str(&format!("{FAIL_EMPTY_VECTOR} {msg}")),
             Self::FailedResume => f.write_str(FAIL_RESUME),
             Self::FailedToInsert => f.write_str(FAIL_INSERT),
+            Self::FailedToInsertGuildSettings => f.write_str(FAIL_INSERT_GUILD_SETTINGS),
             Self::FailedToSetChannelSize(name, id, size, err) => f.write_str(&format!(
                 "{FAIL_TO_SET_CHANNEL_SIZE} {name}, {id}, {size}\n{err}"
             )),
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::IO(err) => f.write_str(&format!("{err}")),
-            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
+            Self::IndexOutOfBounds { name, index } => {
+                f.write_str(&format!("Index out of bounds for `{name}` at {index}"))
+            },
+            Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {ip}")),
             Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::InvalidPermissions => f.write_str(FAIL_INVALID_PERMS),
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
@@ -158,23 +170,35 @@ impl Display for CrackedError {
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
             )),
+            Self::MissingEnvVar(var) => f.write_str(&format!("{MISSING_ENV_VAR} {var}")),
+            Self::MissingUserPermissions(perm) => {
+                let perm_str = perm
+                    .map(|p| p.to_string())
+                    .unwrap_or(COULD_NOT_FIND_PERMS.to_string());
+                f.write_str(&format!("{FAIL_MISSING_USER_PERMISSIONS}: {perm_str}"))
+            },
+            Self::MissingBotPermissions(perm) => {
+                let perm_str = perm
+                    .map(|p| p.to_string())
+                    .unwrap_or(COULD_NOT_FIND_PERMS.to_string());
+                f.write_str(&format!("{FAIL_MISSING_BOT_PERMISSIONS}: {perm_str}"))
+            },
             Self::NotInRange(param, value, lower, upper) => f.write_str(&format!(
                 "`{param}` should be between {lower} and {upper} but was {value}"
             )),
-            Self::NotInMusicChannel(channel_id) => f.write_str(&format!(
-                "{} {}",
-                NOT_IN_MUSIC_CHANNEL,
-                channel_id.mention()
-            )),
+            Self::NotInMusicChannel(channel_id) => {
+                f.write_str(&format!("{NOT_IN_MUSIC_CHANNEL} {}", channel_id.mention()))
+            },
             Self::NoChannelId => f.write_str(NO_CHANNEL_ID),
             Self::NotConnected => f.write_str(FAIL_NO_VOICE_CONNECTION),
             Self::NotImplemented => f.write_str(FAIL_NOT_IMPLEMENTED),
-            Self::NoTrackName => f.write_str("No track name"),
+            Self::NoTrackPlaying => f.write_str(FAIL_NOTHING_PLAYING),
+            Self::NoTrackName => f.write_str(NO_TRACK_NAME),
             Self::NoDatabasePool => f.write_str(NO_DATABASE_POOL),
             Self::NoGuildCached => f.write_str(NO_GUILD_CACHED),
             Self::NoGuildId => f.write_str(NO_GUILD_ID),
             Self::NoGuildForChannelId(channel_id) => {
-                f.write_fmt(format_args!("No guild for channel id {}", channel_id))
+                f.write_fmt(format_args!("No guild for channel id {channel_id}",))
             },
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
@@ -193,9 +217,7 @@ impl Display for CrackedError {
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
             //Self::ReqwestOld(err) => f.write_str(&format!("{err}")),
-            Self::RoleNotFound(role_id) => {
-                f.write_fmt(format_args!("{} {}", ROLE_NOT_FOUND, role_id))
-            },
+            Self::RoleNotFound(role_id) => f.write_fmt(format_args!("{ROLE_NOT_FOUND} {role_id}")),
             Self::RSpotify(err) => f.write_str(&format!("{err}")),
             Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
@@ -204,7 +226,7 @@ impl Display for CrackedError {
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
-            Self::TrackResolveError(err) => f.write_str(&format!("{err}")),
+            Self::ResolveError(err) => f.write_str(&format!("{err}")),
             Self::TrackFail(err) => f.write_str(&format!("{err}")),
             Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::UrlParse(err) => f.write_str(&format!("{err}")),
@@ -227,10 +249,8 @@ impl PartialEq for CrackedError {
             (Self::NotInRange(l0, l1, l2, l3), Self::NotInRange(r0, r1, r2, r3)) => {
                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
             },
-            (Self::AuthorDisconnected(l0), Self::AuthorDisconnected(r0)) => {
-                l0.to_string() == r0.to_string()
-            },
-            (Self::AlreadyConnected(l0), Self::AlreadyConnected(r0)) => {
+            (Self::AuthorDisconnected(l0), Self::AuthorDisconnected(r0))
+            | (Self::AlreadyConnected(l0), Self::AlreadyConnected(r0)) => {
                 l0.to_string() == r0.to_string()
             },
             (Self::Serenity(l0), Self::Serenity(r0)) => format!("{l0:?}") == format!("{r0:?}"),
@@ -239,10 +259,10 @@ impl PartialEq for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`TrackResovleError`] to a [`CrackedError`].
+/// Provides an implementation to convert a [`TrackResolveError`] to a [`CrackedError`].
 impl From<TrackResolveError> for CrackedError {
     fn from(err: TrackResolveError) -> Self {
-        Self::TrackResolveError(err)
+        Self::ResolveError(err)
     }
 }
 
@@ -288,12 +308,12 @@ impl From<sqlx::Error> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`AudiopusError`] to a [`CrackedError`].
-impl From<AudiopusError> for CrackedError {
-    fn from(err: AudiopusError) -> Self {
-        Self::Poise(Box::new(err))
-    }
-}
+// /// Provides an implementation to convert a [`AudiopusError`] to a [`CrackedError`].
+// impl From<AudiopusError> for CrackedError {
+//     fn from(err: AudiopusError) -> Self {
+//         Self::Poise(Box::new(err))
+//     }
+// }
 
 /// Provides an implementation to convert a [`Error`] to a [`CrackedError`].
 impl From<Error> for CrackedError {
@@ -374,7 +394,7 @@ impl From<Elapsed> for CrackedError {
     }
 }
 
-/// Provides an implementation to convert a [`JsonError`] to a [`CrackedError`].
+/// Provides an implementation to convert a [`JoinError`] to a [`CrackedError`].
 impl From<JoinError> for CrackedError {
     fn from(err: JoinError) -> Self {
         CrackedError::JoinChannelError(err)
@@ -429,6 +449,7 @@ where
 }
 
 /// Verifies if a value is true (or equivalent).
+/// # Errors
 /// Returns an [`Err`] with the given error or the value wrapped in [`Ok`].
 pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K, CrackedError> {
     if verifiable.to_bool() {
@@ -467,49 +488,49 @@ mod test {
     #[test]
     fn test_cracked_error_display() {
         let err = CrackedError::NoGuildCached;
-        assert_eq!(format!("{}", err), NO_GUILD_CACHED);
+        assert_eq!(format!("{err}"), NO_GUILD_CACHED);
 
         let err = CrackedError::NoGuildId;
-        assert_eq!(format!("{}", err), NO_GUILD_ID);
+        assert_eq!(format!("{err}"), NO_GUILD_ID);
 
         let err = CrackedError::NoGuildSettings;
-        assert_eq!(format!("{}", err), NO_GUILD_SETTINGS);
+        assert_eq!(format!("{err}"), NO_GUILD_SETTINGS);
 
         let err = CrackedError::NoLogChannel;
-        assert_eq!(format!("{}", err), "No log channel");
+        assert_eq!(format!("{err}"), "No log channel");
 
         let err = CrackedError::NoUserAutoplay;
-        assert_eq!(format!("{}", err), "(auto)");
+        assert_eq!(format!("{err}"), "(auto)");
 
         let err = CrackedError::WrongVoiceChannel;
-        assert_eq!(format!("{}", err), FAIL_WRONG_CHANNEL);
+        assert_eq!(format!("{err}"), FAIL_WRONG_CHANNEL);
 
         let err = CrackedError::NothingPlaying;
-        assert_eq!(format!("{}", err), FAIL_NOTHING_PLAYING);
+        assert_eq!(format!("{err}"), FAIL_NOTHING_PLAYING);
 
         let err = CrackedError::PlayListFail;
-        assert_eq!(format!("{}", err), FAIL_PLAYLIST_FETCH);
+        assert_eq!(format!("{err}"), FAIL_PLAYLIST_FETCH);
 
         let err = CrackedError::ParseTimeFail;
-        assert_eq!(format!("{}", err), FAIL_PARSE_TIME);
+        assert_eq!(format!("{err}"), FAIL_PARSE_TIME);
 
         let err_err = Error::from("test");
         let err = CrackedError::TrackFail(err_err);
-        assert_eq!(format!("{}", err), "test");
+        assert_eq!(format!("{err}"), "test");
 
         // let err = CrackedError::Serenity(SerenityError::Other("test"));
         // assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::SQLX(sqlx::Error::RowNotFound);
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "no rows returned by a query that expected to return at least one row"
         );
 
         let err = CrackedError::SpotifyAuth;
-        assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
+        assert_eq!(format!("{err}"), SPOTIFY_AUTH_FAILED);
 
-        /// WTF Why the blocking client? We never use it in the code??
+        // WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()
@@ -518,21 +539,21 @@ mod test {
         let response = client.get("http://notreallol").send();
         if response.is_err() {
             let err = CrackedError::Reqwest(response.unwrap_err());
-            assert!(format!("{}", err).starts_with("error sending request for url"));
+            assert!(format!("{err}").starts_with("error sending request for url"));
         }
 
         let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-        assert_eq!(format!("{}", err), "Token is not valid");
+        assert_eq!(format!("{err}"), "Token is not valid");
 
         let err = CrackedError::UnauthorizedUser;
-        assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
+        assert_eq!(format!("{err}"), UNAUTHORIZED_USER);
 
         let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
-        assert_eq!(format!("{}", err), "test");
+        assert_eq!(format!("{err}"), "test");
 
         let err = CrackedError::NotInRange("test", 1, 2, 3);
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "`test` should be between 2 and 3 but was 1"
         );
     }

@@ -40,7 +40,7 @@ pub async fn idle_timeout(
     check_reply(
         ctx.send(
             CreateReply::default()
-                .content(format!("timeout set to {} seconds", timeout))
+                .content(format!("timeout set to {timeout} seconds"))
                 .reply(true),
         )
         .await,

@@ -16,23 +16,36 @@ edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
+[workspace.dependencies.dashmap]
+version = "6"
+features = ["serde", "typesize", "raw-api"]
+
 [workspace.dependencies.typesize]
-version = "0.1.6"
+version = "0.1.13"
+# branch = "next"
+# git = "https://github.com/GnomedDev/typesize"
 features = [
-  "dervice",
+  "derive",
   "details",
   "chrono",
   "url",
-  "time",
   "serde_json",
   "secrecy",
   "parking_lot",
   "nonmax",
   "extract_map_01",
+  "bool_to_bitflags",
+  "mini_moka",
+  "dashmap",
 ]
 
+[workspace.dependencies.typesize-derive]
+features = ["derive"]
+version = "0.1.11"
+
+
 [workspace.dependencies.sqlx]
-version = "0.8.2"
+version = "0.8.3"
 default-features = false
 features = [
   "runtime-tokio",
@@ -47,34 +60,34 @@ features = [
 [workspace.dependencies.serenity]
 # Broken? try self-host.
 # version = "0.12.3"
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
+git = "https://github.com/serenity-rs/serenity"
+# branch = "next"
+rev = "09bea563"
 default-features = false
-# features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
 features = [
-  "full",
-  # "typesize",
+  "default",
   "builder",
   "cache",
-  "temp_cache",
   "collector",
   "framework",
-  "http",
   "gateway",
+  "http",
   "model",
   "voice_model",
   "utils",
-  "rustls_backend",
   "voice",
+  "tokio_task_builder",
+  "interactions_endpoint",
   "chrono",
-  "unstable",
-]
+  #  "typesize",
+  "rustls_backend",
+] # features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
 
 [workspace.dependencies.songbird]
 # Broken? try self-hosted?
-git = "https://github.com/CycleFive/songbird"
-branch = "serenity-next"
-version = "0.4.5"
+# git = "https://github.com/serenity-rs/songbird"
+# branch = "serenity-next"
+version = "0.5.0"
 features = [
   "driver",
   "gateway",
@@ -92,22 +105,25 @@ features = ["all-formats", "all-codecs", "opt-simd"]
 version = "0.5.4"
 
 [workspace.dependencies.tokio]
-version = "1.34.0"
+version = "1.42.0"
 features = ["full"]
 
+[workspace.dependencies.poise]
+version = "0.6.1"
+features = ["cache", "collector"]
+# branch = "serenity-next"
+# git = "https://github.com/serenity-rs/poise"
+
 [workspace.dependencies]
+small-fixed-array = "0.4.8"
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
 # crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
-# poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
-poise = { branch = "serenity-next", git = "https://github.com/CycleFive/poise", default-features = true, features = [
-  "cache",
-  "collector",
-] }
-tracing = "0.1.40"
-reqwest = { version = "0.12.9", default-features = false, features = [
+
+
+reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
   "json",
   "multipart",
@@ -117,10 +133,10 @@ reqwest = { version = "0.12.9", default-features = false, features = [
   "http2",
   "macos-system-configuration",
 ] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+tracing = "0.1"
 
-[patch.crates-io.serenity-voice-model]
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
 
 [profile.release]
 incremental = true
@@ -142,8 +158,7 @@ inherits = "release-with-performance"
 lto = "thin"
 
 [patch.crates-io]
-backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
-async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
-poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
-serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+whois-rs = { git = "https://github.com/cycle-five/whois-rs", branch = "master", version = "1.6.1" }
+songbird = { git = "https://github.com/CycleFive/songbird", branch = "serenity-next", version = "0.5.0" }
+poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next", version = "0.6.1" }

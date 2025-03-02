@@ -25,6 +25,6 @@ pub async fn premium_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     ctx.send_reply(CrackedMessage::Premium(res), true)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
         .map(|_| ())
 }

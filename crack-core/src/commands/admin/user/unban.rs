@@ -1,6 +1,6 @@
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, CommandResult, Context};
+use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use serenity::{Mentionable, User, UserId};
 
@@ -47,7 +47,7 @@ pub async fn unban_internal(ctx: Context<'_>, user_id: UserId) -> CommandResult 
     let user = user_id.to_user(&ctx).await?;
     let mention = user.mention();
     let msg = if let Err(e) = guild_id.unban(ctx.http(), user_id, None).await {
-        CrackedMessage::Other(format!("Failed to unban user: {}", e))
+        CrackedMessage::Other(format!("Failed to unban user: {e}"))
     } else {
         CrackedMessage::UserUnbanned {
             id: user_id,

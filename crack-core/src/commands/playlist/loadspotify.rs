@@ -1,13 +1,13 @@
 use crate::{
     commands::cmd_check_music,
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
-    errors::verify,
     http_utils,
     messaging::message::CrackedMessage,
     sources::spotify::{Spotify, SPOTIFY},
     utils::send_reply,
     Context, CrackedError, Error,
 };
+use crack_types::errors::verify;
 use crack_types::NewAuxMetadata;
 use crack_types::SpotifyTrack;
 use songbird::input::AuxMetadata;
@@ -16,9 +16,8 @@ use url::Url;
 /// Get the database pool or return an error.
 #[macro_export]
 macro_rules! get_db_or_err {
-    ($ctx:expr) => {
-        $ctx.data()
-            .database_pool
+    ($data:expr) => {
+        data.database_pool
             .as_ref()
             .ok_or(CrackedError::NoDatabasePool)?
     };
@@ -59,7 +58,12 @@ pub async fn loadspotify_(
         .map(Into::<NewAuxMetadata>::into)
         .collect::<Vec<_>>();
 
-    let db_pool = get_db_or_err!(ctx);
+    let data = ctx.data();
+    // let db_pool = get_db_or_err!(ctx.data());
+    let db_pool = data
+        .database_pool
+        .as_ref()
+        .ok_or(CrackedError::NoDatabasePool)?;
 
     let mut metadata_vec: Vec<AuxMetadata> = Vec::new();
     let playls = Playlist::create(db_pool, &name.clone(), ctx.author().id.get() as i64).await?;

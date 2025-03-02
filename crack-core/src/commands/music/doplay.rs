@@ -1,42 +1,46 @@
-use crate::commands::{cmd_check_music, help};
-use crate::music::query::query_type_from_url;
-use crate::music::queue::{get_mode, get_msg, queue_track_back};
-use crate::music::NewQueryType;
-use crate::utils::{edit_embed_response2, TrackData};
-use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
-    errors::{verify, CrackedError},
+    commands::{cmd_check_music, get_call_or_join_author, help},
     handlers::track_end::update_queue_messages,
+    http_utils,
+    http_utils::SendMessageParams,
     messaging::interface::create_now_playing_embed,
-    messaging::{
-        message::CrackedMessage,
-        messages::{
-            PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
-        },
-    },
+    messaging::message::CrackedMessage,
+    music::query::query_type_from_url,
+    music::queue::{get_mode, get_msg, queue_track_back},
+    music::NewQueryType,
     poise_ext::ContextExt,
+    sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch},
     sources::youtube::build_query_aux_metadata,
     utils::get_track_handle_metadata,
-    Context, Data, Error,
+    utils::TrackData,
+    Context, CrackedResult, Data, Error,
 };
-use crate::{http_utils, CrackedResult};
 use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
     all::{CommandInteraction, Message},
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
 };
-use crack_types::QueryType;
-use crack_types::{
-    get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
+use crack_testing::{suggestion2, ResolvedTrack};
+use crack_types::messaging::messages::{
+    PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
 };
-use poise::{serenity_prelude as serenity, ReplyHandle};
-use songbird::tracks::Track;
-use songbird::{tracks::TrackHandle, Call};
-use std::borrow::Cow;
-use std::{cmp::Ordering, sync::Arc, time::Duration};
+use crack_types::{
+    get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata, QueryType,
+};
+use crack_types::{verify, CrackedError};
+use poise::{serenity_prelude as serenity, CreateReply, ReplyHandle};
+use rusty_ytdl::search::YouTube;
+use songbird::{
+    input::{Input as SongbirdInput, YoutubeDl},
+    tracks::{Track, TrackHandle},
+    Call,
+};
+use std::{borrow::Cow, cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, RwLock};
 
 /// Get the guild name.
+/// # Errors
+/// This function can error if the guild name can't be found.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
@@ -70,10 +74,12 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn playnext(
     ctx: Context<'_>,
     #[rest]
-    #[description = "song link or search query."]
-    query_or_url: Option<String>,
+    #[description = "Song link or search query."]
+    #[autocomplete = "autocomplete"]
+    query: String,
 ) -> Result<(), Error> {
-    play_internal(ctx, Some("next".to_string()), None, query_or_url).await
+    let query = query.split('~').next().unwrap_or_default().to_string();
+    play_internal(ctx, Some("next".to_string()), None, Some(query)).await
 }
 
 /// Search interactively for a song
@@ -89,29 +95,17 @@ pub async fn playnext(
 pub async fn search(
     ctx: Context<'_>,
     #[rest]
-    #[description = "search query."]
+    #[description = "Search query."]
     query: String,
 ) -> Result<(), Error> {
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
-
-use crack_testing::{suggestion2, ResolvedTrack};
 
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete<'a>(
     _ctx: poise::ApplicationContext<'_, Data, Error>,
     searching: &'a str,
 ) -> CreateAutocompleteResponse<'a> {
-    // let choices = match suggestion2(searching).await {
-    //     Ok(x) => {
-    //         let choices = x.iter().map(|choice| choice).collect();
-    //         choices
-    //     },
-    //     Err(e) => {
-    //         tracing::error!("Error getting suggestions: {:?}", e);
-    //         vec![]
-    //     },
-    // };
     let choices = suggestion2(searching).await.unwrap_or_default();
     let res = CreateAutocompleteResponse::new();
     res.set_choices(Cow::Owned(choices.clone()))
@@ -134,7 +128,7 @@ pub async fn play(
     query: String,
 ) -> Result<(), Error> {
     // Split off the first part of the query for
-    let query = query.split("~").next().unwrap_or_default().to_string();
+    let query = query.split('~').next().unwrap_or_default().to_string();
     play_internal(ctx, None, None, Some(query)).await
 }
 
@@ -185,8 +179,6 @@ pub async fn playfile(
     play_internal(ctx, None, Some(file), None).await
 }
 
-use songbird::input::{Input as SongbirdInput, YoutubeDl};
-
 /// Enqueue an extrernal queue of resolved tracks to the internal queue
 /// for the bot in songbird.
 pub async fn enqueue_resolved_tracks(
@@ -195,11 +187,11 @@ pub async fn enqueue_resolved_tracks(
     mode: crack_types::Mode,
 ) -> Vec<TrackHandle> {
     let mut handler = call.lock().await;
-    let http_client = http_utils::get_client_old();
+    let http_client = http_utils::get_client();
     let mut out_tracks: Vec<TrackHandle> = Vec::new();
     match mode {
         crack_types::Mode::End => {
-            for track in tracks.iter() {
+            for track in &tracks {
                 let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
                 let res = handler
                     .enqueue_input(Into::<SongbirdInput>::into(ytdl))
@@ -262,22 +254,39 @@ pub async fn playytplaylist(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mut crack_client = ctx.data().ct_client.clone();
+    let req_client = ctx.get_http_client();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
-    let _call = get_call_or_join_author(ctx).await?;
+    let call = get_call_or_join_author(ctx).await?;
     // This gets the metadata for all the tracks in the playlist.
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
-    let _tracks = crack_client.resolve_playlist(&query).await?;
+    let tracks = crack_client.resolve_playlist(&query).await?;
     let _ = crack_client.build_display(guild_id).await;
     let yt_playlist_str = crack_client.get_display(guild_id);
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
     let _ = ctx
         .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
         .await?;
-    // This enqueues the tracks into the internal queue for the bot.
-    //let _ = enqueue_resolved_tracks(call, tracks).await;
+
+    for track in &tracks {
+        let query = track.query.clone();
+        let ytdl = RustyYoutubeSearch::new_with_stuff(
+            req_client.clone(),
+            query.clone(),
+            track.metadata.clone(),
+            track.video.clone(),
+        )?;
+        let resolved_clone = &track.clone();
+        let track_data = Arc::new(TrackData {
+            user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+            aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+        });
+        let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
+        let _track_handle = call.lock().await.enqueue(track2).await;
+    }
+    //queue_resolved_track_back(call, tracks, req_client).await?;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
@@ -292,10 +301,6 @@ pub async fn build_play_embed(
     mode: Mode,
     query_type: NewQueryType,
 ) -> Result<CreateEmbed<'_>, Error> {
-    // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
-    // let track = queue.first().unwrap();
-    // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
-    // Ok(embed)
     let embed = match queue.len().cmp(&1) {
         Ordering::Greater => {
             let estimated_time = calculate_time_until_play(queue, mode)
@@ -368,7 +373,6 @@ pub async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    // FIXME: This should be generalized.
     // Get current time for timing purposes.
 
     let _start = std::time::Instant::now();
@@ -411,7 +415,6 @@ pub async fn play_internal(
     let _after_call = std::time::Instant::now();
 
     let search_msg = msg_int::send_search_message(&ctx).await?;
-    //tracing::debug!("search response msg: {:?}", search_msg.message());
 
     // determine whether this is a link or a query string
     let query_type = query_type_from_url(ctx, url, file).await?;
@@ -458,7 +461,10 @@ pub async fn play_internal(
 
     let _after_embed = std::time::Instant::now();
 
-    let _msg = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+    search_msg
+        .edit(ctx, CreateReply::default().embed(embed))
+        .await?;
+    //let _msg = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
 
     // [Manage Messages]: Permissions::MANAGE_MESSAGES
     // I think this does different things based on prefix or not?
@@ -474,7 +480,7 @@ pub async fn play_internal(
     let _after_edit_embed = std::time::Instant::now();
 
     tracing::warn!(
-        r#"
+        r"
         after_msg_parse: {:?}
         after_get_mode: {:?} (+{:?})
         after_call: {:?} (+{:?})
@@ -482,7 +488,7 @@ pub async fn play_internal(
         after_move_on: {:?} (+{:?})
         after_refetch_queue: {:?} (+{:?})
         after_embed: {:?} (+{:?})
-        after_edit_embed: {:?} (+{:?})"#,
+        after_edit_embed: {:?} (+{:?})",
         _after_msg_parse.duration_since(_start),
         _after_get_mode.duration_since(_start),
         _after_get_mode.duration_since(_after_msg_parse),
@@ -524,7 +530,7 @@ pub async fn resolve_query_to_tracks(
     let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;
     //let tracks = client.resolve_track(query_type).await?;
     let mut track_handles = Vec::new();
-    for track in tracks.iter() {
+    for track in &tracks {
         let ytdl = RustyYoutubeSearch::new_with_stuff(
             client.req_client.clone(),
             query_type.clone(),
@@ -542,31 +548,16 @@ pub async fn resolve_query_to_tracks(
     Ok(track_handles)
 }
 
-// let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
-//         Ok(resolved) => resolved.with_user_id(user_id),
-//         Err(e1) => {
-//             match e1.into() {
-//                 Some(_e) => {
-//                     let ready_track = ready_query(ctx, query_type.clone()).await?;
-//                     return _queue_track_ready_back(call, ready_track).await;
-//                 },
-//                 None => {
-//                     return Err(CrackedError::TrackResolveError(
-//                         TrackResolveError::UnknownQueryType,
-//                     ));
-//                 },
-//             };
-//         },
-//     }
 /// This is what actually does the majority of the work of the function.
 /// It finds the track that the user wants to play and then actually
 /// does the process of queuing it. This needs to be optimized.
+/// # Errors
+/// This function can error if the track can't be found, or if the track can't be queued.
 async fn match_mode(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     mode: Mode,
     query_type: NewQueryType,
-    //search_msg: &'a mut ReplyHandle<'a>,
     search_msg: ReplyHandle<'_>,
 ) -> CrackedResult<()> {
     tracing::info!("mode: {:?}", mode);
@@ -601,76 +592,6 @@ async fn match_mode(
     }
 }
 
-// /// new match_mode function.
-// async fn match_mode_new<'ctx>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     mode: Mode,
-//     query_type: QueryType,
-//     search_msg: Message,
-// ) -> JoinHandle<dyn std::future::Future<Output = CrackedResult<bool>> + Send> {
-//     tracing::info!("mode: {:?}", mode);
-
-//     tokio::task::spawn(async move {
-//         //let ctx = *ctx.as_ref().to_owned();
-//         match mode {
-//             _ => query_type.mode_download(ctx, false),
-//         }
-//     })
-//     // let handle = tokio::spawn(async move {
-//     //     let ctx2 = ctx.as_ref();
-//     //     match mode {
-//     //         _ => {
-//     //             // query_type.mode_end(ctx, call, search_msg)
-//     //             let beg_time = std::time::Instant::now();
-//     //             let _ready_q = match query_type.get_track_source_and_metadata(None).await {
-//     //                 Ok(x) => x,
-//     //                 Err(e) => {
-//     //                     return Err(e);
-//     //                 },
-//     //             };
-//     //             let end_time = std::time::Instant::now();
-//     //             tracing::info!(
-//     //                 "get_track_source_and_metadata: {:?}",
-//     //                 end_time.duration_since(beg_time)
-//     //             );
-//     //             let res = match query_type.mode_end(ctx, call, search_msg.clone()).await {
-//     //                 Ok(x) if x => (),
-//     //                 Ok(_) => {
-//     //                     return Err(CrackedError::Other("No tracks in queue!"));
-//     //                 },
-//     //                 Err(e) => {
-//     //                     return Err(e);
-//     //                 },
-//     //             };
-//     //             Ok(())
-//     //         },
-//     //         // Mode::Search => query_type.mode_search(ctx1, call).await,
-//     //         //    .map(|x| !x.is_empty()),
-//     //         // Mode::DownloadMKV => query_type.mode_download(ctx, false).await,
-//     //         // Mode::DownloadMP3 => query_type.mode_download(ctx, true).await,
-//     //         // Mode::Next => query_type.mode_next(ctx, call, search_msg).await,
-//     //         // Mode::Jump => query_type.mode_jump(ctx, call).await,
-//     //         // Mode::All | Mode::Reverse | Mode::Shuffle => {
-//     //         //     query_type.mode_rest(ctx, call, search_msg).await
-//     //         // },
-//     //         // _ => unimplemented!(),
-//     //     }
-//     //});
-
-//     //handle
-// }
-
-// async fn query_type_to_metadata<'a>(
-//     ctx: Context<'_>,
-//     call: Arc<Mutex<Call>>,
-//     mode: Mode,
-//     query_type: QueryType,
-//     search_msg: &'a mut Message,
-// ) -> CrackedResult<bool> {
-//     tracing::info!("mode: {:?}", mode);
-// }
-
 /// Calculate the time until the next track plays.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
     if queue.is_empty() {
@@ -691,24 +612,22 @@ async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<
         None => return Some(Duration::MAX),
     };
 
-    match mode {
-        Mode::Next => Some(top_track_duration - top_track_elapsed),
-        _ => {
-            let center = &queue[1..queue.len() - 1];
-            let livestreams =
-                center.len() - center.iter().filter_map(|_t| metadata.duration).count();
+    if mode == Mode::Next {
+        Some(top_track_duration - top_track_elapsed)
+    } else {
+        let center = &queue[1..queue.len() - 1];
+        let livestreams = center.len() - center.iter().filter_map(|_t| metadata.duration).count();
 
-            // if any of the tracks before are livestreams, the new track will never play
-            if livestreams > 0 {
-                return Some(Duration::MAX);
-            }
+        // if any of the tracks before are livestreams, the new track will never play
+        if livestreams > 0 {
+            return Some(Duration::MAX);
+        }
 
-            let durations = center
-                .iter()
-                .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
+        let durations = center
+            .iter()
+            .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
 
-            Some(durations + top_track_duration - top_track_elapsed)
-        },
+        Some(durations + top_track_duration - top_track_elapsed)
     }
 }
 
@@ -736,13 +655,10 @@ async fn build_queued_embed<'att>(
 
     // let title_text = &format!("[**{}**]({})", meta_title, source_url);
 
-    let footer_text = format!(
-        "{} {}\n{} {}",
-        TRACK_DURATION,
-        get_human_readable_timestamp(metadata.duration),
-        TRACK_TIME_TO_PLAY,
-        get_human_readable_timestamp(Some(estimated_time))
-    );
+    let duration_ts = get_human_readable_timestamp(metadata.duration);
+    let estimate_time_ts = get_human_readable_timestamp(Some(estimated_time));
+    let footer_text =
+        format!("{TRACK_DURATION} {duration_ts}\n{TRACK_TIME_TO_PLAY} {estimate_time_ts}",);
 
     let author = CreateEmbedAuthor::new(author_title);
 
@@ -754,21 +670,18 @@ async fn build_queued_embed<'att>(
         .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
-use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
-use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[NewAuxMetadata],
     mut msg: Message,
 ) -> CrackedResult<()> {
-    // use crate::http_utils;
-
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let search_results = aux_metadata;
 
-    let client = &ctx.data().http_client;
+    let client = &ctx.get_http_client();
     let manager = ctx.data().songbird.clone();
 
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
@@ -781,12 +694,11 @@ pub async fn queue_aux_metadata(
         let source_url = metadata.metadata().source_url.as_ref();
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
             let search_query = build_query_aux_metadata(metadata.metadata());
-            let _ = msg
-                .edit(
-                    &ctx,
-                    EditMessage::default().content(format!("Queuing... {}", search_query)),
-                )
-                .await;
+            msg.edit(
+                &ctx,
+                EditMessage::default().content(format!("Queuing... {search_query}")),
+            )
+            .await?;
 
             let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
@@ -797,14 +709,12 @@ pub async fn queue_aux_metadata(
             metadata.clone()
         };
 
-        let query_type = QueryType::VideoLink(
-            metadata_final
-                .metadata()
-                .source_url
-                .as_ref()
-                .cloned()
-                .expect("source_url does not exist"),
-        );
+        let source_url = metadata_final
+            .metadata()
+            .source_url
+            .clone()
+            .ok_or(CrackedError::Other("No source URL found"))?;
+        let query_type = QueryType::VideoLink(source_url);
         let _ = queue_track_back(ctx, &call, &query_type).await?;
     }
 

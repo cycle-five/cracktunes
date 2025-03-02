@@ -15,8 +15,8 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [dependencies]
-backoff = "0.4.1-alpha.1"
-async-openai = "0.26.0"
+backoff = "0.4.0"
+async-openai = "0.27.2"
 ttl_cache = "0.5"
 const_format = "0.2"
 tokio = { workspace = true }

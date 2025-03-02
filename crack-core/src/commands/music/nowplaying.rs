@@ -1,10 +1,10 @@
 use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::{
     commands::{cmd_check_music, help},
-    errors::CrackedError,
     messaging::interface::create_now_playing_embed,
     Context, Error,
 };
+use crack_types::CrackedError;
 
 /// Get the currently playing track.
 #[cfg(not(tarpaulin_include))]

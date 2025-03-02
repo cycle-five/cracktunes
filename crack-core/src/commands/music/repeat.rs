@@ -1,7 +1,9 @@
 use crate::{
-    commands::cmd_check_music, errors::CrackedError, messaging::message::CrackedMessage,
-    messaging::messages::FAIL_LOOP, utils::send_reply, Context, Error,
+    commands::cmd_check_music, messaging::message::CrackedMessage, utils::send_reply, Context,
+    Error,
 };
+use crack_types::messaging::messages::FAIL_LOOP;
+use crack_types::CrackedError;
 use songbird::tracks::{LoopState, TrackHandle};
 
 /// Toggle looping of the current track.
@@ -47,8 +49,8 @@ pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let _ = match toggler(&track) {
-        Ok(_) if was_looping => send_reply(&ctx, CrackedMessage::LoopDisable, true).await,
-        Ok(_) if !was_looping => send_reply(&ctx, CrackedMessage::LoopEnable, true).await,
+        Ok(()) if was_looping => send_reply(&ctx, CrackedMessage::LoopDisable, true).await,
+        Ok(()) if !was_looping => send_reply(&ctx, CrackedMessage::LoopEnable, true).await,
         _ => Err(CrackedError::Other(FAIL_LOOP)),
     }?;
     Ok(())

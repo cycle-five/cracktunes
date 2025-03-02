@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
 use tracing;
 
-use crate::db::{metadata::aux_metadata_to_db_structures, Metadata, PlayLog, User};
+use crate::db::{aux_metadata_to_db_structures, Metadata, MetadataAnd, PlayLog, User};
 use crate::CrackedError;
 
 // TODO: Make this configurable, and experiment to find a good default.
@@ -31,8 +31,10 @@ impl Display for MetadataMsg {
         )
     }
 }
-use crate::db::metadata::MetadataAnd;
+
 /// Writes metadata to the database for a playing track.
+/// # Errors
+/// Returns a `CrackedError` if there is an error writing to the database.
 pub async fn write_metadata_pg(
     database_pool: &PgPool,
     data: MetadataMsg,
@@ -67,7 +69,7 @@ pub async fn write_metadata_pg(
 
         match User::insert_or_update_user(
             database_pool,
-            user_id.map(|x| x.get() as i64).unwrap_or(1),
+            user_id.map_or(1, |x| x.get() as i64),
             username.unwrap_or_default(),
         )
         .await
@@ -81,9 +83,9 @@ pub async fn write_metadata_pg(
         };
         match PlayLog::create(
             database_pool,
-            user_id.map(|x| x.get() as i64).unwrap_or(1),
+            user_id.map_or(1, |x| x.get() as i64),
             guild_id.get() as i64,
-            updated_metadata.id as i64,
+            i64::from(updated_metadata.id),
         )
         .await
         {

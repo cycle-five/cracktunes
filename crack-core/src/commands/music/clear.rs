@@ -1,11 +1,11 @@
 use crate::{
     commands::{cmd_check_music, help},
-    errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     utils::send_reply,
     Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
 
 /// Clear the queue.
 #[cfg(not(tarpaulin_include))]

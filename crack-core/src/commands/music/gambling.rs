@@ -42,6 +42,7 @@ pub async fn rolldice_internal(
 }
 
 /// Roll N D sided dice.
+#[must_use]
 pub fn roll_n_d(number_of_dice: u32, sides_per_die: u32) -> Vec<u32> {
     let mut res: Vec<u32> = Vec::with_capacity(number_of_dice as usize);
     for _ in 0..number_of_dice {

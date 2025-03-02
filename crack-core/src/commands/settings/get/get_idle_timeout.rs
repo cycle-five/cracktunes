@@ -33,7 +33,7 @@ pub async fn idle_timeout_internal(ctx: Context<'_>) -> Result<(), Error> {
     let idle_timeout = ctx.data().get_timeout(guild_id).await;
 
     let params = SendMessageParams::new(CrackedMessage::Other(
-        format!("Idle timeout: {:?}s", idle_timeout).to_string(),
+        format!("Idle timeout: {idle_timeout:?}s").to_string(),
     ));
     ctx.send_message(params)
         .await

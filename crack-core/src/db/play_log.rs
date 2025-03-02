@@ -236,7 +236,7 @@ impl PlayLog {
             // Process the item
             last_played.push(item?);
         }
-        Ok(last_played.into_iter().map(|t| t.id as i64).collect())
+        Ok(last_played.into_iter().map(|t| i64::from(t.id)).collect())
     }
 
     /// Get the last played track for the given user.

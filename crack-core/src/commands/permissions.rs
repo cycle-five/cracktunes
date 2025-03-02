@@ -52,19 +52,16 @@ pub fn is_authorized_music(
     member: Option<Cow<'_, Member>>,
     role: Option<RoleId>,
 ) -> Result<bool, Error> {
-    let member = match member {
-        Some(m) => m,
-        None => {
-            tracing::warn!("No member found");
-            return Ok(true);
-        },
+    let member = if let Some(m) = member {
+        m
+    } else {
+        tracing::warn!("No member found");
+        return Ok(true);
     };
     // implementation of the is_authorized_music function
     // ...
     let perms = member.permissions.unwrap_or_default();
-    let has_role = role
-        .map(|x| member.roles.contains(x.as_ref()))
-        .unwrap_or(true);
+    let has_role = role.is_none_or(|x| member.roles.contains(x.as_ref()));
     let is_admin = perms.contains(Permissions::ADMINISTRATOR);
 
     Ok(is_admin || has_role)

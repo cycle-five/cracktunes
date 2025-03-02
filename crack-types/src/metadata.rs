@@ -39,21 +39,24 @@ impl Default for NewAuxMetadata {
     }
 }
 
-/// Implement NewAuxMetadata.
+/// Implement `NewAuxMetadata`.
 impl NewAuxMetadata {
-    /// Create a new NewAuxMetadata from AuxMetadata.
+    /// Create a new `NewAuxMetadata` from `AuxMetadata`.
     #[must_use]
     pub fn new(metadata: AuxMetadata) -> Self {
         NewAuxMetadata(metadata)
     }
 
     /// Get the internal metadata.
+    #[must_use]
     pub fn metadata(&self) -> &AuxMetadata {
         &self.0
     }
 
-    /// Create new NewAuxMetadata from &SpotifyTrack.
+    /// Create new `NewAuxMetadata` from &`SpotifyTrack`.
+    #[must_use]
     pub fn from_spotify_track(track: &SpotifyTrack) -> Self {
+        #[allow(clippy::cast_sign_loss)]
         let duration: Duration =
             Duration::from_millis(track.full_track.duration.num_milliseconds() as u64);
         let name = track.full_track.name.clone();
@@ -75,7 +78,7 @@ impl NewAuxMetadata {
         })
     }
 
-    /// Set the source_url.
+    /// Set the [`AuxMetadata::source_url`].
     #[must_use]
     pub fn with_source_url(self, source_url: String) -> Self {
         NewAuxMetadata(AuxMetadata {
@@ -85,6 +88,7 @@ impl NewAuxMetadata {
     }
 
     /// Get a search query from the metadata for youtube.
+    #[must_use]
     pub fn get_search_query(&self) -> String {
         let metadata = self.metadata();
         let title = metadata.title.clone().unwrap_or_default();
@@ -126,7 +130,7 @@ impl From<&SearchResult> for NewAuxMetadata {
                 metadata.thumbnail = playlist.thumbnails.first().map(|x| x.url.clone());
             },
             SearchResult::Channel(_) => {},
-        };
+        }
         NewAuxMetadata(metadata)
     }
 }
@@ -146,6 +150,7 @@ impl From<&VideoInfo> for NewAuxMetadata {
 }
 
 /// Convert [`VideoInfo`] to [`AuxMetadata`].
+#[must_use]
 pub fn video_info_to_aux_metadata(video: &VideoInfo) -> AuxMetadata {
     video_details_to_aux_metadata(&video.video_details)
 }
@@ -158,6 +163,7 @@ impl From<&VideoDetails> for NewAuxMetadata {
 }
 
 /// Convert [`VideoDetails`] to [`AuxMetadata`].
+#[must_use]
 pub fn video_details_to_aux_metadata(video_details: &VideoDetails) -> AuxMetadata {
     AuxMetadata {
         date: Some(video_details.publish_date.clone()),

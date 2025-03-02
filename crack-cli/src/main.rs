@@ -1,6 +1,6 @@
 use config_file::FromConfigFile;
 use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
-use std::env;
+use crack_types::load_key;
 use tokio::runtime::Handle;
 
 #[cfg(feature = "crack-tracing")]
@@ -30,7 +30,7 @@ use std::time::Duration;
 /// Main function, get everything kicked off.
 #[cfg(not(tarpaulin_include))]
 //#[tokio::main]
-fn main() -> Result<(), Error> {
+fn main() {
     config::install_crypto_provider();
     // let event_log = EventLog::default();
     let event_log_async = EventLogAsync::default();
@@ -47,7 +47,7 @@ fn main() -> Result<(), Error> {
         #[cfg(feature = "crack-tracing")]
         init_telemetry("").await;
         match main_async(event_log_async).await {
-            Ok(_) => (),
+            Ok(()) => (),
             Err(error) => {
                 tracing::error!("Error: {:?}", error);
             },
@@ -58,8 +58,6 @@ fn main() -> Result<(), Error> {
 
     // init_telemetry(url).await;
     // main_async(event_log_async).await?;
-
-    Ok(())
 }
 
 /// Main async function, needed so we can  initialize everything.
@@ -80,7 +78,7 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     let data_arc = client.data::<crack_core::Data>().clone();
     let guild_settings_map = data_arc.guild_settings_map.read().await.clone();
 
-    for (guild_id, guild_settings) in guild_settings_map.iter() {
+    for (guild_id, guild_settings) in &guild_settings_map {
         tracing::info!("Guild: {:?} Settings: {:?}", guild_id, guild_settings);
     }
 
@@ -122,26 +120,17 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 //         encoder.format_type(),
 //     ))
 // }
-
-/// Load an environment variable
-fn load_key(k: String) -> Result<String, Error> {
-    match env::var(&k) {
-        Ok(token) => Ok(token),
-        Err(_) => {
-            tracing::warn!("{} not found in environment.", &k);
-            Err(format!("{} not found in environment.", &k).into())
-        },
-    }
-}
-
 /// Load the bot's config
+/// TODO: This should maybe take a list of keys to load
+/// for the modules to be able to load their own keys.
 fn load_bot_config() -> Result<BotConfig, Error> {
-    let discord_token = load_key("DISCORD_TOKEN".to_string())?;
-    let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
-    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
-    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
-    let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
-    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY".to_string()).ok();
+    let discord_token = load_key("DISCORD_TOKEN")?;
+    let discord_app_id = load_key("DISCORD_APP_ID")?;
+    let spotify_client_id = load_key("SPOTIFY_CLIENT_ID").ok();
+    let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET").ok();
+    let openai_api_key = load_key("OPENAI_API_KEY").ok();
+    let virustotal_api_key = load_key("VIRUSTOTAL_API_KEY").ok();
+    let ipqs_api_key = load_key("IPQS_API_KEY").ok();
 
     let config_res = BotConfig::from_config_file("./cracktunes.toml");
     let mut config = match config_res {
@@ -158,6 +147,7 @@ fn load_bot_config() -> Result<BotConfig, Error> {
         spotify_client_secret,
         openai_api_key,
         virustotal_api_key,
+        ipqs_api_key,
     });
 
     Ok(config_with_creds.clone())
@@ -193,20 +183,13 @@ fn get_debug_log() -> impl tracing_subscriber::Layer<Registry> {
     let log_path = &format!("{}/debug.log", get_log_prefix());
     let debug_file = std::fs::File::create(log_path);
 
-    // let log_file = std::fs::File::create("my_cool_trace.log")?;
-    // let subscriber = tracing_subscriber::fmt::layer().with_writer(Mutex::new(log_file));
-
     match debug_file {
-        Ok(file) => {
-            //let xyz: tracing_subscriber::fmt::Layer<Registry> =
-            //.with_writer(Box::make_writer(&Box::new(Mutex::new(file))));
-            tracing_subscriber::fmt::layer().with_writer(file)
-        },
+        Ok(file) => tracing_subscriber::fmt::layer().with_writer(file),
         Err(error) => {
-            println!("warning: no log file available for output! {:?}", error);
-            // let sink: std::io::Sink = std::io::sink();
-            // let writer = Arc::new(sink);
-            let sink = std::fs::File::open("/dev/null").unwrap();
+            println!("Error making tracing subscriber with log file: {error:?}");
+            println!("Falling back to /dev/null");
+            let sink = std::fs::File::open("/dev/null")
+                .unwrap_or_else(|e| panic!("Error opening /dev/null: {e:?}"));
             tracing_subscriber::fmt::layer().with_writer(sink)
         },
     }
@@ -258,6 +241,7 @@ const SERVICE_NAME: &str = "crack-tunes";
 // #[tracing::instrument]
 /// Initialize logging and tracing.
 #[cfg(feature = "crack-tracing")]
+#[allow(clippy::unused_async)]
 pub async fn init_telemetry(_exporter_endpoint: &str) {
     // Create a gRPC exporter
     // let exporter = opentelemetry_otlp::new_exporter()
@@ -306,7 +290,7 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     let x = x.with(JsonStorageLayer).with(formatting_layer);
 
     #[cfg(any(feature = "crack-tracing", feature = "crack-telemetry"))]
-    x.init()
+    x.init();
 }
 
 #[cfg(test)]
@@ -337,11 +321,10 @@ mod test {
 
     #[test]
     fn test_load_key() {
-        let key = "DISCORD_TOKEN".to_string();
+        let key = "DISCORD_TOKEN";
         let result = load_key(key);
-        match result {
-            Ok(token) => assert!(!token.is_empty()),
-            Err(_error) => assert!(true),
+        if let Ok(token) = result {
+            assert!(!token.is_empty());
         }
     }
 

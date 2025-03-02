@@ -1,14 +1,38 @@
+use crack_types::DICE_ROLL;
 use std::{borrow::Cow, fmt::Display};
 
 use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
 use poise::serenity_prelude as serenity;
-use serenity::{Mention, Mentionable, UserId};
+use serenity::all::{GuildId, Mention, Mentionable, UserId};
 use songbird::error::ControlError;
 use std::time::Duration;
 
-use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
+//use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
+use crate::utils::duration_to_string;
+#[cfg(feature = "crack-osint")]
+use crack_types::messaging::messages::SCAN_QUEUED;
+use crack_types::{
+    errors::CrackedError,
+    messaging::messages::{
+        ADDED_QUEUE, AUTHORIZED, AUTOPAUSE_OFF, AUTOPAUSE_ON, AUTOPLAY_OFF, AUTOPLAY_ON, AUTO_ROLE,
+        BANNED, BUG, BUG_END, CATEGORY_CREATED, CHANNEL_DELETED, CHANNEL_SIZE_SET, CLEANED,
+        CLEARED, COINFLIP, DEAFENED, DEAFENED_FAIL, DEAUTHORIZED, ERROR, FAIL_INVALID_IP,
+        GRABBED_NOTICE, INVITE_LINK_TEXT, INVITE_TEXT, INVITE_URL, IP_DETAILS, JOINING, KICKED,
+        LEAVING, LOOP_DISABLED, LOOP_ENABLED, MUTED, NO_AUTO_ROLE, OLD_VOLUME, ONETWOFT,
+        OWNERS_ONLY, PAGINATION_COMPLETE, PASSWORD_PWNED, PASSWORD_SAFE, PAUSED,
+        PHONE_NUMBER_INFO_ERROR, PLAYLIST_ADD_FAILURE, PLAYLIST_ADD_SUCCESS, PLAYLIST_CREATED,
+        PLAYLIST_TRACKS, PLAY_ALL_FAILED, PLAY_FAILED_BLOCKED_DOMAIN, PLAY_LOG, PLAY_PLAYLIST,
+        PLAY_QUEUING, PREFIXES, PREMIUM, PREMIUM_PLUG, QUEUE_NOW_PLAYING, REMOVED_QUEUE_MULTIPLE,
+        RESUMED, ROLE_CREATED, ROLE_DELETED, ROLE_NOT_FOUND, SEARCHING, SEEKED, SEEK_FAIL,
+        SETTINGS_RELOADED, SHUFFLED_SUCCESS, SKIPPED, SKIPPED_ALL, SKIPPED_TO, SKIP_VOTE_EMOJI,
+        SKIP_VOTE_MISSING, SKIP_VOTE_USER, SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, STOPPED,
+        SUBCOMMAND_NOT_FOUND, TEXT_CHANNEL_CREATED, TIMEOUT, UNBANNED, UNDEAFENED, UNDEAFENED_FAIL,
+        UNMUTED, UNTIL, VERSION, VERSION_LATEST, VERSION_LATEST_HASH, VOICE_CHANNEL_CREATED,
+        VOLUME, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_VOTED, WAYBACK_SNAPSHOT,
+    },
+};
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -74,6 +98,14 @@ pub enum CrackedMessage {
     PlayDomainBanned {
         domain: String,
     },
+    PlaylistAddSuccess {
+        track: String,
+        playlist: String,
+    },
+    PlaylistAddFailure {
+        track: String,
+        playlist: String,
+    },
     PlaylistCreated(String, usize),
     PlaylistQueued,
     PlaylistQueuing(String),
@@ -109,6 +141,7 @@ pub enum CrackedMessage {
         timestamp: Cow<'static, String>,
         error: ControlError,
     },
+    SettingsReload,
     Shuffle,
     Skip,
     SkipAll,
@@ -146,13 +179,13 @@ pub enum CrackedMessage {
     UserAuthorized {
         id: UserId,
         mention: Mention,
-        guild_id: serenity::GuildId,
+        guild_id: GuildId,
         guild_name: FixedString,
     },
     UserDeauthorized {
         id: UserId,
         mention: Mention,
-        guild_id: serenity::GuildId,
+        guild_id: GuildId,
         guild_name: FixedString,
     },
     UserTimeout {
@@ -221,7 +254,7 @@ pub enum CrackedMessage {
 
 impl CrackedMessage {
     fn discriminant(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
+        unsafe { *std::ptr::from_ref::<Self>(self).cast::<u8>() }
     }
 }
 
@@ -237,42 +270,38 @@ impl Display for CrackedMessage {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
             Self::AutoRole(role_id) => f.write_str(&format!("{} {}", AUTO_ROLE, role_id.mention())),
-            Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
-            Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
-            Self::InviteLink => f.write_str(&format!(
-                "{} [{}]({})",
-                INVITE_TEXT, INVITE_LINK_TEXT, INVITE_URL
-            )),
-            Self::IPDetails(ip) => f.write_str(&format!("{} **{}**", IP_DETAILS, ip)),
-            Self::IPVersion(ipv) => f.write_str(&format!("**{}**", ipv)),
+            Self::BugNone(variable) => f.write_str(&format!("{BUG} {variable} {BUG_END}")),
+            Self::InvalidIP(ip) => f.write_str(&format!("{ip} {FAIL_INVALID_IP}")),
+            Self::InviteLink => {
+                f.write_str(&format!("{INVITE_TEXT} [{INVITE_LINK_TEXT}]({INVITE_URL})",))
+            },
+            Self::IPDetails(ip) => f.write_str(&format!("{IP_DETAILS} **{ip}**")),
+            Self::IPVersion(ipv) => f.write_str(&format!("**{ipv}**")),
             Self::AutopauseOff => f.write_str(AUTOPAUSE_OFF),
             Self::AutopauseOn => f.write_str(AUTOPAUSE_ON),
             Self::CountryName(name) => f.write_str(name),
-            Self::Coinflip(heads) => f.write_str(&format!("{} {}", COINFLIP, heads)),
+            Self::Coinflip(heads) => f.write_str(&format!("{COINFLIP} {heads}")),
             Self::Clear => f.write_str(CLEARED),
-            Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
+            Self::Clean(n) => f.write_str(&format!("{CLEANED} {n}!")),
             Self::ChannelSizeSet { id, name, size } => {
-                f.write_str(&format!("{} {} {} {}", CHANNEL_SIZE_SET, name, id, size))
+                f.write_str(&format!("{CHANNEL_SIZE_SET} {name} {id} {size}"))
             },
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
-            } => f.write_str(&format!(
-                "{} {} {}",
-                CHANNEL_DELETED, channel_id, channel_name
-            )),
-            Self::CrackedError(err) => f.write_str(&format!("{}", err)),
+            } => f.write_str(&format!("{CHANNEL_DELETED} {channel_id} {channel_name}",)),
+            Self::CrackedError(err) => f.write_str(&format!("{err}")),
             Self::CrackedRed(s) => f.write_str(s),
-            Self::CreateEmbed(embed) => f.write_str(&format!("{:#?}", embed)),
+            Self::CreateEmbed(embed) => f.write_str(&format!("{embed:#?}")),
             Self::CommandFound(s) => f.write_str(s),
             Self::DomainInfo(info) => f.write_str(info),
             Self::DiceRoll {
                 dice,
                 sides,
                 results,
-            } => f.write_str(crate::DICE_ROLL!(dice, sides, results)),
+            } => f.write_str(DICE_ROLL!(dice, sides, results)),
             Self::Error => f.write_str(ERROR),
-            Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),
+            Self::ErrorHttp(err) => f.write_str(&format!("{err}")),
             Self::GrabbedNotice => f.write_str(GRABBED_NOTICE),
             Self::Leaving => f.write_str(LEAVING),
             Self::LoopDisable => f.write_str(LOOP_DISABLED),
@@ -285,90 +314,90 @@ impl Display for CrackedMessage {
             Self::PasswordPwned => f.write_str(PASSWORD_PWNED),
             Self::PasswordSafe => f.write_str(PASSWORD_SAFE),
             Self::Pause => f.write_str(PAUSED),
-            Self::Paywall(url) => f.write_str(&format!("{}{}", ONETWOFT, url)),
+            Self::Paywall(url) => f.write_str(&format!("{ONETWOFT}{url}")),
             Self::PhoneNumberInfo(info) => f.write_str(info),
             Self::PhoneNumberInfoError => f.write_str(PHONE_NUMBER_INFO_ERROR),
+            Self::PlaylistAddSuccess { track, playlist } => {
+                f.write_str(&format!("{PLAYLIST_ADD_SUCCESS} **{track}** {playlist}"))
+            },
+            Self::PlaylistAddFailure { track, playlist } => {
+                f.write_str(&format!("{PLAYLIST_ADD_FAILURE} **{track}** {playlist}"))
+            },
             Self::PlaylistCreated(name, len) => f.write_str(&format!(
-                "{} **{}** with {} tracks!",
-                PLAYLIST_CREATED, name, len
+                "{PLAYLIST_CREATED} **{name}**\n{PLAYLIST_TRACKS}: {len}!",
             )),
-            Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
+            Self::PlaylistQueuing(name) => f.write_str(&format!("{PLAY_QUEUING} **{name}**")),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {
-                f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))
+                f.write_str(&format!("⚠️ **{domain}** {PLAY_FAILED_BLOCKED_DOMAIN}"))
             },
-            Self::PlayLog(log) => f.write_str(&format!("{}\n{}", PLAY_LOG, log.join("\n"))),
+            Self::PlayLog(log) => f.write_str(&format!("{PLAY_LOG}\n{log}", log = log.join("\n"))),
             Self::Pong => f.write_str("Pong"),
             Self::Prefixes(prefixes) => {
-                f.write_str(&format!("{} {}", PREFIXES, prefixes.join(", ")))
+                f.write_str(&format!("{PREFIXES} {val}", val = prefixes.join(", ")))
             },
-            Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
+            Self::Premium(premium) => f.write_str(&format!("{PREMIUM} {premium}")),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
             },
             #[cfg(feature = "crack-osint")]
-            Self::ScanResultQueued { id } => f.write_str(&format!("{} {}", SCAN_QUEUED, id)),
+            Self::ScanResultQueued { id } => f.write_str(&format!("{SCAN_QUEUED} {id}")),
             Self::Search => f.write_str(SEARCHING),
 
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),
             Self::RoleCreated { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_CREATED, role_id, role_name))
+                f.write_str(&format!("{ROLE_CREATED} {role_id} {role_name}"))
             },
             Self::RoleDeleted { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
+                f.write_str(&format!("{ROLE_DELETED} {role_id} {role_name}"))
             },
             Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
+            #[allow(clippy::literal_string_with_formatting_args)]
             Self::SubcommandNotFound { group, subcommand } => f.write_str(
                 &SUBCOMMAND_NOT_FOUND
                     .replace("{group}", group)
                     .replace("{subcommand}", subcommand),
             ),
+            Self::SettingsReload => f.write_str(SETTINGS_RELOADED),
             Self::VoteSkip { mention, missing } => f.write_str(&format!(
-                "{}{} {} {} {}",
-                SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
+                "{SKIP_VOTE_EMOJI}{mention} {SKIP_VOTE_USER} {missing} {SKIP_VOTE_MISSING}",
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
             Self::SongMoved { at, to } => f.write_str(&format!(
-                "{} {} {} {} {}.",
-                SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, at, to
+                "{SONG_MOVED} {SONG_MOVED_FROM} {SONG_MOVED_TO} {at} {to}.",
             )),
             Self::SongQueued { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
+                f.write_str(&format!("{ADDED_QUEUE} [**{title}**]({url})"))
             },
-            Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
+            Self::Seek { timestamp } => f.write_str(&format!("{SEEKED} **{timestamp}**!")),
             Self::SeekFail { timestamp, error } => {
-                f.write_str(&format!("{} **{}**!\n{}", SEEK_FAIL, timestamp, error))
+                f.write_str(&format!("{SEEK_FAIL} **{timestamp}**!\n{error}",))
             },
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
             Self::SkipTo { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
+                f.write_str(&format!("{SKIPPED_TO} [**{title}**]({url})!"))
             },
-            Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
+            Self::Summon { mention } => f.write_str(&format!("{JOINING} **{mention}**!")),
             Self::TextChannelCreated {
                 channel_id,
                 channel_name,
             } => f.write_str(&format!(
-                "{} {} {}",
-                TEXT_CHANNEL_CREATED, channel_id, channel_name
+                "{TEXT_CHANNEL_CREATED} {channel_id} {channel_name}",
             )),
             Self::CategoryCreated {
                 channel_id,
                 channel_name,
-            } => f.write_str(&format!(
-                "{} {} {}",
-                CATEGORY_CREATED, channel_id, channel_name
-            )),
+            } => f.write_str(&format!("{CATEGORY_CREATED} {channel_id} {channel_name}",)),
             Self::Uptime { mention, seconds } => f.write_str(&format!(
-                "**{}**\n {}",
-                mention,
-                duration_to_string(Duration::from_secs(*seconds)),
+                "**{mention}**\n {duration}",
+                duration = duration_to_string(Duration::from_secs(*seconds)),
             )),
             Self::UserAuthorized {
                 id,
@@ -376,8 +405,7 @@ impl Display for CrackedMessage {
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                AUTHORIZED, mention, id, guild_name, guild_id
+                "{AUTHORIZED}\n {mention} ({id}) Guild: {guild_name} ({guild_id})",
             )),
             Self::UserDeauthorized {
                 id,
@@ -385,8 +413,7 @@ impl Display for CrackedMessage {
                 guild_id,
                 guild_name,
             } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                DEAUTHORIZED, mention, id, guild_name, guild_id
+                "{DEAUTHORIZED}\n {mention} ({id}) \n {guild_name} ({guild_id})"
             )),
             Self::UserTimeout {
                 mention,
@@ -401,7 +428,7 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{UNBANNED}\n{mention} ({id})"))
             },
             Self::UserUndeafened { mention, id } => {
-                f.write_str(&format!("{} {} {}", UNDEAFENED, mention, id))
+                f.write_str(&format!("{UNDEAFENED} {mention} {id}"))
             },
             Self::UserDeafened { mention, id } => {
                 f.write_str(&format!("{DEAFENED}\n{mention}({id})"))
@@ -415,26 +442,17 @@ impl Display for CrackedMessage {
             Self::UserMuted { mention, id } => f.write_str(&format!("{MUTED}\n{mention} {id}")),
             Self::UserUnmuted { mention, id } => f.write_str(&format!("{UNMUTED}\n{mention} {id}")),
             Self::Version { current, hash } => f.write_str(&format!(
-                "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}tree/{})",
-                VERSION,
-                current,
-                RELEASES_LINK,
-                current,
-                VERSION_LATEST,
-                RELEASES_LINK,
-                VERSION_LATEST_HASH,
-                REPO_LINK,
-                hash,
+                "{VERSION} [{current}]({RELEASES_LINK}/tag/v{current})\n{VERSION_LATEST}({RELEASES_LINK}/latest)\n{VERSION_LATEST_HASH}({REPO_LINK}tree/{hash})",
             )),
             Self::VoiceChannelCreated { channel_name } => {
-                f.write_str(&format!("{} {}", VOICE_CHANNEL_CREATED, channel_name))
+                f.write_str(&format!("{VOICE_CHANNEL_CREATED} {channel_name}"))
             },
             Self::VoteTopggVoted => f.write_str(VOTE_TOPGG_VOTED),
             Self::VoteTopggNotVoted => f.write_str(VOTE_TOPGG_NOT_VOTED),
             Self::Volume { vol, old_vol } => {
-                f.write_str(&format!("{}: {}\n{}: {}", VOLUME, vol, OLD_VOLUME, old_vol))
+                f.write_str(&format!("{VOLUME}: {vol}\n{OLD_VOLUME}: {old_vol}"))
             },
-            Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
+            Self::WaybackSnapshot { url } => f.write_str(&format!("{WAYBACK_SNAPSHOT} {url}")),
             Self::WelcomeSettings(settings) => f.write_str(settings),
         }
     }
@@ -503,7 +521,7 @@ impl From<&CrackedMessage> for Color {
     }
 }
 
-use serenity::Colour;
+use serenity::model::Colour;
 impl From<CrackedMessage> for Colour {
     fn from(message: CrackedMessage) -> Colour {
         match message {

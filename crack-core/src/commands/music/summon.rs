@@ -1,9 +1,7 @@
 use crate::commands::{cmd_check_music, do_join, help, sub_help as help};
-use crate::{
-    connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
-    Context, Error,
-};
+use crate::{connection::get_voice_channel_for_user_summon, poise_ext::ContextExt, Context, Error};
 use ::serenity::all::{Channel, ChannelId, Mentionable};
+use crack_types::CrackedError;
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -68,7 +66,9 @@ pub async fn summon_internal(
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
-            let chan_id = handler.current_channel().map(|c| ChannelId::new(c.get()));
+            let chan_id = handler
+                .current_channel()
+                .map(|c| serenity::all::ChannelId::new(c.get()));
 
             match (has_current_connection, chan_id) {
                 (true, Some(chan_id)) => {
@@ -128,10 +128,7 @@ mod test {
             parse_channel_id(None, Some("123".to_string())).unwrap(),
             Some(ChannelId::new(123))
         );
-        assert_eq!(
-            parse_channel_id(None, Some("abc".to_string())).is_err(),
-            true
-        );
+        assert!(parse_channel_id(None, Some("abc".to_string())).is_err());
         assert_eq!(parse_channel_id(None, None).unwrap(), None);
     }
 }

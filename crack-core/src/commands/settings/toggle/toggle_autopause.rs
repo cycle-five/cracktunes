@@ -1,5 +1,6 @@
 use crate::http_utils::CacheHttpExt;
-use crate::{errors::CrackedError, guild::settings::GuildSettings, Context, Data, Error};
+use crate::{guild::settings::GuildSettings, Context, Data, Error};
+use crack_types::errors::CrackedError;
 use serenity::all::GuildId;
 use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
@@ -43,8 +44,6 @@ pub async fn toggle_autopause_internal(
     guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
-
-
     let res = data
         .guild_settings_map
         .write()

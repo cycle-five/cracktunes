@@ -2,10 +2,10 @@ use poise::serenity_prelude::Mentionable;
 use serenity::all::{Role, RoleId};
 
 use crate::{
-    errors::CrackedError, guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams, messaging::message::CrackedMessage, poise_ext::PoiseContextExt,
-    Context, Error,
+    guild::operations::GuildSettingsOperations, http_utils::SendMessageParams,
+    messaging::message::CrackedMessage, poise_ext::PoiseContextExt, Context, Error,
 };
+use crack_types::CrackedError;
 
 /// Set the auto role for the server.
 #[poise::command(
@@ -28,7 +28,7 @@ pub async fn auto_role_id(
     let auto_role_id = match auto_role_id_str.parse::<u64>() {
         Ok(x) => x,
         Err(e) => {
-            ctx.say(format!("Failed to parse role id: {}", e)).await?;
+            ctx.say(format!("Failed to parse role id: {e}")).await?;
             return Ok(());
         },
     };
@@ -71,10 +71,8 @@ pub async fn auto_role_internal(ctx: Context<'_>, auto_role: RoleId) -> Result<(
     res.save(&ctx.data().database_pool.clone().unwrap()).await?;
 
     //ctx.say(format!("Auto role set to {}", mention)).await?;
-    let params = SendMessageParams::new(CrackedMessage::Other(format!(
-        "Auto role set to {}",
-        mention
-    )));
+    let params =
+        SendMessageParams::new(CrackedMessage::Other(format!("Auto role set to {mention}")));
     ctx.send_message(params)
         .await
         .map(|_| ())

@@ -1,9 +1,9 @@
 use crate::{
-    errors::CrackedError,
     guild::settings::{GuildSettings, WelcomeSettings},
     utils::get_guild_name,
     Context, Data, Error,
 };
+use crack_types::CrackedError;
 use serenity::all::{Channel, GuildId, Role};
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ pub async fn password_verify(
     let msg = set_welcome_settings(
         ctx.data().clone(),
         guild_id,
-        guild_name.map(|s| s.to_string()),
+        guild_name,
         prefix.to_string(),
         welcome_settings,
     )
@@ -74,7 +74,7 @@ pub async fn welcome_settings(
     let msg = set_welcome_settings(
         ctx.data(),
         guild_id,
-        guild_name.map(|s| s.to_string()),
+        guild_name,
         prefix.to_string(),
         welcome_settings,
     )
@@ -83,12 +83,13 @@ pub async fn welcome_settings(
     Ok(())
 }
 
+use serenity::small_fixed_array::FixedString;
 /// Set the welcome settings for a given guild.
 #[cfg(not(tarpaulin_include))]
 pub async fn set_welcome_settings(
     data: Arc<Data>,
     guild_id: GuildId,
-    guild_name: Option<String>,
+    guild_name: Option<FixedString>,
     prefix: String,
     init_welcome_settings: WelcomeSettings,
 ) -> Result<String, CrackedError> {
@@ -112,9 +113,10 @@ pub async fn set_welcome_settings(
     };
     match res {
         Some(welcome_settings) => {
-            match &data.database_pool.clone() {
-                Some(pool) => welcome_settings.save(pool, guild_id.get()).await?,
-                None => tracing::warn!("No database pool to save welcome settings"),
+            if let Some(pool) = &data.database_pool.clone() {
+                welcome_settings.save(pool, guild_id.get()).await?;
+            } else {
+                tracing::warn!("No database pool to save welcome settings");
             }
             Ok(welcome_settings.to_string())
         },
@@ -126,6 +128,7 @@ pub async fn set_welcome_settings(
 mod test {
     use super::set_welcome_settings;
     use crate::guild::settings::{GuildSettingsMapParam, WelcomeSettings};
+    use crack_types::to_fixed;
     use serenity::model::id::GuildId;
 
     #[tokio::test]
@@ -133,7 +136,7 @@ mod test {
         let guild_id = GuildId::new(1);
         let guild_settings_map = GuildSettingsMapParam::default();
         let data = crate::Data::default().with_guild_settings_map(guild_settings_map);
-        let guild_name = Some("Test".to_string());
+        let guild_name = Some(to_fixed("Test"));
         let prefix = "!".to_string();
         let init_welcome_settings = WelcomeSettings {
             channel_id: Some(1),
@@ -141,8 +144,14 @@ mod test {
             ..Default::default()
         };
 
-        let res =
-            set_welcome_settings(data, guild_id, guild_name, prefix, init_welcome_settings).await;
+        let res = set_welcome_settings(
+            data.into(),
+            guild_id,
+            guild_name,
+            prefix,
+            init_welcome_settings,
+        )
+        .await;
         assert!(res.is_ok());
     }
 }

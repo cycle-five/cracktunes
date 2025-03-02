@@ -1,12 +1,25 @@
 use std::sync::Arc;
 
-use super::event_log_impl::*;
+use super::event_log_impl::{
+    log_automod_command_execution, log_automod_rule_create, log_automod_rule_update,
+    log_channel_delete, log_command_permissions_update, log_guild_ban_addition,
+    log_guild_ban_removal, log_guild_create, log_guild_delete_event, log_guild_member_addition,
+    log_guild_member_removal, log_guild_role_create, log_guild_role_delete, log_guild_role_update,
+    log_guild_scheduled_event_create, log_guild_scheduled_event_delete,
+    log_guild_scheduled_event_update, log_guild_scheduled_event_user_add,
+    log_guild_scheduled_event_user_remove, log_guild_stickers_update, log_integration_create,
+    log_integration_delete, log_integration_update, log_interaction_create, log_invite_create,
+    log_invite_delete, log_message, log_message_delete, log_message_update, log_reaction_add,
+    log_reaction_remove, log_typing_start_noop, log_unimplemented_event, log_user_update,
+    log_voice_channel_status_update, log_voice_state_update,
+};
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
+    guild::settings::GuildSettings, log_event, log_event2,
     messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
 };
 use cfg_if;
 use colored::Colorize;
+use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use poise::{
     serenity_prelude::{ChannelId, FullEvent, GuildId},
@@ -16,7 +29,7 @@ use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
 pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> =
-    Some(ChannelId::new(1191633527763116039));
+    Some(ChannelId::new(1_191_633_527_763_116_039));
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -112,6 +125,24 @@ pub async fn update_activity_map(data: Arc<Data>, presence: serenity::Presence) 
 
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
+#[tracing::instrument(skip(_ctx, _framework, _data_global))]
+#[cfg(not(tarpaulin_include))]
+pub async fn handle_event_noop(
+    _ctx: &serenity::all::Context,
+    event_in: &FullEvent,
+    _framework: FrameworkContext<'_, Data, Error>,
+    _data_global: Arc<Data>,
+) -> Result<(), Error> {
+    let event_name = event_in.snake_case_name();
+    let event_name_green = event_name.bright_green();
+
+    tracing::trace!("{event_name_green}");
+
+    Ok(())
+}
+
+/// Handles (routes and logs) an event.
+/// Currently doesn't handle all events.
 #[tracing::instrument(skip(ctx, _framework, data_global))]
 #[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
@@ -193,7 +224,6 @@ pub async fn handle_event(
         },
         FullEvent::Message { new_message } => {
             let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
-            // let my_id = ctx.get_bot_id().await.unwrap_or(UserId::new(1));
 
             if new_message.author.id == ctx.http.get_current_user().await?.id {
                 let now = chrono::Utc::now();
@@ -501,8 +531,7 @@ pub async fn handle_event(
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
-                .map(|x| x.get_join_leave_log_channel())
-                .unwrap_or(None);
+                .and_then(super::super::guild::settings::GuildSettings::get_join_leave_log_channel);
             let id = new.user.id;
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
@@ -526,7 +555,7 @@ pub async fn handle_event(
             }
 
             let mut notes = "";
-            let mut title: String = String::from("");
+            let mut title: String = String::new();
 
             if let Some(old) = old_if_available {
                 if old.user.avatar.is_none()
@@ -559,23 +588,20 @@ pub async fn handle_event(
                 },
                 _ => {},
             }
-            match maybe_log_channel {
-                Some(channel_id) => {
-                    send_log_embed_thumb(
-                        &guild_name,
-                        &channel_id,
-                        &ctx,
-                        &id.to_string(),
-                        &title,
-                        &description,
-                        &avatar_url,
-                    )
-                    .await?;
-                },
-                None => {
-                    tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
-                    tracing::debug!(title);
-                },
+            if let Some(channel_id) = maybe_log_channel {
+                send_log_embed_thumb(
+                    &guild_name,
+                    &channel_id,
+                    &ctx,
+                    &id.to_string(),
+                    &title,
+                    &description,
+                    &avatar_url,
+                )
+                .await?;
+            } else {
+                tracing::debug!("No join/leave log channel set for guild {}", new.guild_id);
+                tracing::debug!(title);
             }
             event_log
                 .write_log_obj_note_async(event_name, Some(notes), &(old_if_available, new, event))
@@ -910,28 +936,22 @@ pub async fn handle_event(
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,
-            new,
             event,
         } => {
-            if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
-                || old_if_available
-                    .as_ref()
-                    .map(|x| x.author.bot())
-                    .unwrap_or(false)
-            {
+            //if new.as_ref().is_some_and(|x| x.author.bot()) ||
+            if old_if_available.as_ref().is_some_and(|x| x.author.bot()) {
                 return Ok(());
             }
             let log_data: (
                 &Option<serenity::model::prelude::Message>,
-                &Option<serenity::model::prelude::Message>,
                 &serenity::model::prelude::MessageUpdateEvent,
-            ) = (old_if_available, new, event);
+            ) = (old_if_available, event);
             log_event!(
                 log_message_update,
                 guild_settings,
                 event_in,
                 &log_data,
-                event.guild_id.unwrap_or_default(),
+                event.message.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
@@ -993,9 +1013,10 @@ pub async fn handle_event(
                 .write_log_obj_async(event_name, stage_instance)
                 .await
         },
-        FullEvent::ThreadCreate { thread } => {
-            event_log.write_log_obj_async(event_name, thread).await
-        },
+        FullEvent::ThreadCreate {
+            thread,
+            newly_created: _,
+        } => event_log.write_log_obj_async(event_name, thread).await,
         FullEvent::ThreadDelete {
             thread,
 

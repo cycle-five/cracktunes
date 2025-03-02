@@ -1,12 +1,9 @@
 use crate::{
-    commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    messaging::message::CrackedMessage,
-    messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    poise_ext::ContextExt,
-    utils::send_reply,
-    Context, Error,
+    commands::cmd_check_music, messaging::message::CrackedMessage, poise_ext::ContextExt,
+    utils::send_reply, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
+use crack_types::messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING};
 use std::{borrow::Cow, time::Duration};
 
 /// Seek to timestamp, in format `mm:ss`.
@@ -26,6 +23,8 @@ pub async fn seek(
 }
 
 /// Internal seek function.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Error> {
     let call = ctx.get_call().await?;
 
@@ -40,12 +39,12 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
 
     let timestamp = minutes * 60 + seconds;
 
-    let handler = call.lock().await;
-    let track = handler
+    let track = call
+        .lock()
+        .await
         .queue()
         .current()
-        .ok_or(CrackedError::Other("No track playing"))?;
-    drop(handler);
+        .ok_or(CrackedError::NoTrackPlaying)?;
 
     let callback = track.seek(Duration::from_secs(timestamp));
     let msg = match callback.result_async().await {

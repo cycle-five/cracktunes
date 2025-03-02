@@ -1,19 +1,19 @@
+use crate::{Context, Error};
+use crack_types::CrackedError;
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
-use crate::{errors::CrackedError, Context, Error};
-
-/// Type alias for a HashSet of strings.
+/// Type alias for a `HashSet` of strings.
 type HashSetString = HashSet<String>;
 
-/// Trait for converting a serde_json::Value to a HashSet of strings.
+/// Trait for converting a `serde_json::Value` to a `HashSet` of strings.
 pub trait ConvertToHashSetString {
     fn convert(self) -> HashSetString;
 }
 
-/// Implementation of ConvertToHashSetString for serde_json::Value.
+/// Implementation of `ConvertToHashSetString` for `serde_json::Value`.
 impl ConvertToHashSetString for serde_json::Value {
     fn convert(self) -> HashSetString {
         self.as_array()
@@ -24,22 +24,22 @@ impl ConvertToHashSetString for serde_json::Value {
     }
 }
 
-/// Implementation of ConvertToHashSetString for `Vec<String>`.
+/// Implementation of `ConvertToHashSetString` for `Vec<String>`.
 impl ConvertToHashSetString for Vec<String> {
     fn convert(self) -> HashSetString {
         self.into_iter().collect()
     }
 }
 
-/// Type alias for a HashSet of u64.
+/// Type alias for a `HashSet` of u64.
 type HashSetU64 = HashSet<u64>;
 
-/// Trait for converting a serde_json::Value to a HashSet of u64.
+/// Trait for converting a `serde_json::Value` to a `HashSet` of u64.
 pub trait ConvertToHashSetU64 {
     fn convert(self) -> HashSetU64;
 }
 
-/// Implementation of ConvertToHashSetU64 for serde_json::Value.
+/// Implementation of `ConvertToHashSetU64` for `serde_json::Value`.
 impl ConvertToHashSetU64 for serde_json::Value {
     fn convert(self) -> HashSetU64 {
         self.as_array()
@@ -50,7 +50,7 @@ impl ConvertToHashSetU64 for serde_json::Value {
     }
 }
 
-/// Implementation of ConvertToHashSetU64 for `Vec<i64>`.
+/// Implementation of `ConvertToHashSetU64` for `Vec<i64>`.
 impl ConvertToHashSetU64 for Vec<i64> {
     fn convert(self) -> HashSetU64 {
         self.iter().map(|&x| x as u64).collect()
@@ -135,8 +135,9 @@ pub struct GenericPermissionSettingsRead {
     pub denied_channels: Vec<i64>,
 }
 
-/// Implementation of GenericPermissionSettingsRead.
+/// Implementation of `GenericPermissionSettingsRead`.
 impl GenericPermissionSettingsRead {
+    #[must_use]
     pub fn convert(self) -> GenericPermissionSettings {
         GenericPermissionSettings {
             id: self.id,
@@ -160,7 +161,7 @@ fn default_true() -> bool {
     true
 }
 
-/// Default implementation for GenericPermissionSettings.
+/// Default implementation for `GenericPermissionSettings`.
 impl Default for GenericPermissionSettings {
     fn default() -> Self {
         Self {
@@ -180,11 +181,11 @@ impl Default for GenericPermissionSettings {
     }
 }
 
-/// Implementation of GenericPermissionSettings.
+/// Implementation of `GenericPermissionSettings`.
 /// The behavior of this ACL is as follows:
 /// - If both white and black lists are empty, all commands are allowed.
-/// - If a command is in the denied commands, all other commands are allowed unless default_allow_all_commands is false.
-/// - If a command is in the allowed commands, all other commands are denied unless default_allow_all_commands is true.
+/// - If a command is in the denied commands, all other commands are allowed unless `default_allow_all_commands` is false.
+/// - If a command is in the allowed commands, all other commands are denied unless `default_allow_all_commands` is true.
 impl GenericPermissionSettings {
     // Check if a command is allowed by the permission settings.
     // pub fn is_command_allowed(&self, command: &str) -> bool {
@@ -198,6 +199,7 @@ impl GenericPermissionSettings {
     // }
 
     /// Check if a role is allowed by the permission settings.
+    #[must_use]
     pub fn is_role_allowed(&self, role: u64) -> bool {
         (self.allowed_roles.is_empty()
             && self.denied_roles.is_empty()
@@ -209,6 +211,7 @@ impl GenericPermissionSettings {
     }
 
     /// Check if a user is allowed by the permission settings.
+    #[must_use]
     pub fn is_user_allowed(&self, user: u64) -> bool {
         (self.allowed_users.is_empty()
             && self.denied_users.is_empty()
@@ -219,6 +222,7 @@ impl GenericPermissionSettings {
             || self.allowed_users.contains(&user) && !self.denied_users.contains(&user)
     }
 
+    #[must_use]
     pub fn is_channel_allowed(&self, channel: u64) -> bool {
         (self.allowed_channels.is_empty() && self.denied_channels.is_empty())
             || (self.allowed_channels.is_empty() && !self.denied_channels.contains(&channel))
@@ -376,7 +380,7 @@ impl GenericPermissionSettings {
         )
         .fetch_one(pool)
         .await
-        .map(|read| read.convert())
+        .map(GenericPermissionSettingsRead::convert)
         .map_err(Into::into)
     }
 
@@ -392,7 +396,7 @@ impl GenericPermissionSettings {
         )
         .fetch_one(pool)
         .await
-        .map(|read| read.convert())
+        .map(GenericPermissionSettingsRead::convert)
         .map_err(Into::into)
     }
 }
@@ -418,7 +422,7 @@ pub struct CommandChannelRead {
 impl Default for CommandChannel {
     fn default() -> Self {
         Self {
-            command: "".to_string(),
+            command: String::new(),
             channel_id: ChannelId::new(0),
             guild_id: GuildId::new(0),
             permission_settings: GenericPermissionSettings::default(),
@@ -427,7 +431,7 @@ impl Default for CommandChannel {
 }
 
 impl CommandChannel {
-    /// Convert a CommandChannelRead to a CommandChannel.
+    /// Convert a `CommandChannelRead` to a `CommandChannel`.
     pub async fn from_command_channel_read(
         pool: &PgPool,
         read: CommandChannelRead,
@@ -445,7 +449,7 @@ impl CommandChannel {
         })
     }
 
-    /// Insert a CommandChannel into a pg table.
+    /// Insert a `CommandChannel` into a pg table.
     pub async fn insert_command_channel(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
         let settings = if self.permission_settings.id == 0 {
             self.permission_settings

@@ -47,6 +47,8 @@ pub trait ContextExt<'ctx> {
     fn get_queue(self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
     fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError>;
+    /// Return the reuseable http client for various operations.
+    fn get_http_client(self) -> reqwest::Client;
     /// Add a message to the cache
     fn add_msg_to_cache(
         self,
@@ -74,10 +76,10 @@ pub trait ContextExt<'ctx> {
     fn is_paused(&self) -> impl Future<Output = Result<bool, CrackedError>>;
 
     /// Add a message to the stack of messages the bot is still interacting with.
-    fn push_latest_msg(self, msg: MessageOrReplyHandle) -> impl Future<Output = CrackedResult<()>>;
+    fn push_latest_msg(self, msg: MessageOrReplyHandle) -> CrackedResult<()>;
 }
 
-/// Implement the ContextExt trait for the Context struct.
+/// Implement the `ContextExt` trait for the Context struct.
 impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     /// Get the user id from a context.
     fn get_user_id(self) -> serenity::UserId {
@@ -101,7 +103,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
             Some(guild_id.get() as i64),
         )
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Get the last played songs for a guild.
@@ -113,7 +115,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
             Some(guild_id.get() as i64),
         )
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Send a message to tell the worker pool to do a db write when it feels like it.
@@ -190,8 +192,13 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         self.data().get_db_pool()
     }
 
+    /// Get the http client
+    fn get_http_client(self) -> reqwest::Client {
+        self.data().http_client.clone()
+    }
+
     async fn add_msg_to_cache(self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg).await
+        self.data().add_msg_to_cache(guild_id, msg)
     }
 
     /// Gets the channel id that the bot is currently playing in for a given guild.
@@ -260,16 +267,15 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         }
     }
 
-    async fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
+    /// Add a message to the stack of messages the bot is still interacting with.
+    fn push_latest_msg(self, mor: MessageOrReplyHandle) -> CrackedResult<()> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
-        self.data()
-            .push_latest_msg(guild_id, mor)
-            .await
-            .map_err(Into::into)
+        self.data().push_latest_msg(guild_id, mor)
     }
 }
 
-/// Extension trait for the poise::Context.
+//use serenity::model::Colour;
+/// Extension trait for the `poise::Context`.
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
     //     &'ctx self,
@@ -312,7 +318,7 @@ pub trait PoiseContextExt<'ctx> {
     ) -> impl Future<Output = CrackedResult<ReplyHandle<'ctx>>>;
 }
 
-/// Implementation of the extension trait for the poise::Context.
+/// Implementation of the extension trait for the `poise::Context`.
 impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Checks if we're in a prefix context or not.
     fn is_prefix(&'ctx self) -> bool {
@@ -330,11 +336,10 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Gets the primary id used for the message cache for that guild or user.
     fn get_cache_id(&self) -> u64 {
         self.guild_id()
-            .map(|x| x.get())
-            .unwrap_or_else(|| self.author().id.get())
+            .map_or_else(|| self.author().id.get(), serenity::all::GuildId::get)
     }
 
-    /// Creates an embed from a CrackedMessage and sends it as an embed.
+    /// Creates an embed from a `CrackedMessage` and sends it as an embed.
     async fn send_reply_owned(
         self,
         message: CrackedMessage,
@@ -351,7 +356,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         Ok(handle)
     }
 
-    /// Creates an embed from a CrackedMessage and sends it as an embed.
+    /// Creates an embed from a `CrackedMessage` and sends it as an embed.
     async fn send_reply(
         &'ctx self,
         message: CrackedMessage,
@@ -368,7 +373,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         Ok(handle)
     }
 
-    /// Creates an embed from a CrackedMessage and sends it as an embed.
+    /// Creates an embed from a `CrackedMessage` and sends it as an embed.
     async fn send_reply_embed(self, message: CrackedMessage) -> Result<ReplyHandle<'ctx>, Error> {
         PoiseContextExt::send_reply_owned(self, message, true)
             .await
@@ -403,7 +408,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let id = self.get_cache_id();
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
-            self.data().add_msg_to_cache_int(id, msg).await;
+            let _ = self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }
@@ -436,7 +441,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         if params.cache_msg {
             let msg = handle.clone().into_message().await?;
             let id = self.get_cache_id();
-            self.data().add_msg_to_cache_int(id, msg).await;
+            let _ = self.data().add_msg_to_cache_int(id, msg);
         }
         Ok(handle)
     }
@@ -574,12 +579,13 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 //     }
 // }
 
-/// Extension trait for the poise::Context<'_> for owned contexts.
+/// Extension trait for the `poise::Context`<'_> for owned contexts.
 pub trait OwnedContextExt {}
 
 ///Struct to represent everything needed to join a voice call.
 pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
 impl JoinVCToken {
+    #[must_use]
     pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
         let lock = data
             .join_vc_tokens
@@ -622,8 +628,9 @@ impl SongbirdManagerExt for songbird::Songbird {
 
 use poise::serenity_prelude::Context as SerenityContext;
 use std::collections::HashSet;
+#[must_use]
 pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool {
-    let allowed_bots = HashSet::from([1111844110597374042, 1124707756750934159]);
+    let allowed_bots = HashSet::from([1_111_844_110_597_374_042, 1_124_707_756_750_934_159]);
     let author_id = msg.author.id;
     allowed_bots.contains(&author_id.get())
 }

@@ -8,10 +8,10 @@
 
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
-use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use crate::utils::{create_paged_embed, send_reply_owned};
 use crate::{require, Context, Data, Error};
 use ::serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
+use crack_types::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
 use itertools::Itertools;
 
 /// Optional configuration for how the help message from [`help()`] looks
@@ -46,34 +46,31 @@ impl Default for HelpConfiguration<'_> {
 
 #[allow(clippy::unused_async)]
 pub async fn autocomplete<'a>(
-    ctx: poise::ApplicationContext<'_, Data, Error>,
-    searching: &str,
+    ctx: poise::ApplicationContext<'a, Data, Error>,
+    searching: &'a str,
 ) -> CreateAutocompleteResponse<'a> {
     let commands = ctx.framework.options().commands.as_slice();
     // let choices: &[AutocompleteChoice<'a>] = autocomplete(commands, searching)
     let choices = get_matching_commands(commands, searching)
         .await
         .unwrap_or_default();
-    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+    CreateAutocompleteResponse::new().set_choices(choices)
+    // choices
 }
 
 /// Gets takes the given str and returns the top matching autocomplete choices.
 #[allow(clippy::unused_async)]
-pub async fn get_matching_commands(
+pub async fn get_matching_commands<'a>(
     //ctx: poise::ApplicationContext<'_, Data, Error>,
-    commands: &[poise::Command<Data, Error>],
-    searching: &str,
-) -> Result<Vec<AutocompleteChoice<'static>>, Error> {
+    commands: &'a [poise::Command<Data, Error>],
+    searching: &'a str,
+) -> Result<Vec<AutocompleteChoice<'a>>, Error> {
     let result = get_matching_command_strs(commands, searching).await?;
 
-    let result: Vec<AutocompleteChoice<'static>> = result
+    let result: Vec<AutocompleteChoice<'_>> = result
         .into_iter()
-        .map(|command| AutocompleteChoice {
-            name: command.clone(),
-            name_localizations: None,
-            value: serenity::AutocompleteValue::String(command),
-        })
-        .collect::<Vec<AutocompleteChoice<'static>>>();
+        .map(|command| AutocompleteChoice::new(command.clone(), command))
+        .collect::<Vec<AutocompleteChoice<'_>>>();
     Ok(result)
 }
 
@@ -87,8 +84,8 @@ pub async fn get_matching_command_strs(
 ) -> Result<Vec<Cow<'static, str>>, Error> {
     /// Flatten the commands list into the full qualified names of the commands,
     /// which start with the searching string. This means all the the subcommands
-    /// are included for each command, unless they are tagged as owners_only or
-    /// hide_in_help.
+    /// are included for each command, unless they are tagged as `owners_only` or
+    /// `hide_in_help`.
     fn flatten_commands(
         result: &mut Vec<String>,
         commands: &[poise::Command<Data, Error>],
@@ -115,7 +112,7 @@ pub async fn get_matching_command_strs(
 
     let mut result = result
         .into_iter()
-        .map(|s| Cow::Owned(s.to_owned()))
+        .map(|s| Cow::Owned(s.clone()))
         .collect::<Vec<_>>();
     result.sort_by_key(|a| strsim::levenshtein(a, searching));
     Ok(result)
@@ -216,13 +213,12 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         let remainder = cmd_str.split_off(n);
 
         let opt_find_cmd = poise::find_command(commands, &cmd_str, true, &mut Vec::new());
-        let command_obj = match opt_find_cmd {
-            Some((cmd, _, _)) => cmd,
-            None => {
-                let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone()));
-                let _ = send_reply_owned(ctx, msg.into(), true).await?;
-                return Ok(());
-            },
+        let command_obj = if let Some((cmd, _, _)) = opt_find_cmd {
+            cmd
+        } else {
+            let msg = CrackedError::CommandNotFound(Cow::Owned(cmd_str.clone()));
+            let _ = send_reply_owned(ctx, msg.into(), true).await?;
+            return Ok(());
         };
 
         (command_obj, remainder)
@@ -279,6 +275,7 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
 
 // /set calls /help set
 pub use command_func as command;
+#[must_use]
 pub fn help_commands() -> [Command; 1] {
     [help()]
 }
@@ -306,7 +303,7 @@ impl TwoColumnList {
     /// Add a line that doesn't influence the first columns's width
     fn push_heading(&mut self, category: &str) {
         if !self.0.is_empty() {
-            self.0.push(("".to_string(), None));
+            self.0.push((String::new(), None));
         }
         let mut category = category.to_string();
         category += ":";
@@ -332,9 +329,9 @@ impl TwoColumnList {
             //let command = command.replace("_", r#"\\_"#);
             if let Some(description) = description {
                 let padding = " ".repeat(longest_command - command.len() + 3);
-                writeln!(text, "{}{}{}", command, padding, description).unwrap();
+                writeln!(text, "{command}{padding}{description}").unwrap();
             } else {
-                writeln!(text, "{}", command).unwrap();
+                writeln!(text, "{command}").unwrap();
             }
         }
         text
@@ -437,7 +434,7 @@ async fn help_single_command(
             (Some(description), Some(help_text)) => {
                 if config.include_description {
                     //Cow::Borrowed(format!("{}\n\n{}", description, help_text).as_str())
-                    format!("{}\n\n{}", description, help_text).to_owned()
+                    format!("{description}\n\n{help_text}").to_owned()
                 } else {
                     help_text.to_string()
                 }
@@ -480,9 +477,9 @@ async fn help_single_command(
             text += &commandlist.into_string();
             text += "```";
         }
-        format!("**{}**\n\n{}", invocations, text)
+        format!("**{invocations}**\n\n{text}")
     } else {
-        format!("No such command `{}`", command_name)
+        format!("No such command `{command_name}`")
     };
 
     if reply.len() > 1000 {
@@ -543,7 +540,7 @@ fn preformat_command(
         command.description.as_deref().unwrap_or("").to_string(),
     );
     if config.show_subcommands {
-        preformat_subcommands(commands, command, &prefix)
+        preformat_subcommands(commands, command, &prefix);
     }
 }
 
@@ -565,7 +562,7 @@ async fn generate_all_commands(
     let options_prefix = get_prefix_from_options(ctx).await;
 
     //let mut menu = String::from("```\n");
-    let mut menu = String::from("");
+    let mut menu = String::new();
 
     let mut commandlist = TwoColumnList::new();
     for (category_name, commands) in categories {

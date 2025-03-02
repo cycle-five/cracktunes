@@ -1,8 +1,8 @@
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::CrackedError;
 use poise::serenity_prelude::Mentionable;
 use serenity::all::User;
 
@@ -35,11 +35,14 @@ pub async fn ban(
     let dmd = dmd.unwrap_or(0);
     let reason = reason.unwrap_or("No reason provided".to_string());
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    if let Err(e) = guild_id.ban(ctx.http(), user.id, dmd, Some(&reason)).await {
+    if let Err(e) = guild_id
+        .ban(ctx.http(), user.id, dmd.into(), Some(&reason))
+        .await
+    {
         // Handle error, send error message
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Failed to ban user: {}", e)),
+            CrackedMessage::Other(format!("Failed to ban user: {e}")),
             true,
         )
         .await?;

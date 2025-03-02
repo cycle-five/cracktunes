@@ -1,7 +1,6 @@
 use crate::{
     // commands::queue_aux_metadata,
     db::GuildEntity,
-    errors::CrackedError,
     guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
@@ -15,13 +14,16 @@ use ::serenity::{
 };
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+use crack_types::messaging::messages::CONNECTED;
+use crack_types::CrackedError;
 // use dashmap;
+use crate::commands::{commands_to_register, register::register_globally_cracked};
 use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
 use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{gateway::Ready, id::GuildId, prelude::VoiceState},
-    ChannelId, {Context as SerenityContext, EventHandler},
+    ChannelId, Context as SerenityContext,
 };
 use std::{
     sync::{atomic::Ordering, Arc},
@@ -35,18 +37,23 @@ pub struct SerenityHandler {
 }
 
 #[async_trait]
-impl EventHandler for SerenityHandler {
+impl serenity::prelude::EventHandler for SerenityHandler {
     async fn ready(&self, ctx: SerenityContext, ready: Ready) {
-        tracing::info!(
-            "{} {}",
-            ready.user.name,
-            crate::messaging::messages::CONNECTED
-        );
+        tracing::info!("{} {}", ready.user.name, CONNECTED);
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
         // attempts to authenticate to spotify
         *SPOTIFY.lock().await = Spotify::auth(None).await;
+
+        match register_globally_cracked(&ctx.http, &commands_to_register()).await {
+            Ok(()) => {
+                tracing::info!("Commands registered successfully");
+            },
+            Err(err) => {
+                tracing::error!("Error registering commands: {}", err);
+            },
+        };
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
@@ -86,15 +93,14 @@ impl EventHandler for SerenityHandler {
         // let guild_settings = guild_settings_map.get_mut(&guild_id);
         // guild_settings.cloned()
 
-        let (_guild_settings, welcome) = match guild_settings {
-            Some(guild_settings) => match guild_settings.clone().welcome_settings {
+        let (_guild_settings, welcome) = if let Some(guild_settings) = guild_settings {
+            match guild_settings.clone().welcome_settings {
                 None => return,
                 Some(welcome_settings) => (guild_settings, welcome_settings),
-            },
-            None => {
-                tracing::error!("Guild settings not found for guild {}", guild_id);
-                return;
-            },
+            }
+        } else {
+            tracing::error!("Guild settings not found for guild {}", guild_id);
+            return;
         };
 
         tracing::trace!("welcome: {:?}", welcome);
@@ -128,7 +134,7 @@ impl EventHandler for SerenityHandler {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
             let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(ctx.http(), role_id, None).await {
-                Ok(_) => {
+                Ok(()) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
                 },
                 Err(err) => {
@@ -160,8 +166,7 @@ impl EventHandler for SerenityHandler {
                 .read()
                 .await
                 .get(&new.guild_id.unwrap())
-                .map(|x| x.self_deafen)
-                .unwrap_or_else(|| true);
+                .map_or_else(|| true, |x| x.self_deafen);
             if !do_i_deafen {
                 return self.self_deafen(&ctx, new.guild_id, new).await;
             }
@@ -185,10 +190,16 @@ impl EventHandler for SerenityHandler {
         // A: We don't
         // Q: Fuck you :(
         // A:
-        if manager.get(guild_id).is_some() {
-            manager.remove(guild_id).await.ok();
+        if let Some(call) = manager.get(guild_id) {
+            match call.lock().await.leave().await {
+                Ok(()) => {
+                    tracing::info!("Removed bot successfully");
+                },
+                Err(e) => {
+                    tracing::error!("{e}");
+                },
+            }
         }
-
         // update_queue_messages(&ctx, &self.data, &[], guild_id).await;
     }
 
@@ -202,7 +213,7 @@ impl EventHandler for SerenityHandler {
         };
 
         let mut guilds_from_cache = String::new();
-        for guild_id in guilds.iter() {
+        for guild_id in &guilds {
             match guild_id.name(&cache) {
                 Some(name) => guilds_from_cache.push_str(&name),
                 None => guilds_from_cache.push_str(&guild_id.to_string()),
@@ -342,12 +353,11 @@ impl SerenityHandler {
 
         for guild in &ready.guilds {
             let guild_id = guild.id;
-            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match.name.clone(),
-                None => {
-                    tracing::error!("Guild not found in cache");
-                    continue;
-                },
+            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) {
+                guild_match.name.clone()
+            } else {
+                tracing::error!("Guild not found in cache");
+                continue;
             };
             let to_write = guild_name.clone();
             tracing::info!("Loading guild settings for {guild_id}, {to_write}");
@@ -385,12 +395,11 @@ impl SerenityHandler {
 
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
-            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match.name.clone(),
-                None => {
-                    tracing::error!("Guild not found in cache");
-                    continue;
-                },
+            let guild_name = if let Some(guild_match) = guild_id.to_guild_cached(&ctx.cache) {
+                guild_match.name.clone()
+            } else {
+                tracing::error!("Guild not found in cache");
+                continue;
             };
             tracing::info!(
                 "Loading guild settings for {}, {}",
@@ -527,12 +536,12 @@ async fn check_delete_old_messages(
     msg_timeout_interval: chrono::Duration,
 ) -> Result<(), SerenityError> {
     let mut to_delete = Vec::<Message>::new();
-    for guild_id in guild_ids.iter() {
+    for guild_id in &guild_ids {
         tracing::warn!("Checking guild {}", guild_id);
         data.id_cache_map.get_mut(&(*guild_id).into());
         if let Some(guild_cache) = data.id_cache_map.get_mut(&(*guild_id).into()) {
             let now = DateTime::<Utc>::from(SystemTime::now());
-            for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
+            for (creat_time, msg) in &guild_cache.time_ordered_messages {
                 let delta = now.signed_duration_since(*creat_time);
                 if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
                     tracing::warn!("Adding old message to delete queue");
@@ -544,7 +553,7 @@ async fn check_delete_old_messages(
     for msg in to_delete {
         tracing::error!("Deleting old message: {:#?}", msg);
         match msg.delete(ctx.http(), Some("delete old messages")).await {
-            Ok(_) => {},
+            Ok(()) => {},
             Err(err) => {
                 tracing::error!("Error deleting message: {}", err);
             },
@@ -566,23 +575,19 @@ pub async fn voice_state_diff_str(
         None => None,
     };
     let premium = true; //DEFAULT_PREMIUM;
-    let old = match old {
-        Some(old) => old,
-        None => {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let result = match channel {
-                Some(channel) => format!(
-                    "Member joined voice channel\n{} joined {}",
-                    user_name,
-                    channel.mention()
-                ),
-                None => format!(
-                    "Member joined voice channel\n{} joined unknown channel",
-                    user_name
-                ),
-            };
-            return Ok(result);
-        },
+    let old = if let Some(old) = old {
+        old
+    } else {
+        let user_name = &new.member.as_ref().unwrap().user.name;
+        let result = match channel {
+            Some(channel) => format!(
+                "Member joined voice channel\n{} joined {}",
+                user_name,
+                channel.mention()
+            ),
+            None => format!("Member joined voice channel\n{user_name} joined unknown channel"),
+        };
+        return Ok(result);
     };
     let user = if premium {
         if old.member.is_none() {
@@ -616,8 +621,7 @@ pub async fn voice_state_diff_str(
             };
 
             return Ok(format!(
-                "Member left voice channel\n{} left {}\n",
-                user, channel
+                "Member left voice channel\n{user} left {channel}\n"
             ));
         } else if old.channel_id.is_none() {
             let user_name = &new.member.as_ref().unwrap().user.name;
@@ -625,38 +629,36 @@ pub async fn voice_state_diff_str(
             let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
 
             return Ok(format!(
-                "Member joined voice channel\n{} joined {}\n",
-                user_name, channel_mention
-            ));
-        } else {
-            let old_channel_id = old.channel_id.unwrap();
-            let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            let new_channel_mention = new_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            result.push_str(&format!(
-                "Switched voice channels: {} -> {}\n",
-                old_channel_mention, new_channel_mention
+                "Member joined voice channel\n{user_name} joined {channel_mention}\n"
             ));
         }
+        // Neither channel id is None
+        let old_channel_id = old.channel_id.unwrap();
+        let new_channel_id = new.channel_id.unwrap();
+        let old_channel_mention = old_channel_id
+            .to_channel(cache.clone(), guild_id)
+            .await?
+            .mention();
+        let new_channel_mention = new_channel_id
+            .to_channel(cache.clone(), guild_id)
+            .await?
+            .mention();
+        result.push_str(&format!(
+            "Switched voice channels: {old_channel_mention} -> {new_channel_mention}\n"
+        ));
     }
     if old.deaf() != new.deaf() {
         if new.deaf() {
-            result.push_str(&format!("{} was deafend\n", user));
+            result.push_str(&format!("{user} was deafend\n"));
         } else {
-            result.push_str(&format!("{} was undeafend\n", user));
+            result.push_str(&format!("{user} was undeafend\n"));
         }
     }
     if old.mute() != new.mute() {
         if new.mute() {
-            result.push_str(&format!("{} was muted\n", user));
+            result.push_str(&format!("{user} was muted\n"));
         } else {
-            result.push_str(&format!("{} was unmuted\n", user));
+            result.push_str(&format!("{user} was unmuted\n"));
         }
     }
     if old.guild_id != new.guild_id {
@@ -668,30 +670,30 @@ pub async fn voice_state_diff_str(
 
     if old.self_deaf() != new.self_deaf() {
         if new.self_deaf() {
-            result.push_str(&format!("{} deafened themselves\n", user));
+            result.push_str(&format!("{user} deafened themselves\n"));
         } else {
-            result.push_str(&format!("{} undeafened themselves\n", user));
+            result.push_str(&format!("{user} undeafened themselves\n"));
         }
     }
     if old.self_mute() != new.self_mute() {
         if new.self_mute() {
-            result.push_str(&format!("{} muted themselves\n", user));
+            result.push_str(&format!("{user} muted themselves\n"));
         } else {
-            result.push_str(&format!("{} unmuted themselves\n", user));
+            result.push_str(&format!("{user} unmuted themselves\n"));
         }
     }
     if old.self_stream() != new.self_stream() {
         if new.self_stream().unwrap_or(false) {
-            result.push_str(&format!("{} started streaming\n", user));
+            result.push_str(&format!("{user} started streaming\n"));
         } else {
-            result.push_str(&format!("{} stopped streaming\n", user));
+            result.push_str(&format!("{user} stopped streaming\n"));
         }
     }
     if old.self_video() != new.self_video() {
         if old.self_video() {
-            result.push_str(&format!("{} turned off their camera\n", user));
+            result.push_str(&format!("{user} turned off their camera\n"));
         } else {
-            result.push_str(&format!("{} turned on their camera\n", user));
+            result.push_str(&format!("{user} turned on their camera\n"));
         }
     }
     if old.session_id != new.session_id {

@@ -1,9 +1,15 @@
 [build]
-#rustflags = ['--cfg', 'proc_macro_c_str_literals']
-rustflags = ['--cfg', 'proc_macro_c_str_literals', '-A', 'warnings']
+# rustflags = ['--cfg', 'proc_macro_c_str_literals', '-A', 'warnings']
+rustflags = ['--cfg', 'proc_macro_c_str_literals']
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]
 
 [target.wasm32-wasi]
 rustflags = ["-C", "target-feature=+simd128"]
+
+[source.crates-io]
+registry = "https://github.com/rust-lang/crates.io-index"
+
+[net]
+git-fetch-with-cli = true

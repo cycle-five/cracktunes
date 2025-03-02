@@ -1,7 +1,7 @@
 //use crate::commands::help;
-use crate::errors::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
+use crack_types::CrackedError;
 use serenity::all::{ChannelId, GuildId};
 
 /// Struct that defines a smoke test to run.
@@ -14,8 +14,9 @@ pub struct SmokeTest<'a> {
     want_response: Option<String>,
 }
 
-/// Implemention of the SmokeTest struct.
+/// Implemention of the `SmokeTest` struct.
 impl<'a> SmokeTest<'a> {
+    #[must_use]
     pub fn new(ctx: Context<'a>, chan: ChannelId, say_msg: String) -> Self {
         Self {
             ctx,
@@ -36,11 +37,13 @@ impl<'a> SmokeTest<'a> {
         }
     }
 
+    #[must_use]
     pub fn with_wait_secs(mut self, wait_secs: u64) -> Self {
         self.wait_secs = Some(wait_secs);
         self
     }
 
+    #[must_use]
     pub fn with_want_response(mut self, want_response: String) -> Self {
         self.want_response = Some(want_response);
         self
@@ -66,10 +69,8 @@ pub async fn smoketest(
     #[description = "show the help menu for this command."]
     help: bool,
 ) -> Result<(), Error> {
-    if help {
-        //return help::wrapper(ctx).await;
-        panic!("Help not implemented");
-    }
+    //return help::wrapper(ctx).await;
+    assert!(!help, "Help not implemented");
 
     smoketest_internal(ctx).await
 }
@@ -78,8 +79,8 @@ pub async fn smoketest(
 pub async fn smoketest_internal(ctx: Context<'_>) -> Result<(), Error> {
     let beg = std::time::SystemTime::now();
 
-    let test_chan = ChannelId::new(1232025110802862180);
-    let _test_guild = GuildId::new(1220832110210846800);
+    let test_chan = ChannelId::new(1_232_025_110_802_862_180);
+    let _test_guild = GuildId::new(1_220_832_110_210_846_800);
 
     // Send message to testing channel to trigger the testee bot to respond
     let tests = get_all_test_messages();

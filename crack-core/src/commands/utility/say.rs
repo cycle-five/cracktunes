@@ -1,6 +1,5 @@
 //use crate::commands::help;
 use crate::{Context, Error};
-use core::panic;
 use serenity::all::{Channel, ChannelId};
 
 /// Have the bot say something in a channel.
@@ -20,10 +19,8 @@ pub async fn saychan(
     #[description = "Channel to send the message to"] chan: Channel,
     #[description = "Message to send"] msg: String,
 ) -> Result<(), Error> {
-    if help {
-        //return help::wrapper(ctx).await;
-        panic!("help menu not implemented");
-    }
+    //return help::wrapper(ctx).await;
+    assert!(!help, "help menu not implemented");
     say_internal(ctx, chan.id(), msg).await
 }
 
@@ -44,10 +41,8 @@ pub async fn saychanid(
     #[description = "Channel ID of channel to send message to"] chan: ChannelId,
     #[description = "Message to send"] msg: String,
 ) -> Result<(), Error> {
-    if help {
-        // return help::wrapper(ctx).await;
-        panic!("help menu not implemented");
-    }
+    // return help::wrapper(ctx).await;
+    assert!(!help, "help menu not implemented");
     say_internal(ctx, chan, msg).await
 }
 

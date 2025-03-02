@@ -1,4 +1,4 @@
-use crate::errors::CrackedError;
+use crack_types::CrackedError;
 use crate::guild::settings::GuildSettingsMap;
 use crate::utils::send_embed_response_poise;
 use crate::Context;

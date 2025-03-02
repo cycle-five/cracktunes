@@ -4,5 +4,5 @@ use crack_voting::run;
 #[tokio::main]
 async fn main() {
     println!("Starting server");
-    run().await;
+    let _ = run().await;
 }

@@ -1,12 +1,8 @@
 use crate::utils::get_interaction_new;
 use crate::{
     commands::cmd_check_music,
-    errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
-    messaging::{
-        interface::{create_nav_btns, create_queue_embed},
-        messages::QUEUE_EXPIRED,
-    },
+    messaging::interface::{create_nav_btns, create_queue_embed},
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
@@ -14,6 +10,8 @@ use ::serenity::builder::{
     CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
 };
 use ::serenity::futures::StreamExt;
+use crack_types::errors::CrackedError;
+use crack_types::messaging::messages::QUEUE_EXPIRED;
 use poise::CreateReply;
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
@@ -61,33 +59,32 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction_new(&ctx) {
-        Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
-            interaction
-                .create_response(
-                    ctx.http(),
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .embed(create_queue_embed(&tracks, 0).await)
-                            .components(create_nav_btns(0, num_pages)),
-                    ),
-                )
-                .await?;
-            interaction
-                .get_response(&ctx.serenity_context().http)
-                .await?
-        },
-        _ => {
-            let create_reply = CreateReply::default()
-                .embed(create_queue_embed(&tracks, 0).await)
-                .components(create_nav_btns(0, num_pages));
+    let mut message = if let Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) =
+        get_interaction_new(&ctx)
+    {
+        interaction
+            .create_response(
+                ctx.http(),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .embed(create_queue_embed(&tracks, 0).await)
+                        .components(create_nav_btns(0, num_pages)),
+                ),
+            )
+            .await?;
+        interaction
+            .get_response(&ctx.serenity_context().http)
+            .await?
+    } else {
+        let create_reply = CreateReply::default()
+            .embed(create_queue_embed(&tracks, 0).await)
+            .components(create_nav_btns(0, num_pages));
 
-            let reply = ctx.send(create_reply).await?;
-            reply.into_message().await?
-        },
+        let reply = ctx.send(create_reply).await?;
+        reply.into_message().await?
     };
 
-    ctx.data().add_msg_to_cache(guild_id, message.clone()).await;
+    let _ = ctx.data().add_msg_to_cache(guild_id, message.clone());
 
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 

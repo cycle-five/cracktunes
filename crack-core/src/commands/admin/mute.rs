@@ -1,8 +1,8 @@
 use crate::connection::get_voice_channel_for_user;
-use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
+use crack_types::CrackedError;
 
 use extract_map::ExtractMap;
 use poise::serenity_prelude as serenity;
@@ -68,7 +68,6 @@ pub async fn mute_others(
     )
     .await
     .map(|_| ())
-    .map_err(Into::into)
 }
 
 /// Mute all other users in a voice channel.
@@ -82,9 +81,9 @@ pub async fn mute_others_internal(
 ) -> Result<CrackedMessage, Error> {
     let members = voice_states
         .iter()
-        .filter(|vs| vs.channel_id == Some(voice_channel))
+        .filter(|&vs| vs.channel_id == Some(voice_channel))
         .map(|vs| vs.user_id)
-        .filter(|id| id != &user_id)
+        .filter(|id| *id != user_id)
         .collect::<Vec<_>>();
 
     for member_id in members {
@@ -113,7 +112,7 @@ pub async fn mute_internal(
         )
         .await
     {
-        Ok(CrackedMessage::Other(format!("Failed to mute user: {}", e)))
+        Ok(CrackedMessage::Other(format!("Failed to mute user: {e}")))
     } else {
         // Send success message
         Ok(CrackedMessage::UserMuted { mention, id })
@@ -134,7 +133,7 @@ pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: User,
 ) -> Result<(), Error> {
-    unmute_impl(ctx, user).await.map(|_| ())
+    unmute_impl(ctx, user).await
 }
 
 /// Unmute a user
@@ -153,7 +152,7 @@ pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
         // Handle error, send error message
         send_reply(
             &ctx,
-            CrackedMessage::Other(format!("Failed to unmute user: {}", e)),
+            CrackedMessage::Other(format!("Failed to unmute user: {e}")),
             true,
         )
         .await

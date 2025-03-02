@@ -14,6 +14,8 @@ pub use print_settings::*;
 pub use set::set;
 pub use toggle::*;
 
+use super::CrackedError;
+
 /// Settings commands
 #[poise::command(
     prefix_command,
@@ -46,18 +48,37 @@ pub async fn settings(
     Ok(())
 }
 
-pub fn commands() -> Vec<crate::Command> {
-    vec![settings()]
-        .into_iter()
-        .chain(set::commands())
-        .chain(get::commands())
-        .collect()
+/// Reload the settings for the current guild.
+#[poise::command(prefix_command, owners_only, guild_only, ephemeral)]
+#[cfg(not(tarpaulin_include))]
+pub async fn reload(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let _ = ctx.data().reload_guild_settings(guild_id).await;
+
+    ctx.send_reply(CrackedMessage::SettingsReload, true).await?;
+    Ok(())
 }
 
+#[must_use]
+pub fn commands() -> Vec<crate::Command> {
+    vec![
+        settings(),
+        set::set(),
+        get::get(),
+        toggle::toggle(),
+        print_settings::print_settings(),
+    ]
+    //vec![settings()].into_iter().collect()
+}
+
+#[must_use]
 pub fn sub_commands() -> Vec<crate::Command> {
     vec![]
         .into_iter()
         .chain(set::commands())
         .chain(get::commands())
+        .chain(toggle::commands())
+        .chain(prefix::commands())
+        .chain(print_settings::commands())
         .collect()
 }

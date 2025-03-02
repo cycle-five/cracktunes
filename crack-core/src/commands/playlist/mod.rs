@@ -51,6 +51,7 @@ pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[must_use]
 pub fn commands() -> [crate::Command; 1] {
     [playlist()]
     // addto(),
@@ -66,6 +67,6 @@ mod tests {
     #[test]
     fn test_commands() {
         let commands = crate::commands::playlist::commands();
-        assert!(commands.len() > 0);
+        assert!(!commands.is_empty());
     }
 }

@@ -3,6 +3,7 @@
 /*/target/
 
 # data generated during runtime
+data.tar
 data/
 crack-core/data/
 /logs/

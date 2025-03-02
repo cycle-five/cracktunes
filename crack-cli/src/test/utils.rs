@@ -32,33 +32,30 @@ fn test_load_config() {
         Ok(config) => config,
         Err(e) => {
             tracing::error!("Error loading config: {:?}", e);
-            panic!("Error loading config: {:?}", e);
+            panic!("Error loading config: {e:?}");
         },
     };
 
-    println!("config: {:?}", config);
+    println!("config: {config:?}");
 
     let cam_kick = config.cam_kick.unwrap();
-    let guild_settings_map = match config.guild_settings_map {
-        Some(map) => map,
-        None => {
-            tracing::error!("guild_settings_map is None");
-            panic!("guild_settings_map is None");
-        },
+    let Some(guild_settings_map) = config.guild_settings_map else {
+        tracing::error!("guild_settings_map is None");
+        panic!("guild_settings_map is None");
     };
 
     assert_eq!(cam_kick.len(), 2);
     assert_eq!(cam_kick[0].guild_id, GuildId::new(1).get());
     assert_eq!(guild_settings_map.len(), 2);
-    assert_eq!(guild_settings_map[0].welcome_settings.is_some(), true);
-    assert_eq!(guild_settings_map[1].welcome_settings.is_some(), false);
+    assert!(guild_settings_map[0].welcome_settings.is_some());
+    assert!(guild_settings_map[1].welcome_settings.is_none());
 }
 
 #[test]
 fn test_load_config2() {
     let config = BotConfig::from_config_file("./src/test/cracktunes2.toml").unwrap();
 
-    println!("config: {:?}", config);
+    println!("config: {config:?}");
 
     // Test defaults here, this should be empty.
 }

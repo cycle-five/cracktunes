@@ -53,7 +53,7 @@ impl ReplyHandleTrait for ReplyHandleWrapper {
                 .into_message()
                 .await
             {
-                Ok(x) => x.delete(&ctx, Some("bye")).await,
+                Ok(x) => x.delete(&ctx, None).await,
                 Err(_) => Ok(()),
             }
         })
@@ -151,13 +151,13 @@ pub async fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_VALID_TOKEN;
-    use ::serenity::secrets::Token;
+    use crate::DEFAULT_VALID_TOKEN_TOKEN;
+    use ::serenity::all::Token;
 
     #[tokio::test]
     async fn test_into_message() {
         let message = Message::default();
-        let _handle = MessageOrReplyHandle::Message(message);
+        let _ = MessageOrReplyHandle::Message(message);
 
         // let message = handle.into_message().await.unwrap();
         // assert_eq!(message.id, 0);
@@ -169,7 +169,7 @@ mod tests {
         let wrapper = Arc::new(ReplyHandleWrapperSimple);
         let x = wrapper
             .delete(Http::new(
-                DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token"),
+                Token::from_env("TOKEN").unwrap_or(DEFAULT_VALID_TOKEN_TOKEN.clone()),
             ))
             .await;
 
@@ -186,13 +186,13 @@ mod tests {
 
         let _ = container.get_handle();
 
-        println!("{:?}", container);
+        println!("{container:?}");
         // To use ReplyHandle:
         // let reply_handle = poise::ReplyHandle::new(); // assuming a way to create one
         let wrapped_handle = ReplyHandleWrapperSimple;
         let handle = MessageOrReplyHandle::ReplyHandle(Arc::new(wrapped_handle));
         let container = Container::new(handle);
 
-        println!("{:?}", container);
+        println!("{container:?}");
     }
 }

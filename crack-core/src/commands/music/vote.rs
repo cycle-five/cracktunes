@@ -1,14 +1,11 @@
 use crate::db;
-use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::poise_ext::ContextExt;
-use crate::{
-    messaging::messages::{
-        VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL,
-        VOTE_TOPGG_VOTED,
-    },
-    Context, Error,
+use crate::{Context, Error};
+use crack_types::messaging::messages::{
+    VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_NOT_VOTED, VOTE_TOPGG_TEXT, VOTE_TOPGG_URL, VOTE_TOPGG_VOTED,
 };
+use crack_types::CrackedError;
 use serenity::all::{GuildId, UserId};
 
 /// For API response from top.gg
@@ -44,14 +41,13 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let reply_handle = ctx
         .reply(format!(
-            "{}\n{} [{}]({})",
-            msg_str, VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
+            "{msg_str}\n{VOTE_TOPGG_TEXT} [{VOTE_TOPGG_LINK_TEXT}]({VOTE_TOPGG_URL})"
         ))
         .await?;
 
     let msg = reply_handle.into_message().await?;
 
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = ctx.data().add_msg_to_cache(guild_id, msg);
 
     Ok(())
 }
@@ -86,17 +82,14 @@ pub async fn has_voted_bot_id(
     bot_id: u64,
     user_id: u64,
 ) -> Result<bool, CrackedError> {
-    let url = format!(
-        "https://top.gg/api/bots/{}/check?userId={}",
-        bot_id, user_id
-    );
+    let url = format!("https://top.gg/api/bots/{bot_id}/check?userId={user_id}");
     let token = std::env::var("TOPGG_TOKEN").map_err(|_| CrackedError::InvalidTopGGToken)?;
     let response = reqwest_client
         .get(&url)
         .header("Authorization", token)
         .send()
         .await?;
-    println!("response: {:?}", response);
+    println!("response: {response:?}");
     let response = response.json::<CheckResponse>().await?;
     response
         .voted
@@ -121,8 +114,8 @@ mod test {
 
     #[tokio::test]
     async fn test_fail() {
-        let bot_id = 1115229568006103122;
-        let my_id = 285219649921220608;
+        let bot_id = 1_115_229_568_006_103_122;
+        let my_id = 285_219_649_921_220_608;
         let client = http_utils::get_client().clone();
 
         let has_voted = has_voted_bot_id(client, bot_id, my_id).await;
@@ -133,16 +126,16 @@ mod test {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_check_and_record_vote(pool: sqlx::PgPool) {
-        let user_id = 285219649921220608;
+        let user_id = 285_219_649_921_220_608;
         let username = "test".to_string();
-        let bot_id = 1115229568006103122;
+        let bot_id = 1_115_229_568_006_103_122;
 
         let has_voted = check_and_record_vote(&pool, user_id, username, bot_id).await;
 
         if has_voted.is_ok() {
             assert!(!has_voted.unwrap());
         } else {
-            println!("{:?}", has_voted)
+            println!("{has_voted:?}");
         }
     }
 }

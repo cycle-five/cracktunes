@@ -1,10 +1,10 @@
 use crate::{
     commands::{cmd_check_music, help},
-    errors::CrackedError,
     messaging::message::CrackedMessage,
     utils::send_reply,
     Context, Error,
 };
+use crack_types::errors::CrackedError;
 use songbird::error::JoinError;
 
 /// Tell the bot to leave the voice channel it is in.

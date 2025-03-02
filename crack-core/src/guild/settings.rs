@@ -1,9 +1,9 @@
 use self::serenity::model::id::GuildId;
 use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
-use crate::errors::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
+use crack_types::CrackedError;
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,8 @@ pub(crate) const MOD_VAL: u64 = 1 << 1;
 pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 pub(crate) const DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
+// 10MB (10s not powers of 2 since it gets stored on disk)
+pub(crate) const DEFAULT_BUFFER_SIZE: usize = 100_000_000;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -53,11 +55,13 @@ lazy_static! {
 }
 
 /// Get the settings path, global.
+#[must_use]
 pub fn get_settings_path() -> String {
     SETTINGS_PATH.to_string()
 }
 
 /// Get the log prefix, global.
+#[must_use]
 pub fn get_log_prefix() -> String {
     LOG_PREFIX.to_string()
 }
@@ -164,9 +168,9 @@ impl Display for WelcomeSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let res = match serde_json::to_string_pretty(self) {
             Ok(s) => s,
-            Err(e) => format!("Error: {}", e),
+            Err(e) => format!("Error: {e}"),
         };
-        write!(f, "{}", res)
+        write!(f, "{res}")
     }
 }
 
@@ -183,11 +187,13 @@ impl From<WelcomeSettingsRead> for WelcomeSettings {
 
 impl WelcomeSettings {
     /// Create a new empty welcome settings struct.
+    #[must_use]
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Set the channel id, returning a new WelcomeSettings.
+    /// Set the channel id, returning a new `WelcomeSettings`.
+    #[must_use]
     pub fn with_channel_id(self, channel_id: u64) -> Self {
         Self {
             channel_id: Some(channel_id),
@@ -195,7 +201,8 @@ impl WelcomeSettings {
         }
     }
 
-    /// Set the message, returning a new WelcomeSettings.
+    /// Set the message, returning a new `WelcomeSettings`.
+    #[must_use]
     pub fn with_message(self, message: String) -> Self {
         Self {
             message: Some(message),
@@ -203,7 +210,8 @@ impl WelcomeSettings {
         }
     }
 
-    /// Set the auto role, returning a new WelcomeSettings.
+    /// Set the auto role, returning a new `WelcomeSettings`.
+    #[must_use]
     pub fn with_auto_role(self, auto_role: u64) -> Self {
         Self {
             auto_role: Some(auto_role),
@@ -211,7 +219,8 @@ impl WelcomeSettings {
         }
     }
 
-    /// Set the password, returning a new WelcomeSettings.
+    /// Set the password, returning a new `WelcomeSettings`.
+    #[must_use]
     pub fn with_password(self, password: String) -> Self {
         Self {
             password: Some(password),
@@ -237,7 +246,8 @@ pub struct UserPermission {
 
 /// A struct that represents a user's permission level for a guild.
 impl UserPermission {
-    /// Creates a new UserPermission with default values.
+    /// Creates a new `UserPermission` with default values.
+    #[must_use]
     pub fn new_default(user_id: i64, guild_id: i64) -> Self {
         Self {
             user_id,
@@ -246,7 +256,8 @@ impl UserPermission {
         }
     }
 
-    /// Creates a new UserPermission with the given values.
+    /// Creates a new `UserPermission` with the given values.
+    #[must_use]
     pub fn new(user_id: i64, guild_id: i64, permission: i64) -> Self {
         Self {
             user_id,
@@ -256,16 +267,19 @@ impl UserPermission {
     }
 
     /// Get the user id.
+    #[must_use]
     pub fn get_user_id(&self) -> i64 {
         self.user_id
     }
 
     /// Get the guild id.
+    #[must_use]
     pub fn get_guild_id(&self) -> i64 {
         self.guild_id
     }
 
     /// Get the permission level.
+    #[must_use]
     pub fn get_permission(&self) -> i64 {
         self.permission
     }
@@ -285,17 +299,20 @@ impl UserPermission {
         self.guild_id = guild_id;
     }
 
-    /// Set the permission level, returning a new UserPermission
+    /// Set the permission level, returning a new `UserPermission`
+    #[must_use]
     pub fn with_permission(self, permission: i64) -> Self {
         Self { permission, ..self }
     }
 
-    /// Set the user id, returning a new UserPermission
+    /// Set the user id, returning a new `UserPermission`
+    #[must_use]
     pub fn with_user_id(self, user_id: i64) -> Self {
         Self { user_id, ..self }
     }
 
-    /// Set the guild id, returning a new UserPermission
+    /// Set the guild id, returning a new `UserPermission`
+    #[must_use]
     pub fn with_guild_id(self, guild_id: i64) -> Self {
         Self { guild_id, ..self }
     }
@@ -387,9 +404,9 @@ impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let res = match serde_json::to_string_pretty(self) {
             Ok(s) => s,
-            Err(e) => format!("Error: {}", e),
+            Err(e) => format!("Error: {e}"),
         };
-        write!(f, "{}", res)
+        write!(f, "{res}")
     }
 }
 
@@ -407,7 +424,7 @@ impl From<GuildSettingsRead> for GuildSettings {
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
-        settings.autoplay = true; //settings_db.autoplay;
+        settings.autoplay = true;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
@@ -431,6 +448,7 @@ impl From<GuildSettingsRead> for GuildSettings {
 }
 
 impl GuildSettings {
+    #[must_use]
     pub fn new(
         guild_id: GuildId,
         prefix: Option<&str>,
@@ -438,7 +456,7 @@ impl GuildSettings {
     ) -> GuildSettings {
         let allowed_domains: HashSet<String> = DEFAULT_ALLOWED_DOMAINS
             .iter()
-            .map(|d| d.to_string())
+            .map(|d| (*d).to_string())
             .collect();
 
         let my_prefix = match prefix {
@@ -447,7 +465,7 @@ impl GuildSettings {
         };
 
         let guild_name = guild_name.unwrap_or_default();
-        let asdf: Vec<u64> = vec![1165246445654388746];
+        let asdf: Vec<u64> = vec![1_165_246_445_654_388_746];
         GuildSettings {
             guild_id,
             guild_name,
@@ -473,12 +491,14 @@ impl GuildSettings {
         }
     }
 
-    /// Create a new GuildSettings with the given guild id.
+    /// Create a new `GuildSettings` with the given guild id.
+    #[must_use]
     pub fn new_gid(guild_id: GuildId) -> GuildSettings {
         GuildSettings::new(guild_id, None, None)
     }
 
     /// Get the prefix in uppercase.
+    #[must_use]
     pub fn get_prefix_up(&self) -> String {
         self.prefix.to_ascii_uppercase()
     }
@@ -544,6 +564,7 @@ impl GuildSettings {
     }
 
     /// Set the premium status, mutating.
+    #[must_use]
     pub fn with_premium(self, premium: bool) -> Self {
         Self { premium, ..self }
     }
@@ -565,7 +586,7 @@ impl GuildSettings {
         let allowed = allowed_str
             .split(';')
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         self.allowed_domains = allowed;
@@ -576,7 +597,7 @@ impl GuildSettings {
         let banned = banned_str
             .split(';')
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         self.banned_domains = banned;
@@ -624,36 +645,43 @@ impl GuildSettings {
     }
 
     /// Check if the user is authorized.
+    #[must_use]
     pub fn check_authorized(&self, user_id: u64) -> bool {
         self.authorized_users.contains_key(&user_id)
     }
 
     /// Check if the user is authorized.
+    #[must_use]
     pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.contains_key(&user_id.into())
     }
 
     /// Check if the user is a mod.
+    #[must_use]
     pub fn check_mod(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
     }
 
     /// Check if the user is a mod.
+    #[must_use]
     pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
     }
 
     /// Check if the user is an admin.
+    #[must_use]
     pub fn check_admin(&self, user_id: u64) -> bool {
         self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
     }
 
     /// Check if the user is an admin.
+    #[must_use]
     pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
         self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
 
     /// Set the volume level without mutating.
+    #[must_use]
     pub fn with_volume(self, volume: f32) -> Self {
         Self {
             old_volume: volume,
@@ -682,6 +710,7 @@ impl GuildSettings {
     }
 
     /// Set the idle timeout for the bot, without mutating.
+    #[must_use]
     pub fn with_timeout(self, timeout: u32) -> Self {
         Self { timeout, ..self }
     }
@@ -693,6 +722,7 @@ impl GuildSettings {
     }
 
     /// Set the welcome settings, without mutating.
+    #[must_use]
     pub fn with_welcome_settings(self, welcome_settings: Option<WelcomeSettings>) -> Self {
         Self {
             welcome_settings,
@@ -733,6 +763,7 @@ impl GuildSettings {
     }
 
     /// Set the auto role,without mutating.
+    #[must_use]
     pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
         let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
             WelcomeSettings {
@@ -781,6 +812,7 @@ impl GuildSettings {
     }
 
     /// Return a copy of the settings with the given log settings.
+    #[must_use]
     pub fn with_log_settings(&self, log_settings: Option<LogSettings>) -> Self {
         Self {
             log_settings,
@@ -799,7 +831,7 @@ impl GuildSettings {
         self.additional_prefixes = ADDITIONAL_PREFIXES
             .to_vec()
             .iter()
-            .map(|x| x.to_string())
+            .map(|x| (*x).to_string())
             .collect();
         self
     }
@@ -811,6 +843,7 @@ impl GuildSettings {
     }
 
     /// Get the guild name.
+    #[must_use]
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
             self.guild_id.to_string()
@@ -820,6 +853,7 @@ impl GuildSettings {
     }
 
     /// Get the prefix.
+    #[must_use]
     pub fn get_prefix(&self) -> &str {
         &self.prefix
     }
@@ -837,6 +871,7 @@ impl GuildSettings {
     }
 
     /// Set the join/leave log channel, without mutating.
+    #[must_use]
     pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
         let log_settings = if let Some(log_settings) = self.log_settings.clone() {
             LogSettings {
@@ -867,7 +902,8 @@ impl GuildSettings {
         self
     }
 
-    /// Set command settings, returning a new GuildSettings.
+    /// Set command settings, returning a new `GuildSettings`.
+    #[must_use]
     pub fn with_command_settings(
         self,
         command_settings: HashMap<String, GenericPermissionSettings>,
@@ -977,10 +1013,12 @@ impl GuildSettings {
         }
     }
 
+    #[must_use]
     pub fn get_log_channel(&self, _name: &str) -> Option<ChannelId> {
         self.get_all_log_channel()
     }
 
+    #[must_use]
     pub fn get_all_log_channel(&self) -> Option<ChannelId> {
         if let Some(log_settings) = &self.log_settings {
             return log_settings.get_all_log_channel();
@@ -988,6 +1026,7 @@ impl GuildSettings {
         None
     }
 
+    #[must_use]
     pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
         if let Some(log_settings) = &self.log_settings {
             if let Some(channel_id) = log_settings.join_leave_log_channel {
@@ -997,6 +1036,7 @@ impl GuildSettings {
         None
     }
 
+    #[must_use]
     pub fn get_music_channel(&self) -> Option<ChannelId> {
         self.command_settings
             .get("music")
@@ -1004,6 +1044,7 @@ impl GuildSettings {
             .or(None)
     }
 
+    #[must_use]
     pub fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
         self.command_settings.get("music").cloned()
     }
@@ -1039,7 +1080,7 @@ impl TypeMapKey for CommandSettingsMap {
 #[derive(Default)]
 pub struct GuildSettingsMap;
 
-/// Implement the TypeMapKey trait for the GuildSettingsMap
+/// Implement the `TypeMapKey` trait for the `GuildSettingsMap`
 impl TypeMapKey for GuildSettingsMap {
     type Value = HashMap<GuildId, GuildSettings>;
 }
@@ -1048,12 +1089,12 @@ impl TypeMapKey for GuildSettingsMap {
 #[derive(Default)]
 pub struct AtomicU16Key;
 
-/// Implement the TypeMapKey trait for the AtomicU16Key
+/// Implement the `TypeMapKey` trait for the `AtomicU16Key`
 impl TypeMapKey for AtomicU16Key {
     type Value = Arc<atomic::AtomicU16>;
 }
 
-/// Convenience type for the GuildSettingsMap
+/// Convenience type for the `GuildSettingsMap`
 pub type GuildSettingsMapParam =
     std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<GuildId, GuildSettings>>>;
 
@@ -1066,16 +1107,16 @@ mod test {
         let settings = crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
         assert_eq!(settings.prefix, "r!");
         assert_eq!(settings.allowed_domains.len(), 1);
-        assert_eq!(settings.allowed_domains.contains("youtube.com"), true);
+        assert!(settings.allowed_domains.contains("youtube.com"));
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
-        assert_eq!(settings.old_volume, 1.0);
-        assert_eq!(settings.volume, 1.0);
-        assert_eq!(settings.self_deafen, true);
+        assert_eq!(settings.old_volume, 1.0_f32);
+        assert_eq!(settings.volume, 1.0_f32);
+        assert!(settings.self_deafen);
         assert_eq!(settings.timeout, 600);
-        assert_eq!(settings.welcome_settings.is_none(), true);
-        assert_eq!(settings.log_settings.is_none(), true);
+        assert!(settings.welcome_settings.is_none());
+        assert!(settings.log_settings.is_none());
         assert_eq!(settings.additional_prefixes.len(), 0);
     }
 
@@ -1117,8 +1158,8 @@ mod test {
         assert_eq!(authorized_users_default().len(), 0);
         assert_eq!(additional_prefixes_default().len(), 0);
         assert_eq!(volume_default(), 1.0);
-        assert_eq!(premium_default(), false);
-        assert_eq!(default_false(), false);
-        assert_eq!(default_true(), true);
+        assert!(!premium_default());
+        assert!(!default_false());
+        assert!(default_true());
     }
 }

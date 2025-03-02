@@ -28,7 +28,7 @@ impl TrackReaction {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Get the track reaction.
@@ -43,7 +43,7 @@ impl TrackReaction {
         )
         .fetch_optional(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Update the track reaction.
@@ -72,7 +72,7 @@ impl TrackReaction {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Add a like to the track reaction.
@@ -93,7 +93,7 @@ impl TrackReaction {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Add a dislike to the track reaction.
@@ -117,7 +117,7 @@ impl TrackReaction {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 
     /// Add a skipvote to the track reaction.
@@ -141,6 +141,6 @@ impl TrackReaction {
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
     }
 }

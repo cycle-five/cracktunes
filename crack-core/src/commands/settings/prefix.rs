@@ -1,5 +1,4 @@
 use crate::guild::operations::GuildSettingsOperations;
-use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
@@ -20,7 +19,7 @@ pub async fn add_prefix(
     #[description = "The prefix to add to the bot"] prefix: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
+    let _guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
     let additional_prefixes = {
         ctx.data().add_prefix(guild_id, prefix.clone()).await;
         ctx.data().get_additional_prefixes(guild_id).await
@@ -77,4 +76,12 @@ pub async fn get_prefixes(ctx: Context<'_>) -> Result<(), Error> {
     };
     let _ = send_reply(&ctx, CrackedMessage::Prefixes(additional_prefixes), true).await?;
     Ok(())
+}
+
+/// Get the prefix commands.
+#[must_use]
+pub fn commands() -> Vec<crate::Command> {
+    vec![add_prefix(), clear_prefixes(), get_prefixes()]
+        .into_iter()
+        .collect()
 }

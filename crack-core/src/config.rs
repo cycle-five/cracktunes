@@ -3,12 +3,12 @@ use crate::guild::settings::DEFAULT_PREFIX;
 use crack_types::to_fixed;
 // #[cfg(feature = "crack-metrics")]
 // use crate::metrics::COMMAND_ERRORS;
+use crate::http_utils;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
-    errors::CrackedError,
     guild::settings::GuildSettings,
-    handlers::{handle_event, SerenityHandler},
+    handlers::SerenityHandler,
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -16,37 +16,74 @@ use crate::{
     BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use ::serenity::secrets::Token;
-use colored::Colorize;
-use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
+use crack_types::messaging::messages::FAIL_RUSTLS_PROVIDER_LOAD;
+use crack_types::CrackedError;
+use poise::serenity_prelude::{Client, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
 use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
-/// on_error is called when an error occurs in the framework.
+/// `on_error` is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
     match error {
         //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
-            },
-            _ => {
-                tracing::warn!(
-                    "{} {} {} {}",
-                    "In event handler for ".yellow(),
-                    event.snake_case_name().yellow().italic(),
-                    " event: ".yellow(),
-                    error.to_string().yellow().bold(),
-                );
-            },
+        // poise::FrameworkError::EventHandler { error, event, .. } => match event {
+        //     FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
+        //     },
+        //     _ => {
+        //         tracing::warn!(
+        //             "{} {} {} {}",
+        //             "In event handler for ".yellow(),
+        //             event.snake_case_name().yellow().italic(),
+        //             " event: ".yellow(),
+        //             error.to_string().yellow().bold(),
+        //         );
+        //     },
+        // },
+        poise::FrameworkError::MissingBotPermissions {
+            missing_permissions,
+            ctx,
+            ..
+        } => {
+            tracing::warn!(
+                "<<< {} Missing bot permissions: {:?}",
+                ctx.command().qualified_name,
+                missing_permissions,
+            );
+            let myerr = CrackedError::MissingBotPermissions(Some(missing_permissions));
+            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+
+            check_reply(ctx.send_message(params).await.map_err(Into::into));
+        },
+        poise::FrameworkError::MissingUserPermissions {
+            missing_permissions,
+            ctx,
+            ..
+        } => {
+            tracing::warn!(
+                "<<< {} Missing user permissions: {:?}",
+                ctx.command().qualified_name,
+                missing_permissions,
+            );
+            let myerr = CrackedError::MissingUserPermissions(missing_permissions);
+            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+
+            check_reply(ctx.send_message(params).await.map_err(Into::into));
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
+            tracing::warn!(
+                "<<< {} Error in command: {:?}",
+                ctx.command().qualified_name,
+                error.to_string(),
+            );
             let myerr = CrackedError::Poise(error);
             let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
+
             check_reply(ctx.send_message(params).await.map_err(Into::into));
             // #[cfg(feature = "crack-metrics")]
             // COMMAND_ERRORS
@@ -55,7 +92,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                tracing::error!("Error while handling error: {}", e)
+                tracing::error!("Error while handling error: {}", e);
             }
         },
     }
@@ -65,7 +102,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 pub fn install_crypto_provider() {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
-        .expect("Failed to install AWS LC provider");
+        .expect(FAIL_RUSTLS_PROVIDER_LOAD);
 }
 
 /// Create the poise framework from the bot config.
@@ -92,7 +129,7 @@ pub async fn poise_framework(
         owners: config
             .owners
             .as_ref()
-            .unwrap_or(&vec![285219649921220608])
+            .unwrap_or(&vec![285_219_649_921_220_608])
             .iter()
             .map(|id| UserId::new(*id))
             .collect(),
@@ -115,9 +152,9 @@ pub async fn poise_framework(
                             || ctx.cache.current_user().name.starts_with("Crack")
                         {
                             return Ok(None);
-                        } else {
-                            return Ok(Some(msg.content.split_at(7)));
                         }
+                        // Why 7???
+                        return Ok(Some(msg.content.split_at(7)));
                     }
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
@@ -158,6 +195,18 @@ pub async fn poise_framework(
                         }
                     } else {
                         tracing::warn!("Guild not found in guild settings map");
+                        // Insert a default guild settings object
+                        let guild_name = ctx
+                            .guild_name_from_guild_id(guild_id)
+                            .await
+                            .unwrap_or_default();
+                        let guild_settings = GuildSettings::new(guild_id, None, Some(guild_name));
+                        let res = data.insert_guild(guild_id, guild_settings.clone()).await;
+                        if res.is_err() {
+                            tracing::warn!("Error inserting guild settings");
+                        } else {
+                            tracing::warn!("Inserted guild settings: {guild_settings:?}");
+                        }
                         Ok(None)
                     }
                 })
@@ -169,14 +218,15 @@ pub async fn poise_framework(
         // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                tracing::info!(">>> {}...", ctx.command().qualified_name);
+                tracing::trace!(">>> {}!", ctx.command().qualified_name);
+
                 count_command(ctx.command().qualified_name.as_ref(), ctx.is_prefix());
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                tracing::info!("<<< {}!", ctx.command().qualified_name);
+                tracing::trace!("<<< {}!", ctx.command().qualified_name);
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -187,18 +237,18 @@ pub async fn poise_framework(
                     None => return Ok(true),
                     Some(guild_id) => ctx.guild_name_from_guild_id(guild_id).await,
                 }
-                .unwrap_or(to_fixed("Unknown"));
-                tracing::warn!("Guild: {}", name);
+                .unwrap_or_else(|_| to_fixed("Unknown"));
+                tracing::trace!("Guild: {}", name);
                 Ok(true)
             })
         }),
         //event_handler: |ctx, event, framework, data_global| {
-        event_handler: |framework, event| {
-            Box::pin(async move {
-                let ctx = framework.serenity_context;
-                handle_event(ctx, event, framework, framework.user_data()).await
-            })
-        },
+        // event_handler: |framework, event| {
+        //     Box::pin(async move {
+        //         let ctx = framework.serenity_context;
+        //         handle_event_noop(ctx, event, framework, framework.user_data()).await
+        //     })
+        // },
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
@@ -241,6 +291,7 @@ pub async fn poise_framework(
         event_log_async,
         database_pool,
         db_channel,
+        http_client: http_utils::get_client().clone(),
         ..Default::default()
     }));
 
@@ -258,22 +309,22 @@ pub async fn poise_framework(
         .parse::<Token>()?;
     let data2 = data.clone();
     // FIXME: Why can't we use framework.user_data() later in this function? (it hangs)
-    let framework = poise::Framework::new(options);
-    // , |ctx, ready, _framework| {
-    //     Box::pin(async move {
-    //         tracing::info!("Logged in as {}", ready.user.name);
-    //         crate::commands::register::register_globally_cracked(
-    //             &ctx,
-    //             &crate::commands::commands_to_register(),
-    //         )
-    //         .await?;
-    //         ctx.data
-    //             .write()
-    //             .await
-    //             .insert::<GuildSettingsMap>(guild_settings_map.clone());
-    //         Ok(data.clone())
-    //     })
-    // });
+    let framework = poise::Framework::new(
+        options,
+        // Box::pin(async move {
+        //     tracing::info!("Logged in as {}", ready.user.name);
+        //     crate::commands::register::register_globally_cracked(
+        //         &ctx,
+        //         &crate::commands::commands_to_register(),
+        //     )
+        //     .await?;
+        //     ctx.data
+        //         .write()
+        //         .await
+        //         .insert::<GuildSettingsMap>(guild_settings_map.clone());
+        //     Ok(data.clone())
+        // }),
+    );
 
     // songbird::register_serenity!(framework, songbird_config);
     // let bot_test_handler = Arc::new(ForwardBotTestCommandsHandler {
@@ -340,7 +391,7 @@ pub async fn poise_framework(
             for (k, v) in guilds {
                 //tracing::warn!("Saving Guild: {}", k);
                 match v.save(&p).await {
-                    Ok(_) => {
+                    Ok(()) => {
                         saved_guilds.push(k);
                     },
                     Err(e) => {
@@ -350,7 +401,7 @@ pub async fn poise_framework(
             }
             p.close().await;
         }
-        println!("Saved guilds: {:?}", saved_guilds);
+        println!("Saved guilds: {saved_guilds:?}");
         tracing::trace!("Saved guilds: {:?}", saved_guilds);
 
         shard_manager.clone().shutdown_all().await;
@@ -383,7 +434,9 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     None
 }
 
-#[poise::command(prefix_command, owners_only)]
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
+#[poise::command(slash_command, prefix_command, owners_only)]
 async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
     let commands = &ctx.framework().options().commands;
     poise::builtins::register_globally(ctx.http(), commands).await?;

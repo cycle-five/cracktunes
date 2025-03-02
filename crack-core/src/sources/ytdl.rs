@@ -1,11 +1,10 @@
-use crate::errors::CrackedError;
 use crate::guild::settings::VIDEO_WATCH_URL;
+use crack_types::CrackedError;
 use std::fmt::Display;
-use tokio::process::Command;
-use tokio::runtime::Handle;
+use std::sync::LazyLock;
+use tokio::{process::Command, runtime::Handle};
 
-use once_cell::sync::Lazy; // 1.5.2
-pub static HANDLE: Lazy<std::sync::Mutex<Option<Handle>>> = Lazy::new(Default::default);
+pub static HANDLE: LazyLock<std::sync::Mutex<Option<Handle>>> = LazyLock::new(Default::default);
 const YOUTUBE_DL_COMMAND: &str = "yt-dlp";
 
 #[derive(Clone, Debug)]
@@ -17,7 +16,7 @@ enum QueryType {
 impl Display for QueryType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            QueryType::Url(url) => write!(f, "{}", url),
+            QueryType::Url(url) => write!(f, "{url}"),
             //QueryType::Search(query) => write!(f, "ytsearch5:{}", query),
         }
     }
@@ -57,7 +56,7 @@ impl MyYoutubeDl {
         }
     }
 
-    /// Gets all the URLs in a YouTube playlist.
+    /// Gets all the URLs in a `YouTube` playlist.
     pub async fn get_playlist(&mut self) -> Result<Vec<String>, CrackedError> {
         let ytdl_args = [
             // "-j",

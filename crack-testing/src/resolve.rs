@@ -1,12 +1,25 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
 use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
+use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},
+    sync::LazyLock,
     time::Duration,
 };
+
+//static YOUTUBE_URL_REGEX_STR: &str = r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$";
+static YOUTUBE_URL_REGEX_STR: &str = r"((?:https?:)?\/\/)?(?:youtube(-nocookie)?\.com|youtu\.be)";
+// This is lazy static because it's used in a function that returns a Regex
+static YOUTUBE_URL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(YOUTUBE_URL_REGEX_STR).unwrap());
+
+pub fn is_youtube_url(url: &str) -> bool {
+    let regex = YOUTUBE_URL_REGEX.clone();
+    regex.is_match(url)
+}
 
 /// [`ResolvedTrack`] struct for holding resolved track information, this
 /// should be enough to play the track or enqueue it with the bot.
@@ -42,7 +55,8 @@ impl Default for ResolvedTrack<'_> {
 }
 
 impl ResolvedTrack<'_> {
-    /// Create a new ResolvedTrack
+    /// Create a new `ResolvedTrack`
+    #[must_use]
     pub fn new(query: QueryType) -> Self {
         ResolvedTrack {
             query,
@@ -54,42 +68,49 @@ impl ResolvedTrack<'_> {
     // ----------------- Setters ----------------- //
 
     /// Set the user id of the user who requested the track.
+    #[must_use]
     pub fn with_user_id(mut self, user_id: UserId) -> Self {
         self.user_id = user_id;
         self
     }
 
     /// Set the queued status of the track.
+    #[must_use]
     pub fn with_queued(mut self, queued: bool) -> Self {
         self.queued = queued;
         self
     }
 
     /// Set the query type of the track.
+    #[must_use]
     pub fn with_query(mut self, query: QueryType) -> Self {
         self.query = query;
         self
     }
 
     /// Set the details of the track.
+    #[must_use]
     pub fn with_details(mut self, details: rusty_ytdl::VideoDetails) -> Self {
         self.details = Some(details);
         self
     }
 
     /// Set the metadata of the track.
+    #[must_use]
     pub fn with_metadata(mut self, metadata: AuxMetadata) -> Self {
         self.metadata = Some(metadata);
         self
     }
 
     /// Set the search video of the track.
+    #[must_use]
     pub fn with_search_video(mut self, search_video: rusty_ytdl::search::Video) -> Self {
         self.search_video = Some(search_video);
         self
     }
 
     /// Set the video of the track.
+    #[must_use]
     pub fn with_video(mut self, video: rusty_ytdl::Video<'static>) -> Self {
         self.video = Some(video);
         self
@@ -119,13 +140,13 @@ impl ResolvedTrack<'_> {
         } else if let Some(details) = &self.details {
             details.video_url.clone()
         } else {
-            UNKNOWN_URL.to_string()
+            return UNKNOWN_URL.to_string();
         };
 
-        if url.contains("youtube.com") {
+        if YOUTUBE_URL_REGEX.is_match(&url) {
             url
         } else {
-            format!("https://www.youtube.com/watch?v={}", url)
+            format!("https://www.youtube.com/watch?v={url}")
         }
     }
 
@@ -166,37 +187,28 @@ impl ResolvedTrack<'_> {
         //let url = self.get_url();
         let duration = self.get_duration();
         let dur_len = duration.len() + 3;
-        let mut str = format!("{} ({})", title, duration);
+        let mut str = format!("{title} ({duration})");
         let len = str.len();
         if len > 100 - dur_len {
             let mut truncate_index = 100 - dur_len;
             while !str.is_char_boundary(truncate_index) {
                 truncate_index -= 1;
             }
-            str.truncate(100 - dur_len);
+            str.truncate(truncate_index);
         }
         str
     }
 
     /// autocomplete option for the track.
     pub fn autocomplete_option(&self) -> AutocompleteChoice<'static> {
-        AutocompleteChoice {
-            name: Cow::Owned(self.suggest_string()),
-            value: AutocompleteValue::String(Cow::Owned(self.get_url())),
-            name_localizations: Default::default(),
-        }
+        AutocompleteChoice::new(
+            Cow::Owned(self.suggest_string().clone()),
+            AutocompleteValue::String(Cow::Owned(self.get_url().clone())),
+        )
     }
 }
 
-// impl From<ResolvedTrack> for songbird::Input {
-//     fn from(track: ResolvedTrack) -> Self {
-//         let client = REQ_CLIENT.clone();
-//         let ytdl = YoutubeDl::new(client, track.get_url());
-//         songbird::Input::from(ytdl)
-//     }
-// }
-
-/// Implement [`From``] for [`search::Video`] to [`ResolvedTrack`].
+/// Implement [`From`] for [`search::Video`] to [`ResolvedTrack`].
 impl From<search::Video> for ResolvedTrack<'_> {
     fn from(video: search::Video) -> Self {
         ResolvedTrack {
@@ -229,94 +241,270 @@ impl Display for ResolvedTrack<'_> {
         let url = self.get_url();
         let duration = self.get_duration();
 
-        write!(f, "[{}]({}) • `{}`", title, url, duration)
+        write!(f, "[{title}]({url}) • `{duration}`")
     }
 }
 
-// use rusty_ytdl::VideoError;
-// use songbird::input::Input;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crack_types::{build_mock_rusty_video_details, build_mock_search_video};
+    use std::time::Duration;
 
-// impl From<ResolvedTrack<'static>> for Input {
-//     fn from(val: ResolvedTrack<'static>) -> Self {
-//         Input::Lazy(Box::new(val))
-//     }
-// }
+    fn create_mock_video_details() -> VideoDetails {
+        build_mock_rusty_video_details()
+    }
 
-// #[async_trait]
-// impl Compose for RustyYoutubeSearch<'_> {
-//     fn create(&mut self) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-//         Err(AudioStreamError::Unsupported)
-//     }
+    fn create_mock_search_video() -> search::Video {
+        build_mock_search_video()
+    }
 
-//     async fn create_async(
-//         &mut self,
-//     ) -> Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError> {
-//         // We may or may not have the metadata, so we need to check.
-//         if self.metadata.is_none() {
-//             self.aux_metadata().await?;
-//         }
-//         let vid_options = VideoOptions {
-//             request_options: RequestOptions {
-//                 client: Some(http_utils::get_client().clone()),
-//                 ..Default::default()
-//             },
-//             ..Default::default()
-//         };
-//         let url = self.url.as_ref().unwrap();
-//         Video::new_with_options(url.clone(), vid_options)
-//             .map_err(CrackedError::from)?
-//             .stream()
-//             .await
-//             .map(|input| {
-//                 // let stream = AsyncAdapterStream::new(input, 64 * 1024);
-//                 let stream = Box::into_pin(input).into_media_source();
+    fn create_mock_aux_metadata() -> AuxMetadata {
+        AuxMetadata {
+            title: Some("Metadata Test Video".to_string()),
+            source_url: Some("https://www.youtube.com/watch?v=meta123".to_string()),
+            duration: Some(Duration::from_secs(300)), // 5 minutes
+            ..Default::default()
+        }
+    }
 
-//                 AudioStream {
-//                     input: Box::new(stream) as Box<dyn MediaSource>,
-//                     hint: None,
-//                 }
-//             })
-//             .map_err(|e| AudioStreamError::from(CrackedError::from(e)))
-//     }
+    #[test]
+    fn test_default() {
+        let track = ResolvedTrack::default();
+        assert_eq!(track.get_title(), UNKNOWN_TITLE);
+        assert_eq!(track.get_url(), UNKNOWN_URL);
+        assert_eq!(track.get_duration(), UNKNOWN_DURATION);
+        assert!(track.get_metadata().is_none());
+        assert!(track.get_video().is_none());
+    }
 
-//     fn should_create_async(&self) -> bool {
-//         true
-//     }
+    #[test]
+    fn test_new() {
+        let query = QueryType::VideoLink("test_url".to_string());
+        let track = ResolvedTrack::new(query.clone());
+        // Can't compare QueryType directly since it doesn't implement PartialEq
+        match track.query {
+            QueryType::VideoLink(url) => assert_eq!(url, "test_url"),
+            _ => panic!("Wrong query type"),
+        }
+        assert_eq!(track.user_id, UserId::new(1));
+    }
 
-//     /// Returns, and caches if isn't already, the metadata for the search.
-//     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
-//         if let Some(meta) = self.metadata.as_ref() {
-//             return Ok(meta.clone());
-//         }
+    #[test]
+    fn test_with_methods() {
+        let track = ResolvedTrack::default()
+            .with_user_id(UserId::new(123))
+            .with_queued(true)
+            .with_query(QueryType::VideoLink("test".to_string()));
 
-//         // If we have a url, we can get the metadata from that directory so no need to search.
-//         if let Some(url) = self.url.as_ref() {
-//             let video =
-//                 Video::new(url.clone()).map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
-//             let video_info = video
-//                 .get_basic_info()
-//                 .await
-//                 .map_err(|_| CrackedError::AudioStreamRustyYtdlMetadata)?;
-//             let metadata = video_info_to_aux_metadata(&video_info);
-//             self.metadata = Some(metadata.clone());
-//             return Ok(metadata);
-//         }
+        assert_eq!(track.user_id, UserId::new(123));
+        assert!(track.queued);
+        if let QueryType::VideoLink(url) = track.query {
+            assert_eq!(url, "test");
+        } else {
+            panic!("Wrong query type");
+        }
+    }
 
-//         let res: SearchResult = self
-//             .rusty_ytdl
-//             .search_one(self.query.build_query().unwrap(), None)
-//             .await
-//             .map_err(|e| {
-//                 <CrackedError as Into<AudioStreamError>>::into(
-//                     <VideoError as Into<CrackedError>>::into(e),
-//                 )
-//             })?
-//             .ok_or_else(|| AudioStreamError::from(CrackedError::AudioStreamRustyYtdlMetadata))?;
-//         let metadata = search_result_to_aux_metadata(&res);
+    #[test]
+    fn test_get_title_priority() {
+        let search_video = create_mock_search_video();
+        let video_details = create_mock_video_details();
+        let aux_metadata = create_mock_aux_metadata();
 
-//         self.metadata = Some(metadata.clone());
-//         self.url = Some(metadata.source_url.clone().unwrap());
+        // Test search_video priority
+        let track = ResolvedTrack::default()
+            .with_search_video(search_video.clone())
+            .with_details(video_details.clone())
+            .with_metadata(aux_metadata.clone());
+        assert_eq!(track.get_title(), search_video.title);
 
-//         Ok(metadata)
-//     }
-// }
+        // Test metadata priority when no search_video
+        let track = ResolvedTrack::default()
+            .with_details(video_details.clone())
+            .with_metadata(aux_metadata.clone());
+        assert_eq!(track.get_title(), aux_metadata.title.unwrap());
+
+        // Test details priority when no search_video or metadata
+        let track = ResolvedTrack::default().with_details(video_details.clone());
+        assert_eq!(track.get_title(), video_details.title);
+    }
+
+    #[test]
+    fn test_get_url_priority() {
+        let search_video = create_mock_search_video();
+        let video_details = create_mock_video_details();
+        let aux_metadata = create_mock_aux_metadata();
+
+        // Test search_video priority
+        let track = ResolvedTrack::default()
+            .with_search_video(search_video.clone())
+            .with_details(video_details.clone())
+            .with_metadata(aux_metadata.clone());
+        assert_eq!(track.get_url(), search_video.url);
+
+        // Test metadata priority when no search_video
+        let track = ResolvedTrack::default()
+            .with_details(video_details.clone())
+            .with_metadata(aux_metadata.clone());
+        assert_eq!(track.get_url(), aux_metadata.source_url.unwrap());
+
+        // Test details priority when no search_video or metadata
+        let track = ResolvedTrack::default().with_details(video_details.clone());
+        assert_eq!(track.get_url(), video_details.video_url);
+    }
+
+    #[test]
+    fn test_get_duration_priority() {
+        let search_video = create_mock_search_video();
+        let video_details = create_mock_video_details();
+        let aux_metadata = create_mock_aux_metadata();
+
+        // Test metadata priority
+        let track = ResolvedTrack::default()
+            .with_search_video(search_video.clone())
+            .with_details(video_details.clone())
+            .with_metadata(aux_metadata.clone());
+        assert_eq!(
+            track.get_duration(),
+            get_human_readable_timestamp(aux_metadata.duration)
+        );
+
+        // Test details priority when no metadata
+        let track = ResolvedTrack::default()
+            .with_search_video(search_video.clone())
+            .with_details(video_details.clone());
+        assert_eq!(
+            track.get_duration(),
+            get_human_readable_timestamp(Some(Duration::from_secs(60)))
+        );
+
+        // // Test search_video priority when no metadata or details
+        // let track = ResolvedTrack::default().with_search_video(search_video.clone());
+        // assert_eq!(
+        //     track.get_duration(),
+        //     get_human_readable_timestamp(Some(Duration::from_millis(1440000)))
+        // );
+    }
+
+    #[test]
+    fn test_suggest_string() {
+        let video_details = create_mock_video_details();
+        let track = ResolvedTrack::default().with_details(video_details);
+        let suggestion = track.suggest_string();
+        assert!(suggestion.contains("Title"));
+        //assert!(suggestion.contains("3:00")); // 180 seconds formatted
+    }
+
+    #[test]
+    fn test_suggest_string_truncation() {
+        let mut video_details = create_mock_video_details();
+        video_details.title = "A".repeat(200); // Very long title
+        let track = ResolvedTrack::default().with_details(video_details);
+        let suggestion = track.suggest_string();
+        assert!(suggestion.len() <= 100);
+    }
+
+    #[test]
+    fn test_autocomplete_option() {
+        let video_details = create_mock_video_details();
+        let track = ResolvedTrack::default().with_details(video_details);
+        let _autocomplete_choice = track.autocomplete_option();
+        // autocomplete_choice.
+        // assert!(str_res.contains("Title"));
+    }
+
+    #[test]
+    fn test_from_search_video() {
+        let search_video = create_mock_search_video();
+        let track = ResolvedTrack::from(search_video.clone());
+        assert_eq!(track.get_title(), search_video.title);
+        assert_eq!(track.get_url(), search_video.url);
+        if let QueryType::VideoLink(url) = track.query {
+            assert_eq!(url, search_video.url);
+        } else {
+            panic!("Wrong query type");
+        }
+    }
+
+    #[test]
+    fn test_display() {
+        let video_details = create_mock_video_details();
+        let track = ResolvedTrack::default().with_details(video_details);
+        let display = format!("{track}");
+        assert!(display.contains("Title"));
+        //assert!(display.contains("youtube.com"));
+    }
+
+    #[test]
+    fn test_regex1() {
+        //let regex = Regex::new(r"(?im)^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$").unwrap();
+        let regex = YOUTUBE_URL_REGEX.clone();
+        let string = r"
+            https://www.youtube.com/watch?v=DFYRQ_zQ-gk&feature=featured
+            https://www.youtube.com/watch?v=DFYRQ_zQ-gk
+            http://www.youtube.com/watch?v=DFYRQ_zQ-gk
+            //www.youtube.com/watch?v=DFYRQ_zQ-gk
+            www.youtube.com/watch?v=DFYRQ_zQ-gk
+            https://youtube.com/watch?v=DFYRQ_zQ-gk
+            http://youtube.com/watch?v=DFYRQ_zQ-gk
+            //youtube.com/watch?v=DFYRQ_zQ-gk
+            youtube.com/watch?v=DFYRQ_zQ-gk
+
+            https://m.youtube.com/watch?v=DFYRQ_zQ-gk
+            http://m.youtube.com/watch?v=DFYRQ_zQ-gk
+            //m.youtube.com/watch?v=DFYRQ_zQ-gk
+            m.youtube.com/watch?v=DFYRQ_zQ-gk
+
+            https://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            http://www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            //www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            www.youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+            youtube.com/v/DFYRQ_zQ-gk?fs=1&hl=en_US
+
+            https://www.youtube.com/embed/DFYRQ_zQ-gk?autoplay=1
+            https://www.youtube.com/embed/DFYRQ_zQ-gk
+            http://www.youtube.com/embed/DFYRQ_zQ-gk
+            //www.youtube.com/embed/DFYRQ_zQ-gk
+            www.youtube.com/embed/DFYRQ_zQ-gk
+            https://youtube.com/embed/DFYRQ_zQ-gk
+            http://youtube.com/embed/DFYRQ_zQ-gk
+            //youtube.com/embed/DFYRQ_zQ-gk
+            youtube.com/embed/DFYRQ_zQ-gk
+
+            https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk?autoplay=1
+            https://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            http://www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            //www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            www.youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            https://youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            http://youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            //youtube-nocookie.com/embed/DFYRQ_zQ-gk
+            youtube-nocookie.com/embed/DFYRQ_zQ-gk
+
+            https://youtu.be/DFYRQ_zQ-gk?t=120
+            https://youtu.be/DFYRQ_zQ-gk
+            http://youtu.be/DFYRQ_zQ-gk
+            //youtu.be/DFYRQ_zQ-gk
+            youtu.be/DFYRQ_zQ-gk
+
+            https://www.youtube.com/HamdiKickProduction?v=DFYRQ_zQ-gk
+            ";
+
+        let string2 = r"
+            youtube.com
+            http://youtube.com
+            https://youtube.com/
+            youtu.be
+        ";
+        let result = regex.captures_iter(string);
+        let num_matches = result.count();
+        assert_eq!(num_matches, 42);
+
+        let result2 = regex.captures_iter(string2);
+        let num_matches2 = result2.count();
+        assert_eq!(num_matches2, 4);
+        assert!(regex.is_match("https://www.youtube.com/watch?v=DFYRQ_zQ-gk"));
+        assert!(regex.is_match("youtube.com"));
+    }
+}

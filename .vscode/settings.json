@@ -16,7 +16,8 @@
         "crack-osint",
         "crack-bf",
         "crack-activity",
-        "crack-music"
+        "crack-music",
+        "crack-tracing",
     ],
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
@@ -28,11 +29,19 @@
         "./crack-testing/Cargo.toml"
     ],
     "sqltools.useNodeRuntime": null,
-    "rust-analyzer.checkOnSave": true,
-    "gitdoc.enabled": false,
-    "editor.fontFamily": "0xProto Nerd Font Mono",
-    "keyboard.dispatch": "keyCode",
+    //----\/\/\/\/ These seem to effect rust-analyzer performance
     "editor.formatOnSave": true,
+    "rust-analyzer.checkOnSave": true,
+    // delay before suggestions show up
+    "editor.quickSuggestionsDelay": 200,
+    "editor.wordBasedSuggestions": "off",
+    "editor.fontFamily": "0xProto Nerd Font Mono",
+    //----/\/\/\/\ These seem to effect rust-analyzer performance
+    // Don't remember why this was needed either.
     //"terminal.integrated.fontFamily": "0xProto Nerd Font Mono"
-    "terminal.integrated.fontFamily": "monospace"
+    "terminal.integrated.fontFamily": "monospace",
+    // Should go back to using gitdoc
+    "gitdoc.enabled": false,
+    // Don't remember what this was for...
+    "keyboard.dispatch": "keyCode",
 }

@@ -1,13 +1,10 @@
 use crate::poise_ext::ContextExt;
 use crate::{
-    commands::cmd_check_music,
-    commands::get_call_or_join_author,
-    errors::{verify, CrackedError},
-    messaging::message::CrackedMessage,
-    poise_ext::PoiseContextExt,
-    utils::get_track_handle_metadata,
-    Context, Error,
+    commands::cmd_check_music, commands::get_call_or_join_author,
+    messaging::message::CrackedMessage, poise_ext::PoiseContextExt,
+    utils::get_track_handle_metadata, Context, Error,
 };
+use crack_types::errors::{verify, CrackedError};
 use serenity::all::Message;
 use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;
@@ -42,7 +39,7 @@ pub async fn skip(
 
     force_skip_top_track(&handler).await?;
     let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    let _ = ctx.data().add_msg_to_cache(guild_id, msg);
     Ok(())
 }
 
@@ -74,7 +71,7 @@ pub async fn create_skip_response(
         .await?
         .into_message()
         .await
-        .map_err(|e| e.into())
+        .map_err(std::convert::Into::into)
 }
 
 /// Downvote and skip song causing it to *not* be used in music recommendations.

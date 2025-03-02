@@ -1,9 +1,9 @@
 use crate::{
-    errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     utils::send_reply,
     {Context, Error},
 };
+use crack_types::errors::{verify, CrackedError};
 
 /// Resume the current track.
 #[cfg(not(tarpaulin_include))]

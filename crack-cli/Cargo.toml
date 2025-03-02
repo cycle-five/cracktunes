@@ -24,7 +24,7 @@ eula = false
 [features]
 default = ["crack-tracing"]
 
-crack-tracing = ["tracing-subscriber"]
+crack-tracing = ["tracing", "tracing-subscriber"]
 crack-metrics = []
 crack-telemetry = []
 
@@ -34,6 +34,7 @@ crack-types = { path = "../crack-types/" }
 
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"
+tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",
 ], optional = true }
@@ -43,7 +44,6 @@ poise = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 
-tracing = { workspace = true }
 
 # # Is this even needed? What did I add it for?
 # This is needed for the tests to run in the IDE

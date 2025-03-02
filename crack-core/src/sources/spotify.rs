@@ -1,9 +1,6 @@
-use crate::{
-    errors::CrackedError,
-    messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED},
-    utils::MUSIC_SEARCH_SUFFIX,
-};
-use crack_types::{QueryType, SpotifyTrack};
+use crate::utils::MUSIC_SEARCH_SUFFIX;
+use crack_types::messaging::messages::{SPOTIFY_INVALID_QUERY, SPOTIFY_PLAYLIST_FAILED};
+use crack_types::{CrackedError, QueryType, SpotifyTrack};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::model::{FullPlaylist, FullTrack, SimplifiedAlbum};
@@ -13,7 +10,7 @@ use rspotify::{
         AlbumId, Country, Market, PlayableItem, PlaylistId, Recommendations, SearchResult,
         SimplifiedArtist, TrackId,
     },
-    ClientCredsSpotify, ClientResult, Config, Credentials,
+    ClientCredsSpotify, ClientError as RSpotifyError, ClientResult, Config, Credentials,
 };
 use std::{collections::HashMap, env, str::FromStr, time::Duration};
 use tokio::sync::Mutex;
@@ -34,7 +31,7 @@ impl CrackClientCredsSpotify {
         Ok(Self(creds))
     }
 
-    pub async fn get(&self) -> Result<&ClientCredsSpotify, CrackedError> {
+    pub fn get(&self) -> Result<&ClientCredsSpotify, CrackedError> {
         Ok(&self.0)
     }
 
@@ -56,7 +53,7 @@ pub enum MediaType {
     Playlist,
 }
 
-/// Implementation of FromStr for MediaType.
+/// Implementation of `FromStr` for `MediaType`.
 impl FromStr for MediaType {
     type Err = ();
 
@@ -109,7 +106,7 @@ impl Spotify {
                 .map_err(|_| CrackedError::Other("missing spotify client ID"))?,
         };
         let spotify_client_secret = match opt_creds {
-            Some(creds) => creds.secret.unwrap_or("".to_string()),
+            Some(creds) => creds.secret.unwrap_or(String::new()),
             None => env::var("SPOTIFY_CLIENT_SECRET")
                 .map_err(|_| CrackedError::Other("missing spotify client secret"))?,
         };
@@ -121,13 +118,18 @@ impl Spotify {
         };
 
         let spotify = ClientCredsSpotify::with_config(creds, config);
-        spotify.request_token().await?;
+        spotify
+            .request_token()
+            .await
+            .map_err(|arg: RSpotifyError| CrackedError::RSpotify(arg))?;
 
         Ok(spotify)
     }
 
     /// Parse a Spotify URL.
-    pub async fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] (TODO: Make this it's own error type) if the URL is invalid.
+    pub fn parse_spotify_url(query: &str) -> Result<ParsedSpotifyUrl, CrackedError> {
         let captures = SPOTIFY_QUERY_REGEX
             .captures(query)
             .ok_or(CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
@@ -138,7 +140,7 @@ impl Spotify {
             .as_str();
 
         let media_type = MediaType::from_str(media_type)
-            .map_err(|_| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
+            .map_err(|()| CrackedError::Other(SPOTIFY_INVALID_QUERY))?;
 
         let media_id = captures
             .name("media_id")
@@ -152,6 +154,9 @@ impl Spotify {
     }
 
     /// Extract tracks from a Spotify query.
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] (TODO: Make this it's own error type) if the URL is invalid
+    /// OR if the query is not a playlist. (TODO: Support other media types)
     pub async fn extract_tracks(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -159,7 +164,7 @@ impl Spotify {
         let ParsedSpotifyUrl {
             media_type,
             media_id,
-        } = Self::parse_spotify_url(query).await?;
+        } = Self::parse_spotify_url(query)?;
 
         let media_id = media_id.as_str();
 
@@ -169,7 +174,9 @@ impl Spotify {
         }
     }
 
-    /// Extract a `QueryType` from a Spotify query.
+    /// Extract a [`QueryType`] from a Spotify query.
+    /// # Errors
+    /// Returns a [`CrackedError::Other`] if the URL is invalid.
     pub async fn extract(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -177,7 +184,7 @@ impl Spotify {
         let ParsedSpotifyUrl {
             media_type,
             media_id,
-        } = Self::parse_spotify_url(query).await?;
+        } = Self::parse_spotify_url(query)?;
 
         let media_id = media_id.as_str();
 
@@ -189,6 +196,8 @@ impl Spotify {
     }
 
     /// Search Spotify for a query.
+    /// # Errors
+    /// Returns a [`CrackedError::RSpotify`] if the search fails.
     pub async fn search(
         spotify: &ClientCredsSpotify,
         query: &str,
@@ -202,7 +211,8 @@ impl Spotify {
                 None,
                 None,
             )
-            .await?;
+            .await
+            .map_err(CrackedError::RSpotify)?;
 
         Self::extract_search_results(search_result)
     }
@@ -254,7 +264,7 @@ impl Spotify {
     fn _search_result_to_track_ids(search_result: SearchResult) -> Vec<TrackId<'static>> {
         match search_result {
             SearchResult::Tracks(tracks) => {
-                tracks.items.iter().flat_map(|x| x.id.clone()).collect()
+                tracks.items.iter().filter_map(|x| x.id.clone()).collect()
             },
             _ => Vec::new(),
         }
@@ -266,14 +276,14 @@ impl Spotify {
             SearchResult::Tracks(tracks) => tracks
                 .items
                 .iter()
-                .flat_map(|x| x.id.clone())
+                .filter_map(|x| x.id.clone())
                 .take(1)
                 .collect(),
             _ => Vec::new(),
         }
     }
 
-    /// SearchResult to a QueryType.
+    /// `SearchResult` to a `QueryType`.
     fn extract_search_results(search_result: SearchResult) -> Result<QueryType, CrackedError> {
         match search_result {
             SearchResult::Albums(albums) => {
@@ -311,7 +321,7 @@ impl Spotify {
         }
     }
 
-    /// Get a search query as a QueryType from a spotify track id.
+    /// Get a search query as a `QueryType` from a spotify track id.
     async fn get_track_info(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -384,7 +394,7 @@ impl Spotify {
         Ok(QueryType::KeywordList(query_list))
     }
 
-    /// Get a list of SpotifyTracks from a Spotify playlist.
+    /// Get a list of `SpotifyTracks` from a Spotify playlist.
     pub async fn get_playlist_tracks(
         spotify: &ClientCredsSpotify,
         id: &str,
@@ -412,12 +422,12 @@ impl Spotify {
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(artists: &str, track_name: &str) -> String {
-        format!("{} {}", artists, track_name)
+        format!("{artists} {track_name}")
     }
 
     /// Build a query for searching, from the artist names and the track name.
     fn _build_query_lyric(artists: &str, track_name: &str) -> String {
-        format!("{} {} {}", artists, track_name, MUSIC_SEARCH_SUFFIX)
+        format!("{artists} {track_name} {MUSIC_SEARCH_SUFFIX}")
     }
 
     /// Join the artist names into a single string.
@@ -448,9 +458,9 @@ pub trait SpotifyTrackTrait {
     fn build_query(&self) -> String;
 }
 
-/// Implementation of our SpotifyTrackTrait.
+/// Implementation of our `SpotifyTrackTrait`.
 impl SpotifyTrackTrait for SpotifyTrack {
-    /// Create a new SpotifyTrack.
+    /// Create a new `SpotifyTrack`.
     fn new(full_track: rspotify::model::FullTrack) -> Self {
         Self { full_track }
     }
@@ -530,8 +540,9 @@ impl SpotifyTrackTrait for SpotifyTrack {
     }
 }
 
-/// Implementation of From for SpotifyTrack.
-pub fn build_fake_spotify_track() -> SpotifyTrack {
+/// Implementation of From for `SpotifyTrack`.
+#[must_use]
+pub fn build_mock_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
         name: "asdf".to_string(),
@@ -568,7 +579,7 @@ pub fn build_fake_spotify_track() -> SpotifyTrack {
         external_ids: HashMap::new(),
         is_local: false,
         available_markets: vec![],
-        duration: chrono::TimeDelta::new(60, 0).unwrap(),
+        duration: chrono::TimeDelta::new(60, 0).unwrap_or_default(),
     })
 }
 
@@ -581,48 +592,48 @@ mod test {
     #[tokio::test]
     async fn test_parse_spotify_url_fail() {
         let url = "https://open.spotify.com/trak/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
 
         let url = "https://open.spoify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
 
         let url = "https://open.spotify.com/playlis/";
-        let parsed = Spotify::parse_spotify_url(url).await;
+        let parsed = Spotify::parse_spotify_url(url);
         assert!(parsed.is_err());
     }
 
     #[tokio::test]
     async fn test_parse_spotify_url() {
         let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Track);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Album);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Playlist);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Track);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url = "https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Album);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
 
         let url =
             "https://open.spotify.com/playlist/4uLU6hMCjMI75M1A2tKUQC?si=4uLU6hMCjMI75M1A2tKUQC";
-        let parsed = Spotify::parse_spotify_url(url).await.unwrap();
+        let parsed = Spotify::parse_spotify_url(url).unwrap();
         assert_eq!(parsed.media_type, MediaType::Playlist);
         assert_eq!(parsed.media_id, "4uLU6hMCjMI75M1A2tKUQC");
     }
@@ -640,7 +651,7 @@ mod test {
     // }
     #[test]
     fn test_from_spotify_track() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let res = NewAuxMetadata::from_spotify_track(&track);
         let metadata = res.metadata();
         assert_eq!(metadata.title, Some("asdf".to_string()));
@@ -651,14 +662,14 @@ mod test {
 
     #[test]
     fn test_track_build_query() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let query = track.build_query();
-        assert_eq!(query, r#"asdf qwer"#);
+        assert_eq!(query, r"asdf qwer");
     }
 
     #[test]
     fn test_track_build_query_lyric() {
-        let track = build_fake_spotify_track();
+        let track = build_mock_spotify_track();
         let query = track.build_query_lyric();
         assert_eq!(query, r#"asdf qwer \"topic\""#);
     }

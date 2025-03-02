@@ -26,7 +26,7 @@ pub fn create_application_commands_cracked<U, E>(
     /// We decided to extract context menu commands recursively, despite the subcommand hierarchy
     /// not being preserved. Because it's more confusing to just silently discard context menu
     /// commands if they're not top-level commands.
-    /// https://discord.com/channels/381880193251409931/919310428344029265/947970605985189989
+    /// <https://discord.com/channels/381880193251409931/919310428344029265/947970605985189989>
     fn recursively_add_context_menu_commands<U, E>(
         builder: &mut Vec<serenity::CreateCommand<'static>>,
         command: &poise::Command<U, E>,
@@ -114,12 +114,11 @@ pub async fn register_application_commands_cracked<U: Sync + Send + 'static, E>(
             .await?;
         serenity::Command::set_global_commands(ctx.http(), commands_builder.as_slice()).await?;
     } else {
-        let guild_id = match ctx.guild_id() {
-            Some(x) => x,
-            None => {
-                ctx.say("Must be called in guild").await?;
-                return Ok(());
-            },
+        let guild_id = if let Some(x) = ctx.guild_id() {
+            x
+        } else {
+            ctx.say("Must be called in guild").await?;
+            return Ok(());
         };
 
         ctx.say(format!("Registering {num_commands} commands..."))
@@ -216,13 +215,12 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
                 .content("Processing... Please wait."),
         )
         .await?; // remove buttons after button press and edit message
-    let pressed_button_id = match &interaction {
-        Some(m) => &m.data.custom_id,
-        None => {
-            ctx.say(":warning: You didn't interact in time - please run the command again.")
-                .await?;
-            return Ok(());
-        },
+    let pressed_button_id = if let Some(m) = &interaction {
+        &m.data.custom_id
+    } else {
+        ctx.say(":warning: You didn't interact in time - please run the command again.")
+            .await?;
+        return Ok(());
     };
 
     let id_str = pressed_button_id.as_str();
@@ -251,12 +249,11 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
             serenity::Command::set_global_commands(ctx.http(), vec![].as_slice()).await?;
         }
     } else {
-        let guild_id = match ctx.guild_id() {
-            Some(x) => x,
-            None => {
-                ctx.say(":x: Must be called in guild").await?;
-                return Ok(());
-            },
+        let guild_id = if let Some(x) = ctx.guild_id() {
+            x
+        } else {
+            ctx.say(":x: Must be called in guild").await?;
+            return Ok(());
         };
         if register {
             ctx.say(format!(

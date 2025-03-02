@@ -1,7 +1,7 @@
-use crate::guild::settings::DEFAULT_VALID_TOKEN;
-use crate::serenity::client::{Context as SerenityContext, EventHandler};
+use poise::serenity_prelude as serenity;
 use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
+use serenity::client::{Context as SerenityContext, EventHandler};
 use serenity::model::gateway::Ready;
 use serenity::prelude::RwLock;
 use serenity::secrets::Token;
@@ -11,10 +11,12 @@ use songbird::{
     Event, EventContext, EventHandler as VoiceEventHandler,
 };
 use songbird::{Call, CoreEvent, TrackEvent};
+
+use crate::guild::settings::{DEFAULT_BUFFER_SIZE, DEFAULT_VALID_TOKEN};
+use crack_types::messaging::messages::INVALID_TOKEN;
+use crack_types::CrackedError;
+
 use std::{mem, slice, sync::Arc};
-
-use crate::errors::CrackedError;
-
 // use crate::{Context, Error};
 // use typemap_rev::TypeMap;
 
@@ -34,9 +36,6 @@ impl EventHandler for Handler {
 //     type Value = Vec<u8>;
 // }
 
-// 10MB (10s not powers of 2 since it gets stored on disk)
-const DEFAULT_BUFFER_SIZE: usize = 100_000_000;
-
 pub struct Receiver {
     pub data: Arc<RwLock<Vec<u8>>>,
     pub cache: Option<Arc<Cache>>,
@@ -50,9 +49,12 @@ impl Receiver {
             data,
             buf_size: DEFAULT_BUFFER_SIZE,
             cache: ctx.clone().map(|x| x.cache().cloned()).unwrap_or_default(),
-            http: ctx.map(|x| x.http.clone()).unwrap_or(Arc::new(Http::new(
-                DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token"),
-            ))),
+            http: ctx.map_or(
+                Arc::new(Http::new(
+                    DEFAULT_VALID_TOKEN.parse::<Token>().expect(INVALID_TOKEN),
+                )),
+                |x| x.http.clone(),
+            ),
         }
     }
 
@@ -165,7 +167,7 @@ impl VoiceEventHandler for Receiver {
                     return None;
                 }
                 tracing::warn!("{:?}", track_data);
-                for &(track_state, track_handle) in track_data.iter() {
+                for &(track_state, track_handle) in *track_data {
                     match track_state.playing {
                         PlayMode::Play => {
                             tracing::warn!(

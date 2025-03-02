@@ -1,3 +1,4 @@
+// #![allow(clippy::no_effect_underscore_binding)]
 // ------------------------------------------------------------------
 // Modules
 // ------------------------------------------------------------------
@@ -5,23 +6,34 @@ pub mod http;
 pub use http::*;
 pub mod metadata;
 pub use metadata::*;
+pub mod mocks;
+pub use mocks::*;
+pub mod messaging;
+pub use messaging::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+pub mod errors;
+pub use errors::*;
 
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
 use rspotify::model::TrackId;
+
 // ------------------------------------------------------------------
 // Non-public imports
 // ------------------------------------------------------------------
-use serenity::small_fixed_array::FixedString;
-use serenity::small_fixed_array::ValidLength;
+use serenity::all::Token;
+use serenity::model::id::{ChannelId, GuildId};
+use small_fixed_array::{FixedString, ValidLength};
 use songbird::Call;
 use std::collections::HashMap;
-use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::{Mutex, RwLock};
+#[cfg(feature = "crack-tracing")]
+use tracing::error;
+
 // ------------------------------------------------------------------
 // Public types we use to simplify return and parameter types.
 // ------------------------------------------------------------------
@@ -31,9 +43,10 @@ pub type ArcTMutex<T> = Arc<Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
-pub type Error = Box<dyn StdError + Send + Sync>;
-// pub type CrackedResult<T> = Result<T, crack_core::CrackedError>;
-// pub type CrackedHowResult<T> = anyhow::Result<T, crack_core::CrackedError>;
+pub type CrackedResult<T> = Result<T, CrackedError>;
+pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
+pub type CommandError = Error;
+pub type CommandResult<E = Error> = Result<(), E>;
 pub type SongbirdCall = Arc<Mutex<Call>>;
 
 // ------------------------------------------------------------------
@@ -41,6 +54,7 @@ pub type SongbirdCall = Arc<Mutex<Call>>;
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
 pub use serenity::all::UserId;
+
 pub use thiserror::Error as ThisError;
 pub use typemap_rev::TypeMapKey;
 
@@ -49,8 +63,11 @@ pub use typemap_rev::TypeMapKey;
 // ------------------------------------------------------------------
 pub const MUSIC_SEARCH_SUFFIX: &str = r#"\"topic\""#;
 
-pub(crate) const DEFAULT_VALID_TOKEN: &str =
+pub(crate) static DEFAULT_VALID_TOKEN: &str =
     "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
+
+pub(crate) static DEFAULT_VALID_TOKEN_TOKEN: LazyLock<Token> =
+    LazyLock::new(|| Token::from_str(DEFAULT_VALID_TOKEN).expect("Invalid token"));
 
 /// Custom error type for track resolve errors.
 #[derive(ThisError, Debug)]
@@ -81,8 +98,6 @@ pub enum Mode {
     Search,
 }
 
-use serenity::all::Token;
-use serenity::model::id::{ChannelId, GuildId};
 /// Enum for 64 bit integer Ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiscId {
@@ -193,10 +208,11 @@ impl SpotifyTrackTrait for SpotifyTrack {
 
     /// Get the duration of the track.
     fn duration_seconds(&self) -> i32 {
-        self.full_track.duration.num_seconds() as i32
+        i32::try_from(self.full_track.duration.num_seconds()).unwrap_or(0)
     }
 
     /// Get the duration of the track as a Duration.
+    #[allow(clippy::cast_sign_loss)]
     fn duration(&self) -> Duration {
         let track_secs = self.full_track.duration.num_seconds();
         let nanos = self.full_track.duration.subsec_nanos();
@@ -265,8 +281,34 @@ impl std::str::FromStr for QueryType {
     }
 }
 
+impl Display for QueryType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QueryType::Keywords(keywords) => write!(f, "{keywords}"),
+            QueryType::KeywordList(keywords_list) => write!(f, "{}", keywords_list.join(" ")),
+            QueryType::SpotifyTracks(tracks) => write!(
+                f,
+                "{}",
+                tracks
+                    .iter()
+                    .map(SpotifyTrackTrait::name)
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            QueryType::PlaylistLink(url) | QueryType::VideoLink(url) => write!(f, "{url}"),
+            QueryType::File(file) => write!(f, "{}", file.url),
+            QueryType::NewYoutubeDl((_src, metadata)) => {
+                write!(f, "{}", metadata.clone().source_url.unwrap_or_default())
+            },
+            QueryType::YoutubeSearch(query) => write!(f, "{query}"),
+            QueryType::None => write!(f, "None"),
+        }
+    }
+}
+
 impl QueryType {
     /// Build a query string from the query type.
+    #[must_use]
     pub fn build_query(&self) -> Option<String> {
         let base = self.build_query_base();
         base.map(|x| format!("{x} {MUSIC_SEARCH_SUFFIX}"))
@@ -330,12 +372,12 @@ impl From<UserId> for RequestingUser {
     }
 }
 
-/// We implement `TypeMapKey` for `RequestingUser`.
+/// Implement [`TypeMapKey`] for [`RequestingUser`].
 impl TypeMapKey for RequestingUser {
     type Value = RequestingUser;
 }
 
-/// `Default` implementation for `RequestingUser`.
+/// [`Default`] implementation for [`RequestingUser`].
 impl Default for RequestingUser {
     fn default() -> Self {
         let user = UserId::new(1);
@@ -382,95 +424,44 @@ pub fn get_human_readable_timestamp(duration: Option<Duration>) -> String {
     }
 }
 
-/// Builds a fake [`rusty_ytdl::Author`] for testing purposes.
-#[must_use]
-pub fn build_fake_rusty_author() -> rusty_ytdl::Author {
-    rusty_ytdl::Author {
-        id: "id".to_string(),
-        name: "name".to_string(),
-        user: "user".to_string(),
-        channel_url: "channel_url".to_string(),
-        external_channel_url: "external_channel_url".to_string(),
-        user_url: "user_url".to_string(),
-        thumbnails: vec![],
-        verified: false,
-        subscriber_count: 0,
-    }
-}
-
-/// Builds a fake [`rusty_ytdl::Embed`] for testing purposes.
-#[must_use]
-pub fn build_fake_rusty_embed() -> rusty_ytdl::Embed {
-    rusty_ytdl::Embed {
-        flash_secure_url: "flash_secure_url".to_string(),
-        flash_url: "flash_url".to_string(),
-        iframe_url: "iframe_url".to_string(),
-        width: 0,
-        height: 0,
-    }
-}
-
-/// Builds a fake [`VideoDetails`] for testing purposes.
-#[must_use]
-pub fn build_fake_rusty_video_details() -> rusty_ytdl::VideoDetails {
-    rusty_ytdl::VideoDetails {
-        author: Some(build_fake_rusty_author()),
-        likes: 0,
-        dislikes: 0,
-        age_restricted: false,
-        video_url: "video_url".to_string(),
-        storyboards: vec![],
-        chapters: vec![],
-        embed: build_fake_rusty_embed(),
-        title: "title".to_string(),
-        description: "description".to_string(),
-        length_seconds: "60".to_string(),
-        owner_profile_url: "owner_profile_url".to_string(),
-        external_channel_id: "external_channel_id".to_string(),
-        is_family_safe: false,
-        available_countries: vec![],
-        is_unlisted: false,
-        has_ypc_metadata: false,
-        view_count: "0".to_string(),
-        category: "category".to_string(),
-        publish_date: "publish_date".to_string(),
-        owner_channel_name: "owner_channel_name".to_string(),
-        upload_date: "upload_date".to_string(),
-        video_id: "video_id".to_string(),
-        keywords: vec![],
-        channel_id: "channel_id".to_string(),
-        is_owner_viewing: false,
-        is_crawlable: false,
-        allow_ratings: false,
-        is_private: false,
-        is_unplugged_corpus: false,
-        is_live_content: false,
-        thumbnails: vec![rusty_ytdl::Thumbnail {
-            url: "thumbnail_url".to_string(),
-            width: 0,
-            height: 0,
-        }],
-    }
-}
-
-/// Builds a fake but valid [`Token`] for testing purposes.
-/// # Panics
-/// * If the token is invalid.
-#[must_use]
-pub fn get_valid_token() -> Token {
-    DEFAULT_VALID_TOKEN.parse::<Token>().expect("Invalid token")
-}
-
 /// Convert a string to a fixed string.
 /// # Panics
 /// * If the string is not a valid length.
 pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
-    FixedString::from_str(&s.into()).unwrap()
+    match FixedString::from_str(&s.into()) {
+        Ok(fixed) => fixed,
+        Err(e) => {
+            #[cfg(feature = "crack-tracing")]
+            error!("{}", e);
+            panic!("{}", e);
+        },
+    }
+}
+
+// /// Convert Option<CrackedError> to CrackedError.
+// impl From<Option<CrackedError>> for CrackedError {
+//     fn from(e: Option<CrackedError>) -> Self {
+//         e.unwrap_or(CrackedError::Unknown)
+//     }
+// }
+
+/// Load an environment variable if it exists.
+/// # Errors
+/// * If the environment variable does not exist.
+pub fn load_key(k: &str) -> Result<String, Error> {
+    if let Ok(token) = std::env::var(k) {
+        Ok(token)
+    } else {
+        #[cfg(feature = "crack-tracing")]
+        error!("{k} not found in environment.");
+        Err(format!("{k} not found in environment.").into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use serenity::small_fixed_array::FixedString;
+    use crate::mocks::build_mock_rusty_video_details;
+    use small_fixed_array::FixedString;
 
     use super::*;
 
@@ -514,10 +505,13 @@ mod tests {
 
     #[test]
     fn test_video_details_to_aux_metadata() {
-        let details = build_fake_rusty_video_details();
+        let details = build_mock_rusty_video_details();
         let metadata = video_details_to_aux_metadata(&details);
-        assert_eq!(metadata.title, Some("title".to_string()));
-        assert_eq!(metadata.source_url, Some("video_url".to_string()));
+        assert_eq!(metadata.title, Some("Title".to_string()));
+        assert_eq!(
+            metadata.source_url,
+            Some("https://www.youtube.com/watch?v=meta123".to_string())
+        );
         assert_eq!(metadata.channel, Some("owner_channel_name".to_string()));
         assert_eq!(metadata.duration, Some(Duration::from_secs(60)));
         assert_eq!(metadata.date, Some("publish_date".to_string()));
@@ -526,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_video_info_to_aux_metadata() {
-        let details = build_fake_rusty_video_details();
+        let details = build_mock_rusty_video_details();
         let info = VideoInfo {
             video_details: details,
             dash_manifest_url: Some("dash_manifest_url".to_string()),
@@ -535,8 +529,11 @@ mod tests {
             related_videos: vec![],
         };
         let metadata = video_info_to_aux_metadata(&info);
-        assert_eq!(metadata.title, Some("title".to_string()));
-        assert_eq!(metadata.source_url, Some("video_url".to_string()));
+        assert_eq!(metadata.title, Some("Title".to_string()));
+        assert_eq!(
+            metadata.source_url,
+            Some("https://www.youtube.com/watch?v=meta123".to_string())
+        );
         assert_eq!(metadata.channel, Some("owner_channel_name".to_string()));
         assert_eq!(metadata.duration, Some(Duration::from_secs(60)));
         assert_eq!(metadata.date, Some("publish_date".to_string()));

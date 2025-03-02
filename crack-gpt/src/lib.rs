@@ -134,7 +134,7 @@ impl GptContext {
     pub fn load_key_if_empty(&mut self) -> Result<String, Error> {
         if let Some(key) = &self.key {
             return Ok(key.clone());
-        };
+        }
 
         match std::env::var("OPENAI_API_KEY") {
             Ok(key) => {
@@ -261,7 +261,7 @@ mod test {
         let query = "Please respond with the word \"fish\".".to_string();
         let ctx = GptContext::default();
         let response = ctx.openai_azure_response(query, 1).await;
-        println!("{:?}", response);
+        println!("{response:?}");
         assert!(response.is_err() || response.unwrap().to_ascii_lowercase().contains("fish"));
     }
 }

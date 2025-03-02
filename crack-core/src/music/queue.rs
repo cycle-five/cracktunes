@@ -1,14 +1,3 @@
-use crate::{
-    errors::{verify, CrackedError},
-    handlers::track_end::update_queue_messages,
-    http_utils::CacheHttpExt,
-    music::NewQueryType,
-    sources::rusty_ytdl::RustyYoutubeSearch,
-    utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
-    Context as CrackContext, Error,
-};
-use crack_testing::ResolvedTrack;
-use crack_types::{Mode, NewAuxMetadata, QueryType};
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
@@ -22,19 +11,39 @@ use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 
+use crate::{
+    handlers::track_end::update_queue_messages, http_utils::CacheHttpExt, music::NewQueryType,
+    sources::rusty_ytdl::RustyYoutubeSearch, utils::TrackData, Context as CrackContext, Error,
+};
+use crack_testing::ResolvedTrack;
+use crack_types::{verify, CrackedError};
+use crack_types::{Mode, NewAuxMetadata, QueryType};
+
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
 /// # Errors
 /// Returns a [`CrackedError`] if the track cannot be queued.
 /// Can fail during the search itself, or when adding the metadata to the track,
 /// or when adding the track to the internal queue.
+#[allow(dead_code)]
 pub async fn queue_resolved_track_back(
     call: &Arc<Mutex<Call>>,
     track_resolved: ResolvedTrack<'static>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    //let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
+    let track = resolved_track_to_songbird(track_resolved, http_client.clone()).await?;
+    let _track_handle = handler.enqueue(track).await;
+    let new_q = handler.queue().current_queue();
+    drop(handler);
+
+    Ok(new_q)
+}
+
+pub async fn resolved_track_to_songbird(
+    track_resolved: ResolvedTrack<'static>,
+    http_client: reqwest::Client,
+) -> Result<Track, CrackedError> {
     let query = QueryType::VideoLink(track_resolved.get_url());
     let track2 = track_resolved.clone();
     let ytdl = RustyYoutubeSearch::new_with_stuff(
@@ -48,17 +57,8 @@ pub async fn queue_resolved_track_back(
         user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
         aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
     });
-    let track = Track::new_with_data(ytdl.clone().into(), track_data);
-    let _track_handle = handler.enqueue(track).await;
-    // .enqueue_input(Into::<SongbirdInput>::into(track))
-    let new_q = handler.queue().current_queue();
-    drop(handler);
-    // if let Some(metadata) = track_resolved.metadata {
-    //     set_track_handle_metadata(&mut track_handle, metadata.clone()).await?;
-    // }
-    // set_track_handle_requesting_user(&mut track_handle, track_resolved.user_id).await?;
-
-    Ok(new_q)
+    let songbird_input = Into::<SongbirdInput>::into(ytdl);
+    Ok(Track::new_with_data(songbird_input, track_data))
 }
 
 /// Takes a resolved track and queues it to the back of the queue.
@@ -74,24 +74,43 @@ pub async fn queue_resolved_track_back_old(
     let mut handler = call.lock().await;
     let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
 
-    let mut track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
+    let track_data = TrackData::new()
+        .with_user_id(track.get_requesting_user())
+        .with_metadata(track.get_metadata().unwrap());
+    let asdf_track = Track::new_with_data(ytdl.into(), track_data);
+
+    let _track_handle = handler.enqueue(asdf_track).await;
+    //.enqueue_input(Into::<SongbirdInput>::into(ytdl))
+    //.await;
     let new_q = handler.queue().current_queue();
     drop(handler);
-    set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
-    set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
+    // set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
+    // set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
 
     Ok(new_q)
 }
 
 /// Data needed to queue a track.
-/// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
+/// TODO: This is mostly become redundant with `ResolvedTrack`, need to clean this up.
 pub struct TrackReadyData {
     pub source: SongbirdInput,
     pub metadata: NewAuxMetadata,
     pub user_id: Option<UserId>,
     pub username: Option<String>,
+}
+
+/// Takes a track that is ready to be queued and returns a [`TrackData`] for it.
+pub fn ready_data_to_track(ready_track: TrackReadyData) -> Track {
+    let TrackReadyData {
+        source,
+        metadata,
+        user_id,
+        username: _,
+    } = ready_track;
+    let track_data = TrackData::new()
+        .with_user_id(user_id.unwrap_or(UserId::new(1)))
+        .with_metadata(metadata.into());
+    Track::new_with_data(source, track_data)
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -129,7 +148,9 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
-    let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let track = ready_data_to_track(ready_track);
+    //let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let _track_handle = handler.enqueue(track).await;
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -143,8 +164,8 @@ pub async fn queue_track_ready_front(
     }
 
     drop(handler);
-    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
-    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
+    // set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
+    // set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
     Ok(new_q)
 }
 
@@ -155,17 +176,18 @@ pub async fn _queue_track_ready_back(
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let mut handler = call.lock().await;
 
-    let TrackReadyData {
-        source,
-        metadata,
-        user_id,
-        ..
-    } = ready_track;
+    // let TrackReadyData {
+    //     source,
+    //     metadata,
+    //     user_id,
+    //     ..
+    // } = ready_track;
 
-    let track_data = TrackData::new()
-        .with_user_id(user_id.unwrap())
-        .with_metadata(metadata.into());
-    let track = Track::new_with_data(source, track_data);
+    // let track_data = TrackData::new()
+    //     .with_user_id(user_id.unwrap())
+    //     .with_metadata(metadata.into());
+    // let track = Track::new_with_data(source, track_data);
+    let track = ready_data_to_track(ready_track);
 
     let _track_handle = handler.enqueue(track).await;
     let new_q = handler.queue().current_queue();
@@ -207,7 +229,7 @@ pub async fn queue_track_back(
                     return _queue_track_ready_back(call, ready_track).await;
                 },
                 None => {
-                    return Err(CrackedError::TrackResolveError(
+                    return Err(CrackedError::ResolveError(
                         TrackResolveError::UnknownQueryType,
                     ));
                 },
@@ -220,21 +242,21 @@ pub async fn queue_track_back(
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
     let queue =
-        queue_resolved_track_back(call, resolved, http_utils::get_client_old().clone()).await;
+        queue_resolved_track_back_old(call, resolved, ctx.data().http_client.clone()).await?;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
-        r#"
+        r"
             after_ready: {:?}
             after_send: {:?}
             after_queue: {:?}
             total: {:?}
-        "#,
+        ",
         after_ready.duration_since(begin),
         after_send.duration_since(after_ready),
         after_queue.duration_since(after_send),
         after_queue.duration_since(begin)
     );
-    queue
+    Ok(queue)
 }
 
 /// Queue a list of tracks to be played.
@@ -252,9 +274,14 @@ pub async fn queue_ready_track_list(
             user_id,
             ..
         } = ready_track;
-        let mut track_handle = handler.enqueue_input(source).await;
-        set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
+        let track_data = TrackData::new()
+            .with_user_id(user_id.unwrap())
+            .with_metadata(metadata.into());
+        let track = Track::new_with_data(source, track_data);
+        let _track_handle = handler.enqueue(track).await;
+        // let mut track_handle = handler.enqueue_input(source).await;
+        // set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
+        // set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
         if mode == Mode::Next {
             handler.queue().modify_queue(|queue| {
                 let back = queue.pop_back().unwrap();
@@ -305,7 +332,7 @@ pub async fn queue_keyword_list_back(
             ))),
         )
         .await?;
-        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?
+        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?;
     }
     Ok(())
 }
@@ -335,7 +362,7 @@ pub async fn queue_vec_query_type(
 use crate::http_utils;
 use crack_types::YoutubeDl;
 /// Queue a list of queries to be played with a given offset.
-/// N.B. The offset must be 0 < offset < queue.len() + 1
+/// N.B. The offset must be 0 < offset < `queue.len()` + 1
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_query_list_offset(
     ctx: CrackContext<'_>,
@@ -364,7 +391,7 @@ pub async fn queue_query_list_offset(
     let mut tracks = Vec::new();
     for query in queries {
         let resolved = ctx.data().ct_client.resolve_track(query).await?;
-        tracks.push(resolved)
+        tracks.push(resolved);
     }
     // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
     // for query in queries {
@@ -375,23 +402,31 @@ pub async fn queue_query_list_offset(
     // }
 
     let mut cur_q = Default::default();
-    let client = http_utils::get_client_old();
+    let client = http_utils::get_client();
     let len = tracks.len();
     for (idx, resolved) in tracks.into_iter().enumerate() {
         let metadata = resolved.get_metadata().unwrap();
         let user_id = resolved.get_requesting_user();
         let ytdl = YoutubeDl::new(client.clone(), resolved.get_url());
+
         let input = ytdl.into();
 
+        let track = Track::new_with_data(
+            input,
+            TrackData::new()
+                .with_user_id(user_id)
+                .with_metadata(metadata),
+        );
+
         let mut handler = call.lock().await;
-        let mut track_handle = handler.enqueue_input(input).await;
+        let mut _track_handle = handler.enqueue(track).await;
         handler.queue().modify_queue(|q| {
             let back = q.pop_back().unwrap();
             q.insert(idx + offset, back);
         });
         //let mut map = track_handle.typemap().write().await;
-        set_track_handle_metadata(&mut track_handle, metadata).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id).await?;
+        // set_track_handle_metadata(&mut track_handle, metadata).await?;
+        // set_track_handle_requesting_user(&mut track_handle, user_id).await?;
 
         if idx == len - 1 {
             cur_q = handler.queue().current_queue();
@@ -404,6 +439,8 @@ pub async fn queue_query_list_offset(
 }
 
 /// Get the play mode and the message from the parameters to the play command.
+/// # Panics
+/// If the FixedString conversion fails.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
 #[tracing::instrument]
 pub fn get_mode(
@@ -413,11 +450,12 @@ pub fn get_mode(
 ) -> (Mode, FixedString) {
     let opt_mode = mode.clone();
     if is_prefix {
-        let asdf2 = msg
-            .clone()
-            .map(|s| s.replace("query_or_url:", ""))
-            .unwrap_or_default();
-        let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        // let asdf2 = msg
+        //     .clone()
+        //     .map(|s| s.replace("query_or_url:", ""))
+        //     .unwrap_or_default();
+        // let asdf = asdf2.split_whitespace().next().unwrap_or_default();
+        let asdf = msg.clone().unwrap_or_default();
         let mode = if asdf.starts_with("next") {
             Mode::Next
         } else if asdf.starts_with("all") {
@@ -437,15 +475,15 @@ pub fn get_mode(
         } else {
             Mode::End
         };
-        if mode != Mode::End {
-            let s = msg.clone().unwrap_or_default();
-            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
-            (mode, FixedString::from_str(s2).expect("wtf?"))
-        } else {
+        if mode == Mode::End {
             (
                 Mode::End,
                 FixedString::from_str(&msg.unwrap_or_default()).expect("wtf?"),
             )
+        } else {
+            let s = msg.clone().unwrap_or_default();
+            let s2 = s.splitn(2, char::is_whitespace).last().unwrap();
+            (mode, FixedString::from_str(s2).expect("wtf?"))
         }
     } else {
         let mode = match opt_mode
@@ -489,7 +527,7 @@ pub fn get_msg(
             .map(|s| s.replace("query_or_url:", ""))
             .unwrap_or_default()
             + " "
-            + &step1.unwrap_or("".to_string()))
+            + &step1.unwrap_or_default())
             .trim()
         {
             "" => None,
@@ -561,14 +599,14 @@ mod test {
 
     #[test]
     fn test_get_msg() {
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
+        let mode = Some(String::new());
+        let query_or_url = Some(String::new());
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
         let mode = None;
-        let query_or_url = Some("".to_string());
+        let query_or_url = Some(String::new());
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
@@ -579,17 +617,17 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
-        let query_or_url = Some("".to_string());
+        let mode = Some(String::new());
+        let query_or_url = Some(String::new());
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
+        assert_eq!(res, Some(String::new()));
 
         let mode = None;
-        let query_or_url = Some("".to_string());
+        let query_or_url = Some(String::new());
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);
-        assert_eq!(res, Some("".to_string()));
+        assert_eq!(res, Some(String::new()));
 
         let mode = None;
         let query_or_url = None;
@@ -597,13 +635,13 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
+        let mode = Some(String::new());
         let query_or_url = None;
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, None);
 
-        let mode = Some("".to_string());
+        let mode = Some(String::new());
         let query_or_url = None;
         let is_prefix = false;
         let res = get_msg(mode, query_or_url, is_prefix);
