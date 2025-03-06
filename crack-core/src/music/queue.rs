@@ -9,7 +9,7 @@ use songbird::{
 };
 use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     handlers::track_end::update_queue_messages, http_utils::CacheHttpExt, music::NewQueryType,
@@ -18,6 +18,36 @@ use crate::{
 use crack_testing::ResolvedTrack;
 use crack_types::{verify, CrackedError};
 use crack_types::{Mode, NewAuxMetadata, QueryType};
+
+/// Data needed to queue a track.
+/// TODO: This is mostly become redundant with `ResolvedTrack`, need to clean this up.
+pub struct TrackReadyData {
+    pub source: SongbirdInput,
+    pub metadata: NewAuxMetadata,
+    pub user_id: Option<UserId>,
+    pub username: Option<String>,
+}
+
+/// Takes a track that is ready to be queued and returns a [`TrackData`] for it.
+pub fn ready_data_to_track(ready_track: TrackReadyData) -> Track {
+    let TrackReadyData {
+        source,
+        metadata,
+        user_id,
+        username: _,
+    } = ready_track;
+    let track_data = TrackData::new()
+        .with_user_id(user_id.unwrap_or(UserId::new(1)))
+        .with_metadata(metadata.into());
+    Track::new_with_data(source, track_data)
+}
+
+/// Converts a [`TrackReadyData`] into a [`Track`].
+impl From<TrackReadyData> for Track {
+    fn from(ready_track: TrackReadyData) -> Self {
+        ready_data_to_track(ready_track)
+    }
+}
 
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
@@ -53,10 +83,13 @@ pub async fn resolved_track_to_songbird(
         track2.video,
     )?;
     let resolved_clone = &track_resolved.clone();
-    let track_data = Arc::new(TrackData {
-        user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
-        aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
-    });
+    // let track_data = Arc::new(TrackData {
+    //     user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
+    //     aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
+    // });
+    let track_data = TrackData::new()
+        .with_user_id(resolved_clone.get_requesting_user())
+        .with_metadata(resolved_clone.get_metadata().unwrap_or_default());
     let songbird_input = Into::<SongbirdInput>::into(ytdl);
     Ok(Track::new_with_data(songbird_input, track_data))
 }
@@ -88,29 +121,6 @@ pub async fn queue_resolved_track_back_old(
     // set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
 
     Ok(new_q)
-}
-
-/// Data needed to queue a track.
-/// TODO: This is mostly become redundant with `ResolvedTrack`, need to clean this up.
-pub struct TrackReadyData {
-    pub source: SongbirdInput,
-    pub metadata: NewAuxMetadata,
-    pub user_id: Option<UserId>,
-    pub username: Option<String>,
-}
-
-/// Takes a track that is ready to be queued and returns a [`TrackData`] for it.
-pub fn ready_data_to_track(ready_track: TrackReadyData) -> Track {
-    let TrackReadyData {
-        source,
-        metadata,
-        user_id,
-        username: _,
-    } = ready_track;
-    let track_data = TrackData::new()
-        .with_user_id(user_id.unwrap_or(UserId::new(1)))
-        .with_metadata(metadata.into());
-    Track::new_with_data(source, track_data)
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.

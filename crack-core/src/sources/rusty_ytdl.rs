@@ -19,8 +19,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
 use symphonia::core::io::MediaSource;
+use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-
 use super::ytdl::HANDLE;
 
 #[derive(Clone, Debug)]
@@ -323,6 +323,9 @@ impl Read for MediaSourceStream {
         //tokio::task::spawn_blocking(move || handle.block_on(async { self.read_async(buf).await }))
         let handle = HANDLE.lock().unwrap().clone().unwrap();
         tokio::task::block_in_place(move || handle.block_on(async { self.read_async(buf).await }))
+        // tokio::task::block_in_place(move || {
+        //     Handle::current().block_on(async { self.read_async(buf).await })
+        // })
     }
 }
 
