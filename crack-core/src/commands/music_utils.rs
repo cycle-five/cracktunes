@@ -129,7 +129,7 @@ pub async fn do_join(
             } else {
                 tracing::warn!("Error joining channel: {:?}", err);
                 // let str = err.to_string().clone();
-                let my_err = CrackedError::JoinChannelError(err);
+                let my_err = CrackedError::JoinChannelError(Box::new(err));
                 // let crack_msg = CrackedMessage::CrackedRed(str.clone());
                 // let msg = PoiseContextExt::send_reply_embed(ctx, crack_msg).await?;
                 // //ctx.defer().await;

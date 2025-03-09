@@ -51,7 +51,7 @@ pub enum CrackedError {
     FailedToInsertGuildSettings,
     FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
     GuildOnly,
-    JoinChannelError(JoinError),
+    JoinChannelError(Box<JoinError>),
     Json(serde_json::Error),
     IndexOutOfBounds {
         name: &'static str,
@@ -352,10 +352,7 @@ impl From<SerenityError> for CrackedError {
 
 impl From<CrackedError> for SerenityError {
     fn from(_x: CrackedError) -> Self {
-        SerenityError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "CrackedError",
-        ))
+        SerenityError::Io(std::io::Error::other("CrackedError"))
     }
 }
 
@@ -397,7 +394,7 @@ impl From<Elapsed> for CrackedError {
 /// Provides an implementation to convert a [`JoinError`] to a [`CrackedError`].
 impl From<JoinError> for CrackedError {
     fn from(err: JoinError) -> Self {
-        CrackedError::JoinChannelError(err)
+        CrackedError::JoinChannelError(Box::new(err))
     }
 }
 

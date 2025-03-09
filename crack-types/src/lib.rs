@@ -264,9 +264,29 @@ pub enum QueryType {
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
     File(Attachment),
-    NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
+    NewYoutubeDl(Box<(YoutubeDl<'static>, AuxMetadata)>),
     YoutubeSearch(String),
     None,
+}
+
+//type BoxedYoutubeDl = Box<(YoutubeDl<'static>, AuxMetadata)>;
+pub struct BoxedYoutubeDl(pub Box<(YoutubeDl<'static>, AuxMetadata)>);
+
+impl From<BoxedYoutubeDl> for QueryType {
+    fn from(boxed: BoxedYoutubeDl) -> Self {
+        QueryType::NewYoutubeDl(boxed.0)
+    }
+}
+
+impl BoxedYoutubeDl {
+    pub fn new(src: YoutubeDl<'static>, metadata: AuxMetadata) -> Self {
+        BoxedYoutubeDl(Box::new((src, metadata)))
+    }
+
+    pub fn source_url(&self) -> Option<String> {
+        let boxed = &self.0;
+        boxed.1.source_url.clone()
+    }
 }
 
 impl std::str::FromStr for QueryType {
@@ -297,8 +317,16 @@ impl Display for QueryType {
             ),
             QueryType::PlaylistLink(url) | QueryType::VideoLink(url) => write!(f, "{url}"),
             QueryType::File(file) => write!(f, "{}", file.url),
-            QueryType::NewYoutubeDl((_src, metadata)) => {
-                write!(f, "{}", metadata.clone().source_url.unwrap_or_default())
+            QueryType::NewYoutubeDl(boxed_src_metadata) => {
+                write!(
+                    f,
+                    "{}",
+                    (*boxed_src_metadata)
+                        .clone()
+                        .1
+                        .source_url
+                        .unwrap_or_default()
+                )
             },
             QueryType::YoutubeSearch(query) => write!(f, "{query}"),
             QueryType::None => write!(f, "None"),
@@ -330,7 +358,8 @@ impl QueryType {
             ),
             QueryType::PlaylistLink(url) => Some(url.to_string()),
             QueryType::File(file) => Some(file.url.to_string()),
-            QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
+            //QueryType::NewYoutubeDl(Box((_src, metadata))) => metadata.source_url.clone(),
+            QueryType::NewYoutubeDl(src_metadata) => src_metadata.1.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
         }

@@ -209,7 +209,7 @@ impl<'a> CrackTrackClient<'a> {
                     .collect::<Vec<QueryType>>();
                 self.resolve_track_many(queries).await
             },
-            QueryType::NewYoutubeDl((_ytdl, opts)) => {
+            QueryType::NewYoutubeDl(boxed_src_metadata) => {
                 let req_options = RequestOptions {
                     client: Some(self.req_client.clone()),
                     ..Default::default()
@@ -218,6 +218,7 @@ impl<'a> CrackTrackClient<'a> {
                     request_options: req_options.clone(),
                     ..Default::default()
                 };
+                let opts = &boxed_src_metadata.1;
                 let video = rusty_ytdl::Video::new_with_options(
                     opts.clone().source_url.unwrap_or_default(),
                     video_options,
@@ -226,7 +227,7 @@ impl<'a> CrackTrackClient<'a> {
 
                 Ok(vec![ResolvedTrack::default()
                     .with_details(info.video_details)
-                    .with_metadata(opts)
+                    .with_metadata(opts.clone())
                     .with_video(video)])
             },
             QueryType::SpotifyTracks(tracks) => {

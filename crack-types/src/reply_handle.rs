@@ -81,7 +81,7 @@ impl ReplyHandleTrait for ReplyHandleWrapperSimple {
 /// Enum that can hold either a message or a reply handle.
 #[derive(Clone)]
 pub enum MessageOrReplyHandle {
-    Message(Message),
+    Message(Box<Message>),
     ReplyHandle(Arc<dyn ReplyHandleTrait>),
 }
 
@@ -96,7 +96,7 @@ impl std::fmt::Debug for MessageOrReplyHandle {
 
 impl From<Message> for MessageOrReplyHandle {
     fn from(message: Message) -> Self {
-        MessageOrReplyHandle::Message(message)
+        MessageOrReplyHandle::Message(Box::new(message))
     }
 }
 
@@ -133,7 +133,7 @@ impl Container {
 #[allow(clippy::unused_async)]
 pub async fn run() {
     let message = Message::default();
-    let handle = MessageOrReplyHandle::Message(message);
+    let handle = MessageOrReplyHandle::Message(Box::new(message));
     let container = Container::new(handle);
 
     let _ = container.get_handle();
@@ -157,7 +157,7 @@ mod tests {
     #[tokio::test]
     async fn test_into_message() {
         let message = Message::default();
-        let _ = MessageOrReplyHandle::Message(message);
+        let _ = MessageOrReplyHandle::Message(Box::new(message));
 
         // let message = handle.into_message().await.unwrap();
         // assert_eq!(message.id, 0);
@@ -180,7 +180,7 @@ mod tests {
     async fn test_container() {
         // Example usage
         let message = Message::default();
-        let handle = MessageOrReplyHandle::Message(message);
+        let handle = MessageOrReplyHandle::Message(Box::new(message));
 
         let container = Container::new(handle);
 

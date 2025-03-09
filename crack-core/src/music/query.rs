@@ -21,7 +21,7 @@ use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use crack_types::messaging::messages::SPOTIFY_AUTH_FAILED;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
-use crack_types::{verify, CrackedError};
+use crack_types::{verify, BoxedYoutubeDl, CrackedError};
 use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
@@ -81,8 +81,8 @@ impl From<NewQueryType> for crack_types::QueryType {
             QueryType::SpotifyTracks(tracks) => crack_types::QueryType::SpotifyTracks(tracks),
             QueryType::PlaylistLink(url) => crack_types::QueryType::PlaylistLink(url),
             QueryType::File(file) => crack_types::QueryType::File(file),
-            QueryType::NewYoutubeDl((src, metadata)) => {
-                crack_types::QueryType::NewYoutubeDl((src, metadata))
+            QueryType::NewYoutubeDl(boxed_src_metadata) => {
+                crack_types::QueryType::NewYoutubeDl(boxed_src_metadata)
             },
             QueryType::YoutubeSearch(query) => crack_types::QueryType::YoutubeSearch(query),
             QueryType::None => crack_types::QueryType::None,
@@ -176,7 +176,7 @@ impl NewQueryType {
             ),
             QueryType::PlaylistLink(url) => Some(url.to_string()),
             QueryType::File(file) => Some(file.url.to_string()),
-            QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
+            QueryType::NewYoutubeDl(boxed_src_metadata) => boxed_src_metadata.1.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
             QueryType::None => None,
         }
@@ -218,7 +218,8 @@ impl NewQueryType {
                 );
                 Ok((status, file_name))
             },
-            QueryType::NewYoutubeDl((_src, metadata)) => {
+            QueryType::NewYoutubeDl(boxed_src_metadata) => {
+                let metadata = boxed_src_metadata.1.clone();
                 tracing::warn!("Mode::Download, QueryType::NewYoutubeDl");
                 let url = metadata.source_url.as_ref().unwrap();
                 let file_name = format!(
@@ -542,7 +543,7 @@ impl NewQueryType {
                 // FIXME
                 let mut src = YoutubeDl::new(http_utils::get_client().clone(), url.clone());
                 let metadata = src.aux_metadata().await?;
-                queue_track_back(ctx, &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
+                queue_track_back(ctx, &call, &BoxedYoutubeDl::new(src, metadata).into()).await?;
                 Ok(true)
             },
             QueryType::KeywordList(keywords_list) => {
@@ -791,7 +792,7 @@ impl NewQueryType {
                 ))
             },
             QueryType::NewYoutubeDl(data) => {
-                let (ytdl, aux_metadata) = data.clone();
+                let (ytdl, aux_metadata) = *data.clone();
                 Ok((ytdl.into(), vec![NewAuxMetadata(aux_metadata)]))
             },
             QueryType::PlaylistLink(url) => {
@@ -976,7 +977,7 @@ pub async fn query_type_from_url(
                         return Err(CrackedError::AudioStream(e).into());
                     },
                 };
-                Some(QueryType::NewYoutubeDl((ytdl, metadata)))
+                Some(BoxedYoutubeDl::new(ytdl, metadata).into())
             },
             None => {
                 // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?

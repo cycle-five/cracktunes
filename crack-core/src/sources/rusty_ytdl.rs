@@ -19,9 +19,9 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::pin::Pin;
 use std::sync::Arc;
 use symphonia::core::io::MediaSource;
-use tokio::runtime::Handle;
-use tokio::sync::RwLock;
+// use tokio::runtime::Handle;
 use super::ytdl::HANDLE;
+use tokio::sync::RwLock;
 
 #[derive(Clone, Debug)]
 pub struct RustyYoutubeSearch<'a> {
