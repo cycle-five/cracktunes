@@ -25,6 +25,8 @@ pub async fn clean(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Clean up old messages from the bot, internal fucntion.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(ctx))]
 pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();

@@ -96,6 +96,8 @@ pub async fn mute_others_internal(
 }
 
 /// Mute a user, internal function.
+#[cfg(not(tarpaulin_include))]
+#[tracing::instrument(skip(cache_http))]
 pub async fn mute_internal(
     cache_http: &impl CacheHttp,
     user: serenity::User,

@@ -29,6 +29,7 @@ pub async fn clear(
 }
 
 /// Clear the queue, internal.
+#[cfg(not(tarpaulin_include))]
 pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();

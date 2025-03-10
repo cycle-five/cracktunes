@@ -444,3 +444,32 @@ async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_prefixes() {
+        let prefixes = vec!["!".to_string(), "!!".to_string(), "!!!".to_string()];
+        let content = "!test";
+        assert_eq!(check_prefixes(&prefixes, content), Some(1));
+    }
+
+    #[test]
+    fn test_check_prefixes_no_match() {
+        let prefixes = vec!["!".to_string(), "!!".to_string(), "!!!".to_string()];
+        let content = "test";
+        assert_eq!(check_prefixes(&prefixes, content), None);
+    }
+
+    #[tokio::test]
+    async fn test_poise_framework() {
+        let config = BotConfig::default();
+        let event_log_async = EventLogAsync::default();
+        match poise_framework(config, event_log_async).await {
+            Ok(_) => (),
+            Err(e) => assert!(e.to_string().contains("The provided token was invalid")),
+        }
+    }
+}

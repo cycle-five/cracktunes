@@ -89,6 +89,7 @@ pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
 
 /// List of all the admin commands.
 #[must_use]
+#[cfg(not(tarpaulin_include))]
 pub fn commands() -> Vec<crate::Command> {
     vec![
         admin(),
