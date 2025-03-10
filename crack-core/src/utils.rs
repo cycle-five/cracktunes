@@ -342,7 +342,7 @@ pub async fn edit_embed_response(
 ) -> Result<Message, CrackedError> {
     match interaction {
         CommandOrMessageInteraction::Command(int) => {
-            edit_reponse_interaction(http, &Interaction::Command(int.clone()), embed).await
+            edit_reponse_interaction(http, &Interaction::Command(*int.clone()), embed).await
         },
         CommandOrMessageInteraction::Message(msg) => match msg {
             Some(_msg) => {
@@ -788,7 +788,7 @@ pub fn check_interaction(result: Result<(), Error>) {
 
 #[allow(deprecated)]
 pub enum CommandOrMessageInteraction {
-    Command(CommandInteraction),
+    Command(Box<CommandInteraction>),
     Message(Option<Box<MessageInteractionMetadata>>),
 }
 
@@ -809,9 +809,9 @@ pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
 #[must_use]
 pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
     match ctx {
-        CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
+        CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(Box::new(
             app_ctx.interaction.clone(),
-        )),
+        ))),
         CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
             ctx.msg.interaction_metadata.clone(),
         )),

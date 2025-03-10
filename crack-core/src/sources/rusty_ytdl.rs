@@ -285,12 +285,7 @@ pub struct MediaSourceStream {
 impl MediaSourceStream {
     async fn read_async(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let opt_bytes = if self.buffer.read().await.is_empty() {
-            either::Left(
-                self.stream
-                    .chunk()
-                    .await
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
-            )
+            either::Left(self.stream.chunk().await.map_err(|e| io::Error::other(e))?)
         } else {
             either::Right(())
         };

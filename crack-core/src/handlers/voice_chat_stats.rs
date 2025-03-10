@@ -155,7 +155,7 @@ async fn run_cam_enforcement(
     //     "mute",
     // );
 
-    for (dc_res, state) in vec![dc_res1, dc_res2] {
+    for (dc_res, state) in [dc_res1, dc_res2] {
         match dc_res {
             Ok(_) => {
                 tracing::error!("User {} has been violated: {}", user.name, state);
