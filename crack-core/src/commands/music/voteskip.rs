@@ -1,7 +1,7 @@
 use crate::{
     commands::{
         cmd_check_music,
-        music::{create_skip_response, force_skip_top_track},
+        music::skip::{create_skip_response, force_skip_top_track},
     },
     connection::get_voice_channel_for_user,
     messaging::message::CrackedMessage,

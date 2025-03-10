@@ -1,3 +1,4 @@
+// Original commands
 pub mod autopause;
 pub mod autoplay;
 pub mod clear;
@@ -16,7 +17,6 @@ pub mod playlog;
 pub mod queue;
 pub mod remove;
 pub mod repeat;
-pub mod resume;
 pub mod seek;
 pub mod shuffle;
 pub mod skip;
@@ -26,32 +26,34 @@ pub mod volume;
 pub mod vote;
 pub mod voteskip;
 
-pub use autopause::*;
-pub use autoplay::*;
-pub use clear::*;
-pub use collector::*;
-pub use doplay::*;
-pub use gambling::*;
-pub use get_metadata::*;
-pub use grab::*;
-pub use leave::*;
-pub use lyrics::*;
-pub use manage_sources::*;
-pub use nowplaying::*;
-pub use pause::*;
-pub use playlog::*;
-pub use queue::*;
-pub use remove::*;
-pub use repeat::*;
-pub use resume::*;
-pub use seek::*;
-pub use shuffle::*;
-pub use skip::*;
-pub use stop::*;
-pub use summon::*;
-pub use volume::*;
-pub use vote::*;
-pub use voteskip::*;
+// Refactored modules
+pub mod doplay_refactored;
+pub mod resume;
+
+pub use autopause::autopause;
+pub use autoplay::{autoplay, toggle_autoplay};
+pub use clear::clear;
+pub use doplay::{optplay, play, playfile, playnext, playytplaylist, search};
+pub use dosearch::do_yt_search;
+pub use gambling::{coinflip, roll_n_d, rolldice};
+pub use get_metadata::get_metadata;
+pub use grab::grab;
+pub use leave::leave;
+pub use lyrics::lyrics;
+pub use nowplaying::nowplaying;
+pub use pause::pause;
+pub use playlog::playlog;
+pub use queue::queue;
+pub use remove::remove;
+pub use repeat::repeat;
+pub use resume::resume;
+pub use seek::seek;
+pub use shuffle::{movesong, shuffle};
+pub use skip::skip;
+pub use stop::stop;
+pub use summon::{summon, summonchannel};
+pub use volume::volume;
+pub use vote::vote;
 
 #[must_use]
 pub fn music_commands() -> Vec<crate::Command> {
@@ -85,7 +87,6 @@ pub fn music_commands() -> Vec<crate::Command> {
             summonchannel(),
             volume(),
             vote(),
-            voteskip(),
             get_metadata(),
         ]
     } else {

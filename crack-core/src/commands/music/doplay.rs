@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, get_call_or_join_author, help},
+    commands::{cmd_check_music, get_call_or_join_author, help, resume::resume_internal},
     handlers::track_end::update_queue_messages,
     http_utils,
     http_utils::SendMessageParams,
@@ -260,7 +260,6 @@ pub async fn playytplaylist(
     Ok(())
 }
 
-use crate::commands::resume_internal;
 use crate::messaging::interface as msg_int;
 use crate::poise_ext::PoiseContextExt;
 use crack_types::to_fixed;

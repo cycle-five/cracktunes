@@ -1,5 +1,5 @@
 use super::get_playlist::get_playlist_;
-use crate::commands::{cmd_check_music, queue_aux_metadata};
+use crate::commands::{cmd_check_music, doplay::queue_aux_metadata};
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
