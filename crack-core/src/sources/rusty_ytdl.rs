@@ -417,15 +417,15 @@ mod test {
         },
     };
     use ::rusty_ytdl::{search::YouTube, stream::Stream, RequestOptions, VideoOptions};
-    use bytes::BytesMut;
     use crack_types::{CrackedError, QueryType};
     use mockall::predicate::*;
     use mockall::*;
-    use songbird::input::{AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
-    use std::io::{self, Read, Seek, SeekFrom};
+    use songbird::input::{AuxMetadata, Compose, Input, YoutubeDl};
     use std::pin::Pin;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
+    // use std::io::{self, Read, Seek, SeekFrom};
+    // use bytes::BytesMut;
+    // use std::sync::Arc;
+    // use tokio::sync::RwLock;
 
     // Mock for Stream trait to test MediaSourceStream without network calls
     mock! {
