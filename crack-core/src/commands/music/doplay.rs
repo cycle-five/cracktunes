@@ -206,36 +206,6 @@ pub async fn enqueue_resolved_tracks(
     out_tracks
 }
 
-// /// Pushes a track to the front of the queue, after readying it.
-// pub async fn queue_track_ready_front(
-//     call: &Arc<Mutex<Call>>,
-//     ready_track: TrackReadyData,
-// ) -> Result<Vec<TrackHandle>, CrackedError> {
-//     let mut handler = call.lock().await;
-//     let track_handle = handler.enqueue_input(ready_track.source).await;
-//     let new_q = handler.queue().current_queue();
-//     // Zeroth index: Currently playing track
-//     // First index: Current next track
-//     // Second index onward: Tracks to be played, we get in here most likely,
-//     // but if we're in one of the first two we don't want to do anything.
-//     if new_q.len() >= 3 {
-//         //return Ok(new_q);
-//         handler.queue().modify_queue(|queue| {
-//             let back = queue.pop_back().unwrap();
-//             queue.insert(1, back);
-//         });
-//     }
-
-//     drop(handler);
-//     let mut map = track_handle.typemap().write().await;
-//     map.insert::<NewAuxMetadata>(ready_track.metadata.clone());
-//     map.insert::<RequestingUser>(RequestingUser::UserId(
-//         ready_track.user_id.unwrap_or(UserId::new(1)),
-//     ));
-//     drop(map);
-//     Ok(new_q)
-// }
-
 /// Play a youtube playlist.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
@@ -286,7 +256,6 @@ pub async fn playytplaylist(
         let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
         let _track_handle = call.lock().await.enqueue(track2).await;
     }
-    //queue_resolved_track_back(call, tracks, req_client).await?;
     let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
@@ -528,7 +497,6 @@ pub async fn resolve_query_to_tracks(
     let client = ctx.data().ct_client.clone();
     let NewQueryType(query_type) = query_type;
     let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;
-    //let tracks = client.resolve_track(query_type).await?;
     let mut track_handles = Vec::new();
     for track in &tracks {
         let ytdl = RustyYoutubeSearch::new_with_stuff(
@@ -562,9 +530,6 @@ async fn match_mode(
 ) -> CrackedResult<()> {
     tracing::info!("mode: {:?}", mode);
 
-    // ctx.data().ct_client.resolve_query(&query_type).await?;
-
-    // let ctx = Arc::new(ctx.clone());
     match mode {
         Mode::Search => {
             let res = query_type.mode_search(ctx, call).await?;
