@@ -240,9 +240,13 @@ impl Compose for RustyYoutubeSearch<'_> {
             return Ok(metadata);
         }
 
+        let query = self
+            .query
+            .build_query()
+            .ok_or(CrackedError::AudioStreamRustyYtdlMetadata)?;
         let res: SearchResult = self
             .rusty_ytdl
-            .search_one(self.query.build_query().unwrap(), None)
+            .search_one(query, None)
             .await
             .map_err(|e| {
                 <CrackedError as Into<AudioStreamError>>::into(
@@ -404,18 +408,38 @@ impl From<NewSearchSource> for Input {
 mod test {
     use crate::{
         http_utils,
-        //music::NewQueryType,
+        music::NewQueryType,
         sources::{
-            //rusty_ytdl::{NewSearchSource, RustyYoutubeSearch},
-            rusty_ytdl::RustyYoutubeSearch,
+            rusty_ytdl::{
+                MediaSource, NewSearchSource, RequestOptionsBuilder, RustyYoutubeSearch, StreamExt,
+            },
             youtube::search_query_to_source_and_metadata_rusty,
         },
     };
-    use ::rusty_ytdl::search::YouTube;
-    use ::rusty_ytdl::RequestOptions;
-    use crack_types::QueryType;
-    use songbird::input::{Input, YoutubeDl};
+    use ::rusty_ytdl::{search::YouTube, stream::Stream, RequestOptions, VideoOptions};
+    use bytes::BytesMut;
+    use crack_types::{CrackedError, QueryType};
+    use mockall::predicate::*;
+    use mockall::*;
+    use songbird::input::{AudioStreamError, AuxMetadata, Compose, Input, YoutubeDl};
+    use std::io::{self, Read, Seek, SeekFrom};
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
 
+    // Mock for Stream trait to test MediaSourceStream without network calls
+    mock! {
+        pub StreamImpl {}
+        #[async_trait::async_trait]
+        impl Stream for StreamImpl {
+            async fn chunk(&self) -> Result<Option<bytes::Bytes>, rusty_ytdl::VideoError>;
+            fn content_length(&self) -> usize;
+        }
+        unsafe impl Send for StreamImpl {}
+        unsafe impl Sync for StreamImpl {}
+    }
+
+    // Tests for RustyYoutubeSearch struct
     #[tokio::test]
     async fn test_rusty_youtube_search() {
         let search_term = "The Night Chicago Died";
@@ -435,23 +459,19 @@ mod test {
         assert!(metadata.title.is_some());
     }
 
-    // #[tokio::test]
-    // async fn test_new_search_source() {
-    //     let search_term = "The Night Chicago Died";
-    //     let query = crack_types::QueryType::Keywords(search_term.to_string());
-    //     let query = NewQueryType(query);
-    //     let reqwest_client = http_utils::get_client().clone();
-    //     let new_search = NewSearchSource(query, reqwest_client);
-    //     let input: Input = {
-    //         let asdf = new_search.into();
-    //         let res = asdf.make_live_async().await;
-    //         assert!(res.is_ok());
-    //         asdf
-    //     };
-    //     //assert!(res.is_ok());
-    //     assert!(input.is_playable());
-    //     // println!("{:?}", input.live().is_none());
-    // }
+    #[tokio::test]
+    async fn test_new_search_source() {
+        let search_term = "The Night Chicago Died";
+        let query = crack_types::QueryType::Keywords(search_term.to_string());
+        let query = NewQueryType(query);
+        let reqwest_client = http_utils::get_client().clone();
+        let new_search = NewSearchSource(query, reqwest_client);
+        let input: Input = new_search.into();
+
+        // We can't fully test playability without network calls
+        // but we can verify the conversion works
+        assert!(matches!(input, Input::Lazy(_)));
+    }
 
     #[tokio::test]
     async fn test_ytdl() {
@@ -463,13 +483,16 @@ mod test {
             Ok(Some(playlist)) => {
                 let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
                 println!("{metadata:?}");
+                // Verify metadata has expected fields
+                assert!(metadata.title.is_some());
+                assert!(metadata.source_url.is_some());
             },
             Ok(None) => {
-                // Can't happen
-                println!("WTF???");
+                panic!("Expected search results but got None");
             },
             Err(e) => {
                 println!("{e:?}");
+                panic!("Search failed: {}", e);
             },
         }
     }
@@ -507,7 +530,7 @@ mod test {
 
     #[tokio::test]
     async fn test_ytdl_serial() {
-        let phrase = "Sign in to confirm you’re not a bot.";
+        let phrase = "Sign in to confirm you're not a bot.";
         let searches = vec![
             "The Night Chicago Died",
             "The Devil Went Down to Georgia",
@@ -555,30 +578,177 @@ mod test {
         );
     }
 
-    // #[tokio::test]
-    // async fn test_can_play_ytdl() {
-    //     let url = "https://www.youtube.com/watch?v=p-L0NpaErkk".to_string();
-    // }
-
-    // RequestOptionsBuilder tests
+    // Tests for RequestOptionsBuilder
     #[test]
     fn test_request_options_builder() {
-        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new();
+        // Test default builder
+        let builder = RequestOptionsBuilder::new();
         let req = builder.build();
         assert_eq!(req.ipv6_block, Some("2001:4::/48".to_string()));
+        assert!(req.client.is_none());
 
+        // Test with custom client
         let client = reqwest::Client::new();
-        let builder = crate::sources::rusty_ytdl::RequestOptionsBuilder::new()
+        let builder = RequestOptionsBuilder::new().set_client(client.clone());
+        let req = builder.build();
+        assert!(req.client.is_some());
+        assert_eq!(req.ipv6_block, Some("2001:4::/48".to_string()));
+
+        // Test with custom ipv6 block
+        let builder = RequestOptionsBuilder::new().set_ipv6_block("2001:4::/64".to_string());
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
+        assert!(req.client.is_none());
+
+        // Test with both custom client and ipv6 block
+        let client = reqwest::Client::new();
+        let builder = RequestOptionsBuilder::new()
             .set_client(client.clone())
             .set_ipv6_block("2001:4::/64".to_string());
         let req = builder.build();
+        assert!(req.client.is_some());
         assert_eq!(req.ipv6_block, Some("2001:4::/64".to_string()));
+
+        // Test set_default_ipv6_block
+        let builder = RequestOptionsBuilder::new()
+            .set_ipv6_block("custom".to_string())
+            .set_default_ipv6_block();
+        let req = builder.build();
+        assert_eq!(req.ipv6_block, Some("2001:4::/48".to_string()));
     }
 
-    // #[tokio::test]
-    // async fn test_build_query() {
-    //     let search = "The Night Chicago Died";
-    //     let query = rusty_ytdl::build_query(search);
-    //     assert_eq!(query, "ytsearch1:The Night Chicago Died");
-    // }
+    // Tests for RustyYoutubeSearch methods
+    #[test]
+    fn test_rusty_youtube_search_reset() {
+        let query = QueryType::Keywords("test".to_string());
+        let client = reqwest::Client::new();
+        let mut search = RustyYoutubeSearch::new(query, client).unwrap();
+
+        // Set some values
+        search.metadata = Some(AuxMetadata::default());
+        search.url = Some("https://example.com".to_string());
+        search.video = None; // Already None, but included for completeness
+
+        // Reset and verify
+        search.reset_search();
+        assert!(search.metadata.is_none());
+        assert!(search.url.is_none());
+        assert!(search.video.is_none());
+    }
+
+    // Tests for error handling
+    #[tokio::test]
+    async fn test_get_video_info_error_handling() {
+        // Test with invalid URL
+        let url = "invalid-url".to_string();
+        let video_opts = VideoOptions::default();
+        let result = super::get_video_info(url, video_opts).await;
+        assert!(result.is_err());
+
+        // Verify error type
+        match result {
+            Err(CrackedError::VideoError(_)) => {}, // Expected error type
+            Err(e) => panic!("Unexpected error type: {:?}", e),
+            Ok(_) => panic!("Expected error but got success"),
+        }
+    }
+
+    // Tests for MediaSourceStream using mocks
+    #[tokio::test]
+    async fn test_media_source_stream_read() {
+        // Create a mock stream
+        let mut mock_stream = MockStreamImpl::new();
+
+        // Set up expectations
+        mock_stream
+            .expect_chunk()
+            .times(1)
+            .returning(|| Ok(Some(bytes::Bytes::from_static(b"test data"))));
+
+        mock_stream.expect_content_length().returning(|| 9); // "test data" length
+
+        // Create a MediaSourceStream with the mock
+        let stream_box: Pin<Box<dyn Stream + Send + Sync>> = Box::pin(mock_stream);
+        let mut media_stream = stream_box.into_media_source();
+
+        // Test reading
+        let mut buf = [0u8; 4];
+        let result = media_stream.read_async(&mut buf).await;
+
+        // Verify results
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 4); // Should read 4 bytes
+        assert_eq!(&buf, b"test");
+
+        // Read more
+        let result = media_stream.read_async(&mut buf).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 4); // Should read 4 more bytes
+        assert_eq!(&buf, b" dat");
+
+        // Read the rest
+        let result = media_stream.read_async(&mut buf).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1); // Should read the last byte
+        assert_eq!(buf[0], b'a');
+    }
+
+    // Test for StreamExt trait
+    #[test]
+    fn test_stream_ext_trait() {
+        // Create a mock stream
+        let mock_stream = MockStreamImpl::new();
+
+        // Convert to MediaSourceStream
+        let stream_box: Pin<Box<dyn Stream + Send + Sync>> = Box::pin(mock_stream);
+        let media_stream = stream_box.into_media_source();
+
+        // Verify the conversion worked
+        assert!(!media_stream.is_seekable());
+        assert!(media_stream.byte_len().is_none());
+    }
+
+    // Test for error propagation in aux_metadata
+    #[tokio::test]
+    async fn test_aux_metadata_error_propagation() {
+        // Test with a query that will fail
+        let query = QueryType::None; // This should fail when build_query is called
+        let client = reqwest::Client::new();
+        let mut search = RustyYoutubeSearch::new(query, client).unwrap();
+
+        // Call aux_metadata and verify it returns an error
+        let result = search.aux_metadata().await;
+        assert!(result.is_err());
+    }
+
+    // Test for From implementation
+    #[test]
+    fn test_from_rusty_youtube_search_to_input() {
+        let query = QueryType::Keywords("test".to_string());
+        let client = reqwest::Client::new();
+        let search = RustyYoutubeSearch::new(query, client).unwrap();
+
+        // Convert to Input
+        let input: Input = search.into();
+
+        // Verify the conversion worked
+        assert!(matches!(input, Input::Lazy(_)));
+    }
+
+    // Test for NewSearchSource
+    #[test]
+    fn test_new_search_source_conversion() {
+        let query = QueryType::Keywords("test".to_string());
+        let query_type = NewQueryType(query);
+        let client = reqwest::Client::new();
+
+        // Create NewSearchSource
+        let search_source = NewSearchSource(query_type, client);
+
+        // Convert to Input
+        let input: Input = search_source.into();
+
+        // Verify the conversion worked
+        assert!(matches!(input, Input::Lazy(_)));
+    }
 }

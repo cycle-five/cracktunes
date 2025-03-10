@@ -109,6 +109,7 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "0.2"
+mockall = "0.13.1"
 tungstenite = "0.26"
 async-tungstenite = "0.29.1"
 sqlx = { version = "0.8.3", features = [
