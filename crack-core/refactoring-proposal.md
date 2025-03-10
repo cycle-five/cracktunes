@@ -3,6 +3,7 @@
 ## Overview
 
 This document outlines a comprehensive refactoring plan for the music command system in the `crack-core` crate, specifically focusing on the `play` command and related functionality in:
+
 - `crack-core/src/commands/music/doplay.rs`
 - `crack-core/src/music/queue.rs`
 - `crack-core/src/music/query.rs`
@@ -10,17 +11,20 @@ This document outlines a comprehensive refactoring plan for the music command sy
 ## Current Issues
 
 ### 1. Code Complexity and Duplication
+
 - The `play_internal` function in `doplay.rs` is overly complex (200+ lines) with many responsibilities
 - Multiple similar query handling paths with duplicated logic
 - Inconsistent error handling patterns
 - Redundant track data structures (`TrackReadyData`, `ResolvedTrack`, etc.)
 
 ### 2. Performance Concerns
+
 - Tracing logs indicate performance bottlenecks in queue operations
 - Multiple queue traversals that could be optimized
 - Inefficient metadata handling
 
 ### 3. Architectural Issues
+
 - Unclear separation of concerns between query, queue, and playback logic
 - Inconsistent use of different YouTube/media source APIs
 - Confusing mode handling logic split across files
@@ -29,13 +33,14 @@ This document outlines a comprehensive refactoring plan for the music command sy
 
 ### 1. Restructure Command Flow
 
-```
+```txt
 User Command → Command Parsing → Query Resolution → Track Creation → Queue Management → Playback Control → UI Updates
 ```
 
 ### 2. Consolidate Track Data Models
 
 Currently, there are multiple overlapping track data structures:
+
 - `TrackReadyData`
 - `ResolvedTrack`
 - `TrackData`
@@ -96,6 +101,7 @@ The current query resolution is spread across multiple files with redundant logi
 ### 6. Code Organization
 
 Restructure the code into these modules:
+
 - `commands/` - Just command handling and user interaction
 - `playback/` - Core playback functionality
   - `playback/resolver.rs` - Track resolution from queries

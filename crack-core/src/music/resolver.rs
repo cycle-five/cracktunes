@@ -3,15 +3,12 @@ use crate::music::track::{Track, TrackCollection, TrackMetadata, TrackSource};
 use crack_types::{
     metadata::search_result_to_aux_metadata, metadata::video_info_to_aux_metadata, CrackedError,
 };
-use rusty_ytdl::search::{Playlist, SearchOptions, SearchResult, SearchType, YouTube};
+use rusty_ytdl::search::{Playlist, YouTube};
 use rusty_ytdl::{RequestOptions, Video, VideoOptions};
 use serenity::all::Attachment;
 use serenity::small_fixed_array::FixedString;
 use songbird::input::{HttpRequest, Input as SongbirdInput, YoutubeDl};
 use songbird::tracks::Track as SongbirdTrack;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Mutex;
 use url::Url;
 
 /// Service for resolving queries to tracks
@@ -66,7 +63,7 @@ impl TrackResolver {
             },
             Some("open.spotify.com") => {
                 // Check if it's a playlist
-                let path_segments: Vec<&str> = url.path_segments().unwrap_or(Vec::new()).collect();
+                let path_segments: Vec<&str> = url.path_segments().unwrap().collect();
                 if path_segments.len() >= 2 && path_segments[0] == "playlist" {
                     Ok(Track::new(TrackSource::SpotifyPlaylist(url.to_string())))
                 } else {
@@ -123,25 +120,32 @@ impl TrackResolver {
 
     /// Resolve a Track to a fully populated Track with metadata
     pub async fn resolve(&self, track: &mut Track) -> Result<(), CrackedError> {
-        match &mut track.source {
-            TrackSource::YouTube(url) => self.resolve_youtube_video(track, url).await,
-            TrackSource::YouTubeSearch(query) => self.resolve_youtube_search(track, query).await,
+        // Clone the source to avoid borrowing issues
+        let source = track.source.clone();
+
+        // Handle different source types without recursion
+        match source {
+            TrackSource::YouTube(url) => self.resolve_youtube_video(track, &url).await,
+            TrackSource::YouTubeSearch(query) => self.resolve_youtube_search(track, &query).await,
             TrackSource::YouTubePlaylist(url) => {
                 // Just resolve the first track for now
-                // In a real implementation, we'd resolve all tracks in the playlist
-                self.resolve_youtube_video(track, url).await
+                self.resolve_youtube_video(track, &url).await
             },
             TrackSource::Spotify(url) => {
                 // Convert to YouTube search and resolve
                 let search_query = format!("{} audio", url);
-                track.source = TrackSource::YouTubeSearch(search_query);
-                self.resolve(track).await
+                // First update the source
+                track.source = TrackSource::YouTubeSearch(search_query.clone());
+                // Then resolve the search
+                self.resolve_youtube_search(track, &search_query).await
             },
             TrackSource::SpotifyPlaylist(url) => {
                 // Convert to YouTube search and resolve
                 let search_query = format!("{} playlist", url);
-                track.source = TrackSource::YouTubeSearch(search_query);
-                self.resolve(track).await
+                // First update the source
+                track.source = TrackSource::YouTubeSearch(search_query.clone());
+                // Then resolve the search
+                self.resolve_youtube_search(track, &search_query).await
             },
             TrackSource::File(file) => {
                 // For files, we don't have much metadata
@@ -178,7 +182,7 @@ impl TrackResolver {
             ..Default::default()
         };
 
-        let video = Video::new_with_options(url.clone(), video_options)?;
+        let video = Video::new_with_options(url, video_options)?;
         let video_info = video.get_info().await?;
         let metadata = video_info_to_aux_metadata(&video_info);
 
@@ -192,15 +196,15 @@ impl TrackResolver {
         track: &mut Track,
         query: &str,
     ) -> Result<(), CrackedError> {
-        let search_result = self.youtube.search_one(query.clone(), None).await?;
+        let search_result = self.youtube.search_one(query, None).await?;
 
         if let Some(result) = search_result {
             let metadata = search_result_to_aux_metadata(&result);
+            let source_url = metadata.source_url.clone().unwrap_or_default();
             track.metadata = TrackMetadata::from(metadata);
 
             // Update source to the actual video URL
-            track.source =
-                TrackSource::YouTube(metadata.source_url.unwrap_or_default().to_string());
+            track.source = TrackSource::YouTube(source_url);
             Ok(())
         } else {
             Err(CrackedError::Other("No search results found"))
