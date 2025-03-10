@@ -1,7 +1,17 @@
+// Old stuff
 pub mod context;
-pub(crate) mod query;
-pub(crate) mod queue;
+pub mod query;
+pub mod queue;
+// Re-export existing modules
+pub use super::music::query::*;
+pub use super::music::queue::*;
 
-pub use context::QueryContext;
-pub(crate) use query::*;
-pub(crate) use queue::*;
+// Export new modules
+pub mod queue_manager;
+pub mod resolver;
+pub mod track;
+
+// Re-export key types
+pub use queue_manager::{QueueManager, QueuePosition};
+pub use resolver::TrackResolver;
+pub use track::{Track, TrackCollection, TrackMetadata, TrackSource};
