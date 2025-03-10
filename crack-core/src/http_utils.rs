@@ -1,8 +1,8 @@
 use reqwest::Client;
 use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
-use std::sync::LazyLock;
 use std::future::Future;
+use std::sync::LazyLock;
 
 use crate::guild::settings::GuildSettings;
 use crate::messaging::message::CrackedMessage;

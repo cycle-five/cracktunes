@@ -29,16 +29,12 @@ pub struct TrackMetadata {
 impl From<AuxMetadata> for TrackMetadata {
     fn from(metadata: AuxMetadata) -> Self {
         Self {
-            title: metadata.title.map(|x| FixedString::from_string_trunc(x)),
-            source_url: metadata
-                .source_url
-                .map(|x| FixedString::from_string_trunc(x)),
-            thumbnail: metadata
-                .thumbnail
-                .map(|x| FixedString::from_string_trunc(x)),
+            title: metadata.title.map(FixedString::from_string_trunc),
+            source_url: metadata.source_url.map(FixedString::from_string_trunc),
+            thumbnail: metadata.thumbnail.map(FixedString::from_string_trunc),
             duration: metadata.duration,
-            artist: metadata.artist.map(|x| FixedString::from_string_trunc(x)),
-            channel: metadata.channel.map(|x| FixedString::from_string_trunc(x)),
+            artist: metadata.artist.map(FixedString::from_string_trunc),
+            channel: metadata.channel.map(FixedString::from_string_trunc),
         }
     }
 }
