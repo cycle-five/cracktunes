@@ -14,10 +14,13 @@ use crate::{
 };
 use ::serenity::all::CreateAutocompleteResponse;
 use crack_testing::suggestion2;
-use crack_types::messaging::messages::{
-    PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
+use crack_types::CrackedError;
+use crack_types::{
+    get_human_readable_timestamp,
+    messaging::messages::{
+        PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
+    },
 };
-use crack_types::{get_human_readable_timestamp, CrackedError};
 use poise::{serenity_prelude as serenity, CreateReply};
 use songbird::tracks::TrackHandle;
 use std::{borrow::Cow, sync::Arc, time::Duration};
@@ -25,7 +28,6 @@ use std::{borrow::Cow, sync::Arc, time::Duration};
 /// Get the guild name.
 /// # Errors
 /// This function can error if the guild name can't be found.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,

@@ -202,7 +202,7 @@ pub async fn poise_framework(
                         let guild_settings = GuildSettings::new(guild_id, None, Some(guild_name));
                         let res = data.insert_guild(guild_id, guild_settings.clone()).await;
                         if res.is_err() {
-                            tracing::warn!("Error inserting guild settings");
+                            tracing::warn!("Error inserting guild settings: {res:?}");
                         } else {
                             tracing::warn!("Inserted guild settings: {guild_settings:?}");
                         }

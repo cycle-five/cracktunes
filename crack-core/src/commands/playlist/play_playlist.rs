@@ -1,11 +1,11 @@
 use super::get_playlist::get_playlist_;
-use crate::commands::{cmd_check_music, doplay::queue_aux_metadata};
+use crate::commands::cmd_check_music;
 use crate::messaging::message::CrackedMessage;
+use crate::music::queue::queue_aux_metadata;
 use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Queue a playlist on the bot.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

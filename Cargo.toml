@@ -108,6 +108,9 @@ version = "0.5.4"
 version = "1.42.0"
 features = ["full"]
 
+[workspace.dependencies.tokio-macros]
+version = "2.5.0"
+
 [workspace.dependencies.poise]
 version = "0.6.1"
 features = ["cache", "collector"]

@@ -1,3 +1,4 @@
+use rusty_ytdl::search::YouTube;
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
@@ -11,14 +12,21 @@ use std::str::FromStr;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
+use crate::poise_ext::ContextExt;
 use crate::{
-    handlers::track_end::update_queue_messages, http_utils::CacheHttpExt, music::NewQueryType,
-    sources::rusty_ytdl::RustyYoutubeSearch, utils::TrackData, Context as CrackContext, Error,
+    handlers::track_end::update_queue_messages,
+    http_utils::CacheHttpExt,
+    music::NewQueryType,
+    sources::{
+        rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch},
+        youtube::build_query_aux_metadata,
+    },
+    utils::TrackData,
+    Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
-use crack_types::{verify, CrackedError};
+use crack_types::{search_result_to_aux_metadata, verify, CrackedError, CrackedResult};
 use crack_types::{Mode, NewAuxMetadata, QueryType};
-
 /// Data needed to queue a track.
 /// TODO: This is mostly become redundant with `ResolvedTrack`, need to clean this up.
 pub struct TrackReadyData {
@@ -221,7 +229,6 @@ pub async fn queue_track_front(
 
 use crack_types::TrackResolveError;
 /// Pushes a track to the front of the queue.
-#[tracing::instrument(skip(ctx, call))]
 pub async fn queue_track_back(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
@@ -452,7 +459,6 @@ pub async fn queue_query_list_offset(
 /// # Panics
 /// If the FixedString conversion fails.
 // TODO: There is a lot of cruft in this from the older version of this. Clean it up.
-#[tracing::instrument]
 pub fn get_mode(
     is_prefix: bool,
     msg: Option<FixedString>,
@@ -524,7 +530,6 @@ pub fn get_mode(
 /// based on types, it could be kind of mangled if the prefix version of the
 /// command is used.
 // TODO: Old and crufty. Clean up.
-#[tracing::instrument]
 pub fn get_msg(
     mode: Option<String>,
     query_or_url: Option<String>,
@@ -663,4 +668,55 @@ mod test {
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
     }
+}
+
+/// Add tracks to the queue from aux_metadata.
+pub async fn queue_aux_metadata(
+    ctx: CrackContext<'_>,
+    aux_metadata: &[NewAuxMetadata],
+    mut msg: Message,
+) -> CrackedResult<()> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let search_results = aux_metadata;
+
+    let client = &ctx.get_http_client();
+    let manager = ctx.data().songbird.clone();
+
+    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+
+    let req = RequestOptionsBuilder::new()
+        .set_client(client.clone())
+        .build();
+    let rusty_ytdl = YouTube::new_with_options(&req)?;
+    for metadata in search_results {
+        let source_url = metadata.metadata().source_url.as_ref();
+        let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
+            let search_query = build_query_aux_metadata(metadata.metadata());
+            msg.edit(
+                &ctx,
+                EditMessage::default().content(format!("Queuing... {search_query}")),
+            )
+            .await?;
+
+            let res = rusty_ytdl.search_one(search_query, None).await?;
+            let res = res.ok_or(CrackedError::Other("No results found"))?;
+            let new_aux_metadata = search_result_to_aux_metadata(&res);
+
+            NewAuxMetadata(new_aux_metadata)
+        } else {
+            metadata.clone()
+        };
+
+        let source_url = metadata_final
+            .metadata()
+            .source_url
+            .clone()
+            .ok_or(CrackedError::Other("No source URL found"))?;
+        let query_type = QueryType::VideoLink(source_url);
+        let _ = queue_track_back(ctx, &call, &query_type).await?;
+    }
+
+    let queue = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+    Ok(())
 }
