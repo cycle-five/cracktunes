@@ -1,5 +1,4 @@
 // Old stuff
-pub mod context;
 pub mod query;
 pub mod queue;
 // Re-export existing modules

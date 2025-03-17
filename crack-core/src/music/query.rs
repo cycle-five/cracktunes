@@ -44,20 +44,6 @@ use url::Url;
 
 pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
 
-// #[derive(Clone, Debug)]
-// /// Enum for type of possible queries we have to handle
-// pub enum QueryType {
-//     Keywords(String),
-//     KeywordList(Vec<String>),
-//     VideoLink(String),
-//     SpotifyTracks(Vec<SpotifyTrack>),
-//     PlaylistLink(String),
-//     File(serenity::Attachment),
-//     NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
-//     YoutubeSearch(String),
-//     None,
-// }
-
 #[derive(Clone, Debug)]
 pub struct NewQueryType(pub crack_types::QueryType);
 
