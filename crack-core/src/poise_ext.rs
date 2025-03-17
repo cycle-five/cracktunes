@@ -20,7 +20,6 @@ use tokio::sync::Mutex;
 /// Trait to extend the Context struct with additional convenience functionality.
 pub trait ContextExt<'ctx> {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData);
     fn async_send_track_metadata_write_msg(
         self,
         ready_track: &TrackReadyData,
@@ -140,27 +139,6 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         let pool = self.data().get_db_pool().unwrap();
         crate::db::write_metadata_pg(&pool, write_data).await?;
         Ok(())
-    }
-
-    /// Send a message to tell the worker pool to do a db write when it feels like it.
-    fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData) {
-        let username = ready_track.username.clone();
-        let NewAuxMetadata(aux_metadata) = ready_track.metadata.clone();
-        let user_id = ready_track.user_id;
-        let guild_id = self.guild_id().unwrap();
-        let channel_id = self.channel_id();
-        if let Some(channel) = &self.data().db_channel {
-            let write_data: MetadataMsg = MetadataMsg {
-                aux_metadata,
-                user_id,
-                username,
-                guild_id,
-                channel_id,
-            };
-            if let Err(e) = channel.try_send(write_data) {
-                tracing::error!("Error sending metadata to db_channel: {}", e);
-            }
-        }
     }
 
     /// Return the call that the bot is currently in, if it is in one.

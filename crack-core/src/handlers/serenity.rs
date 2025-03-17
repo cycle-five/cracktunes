@@ -2,17 +2,13 @@ use crate::{
     // commands::queue_aux_metadata,
     db::GuildEntity,
     guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
-    handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
-    BotConfig,
     Data,
 };
 use ::serenity::{
-    all::Message,
-    builder::{CreateEmbed, CreateMessage, EditMember},
+    builder::{CreateMessage, EditMember},
     gateway::ActivityData,
 };
-use chrono::{DateTime, Utc};
 use colored::Colorize;
 use crack_types::messaging::messages::CONNECTED;
 use crack_types::CrackedError;
@@ -23,13 +19,9 @@ use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{gateway::Ready, id::GuildId, prelude::VoiceState},
-    ChannelId, Context as SerenityContext,
+    Context as SerenityContext,
 };
-use std::{
-    sync::{atomic::Ordering, Arc},
-    time::SystemTime,
-};
-use tokio::time::Duration;
+use std::sync::{atomic::Ordering, Arc};
 
 pub struct SerenityHandler {
     pub data: Data,
@@ -222,12 +214,11 @@ impl serenity::prelude::EventHandler for SerenityHandler {
         }
         tracing::info!("Guilds from cache:\n{}", guilds_from_cache.purple());
 
-        let config = self.data.bot_settings.clone();
-        let video_status_poll_interval = config.get_video_status_poll_interval();
+        // let video_status_poll_interval = config.get_video_status_poll_interval();
         // it's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
         let arc_ctx = Arc::new(ctx.clone());
-        let arc_config = Arc::new(config.clone());
+        // let arc_config = Arc::new(config.clone());
 
         // loads serialized guild settings
         tracing::warn!("Loading guilds' settings");
@@ -261,20 +252,20 @@ impl serenity::prelude::EventHandler for SerenityHandler {
         if !self.is_loop_running.load(Ordering::Relaxed) {
             // We have to clone the Arc, as it gets moved into the new thread.
             // tokio::spawn creates a new green thread that can run in parallel with the rest of
-            // the application.
-            if false {
-                let ctx2 = arc_ctx.clone();
-                let config2 = arc_config.clone();
-                let _res = tokio::spawn(async move {
-                    loop {
-                        // We clone Context again here, because Arc is owned, so it moves to the
-                        // new function.
-                        log_system_load(ctx2.clone(), config2.clone()).await;
-                        tokio::time::sleep(Duration::from_secs(video_status_poll_interval)).await;
-                    }
-                })
-                .await;
-            }
+            // // the application.
+            // if false {
+            //     let ctx2 = arc_ctx.clone();
+            //     let config2 = arc_config.clone();
+            //     let _res = tokio::spawn(async move {
+            //         loop {
+            //             // We clone Context again here, because Arc is owned, so it moves to the
+            //             // new function.
+            //             log_system_load(ctx2.clone(), config2.clone()).await;
+            //             tokio::time::sleep(Duration::from_secs(video_status_poll_interval)).await;
+            //         }
+            //     })
+            //     .await;
+            // }
 
             // let _data = self.data.clone();
             // let _res: JoinHandle<()> = tokio::spawn(async move {
@@ -295,58 +286,22 @@ impl serenity::prelude::EventHandler for SerenityHandler {
             //     }
             // });
 
-            let ctx3 = arc_ctx.clone();
-            let config3 = arc_config.clone();
-            if video_status_poll_interval > 0 {
-                cam_status_loop(ctx3.clone(), config3.clone(), guilds.clone()).await;
-            };
+            // let ctx3 = arc_ctx.clone();
+            // let config3 = arc_config.clone();
+            // if video_status_poll_interval > 0 {
+            //     cam_status_loop(ctx3.clone(), config3.clone(), guilds.clone()).await;
+            // };
 
-            //let pool = self.data.database_pool.clone().unwrap();
-            //let tx = setup_workers(pool).await;
-            //self.data.set_db_channel(tx);
-
+            tracing::warn!(
+                "Setting loop running to true, even though we're not doing anything in it atm."
+            );
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
 }
 
-// use crate::guild::operations::GuildSettingsOperations;
-
 impl SerenityHandler {
-    // async fn _merge_guild_settings(
-    //     &self,
-    //     ctx: &SerenityContext,
-    //     _ready: &Ready,
-    //     new_settings: Arc<Mutex<HashMap<GuildId, GuildSettings>>>,
-    // ) {
-    //     tracing::warn!("in merge_guild_settings");
-    //     // let mut data = ctx.data.write().await;
-
-    //     // let settings = data.get_mut::<GuildSettingsMap>().unwrap();
-    //     let data = ctx.data::<Data>();
-    //     let mut settings = data.get_guild_settings().await;
-    //     let mut new_settings = new_settings.lock().unwrap();
-
-    //     tracing::warn!("new_settings len: {:?}", new_settings.len());
-
-    //     for (key, value) in new_settings.iter() {
-    //         match settings.insert(*key, value.clone()) {
-    //             Some(_) => tracing::info!("Guild {} settings overwritten", key),
-    //             None => tracing::info!("Guild {} settings did not exist", key),
-    //         }
-    //     }
-
-    //     for (key, value) in settings.iter_mut() {
-    //         new_settings.insert(*key, value.clone());
-    //     }
-    //     tracing::warn!(
-    //         "settings len: {:?}, new_settings len: {:?}",
-    //         settings.len(),
-    //         new_settings.len()
-    //     );
-    // }
-
     async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
         let prefix = self.data.bot_settings.get_prefix();
         tracing::info!("Loading guilds' settings");
@@ -458,108 +413,6 @@ impl SerenityHandler {
                 .unwrap();
         }
     }
-}
-
-// /// Run a worker that writes metadata to the database.
-// pub async fn queuing_worker(
-//     mut receiver: mpsc::Receiver<NewAuxMetadata>,
-//     ctx: Arc<SerenityContext>,
-// ) {
-//     while let Some(message) = receiver.recv().await {
-//         tracing::trace!("Received message in run_db_worker: {}", message);
-//         queue_aux_metadata(ctx, aux_metadata, msg).await;
-//     }
-// }
-
-// async fn queue_tracks_worker(ctx: Arc<SerenityContext>) {
-//     // Wait for work to come in on the message queue
-//     let mut queue = ctx.data.write().await.get::<Queue>().unwrap().clone();
-//     loop {
-//         let track = queue.pop();
-//         match track {
-//             Some(track) => {
-//                 // Do something with the track
-//                 tracing::info!("Track: {:?}", track);
-//             },
-//             None => {
-//                 // Wait for a bit before checking the queue again
-//                 tokio::time::sleep(Duration::from_secs(1)).await;
-//             },
-//         }
-//     }
-// }
-
-async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
-    let cpu_load = sys_info::loadavg().unwrap();
-    let mem_use = sys_info::mem_info().unwrap();
-
-    // We can use ChannelId directly to send a message to a specific channel; in this case, the
-    // message would be sent to the #testing channel on the discord server.
-    if let Some(chan_id) = config.sys_log_channel_id {
-        let message = ChannelId::new(chan_id)
-            .send_message(
-                ctx.http(),
-                CreateMessage::new().embed({
-                    CreateEmbed::new()
-                        .title("System Resource Load")
-                        .field(
-                            "CPU Load Average",
-                            format!("{:.2}%", cpu_load.one * 10.0),
-                            false,
-                        )
-                        .field(
-                            "Memory Usage",
-                            format!(
-                                "{:.2} MB Free out of {:.2} MB",
-                                mem_use.free as f32 / 1000.0,
-                                mem_use.total as f32 / 1000.0
-                            ),
-                            false,
-                        )
-                }),
-            )
-            .await;
-        if let Err(why) = message {
-            tracing::error!("Error sending message: {:?}", why);
-        };
-    } else {
-        tracing::error!("No system log channel set");
-    }
-}
-
-/// Checks the guilds' message cache for messages that are older than the timeout interval.
-#[allow(dead_code)]
-async fn check_delete_old_messages(
-    ctx: Arc<SerenityContext>,
-    data: &Data,
-    guild_ids: Vec<GuildId>,
-    msg_timeout_interval: chrono::Duration,
-) -> Result<(), SerenityError> {
-    let mut to_delete = Vec::<Message>::new();
-    for guild_id in &guild_ids {
-        tracing::warn!("Checking guild {}", guild_id);
-        data.id_cache_map.get_mut(&(*guild_id).into());
-        if let Some(guild_cache) = data.id_cache_map.get_mut(&(*guild_id).into()) {
-            let now = DateTime::<Utc>::from(SystemTime::now());
-            for (creat_time, msg) in &guild_cache.time_ordered_messages {
-                let delta = now.signed_duration_since(*creat_time);
-                if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
-                    tracing::warn!("Adding old message to delete queue");
-                    to_delete.push(msg.clone());
-                }
-            }
-        }
-    }
-    for msg in to_delete {
-        tracing::error!("Deleting old message: {:#?}", msg);
-        match msg.delete(ctx.http(), Some("delete old messages")).await {
-            Ok(()) => {},
-            Err(err) => {
-                tracing::error!("Error deleting message: {}", err);
-            },
-        }
-    }
-    Ok(())
 }
 
 /// Returns a string describing the difference between two voice states.

@@ -34,7 +34,6 @@ use crack_types::CrackedError;
 use dashmap::DashMap;
 #[cfg(feature = "crack-activity")]
 use dashmap::DashSet;
-use db::worker_pool::MetadataMsg;
 use db::{GuildEntity, PlayLog, TrackReaction};
 use guild::settings::get_log_prefix;
 use guild::settings::{GuildSettings, GuildSettingsMapParam};
@@ -56,7 +55,7 @@ use std::{
     sync::Arc,
     time::SystemTime,
 };
-use tokio::sync::{mpsc::Sender, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock};
 
 // ------------------------------------------------------------------
 // Our public types used throughout cracktunes.
@@ -333,7 +332,6 @@ pub struct DataInner {
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
     // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
     // or worse than using an Option?
-    pub db_channel: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
     //pub guild_settings_map: Arc<DashMap<GuildId, guild::settings::GuildSettings>>,
@@ -389,15 +387,6 @@ impl DataInner {
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
             database_pool: Some(database_pool),
-            ..self.clone()
-        }
-    }
-
-    /// Set the channel for the database pool communication.
-    #[must_use]
-    pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
-        Self {
-            db_channel: Some(db_channel),
             ..self.clone()
         }
     }
@@ -566,7 +555,6 @@ impl Default for DataInner {
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
-            db_channel: None,
         }
     }
 }

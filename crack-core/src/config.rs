@@ -6,7 +6,6 @@ use crack_types::to_fixed;
 use crate::http_utils;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
-    db,
     guild::settings::GuildSettings,
     handlers::SerenityHandler,
     http_utils::CacheHttpExt,
@@ -274,10 +273,6 @@ pub async fn poise_framework(
             None
         },
     };
-    let db_channel = match database_pool.clone().map(db::worker_pool::setup_workers) {
-        Some(c) => Some(c.await),
-        None => None,
-    };
 
     let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
@@ -290,7 +285,6 @@ pub async fn poise_framework(
         songbird: manager.clone(),
         event_log_async,
         database_pool,
-        db_channel,
         http_client: http_utils::get_client().clone(),
         ..Default::default()
     }));
