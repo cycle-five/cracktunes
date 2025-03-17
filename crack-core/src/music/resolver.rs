@@ -80,38 +80,149 @@ impl TrackResolver {
         Ok(Track::new(TrackSource::File(file)))
     }
 
+    /// Try to extract track info from a Spotify URL
+    fn extract_spotify_info(&self, url: &str) -> Option<(String, String)> {
+        // Parse the URL
+        let url = Url::parse(url).ok()?;
+
+        // Get path segments
+        let path_segments: Vec<&str> = url.path_segments()?.collect();
+
+        // Check if we have enough segments
+        if path_segments.len() < 2 {
+            return None;
+        }
+
+        // Extract type and ID
+        let item_type = path_segments[0];
+        let item_id = path_segments[1];
+
+        // Handle different types
+        match item_type {
+            "track" => {
+                // For tracks, try to get the track name from the fragment
+                let fragment = url.fragment().unwrap_or("");
+                if fragment.contains("si=") {
+                    // This is a track with a name in the fragment
+                    let track_name = fragment.split("si=").next()?;
+                    return Some((track_name.to_string(), "".to_string()));
+                }
+
+                // If we can't get the name, just return the ID
+                Some((format!("spotify track {}", item_id), "".to_string()))
+            },
+            "album" => Some((format!("spotify album {}", item_id), "".to_string())),
+            "artist" => Some((format!("spotify artist {}", item_id), "".to_string())),
+            "playlist" => Some((format!("spotify playlist {}", item_id), "".to_string())),
+            _ => None,
+        }
+    }
+
     /// Resolve a Track to a playable input
     pub async fn resolve_to_input(&self, track: &Track) -> Result<SongbirdInput, CrackedError> {
         match &track.source {
             TrackSource::YouTube(url) => {
-                let ytdl = YoutubeDl::new(self.client.clone(), url.clone());
-                Ok(ytdl.into())
+                // Use get_rusty_search for direct YouTube URLs
+                use crate::sources::youtube::get_rusty_search;
+                let rusty_search = get_rusty_search(self.client.clone(), url.clone()).await;
+
+                if let Ok(search) = rusty_search {
+                    // If successful, return the rusty_ytdl input
+                    Ok(search.into())
+                } else {
+                    // If it fails, fall back to yt-dlp
+                    tracing::warn!(
+                        "rusty_ytdl failed for YouTube URL, falling back to yt-dlp: {:?}",
+                        rusty_search.err()
+                    );
+                    let ytdl = YoutubeDl::new(self.client.clone(), url.clone());
+                    Ok(ytdl.into())
+                }
             },
             TrackSource::YouTubeSearch(query) => {
-                let ytdl = YoutubeDl::new_search(self.client.clone(), query.clone());
-                Ok(ytdl.into())
+                // Use search_query_to_source_and_metadata_rusty for search queries
+                use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
+                let result = search_query_to_source_and_metadata_rusty(
+                    self.client.clone(),
+                    crack_types::QueryType::Keywords(query.clone()),
+                )
+                .await;
+
+                match result {
+                    Ok((input, _)) => Ok(input),
+                    Err(e) => {
+                        // This already includes a fallback to yt-dlp in the original implementation
+                        tracing::warn!("Search failed: {:?}", e);
+                        Err(e)
+                    },
+                }
             },
             TrackSource::File(file) => {
+                // Files don't need special handling
                 Ok(HttpRequest::new(self.client.clone(), file.url.clone().to_string()).into())
             },
-            TrackSource::Http(url) => Ok(HttpRequest::new(self.client.clone(), url.clone()).into()),
+            TrackSource::Http(url) => {
+                // HTTP URLs don't need special handling
+                Ok(HttpRequest::new(self.client.clone(), url.clone()).into())
+            },
             TrackSource::Spotify(url) => {
-                // Convert Spotify URL to YouTube search
-                // This is simplified - actual implementation would extract track info
-                let search_query = format!("{} audio", url);
-                let ytdl = YoutubeDl::new_search(self.client.clone(), search_query);
-                Ok(ytdl.into())
+                // Extract better search terms from Spotify URL
+                let search_query = match self.extract_spotify_info(url) {
+                    Some((title, artist)) => {
+                        if artist.is_empty() {
+                            format!("{} audio", title)
+                        } else {
+                            format!("{} {} audio", title, artist)
+                        }
+                    },
+                    None => format!("{} audio", url),
+                };
+
+                // Use search_query_to_source_and_metadata_rusty for the search
+                use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
+                let result = search_query_to_source_and_metadata_rusty(
+                    self.client.clone(),
+                    crack_types::QueryType::Keywords(search_query),
+                )
+                .await;
+
+                match result {
+                    Ok((input, _)) => Ok(input),
+                    Err(e) => {
+                        // This already includes a fallback to yt-dlp in the original implementation
+                        tracing::warn!("Spotify search failed: {:?}", e);
+                        Err(e)
+                    },
+                }
             },
             TrackSource::SpotifyPlaylist(url) => {
-                // For playlists, we'd typically resolve each track individually
-                // But for this example, we'll just return the first track
-                let search_query = format!("{} playlist", url);
-                let ytdl = YoutubeDl::new_search(self.client.clone(), search_query);
-                Ok(ytdl.into())
+                // Extract better search terms from Spotify playlist URL
+                let search_query = match self.extract_spotify_info(url) {
+                    Some((title, _)) => title,
+                    None => format!("{} playlist", url),
+                };
+
+                // Use search_query_to_source_and_metadata_rusty for the search
+                use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
+                let result = search_query_to_source_and_metadata_rusty(
+                    self.client.clone(),
+                    crack_types::QueryType::Keywords(search_query),
+                )
+                .await;
+
+                match result {
+                    Ok((input, _)) => Ok(input),
+                    Err(e) => {
+                        // This already includes a fallback to yt-dlp in the original implementation
+                        tracing::warn!("Spotify playlist search failed: {:?}", e);
+                        Err(e)
+                    },
+                }
             },
             TrackSource::YouTubePlaylist(url) => {
-                // For playlists, we'd typically resolve each track individually
-                // But for this example, we'll just return the first track
+                // For YouTube playlists, we can use the direct URL
+                // But we should handle the case where we want to get all tracks in the playlist
+                // For now, just use the URL directly
                 let ytdl = YoutubeDl::new(self.client.clone(), url.clone());
                 Ok(ytdl.into())
             },
