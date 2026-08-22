@@ -36,6 +36,14 @@ use std::sync::Arc;
 //------------------------------------
 pub const CREATING: &str = "Creating";
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
+/// How many track resolutions may be in flight at once.
+///
+/// Resolving a track is a network round trip (a YouTube search and/or an
+/// innertube `get_info`), so doing this one-at-a-time makes playlist load time
+/// scale linearly with playlist length. Overlapping the requests turns that
+/// into roughly `ceil(n / RESOLVE_CONCURRENCY)` round trips instead. Kept
+/// modest so we don't look like a scraper and trip YouTube's rate limiting.
+pub const RESOLVE_CONCURRENCY: usize = 8;
 pub const EMPTY_QUEUE: &str = "Queue is empty or display not built.";
 pub const NEW_FAILED: &str = "New failed";
 pub const REQ_CLIENT_STR: &str = "Reqwest client";
@@ -221,14 +229,37 @@ impl<'a> CrackTrackClient<'a> {
         }
     }
 
+    /// Resolve many queries at once.
+    ///
+    /// Resolutions run [`RESOLVE_CONCURRENCY`] at a time. `buffered` (rather
+    /// than `buffer_unordered`) is deliberate: playlist order is user-visible,
+    /// so results must come back in the order they went in.
+    ///
+    /// A single unresolvable track (deleted, private, region-locked) is logged
+    /// and skipped rather than failing the whole batch -- previously one bad
+    /// entry aborted an entire playlist load.
     pub async fn resolve_track_many(
         &self,
         queries: Vec<QueryType>,
     ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
-        let mut queue = Vec::new();
-        for query in queries {
-            let track = self.resolve_track(query).await?;
-            queue.push(track);
+        let total = queries.len();
+        let resolved: Vec<Option<ResolvedTrack<'a>>> = futures::stream::iter(queries)
+            .map(|query| async move {
+                match self.resolve_track(query.clone()).await {
+                    Ok(track) => Some(track),
+                    Err(e) => {
+                        tracing::warn!("Skipping unresolvable track {query:?}: {e}");
+                        None
+                    },
+                }
+            })
+            .buffered(RESOLVE_CONCURRENCY)
+            .collect()
+            .await;
+
+        let queue: Vec<ResolvedTrack<'a>> = resolved.into_iter().flatten().collect();
+        if queue.len() < total {
+            tracing::warn!("Resolved {}/{total} tracks", queue.len());
         }
         Ok(queue)
     }
@@ -243,8 +274,16 @@ impl<'a> CrackTrackClient<'a> {
                     Some(SearchResult::Video(result)) => result,
                     _ => return Err(TrackResolveError::NotFound.into()),
                 };
-                let video_url = video.url.clone();
-                self.resolve_url(&video_url).await
+                // The search hit already carries title, duration, thumbnail and
+                // url. Following it with a `get_info` round trip doubled the
+                // cost of every keyword resolution (i.e. of every track in a
+                // Spotify playlist) to buy metadata we already had. The stream
+                // itself is still resolved lazily at playback time.
+                let metadata = crack_types::metadata::search_video_to_aux_metadata(&video);
+                Ok(ResolvedTrack::default()
+                    .with_query(QueryType::VideoLink(video.url.clone()))
+                    .with_metadata(metadata)
+                    .with_search_video(video))
             },
             _ => {
                 tracing::error!("Query type not implemented: {query:?}");
@@ -377,15 +416,24 @@ impl<'a> CrackTrackClient<'a> {
         let search_options = Some(&search_options);
         let res = rusty_ytdl::search::Playlist::get(url, search_options).await?;
 
-        let mut queue = Vec::new();
+        // `Playlist::get` already returns title / duration / thumbnail / url for
+        // every entry. Turning those into `AuxMetadata` here costs nothing,
+        // and it means the play path never has to re-fetch per-track metadata
+        // (which is what used to make loading a playlist take minutes). The
+        // actual stream is still resolved lazily, at playback time.
+        let queue = res
+            .videos
+            .into_iter()
+            .map(|video| {
+                let metadata = crack_types::metadata::search_video_to_aux_metadata(&video);
+                ResolvedTrack::default()
+                    .with_query(QueryType::VideoLink(video.url.clone()))
+                    .with_metadata(metadata)
+                    .with_search_video(video)
+            })
+            .collect::<Vec<_>>();
 
-        for video in res.videos {
-            let track = ResolvedTrack::default()
-                .with_query(QueryType::VideoLink(video.url.clone()))
-                .with_search_video(video);
-            println!("Resolved: {}", track);
-            queue.push(track);
-        }
+        tracing::info!("Resolved {} tracks from playlist {url}", queue.len());
         Ok(queue)
     }
 
