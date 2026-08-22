@@ -192,15 +192,17 @@ mod test {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user(pool: PgPool) {
-        User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
+        let _ = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
         assert_eq!(user.username, TEST);
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_insert_user_failed(pool: PgPool) {
-        let res = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
-        let res2 = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
+        // Inserting the same user twice must not clobber the row; the
+        // duplicate insert is expected to be rejected.
+        let _res = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
+        let _res2 = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
         assert_eq!(user.username, TEST);
     }

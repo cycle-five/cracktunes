@@ -3,10 +3,9 @@ use serenity::all::{
     Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions, TransportCompression,
 };
 use std::{
-    num::{NonZeroU16, NonZeroUsize},
+    num::NonZeroU16,
     sync::{Arc, OnceLock},
 };
-use tokio::sync::{Mutex, RwLock};
 
 pub struct ShardManagerOptionsBuilder(pub ShardManagerOptions);
 
@@ -59,11 +58,7 @@ impl ShardManagerBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZero;
-
     use super::*;
-    use crack_types::Duration;
-    use futures::stream::FusedStream;
 
     #[tokio::test]
     async fn test_create_shard_manager_opts() {

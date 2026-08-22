@@ -1155,6 +1155,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rspotify",
  "rusty_ytdl",
+ "serde_json",
  "serenity",
  "thiserror 1.0.69",
  "tokio",

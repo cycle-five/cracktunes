@@ -10,6 +10,71 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## Unreleased (2026/08)
+
+### Toolchain
+
+- Builds on **stable Rust 1.98** (`rust-toolchain.toml` was pinned to `nightly`).
+  The only nightly feature in use was `fmt_internals` / `formatting_options`,
+  and only inside one test that Debug-formatted an embed.
+- `.cargo/config.toml` no longer sets `-A warnings` (it was hiding every lint in
+  the workspace) or `--cfg proc_macro_c_str_literals` (nothing reads it now).
+- Dockerfile builder moved to `rust:1.98.0-alpine3.22`.
+
+### Dependencies
+
+- **Dropped the `CycleFive/*` forks of serenity, songbird and poise** in favour
+  of upstream. The serenity mirror had no custom commits and was ~30 behind;
+  the songbird mirror pointed at the identical upstream commit; the poise fork
+  differed only by a stale `rev` pin. Since songbird 0.6 and poise both resolve
+  serenity from `serenity-rs/serenity`, keeping the mirror forced two
+  incompatible copies of serenity into the dependency graph.
+- Removed the `[patch.crates-io.serenity-voice-model]` entry: that subcrate no
+  longer lives in the serenity repo, and the patch broke resolution outright.
+- serenity 0.12.5-next, songbird 0.4.5 -> 0.6, serenity-voice-model 0.2 -> 0.3,
+  tokio 1.42 -> 1.53, sqlx 0.8.2 -> 0.8.6, async-openai 0.26 -> 0.41 (dropping
+  the fork and the `backoff` patch), vergen-gitcl 1.0 -> 10.0, extract_map
+  0.1 -> 0.3.
+
+### API migration (serenity `next`, songbird 0.6, poise)
+
+- `ChannelId` split into `ChannelId` (guild channels) and `GenericChannelId`
+  (anything you can send a message to).
+- `EventHandler`'s per-event methods collapsed into a single `dispatch`;
+  poise dropped `FrameworkOptions::event_handler`, so the event log/router is
+  driven from the serenity handler now.
+- Components v2: top-level components are `CreateComponent`, with action rows
+  as one variant.
+- `MessageUpdateEvent` is now `{ message }`; `GuildChannel` gained a flattened
+  `base`; `FullEvent::snake_case_name()` gave way to `strum::IntoStaticStr`.
+- poise no longer accepts `usize` command arguments; affected commands take
+  `u32` and convert at the boundary.
+
+### Fixed: playlists
+
+- **Playlists had stopped resolving entirely.** `rusty_ytdl` 0.7.4 looks for
+  `playlistVideoRenderer` entries in `ytInitialData`; YouTube has since moved
+  playlist listings to `lockupViewModel`, so every playlist failed with
+  `PlaylistBodyCannotParsed`. Added `crack-testing`'s `yt_playlist` module,
+  which reads the playlist page directly, understands both shapes, and follows
+  continuations (also moved, to `continuationItemViewModel`) for playlists
+  longer than one page. rusty_ytdl remains the fallback.
+- **Playlist loading is no longer serial.** The play path used to discard the
+  metadata the playlist fetch had already returned and re-resolve every entry
+  one at a time, spawning a `yt-dlp` subprocess per track. Entries now carry
+  their metadata straight from the listing, and anything that does need
+  resolving (keyword lists, Spotify tracks) goes through `resolve_track_many`,
+  which runs `RESOLVE_CONCURRENCY` lookups at a time and preserves order.
+- Keyword resolution no longer follows its search hit with a redundant
+  `get_info` round trip -- that doubled the cost of every Spotify playlist
+  track for metadata the search already returned.
+- The first track of a playlist is queued on its own so playback starts
+  immediately, and progress edits are throttled instead of one-per-batch
+  (Discord rate-limits edits per channel).
+- A single unresolvable entry (deleted, private, region-locked) is skipped and
+  logged instead of aborting the whole playlist load.
+- Batch enqueues take the call lock once rather than once per track.
+
 ## v0.3.16 (2024/12/12)
 - Commands each show up and work only where they are supposed to (guilds, dms, etc).
 

@@ -2,6 +2,8 @@ pub mod queue;
 pub use queue::*;
 pub mod resolve;
 pub use resolve::*;
+pub mod yt_playlist;
+pub use yt_playlist::{fetch_playlist, PlaylistEntry};
 
 //------------------------------------
 // crack_types imports
@@ -414,6 +416,20 @@ impl<'a> CrackTrackClient<'a> {
             ..Default::default()
         };
         let search_options = Some(&search_options);
+        // Read the playlist page ourselves first. `rusty_ytdl` 0.7.4 only knows
+        // the retired `playlistVideoRenderer` shape and fails with
+        // `PlaylistBodyCannotParsed` against what YouTube serves today; see
+        // `yt_playlist` for the details. rusty_ytdl stays as the fallback so we
+        // pick its (richer) results back up if it is ever fixed upstream.
+        match crate::yt_playlist::fetch_playlist(&self.req_client, url, limit as usize).await {
+            Ok(entries) if !entries.is_empty() => {
+                tracing::info!("Resolved {} tracks from playlist {url}", entries.len());
+                return Ok(entries.into_iter().map(playlist_entry_to_track).collect());
+            },
+            Ok(_) => tracing::warn!("Playlist page yielded no entries, trying rusty_ytdl: {url}"),
+            Err(e) => tracing::warn!("Playlist page read failed ({e}), trying rusty_ytdl: {url}"),
+        }
+
         let res = rusty_ytdl::search::Playlist::get(url, search_options).await?;
 
         // `Playlist::get` already returns title / duration / thumbnail / url for
@@ -502,6 +518,28 @@ impl<'a> CrackTrackClient<'a> {
     pub async fn get_queue(&self, guild: GuildId) -> VecDeque<ResolvedTrack<'a>> {
         self.ensure_queue(guild).get_queue().await
     }
+}
+
+/// Turn a playlist page entry into a queueable track.
+///
+/// No network access: everything the queue needs to display the track came back
+/// with the playlist listing. The stream is resolved lazily at playback time.
+fn playlist_entry_to_track<'a>(entry: crate::yt_playlist::PlaylistEntry) -> ResolvedTrack<'a> {
+    let url = entry.url();
+    let metadata = crack_types::AuxMetadata {
+        title: Some(entry.title.clone()),
+        track: Some(entry.title),
+        channel: entry.channel.clone(),
+        artist: entry.channel,
+        duration: entry.duration,
+        thumbnail: entry.thumbnail,
+        source_url: Some(url.clone()),
+        start_time: Some(std::time::Duration::ZERO),
+        ..Default::default()
+    };
+    ResolvedTrack::default()
+        .with_query(QueryType::VideoLink(url))
+        .with_metadata(metadata)
 }
 
 /// Get a suggestion from a query. Use the global static client.

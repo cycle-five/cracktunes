@@ -290,34 +290,6 @@ pub async fn queue_track_back(
     queue
 }
 
-/// Queue a list of tracks to be played.
-pub async fn queue_ready_track_list(
-    call: Arc<Mutex<Call>>,
-    _user_id: UserId,
-    tracks: Vec<TrackReadyData>,
-    mode: Mode,
-) -> Result<Vec<TrackHandle>, Error> {
-    let mut handler = call.lock().await;
-    for (idx, ready_track) in tracks.into_iter().enumerate() {
-        let TrackReadyData {
-            source,
-            metadata,
-            user_id,
-            ..
-        } = ready_track;
-        let mut track_handle = handler.enqueue_input(source).await;
-        set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
-        if mode == Mode::Next {
-            handler.queue().modify_queue(|queue| {
-                let back = queue.pop_back().unwrap();
-                queue.insert(idx + 1, back);
-            });
-        }
-    }
-    Ok(handler.queue().current_queue())
-}
-
 /// Append a list of tracks to the end of the queue.
 pub async fn _append_queue(
     call: Arc<Mutex<Call>>,

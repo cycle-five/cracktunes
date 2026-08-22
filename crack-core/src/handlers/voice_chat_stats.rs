@@ -318,7 +318,6 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
-    use ::serenity::all::Token;
     use crack_types::get_valid_token;
 
     #[test]
