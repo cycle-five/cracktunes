@@ -7,7 +7,7 @@ use crate::CrackedError;
 use crate::{Context, Error};
 // use crack_testing::ReplyHandleWrapper;
 use poise::serenity_prelude::Mentionable;
-use serenity::all::{ChannelId, GuildId};
+use serenity::all::{ChannelId, GenericChannelId, GuildId};
 use songbird::{Call, Event, TrackEvent};
 use std::{
     sync::{atomic::AtomicBool, Arc},
@@ -21,7 +21,7 @@ pub async fn set_global_handlers(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
     guild_id: GuildId,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
 ) {
     let data = ctx.data();
     let mut handler = call.lock().await;
@@ -116,6 +116,7 @@ pub async fn do_join(
         .channels
         .get(&channel_id)
         .ok_or(CrackedError::NoChannelId)?
+        .base
         .name
         .clone();
     tracing::warn!(
@@ -140,7 +141,7 @@ pub async fn do_join(
             },
         },
     };
-    set_global_handlers(ctx, call.clone(), guild_id, channel_id).await;
+    set_global_handlers(ctx, call.clone(), guild_id, channel_id.widen()).await;
     let msg = CrackedMessage::Summon {
         mention: channel_id.mention(),
     };

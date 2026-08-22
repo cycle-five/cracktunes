@@ -16,7 +16,7 @@ use crate::{
     Data, //, Error,
 };
 use ::serenity::{
-    all::{Cache, ChannelId},
+    all::{Cache, GenericChannelId},
     async_trait,
     builder::EditMessage,
     http::Http,
@@ -155,7 +155,7 @@ impl EventHandler for TrackEndHandler {
                 Some(c) => c,
                 _ => handler
                     .current_channel()
-                    .map(|c| ChannelId::new(c.get()))
+                    .map(|c| GenericChannelId::new(c.get()))
                     .unwrap(),
             };
             let track = handler.queue().current().clone();

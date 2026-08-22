@@ -85,6 +85,59 @@ pub async fn queue_resolved_track_back_old(
     Ok(new_q)
 }
 
+/// Build the songbird [`Track`] for an already-resolved track.
+///
+/// This performs no I/O: [`RustyYoutubeSearch`] is a lazy [`Compose`], so the
+/// actual stream (and any metadata we don't already hold) is fetched when the
+/// track reaches the front of the queue rather than when it is enqueued.
+///
+/// [`Compose`]: songbird::input::Compose
+fn build_track(
+    resolved: &ResolvedTrack<'static>,
+    http_client: &reqwest::Client,
+) -> Result<Track, CrackedError> {
+    let query = QueryType::VideoLink(resolved.get_url());
+    let ytdl = RustyYoutubeSearch::new_with_stuff(
+        http_client.clone(),
+        query,
+        resolved.metadata.clone(),
+        resolved.video.clone(),
+    )?;
+    let track_data = Arc::new(TrackData {
+        user_id: Arc::new(RwLock::new(Some(resolved.user_id))),
+        aux_metadata: Arc::new(RwLock::new(resolved.metadata.clone())),
+    });
+    Ok(Track::new_with_data(ytdl.into(), track_data))
+}
+
+/// Queue a batch of resolved tracks to the back of the queue.
+///
+/// Takes the call lock once for the whole batch instead of once per track,
+/// which matters when a playlist adds tens of tracks at a time.
+pub async fn enqueue_resolved_tracks_back(
+    call: &Arc<Mutex<Call>>,
+    tracks: Vec<ResolvedTrack<'static>>,
+    http_client: reqwest::Client,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    if tracks.is_empty() {
+        let handler = call.lock().await;
+        return Ok(handler.queue().current_queue());
+    }
+
+    let mut handler = call.lock().await;
+    for resolved in &tracks {
+        match build_track(resolved, &http_client) {
+            Ok(track) => {
+                let _ = handler.enqueue(track).await;
+            },
+            Err(e) => {
+                tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url());
+            },
+        }
+    }
+    Ok(handler.queue().current_queue())
+}
+
 /// Data needed to queue a track.
 /// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
 pub struct TrackReadyData {
@@ -237,34 +290,6 @@ pub async fn queue_track_back(
     queue
 }
 
-/// Queue a list of tracks to be played.
-pub async fn queue_ready_track_list(
-    call: Arc<Mutex<Call>>,
-    _user_id: UserId,
-    tracks: Vec<TrackReadyData>,
-    mode: Mode,
-) -> Result<Vec<TrackHandle>, Error> {
-    let mut handler = call.lock().await;
-    for (idx, ready_track) in tracks.into_iter().enumerate() {
-        let TrackReadyData {
-            source,
-            metadata,
-            user_id,
-            ..
-        } = ready_track;
-        let mut track_handle = handler.enqueue_input(source).await;
-        set_track_handle_metadata(&mut track_handle, metadata.into()).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id.unwrap()).await?;
-        if mode == Mode::Next {
-            handler.queue().modify_queue(|queue| {
-                let back = queue.pop_back().unwrap();
-                queue.insert(idx + 1, back);
-            });
-        }
-    }
-    Ok(handler.queue().current_queue())
-}
-
 /// Append a list of tracks to the end of the queue.
 pub async fn _append_queue(
     call: Arc<Mutex<Call>>,
@@ -277,7 +302,23 @@ pub async fn _append_queue(
     Ok(handler.queue().current_queue())
 }
 
+/// How many queries to resolve and enqueue per progress step.
+///
+/// Each batch is resolved with [`crack_testing::RESOLVE_CONCURRENCY`] lookups
+/// in flight, so a batch costs roughly `BATCH / RESOLVE_CONCURRENCY` round
+/// trips. Big enough to amortise, small enough that the queue visibly grows.
+const QUEUE_BATCH_SIZE: usize = 24;
+
+/// Minimum gap between progress message edits.
+///
+/// Discord rate-limits message edits per channel; editing once per batch on a
+/// long playlist used to stall the load waiting on 429 backoff.
+const PROGRESS_EDIT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Queue a list of keywords to be played from the end of the queue.
+///
+/// The first track is resolved and queued on its own so playback starts
+/// immediately; the remainder is resolved concurrently in batches behind it.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_keyword_list_back(
     ctx: CrackContext<'_>,
@@ -285,27 +326,108 @@ pub async fn queue_keyword_list_back(
     queries: Vec<QueryType>,
     msg: &mut Message,
 ) -> Result<(), Error> {
-    let first = queries
-        .first()
+    let (first, rest) = queries
+        .split_first()
         .ok_or(CrackedError::Other("queries.first()"))?;
+
+    // Get audio going before doing anything else -- the user should hear the
+    // first track while the rest of the playlist is still being resolved.
     queue_vec_query_type(ctx, call.clone(), vec![first.clone()], Mode::End).await?;
-    let queries = queries[1..].to_vec();
-    for chunk in queries.chunks(10) {
-        let to_queue_str = chunk
-            .iter()
-            .map(|q| q.build_query_base().unwrap_or_default())
-            .collect::<Vec<String>>()
-            .join("\n");
-        msg.edit(
-            &ctx,
-            EditMessage::new().embed(CreateEmbed::default().description(format!(
-                "Queuing {} songs... \n{}",
-                chunk.len(),
-                to_queue_str
-            ))),
-        )
-        .await?;
-        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?
+
+    if rest.is_empty() {
+        return Ok(());
+    }
+
+    let total = rest.len();
+    let mut queued = 0usize;
+    let mut last_edit = std::time::Instant::now();
+
+    for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
+        queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?;
+        queued += chunk.len();
+
+        let is_last = queued >= total;
+        if is_last || last_edit.elapsed() >= PROGRESS_EDIT_INTERVAL {
+            last_edit = std::time::Instant::now();
+            let description = if is_last {
+                format!("Queued {total} additional tracks.")
+            } else {
+                format!("Queuing playlist... {queued}/{total}")
+            };
+            // A failed progress edit must not abort the load.
+            if let Err(e) = msg
+                .edit(
+                    &ctx,
+                    EditMessage::new().embed(CreateEmbed::default().description(description)),
+                )
+                .await
+            {
+                tracing::warn!("Failed to update queue progress message: {e}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Queue an already-resolved list of tracks to the back of the queue.
+///
+/// Used for playlists, where every entry's metadata came back with the
+/// playlist fetch itself and no per-track lookup is needed. The first track is
+/// enqueued on its own so playback starts immediately.
+#[cfg(not(tarpaulin_include))]
+pub async fn queue_resolved_list_back(
+    ctx: CrackContext<'_>,
+    call: Arc<Mutex<Call>>,
+    tracks: Vec<ResolvedTrack<'static>>,
+    msg: &mut Message,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let user_id = ctx.author().id;
+    let client = http_utils::get_client_old().clone();
+
+    let mut tracks = tracks
+        .into_iter()
+        .map(|t| t.with_user_id(user_id))
+        .collect::<Vec<_>>();
+    if tracks.is_empty() {
+        return Err(CrackedError::Other("Playlist resolved to no playable tracks").into());
+    }
+
+    let rest = tracks.split_off(1);
+    let queue = enqueue_resolved_tracks_back(&call, tracks, client.clone()).await?;
+    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+
+    if rest.is_empty() {
+        return Ok(());
+    }
+
+    let total = rest.len();
+    let mut queued = 0usize;
+    let mut last_edit = std::time::Instant::now();
+
+    for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
+        let queue = enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
+        queued += chunk.len();
+        update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+
+        let is_last = queued >= total;
+        if is_last || last_edit.elapsed() >= PROGRESS_EDIT_INTERVAL {
+            last_edit = std::time::Instant::now();
+            let description = if is_last {
+                format!("Queued {total} additional tracks.")
+            } else {
+                format!("Queuing playlist... {queued}/{total}")
+            };
+            if let Err(e) = msg
+                .edit(
+                    &ctx,
+                    EditMessage::new().embed(CreateEmbed::default().description(description)),
+                )
+                .await
+            {
+                tracing::warn!("Failed to update queue progress message: {e}");
+            }
+        }
     }
     Ok(())
 }
@@ -319,15 +441,22 @@ pub async fn queue_vec_query_type(
     _mode: Mode,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let mut tracks = Vec::new();
+    let user_id = ctx.author().id;
 
-    for query in queries {
-        let ready_track = ready_query(ctx, query).await?;
-        // FIXME:
-        //ctx.async_send_track_metadata_write_msg(&ready_track);
-        tracks.push(ready_track);
-    }
-    let queue = queue_ready_track_list(call, ctx.author().id, tracks, Mode::End).await?;
+    // This used to be a serial `for` loop calling `ready_query`, which spawned
+    // a `yt-dlp` subprocess per track and waited for it. `resolve_track_many`
+    // overlaps the lookups and skips individual failures.
+    let resolved = ctx
+        .data()
+        .ct_client
+        .resolve_track_many(queries)
+        .await?
+        .into_iter()
+        .map(|t| t.with_user_id(user_id))
+        .collect::<Vec<_>>();
+
+    let queue =
+        enqueue_resolved_tracks_back(&call, resolved, http_utils::get_client_old().clone()).await?;
     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
     Ok(())
 }
@@ -361,11 +490,8 @@ pub async fn queue_query_list_offset(
         CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
     )?;
 
-    let mut tracks = Vec::new();
-    for query in queries {
-        let resolved = ctx.data().ct_client.resolve_track(query).await?;
-        tracks.push(resolved)
-    }
+    // Resolved concurrently; this was a serial round trip per track.
+    let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
     // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
     // for query in queries {
     //     let ready_track = ready_query(ctx, query).await?;
@@ -374,29 +500,28 @@ pub async fn queue_query_list_offset(
     //     tracks.push(ready_track);
     // }
 
-    let mut cur_q = Default::default();
-    let client = http_utils::get_client_old();
-    let len = tracks.len();
-    for (idx, resolved) in tracks.into_iter().enumerate() {
-        let metadata = resolved.get_metadata().unwrap();
-        let user_id = resolved.get_requesting_user();
-        let ytdl = YoutubeDl::new(client.clone(), resolved.get_url());
-        let input = ytdl.into();
-
+    // One lock for the whole insert, and a lazy `Compose` per track rather than
+    // an eager `YoutubeDl` metadata fetch.
+    let client = http_utils::get_client_old().clone();
+    let cur_q = {
         let mut handler = call.lock().await;
-        let mut track_handle = handler.enqueue_input(input).await;
-        handler.queue().modify_queue(|q| {
-            let back = q.pop_back().unwrap();
-            q.insert(idx + offset, back);
-        });
-        //let mut map = track_handle.typemap().write().await;
-        set_track_handle_metadata(&mut track_handle, metadata).await?;
-        set_track_handle_requesting_user(&mut track_handle, user_id).await?;
-
-        if idx == len - 1 {
-            cur_q = handler.queue().current_queue();
+        for (idx, resolved) in tracks.into_iter().enumerate() {
+            let track = match build_track(&resolved, &client) {
+                Ok(track) => track,
+                Err(e) => {
+                    tracing::warn!("Failed to build track {}: {e}", resolved.get_url());
+                    continue;
+                },
+            };
+            let _ = handler.enqueue(track).await;
+            handler.queue().modify_queue(|q| {
+                if let Some(back) = q.pop_back() {
+                    q.insert((idx + offset).min(q.len()), back);
+                }
+            });
         }
-    }
+        handler.queue().current_queue()
+    };
 
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 

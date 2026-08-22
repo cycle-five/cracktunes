@@ -19,8 +19,8 @@ use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
-        CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction,
+        CacheHttp, Colour, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
+        CreateSelectMenuOption, GenericChannelId, GuildId, Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -95,7 +95,7 @@ pub async fn send_reply<'ctx>(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    ctx.send_reply(message, as_embed).await.map_err(Into::into)
+    ctx.send_reply(message, as_embed).await
 }
 
 /// Sends a reply response, possibly as an embed.
@@ -105,9 +105,7 @@ pub async fn send_reply_owned(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'_>, CrackedError> {
-    ctx.send_reply_owned(message, as_embed)
-        .await
-        .map_err(Into::into)
+    ctx.send_reply_owned(message, as_embed).await
 }
 
 /// Sends a regular reply response.
@@ -161,7 +159,7 @@ use poise::serenity_prelude::CollectComponentInteractions;
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
     ctx: SerenityContext,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     metadata: Vec<AuxMetadata>,
 ) -> Result<QueryType, Error> {
     let res = metadata.iter().map(|x| {
@@ -202,7 +200,7 @@ pub async fn yt_search_select(
     // manually in the EventHandler.
     let interaction = match m
         .id
-        .collect_component_interactions(ctx.shard.clone())
+        .collect_component_interactions(&ctx)
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
@@ -525,7 +523,7 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed<'_> {
     let content = if !playlists.is_empty() {
         let start_idx = EMBED_PAGE_SIZE * page;
         let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
@@ -562,7 +560,7 @@ pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
     page: usize,
-) -> CreateEmbed {
+) -> CreateEmbed<'_> {
     CreateEmbed::default()
         //.field("Playlist:", &playlist_name, true)
         .field(
@@ -612,14 +610,12 @@ pub async fn create_paged_embed(
         // };
         // let reply_handle = ctx.clone().send(create_reply).await?;
         // drop(create_reply);
-        let shard_messanger = ctx.serenity_context().clone().shard;
-
         let mut cib = reply_handle
             .clone()
             .into_message()
             .await?
             .id
-            .collect_component_interactions(shard_messanger.clone())
+            .collect_component_interactions(ctx.serenity_context())
             .timeout(Duration::from_secs(60 * 10))
             .stream();
 
@@ -783,7 +779,9 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
-#[allow(deprecated)]
+// `Command(CommandInteraction)` is ~776 bytes against a boxed `Message` variant.
+// Deferred with the other large-variant cleanups.
+#[allow(deprecated, clippy::large_enum_variant)]
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
     Message(Option<Box<MessageInteractionMetadata>>),
@@ -872,7 +870,10 @@ pub fn duration_to_string(duration: Duration) -> String {
 #[cfg(test)]
 mod test {
 
-    use ::serenity::{all::Button, builder::CreateActionRow};
+    use ::serenity::{
+        all::Button,
+        builder::{CreateActionRow, CreateComponent},
+    };
 
     use crate::messaging::interface::create_single_nav_btn;
     use crack_types::to_fixed;
@@ -913,16 +914,16 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(&*s).unwrap();
+        let btn = serde_json::from_str::<Button>(&s).unwrap();
 
         assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
-        assert_eq!(btn.disabled, true);
+        assert!(btn.disabled);
     }
 
     #[test]
     fn test_build_nav_btns() {
         let nav_btns_vev = create_nav_btns(0, 1);
-        if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
+        if let CreateComponent::ActionRow(CreateActionRow::Buttons(nav_btns)) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
             for btn in nav_btns.iter() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();
@@ -938,7 +939,7 @@ mod test {
             let btn = &btns[0];
             assert_eq!(btns[0], btn.clone());
         } else {
-            assert!(false);
+            panic!("create_nav_btns did not return an action row of buttons");
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::errors::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, ChannelId, FullEvent};
+use poise::serenity_prelude::{self as serenity, FullEvent, GenericChannelId};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::BTreeMap;
@@ -88,36 +88,36 @@ impl From<crate::db::LogSettingsRead> for LogSettings {
     }
 }
 
-const DEFAULT_LOG_CHANNEL: Option<ChannelId> = None;
+const DEFAULT_LOG_CHANNEL: Option<GenericChannelId> = None;
 
 impl LogSettings {
-    pub fn get_all_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
         self.all_log_channel
-            .map(ChannelId::new)
+            .map(GenericChannelId::new)
             .or(DEFAULT_LOG_CHANNEL)
     }
 
-    pub fn get_server_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_server_log_channel(&self) -> Option<GenericChannelId> {
         self.server_log_channel
-            .map(ChannelId::new)
+            .map(GenericChannelId::new)
             .or(DEFAULT_LOG_CHANNEL)
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
         self.join_leave_log_channel
-            .map(ChannelId::new)
+            .map(GenericChannelId::new)
             .or(DEFAULT_LOG_CHANNEL)
     }
 
-    pub fn get_member_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_member_log_channel(&self) -> Option<GenericChannelId> {
         self.member_log_channel
-            .map(ChannelId::new)
+            .map(GenericChannelId::new)
             .or(DEFAULT_LOG_CHANNEL)
     }
 
-    pub fn get_voice_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_voice_log_channel(&self) -> Option<GenericChannelId> {
         self.voice_log_channel
-            .map(ChannelId::new)
+            .map(GenericChannelId::new)
             .or(DEFAULT_LOG_CHANNEL)
     }
 
@@ -888,7 +888,7 @@ impl GuildSettings {
     }
 
     /// Get the log channel for the given event type.
-    pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<ChannelId> {
+    pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<GenericChannelId> {
         let log_settings = self.log_settings.clone().unwrap_or_default();
         match event {
             FullEvent::PresenceUpdate { .. } => {
@@ -977,30 +977,35 @@ impl GuildSettings {
         }
     }
 
-    pub fn get_log_channel(&self, _name: &str) -> Option<ChannelId> {
+    pub fn get_log_channel(&self, _name: &str) -> Option<GenericChannelId> {
         self.get_all_log_channel()
     }
 
-    pub fn get_all_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
         if let Some(log_settings) = &self.log_settings {
             return log_settings.get_all_log_channel();
         }
         None
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<ChannelId> {
+    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
         if let Some(log_settings) = &self.log_settings {
             if let Some(channel_id) = log_settings.join_leave_log_channel {
-                return Some(ChannelId::new(channel_id));
+                return Some(GenericChannelId::new(channel_id));
             }
         }
         None
     }
 
-    pub fn get_music_channel(&self) -> Option<ChannelId> {
+    pub fn get_music_channel(&self) -> Option<GenericChannelId> {
         self.command_settings
             .get("music")
-            .and_then(|x| x.allowed_channels.iter().map(|x| ChannelId::new(*x)).next())
+            .and_then(|x| {
+                x.allowed_channels
+                    .iter()
+                    .map(|x| GenericChannelId::new(*x))
+                    .next()
+            })
             .or(None)
     }
 
@@ -1066,16 +1071,16 @@ mod test {
         let settings = crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
         assert_eq!(settings.prefix, "r!");
         assert_eq!(settings.allowed_domains.len(), 1);
-        assert_eq!(settings.allowed_domains.contains("youtube.com"), true);
+        assert!(settings.allowed_domains.contains("youtube.com"));
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
         assert_eq!(settings.old_volume, 1.0);
         assert_eq!(settings.volume, 1.0);
-        assert_eq!(settings.self_deafen, true);
+        assert!(settings.self_deafen);
         assert_eq!(settings.timeout, 600);
-        assert_eq!(settings.welcome_settings.is_none(), true);
-        assert_eq!(settings.log_settings.is_none(), true);
+        assert!(settings.welcome_settings.is_none());
+        assert!(settings.log_settings.is_none());
         assert_eq!(settings.additional_prefixes.len(), 0);
     }
 
@@ -1087,7 +1092,7 @@ mod test {
         settings.set_all_log_channel(channel_id);
         assert_eq!(
             settings.get_log_channel("all"),
-            Some(serenity::model::id::ChannelId::new(123))
+            Some(serenity::model::id::GenericChannelId::new(123))
         );
     }
 
@@ -1103,7 +1108,7 @@ mod test {
         };
         assert_eq!(
             settings.get_log_channel_type_fe(&event),
-            Some(serenity::model::id::ChannelId::new(123))
+            Some(serenity::model::id::GenericChannelId::new(123))
         );
     }
 
@@ -1117,8 +1122,8 @@ mod test {
         assert_eq!(authorized_users_default().len(), 0);
         assert_eq!(additional_prefixes_default().len(), 0);
         assert_eq!(volume_default(), 1.0);
-        assert_eq!(premium_default(), false);
-        assert_eq!(default_false(), false);
-        assert_eq!(default_true(), true);
+        assert!(!premium_default());
+        assert!(!default_false());
+        assert!(default_true());
     }
 }

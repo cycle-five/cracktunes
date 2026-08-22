@@ -206,13 +206,13 @@ mod test {
         let reqclient = http_utils::get_client().clone();
         let ytclient = YouTube::new_with_options(&opts).unwrap();
         let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string()).into();
+            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
         let query_type = NewQueryType(query_type);
         let res = query_type.get_track_metadata(ytclient, reqclient).await;
         if let Err(ref e) = res {
             // let phrase = "Sign in to confirm you’re not a bot";
             // assert!(e.to_string().contains(phrase));
-            println!("{}", e.to_string());
+            println!("{}", e);
         }
         //assert!(res.is_ok());
     }
@@ -221,14 +221,13 @@ mod test {
     async fn test_get_track_source_and_metadata() {
         let reqclient = http_utils::get_client().clone();
         let query_type = QueryType::Keywords("hello".to_string());
-        QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
         let query_type = NewQueryType(query_type);
         let res = query_type
             .get_track_source_and_metadata(Some(reqclient))
             .await;
         if let Err(ref e) = res {
             //let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
+            println!("{}", e);
             //assert!(e.to_string().contains(phrase));
         }
     }
@@ -242,7 +241,7 @@ mod test {
         let res = query_type.get_track_source_and_metadata(Some(client)).await;
         if let Err(ref e) = res {
             // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
+            println!("{}", e);
             //assert!(e.to_string());
         }
         //assert!(res.is_ok());
@@ -258,7 +257,7 @@ mod test {
         let res = query_type.get_track_source_and_metadata(client).await;
         if let Err(ref e) = res {
             // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e.to_string());
+            println!("{}", e);
             // assert!(e.to_string().contains(phrase));
         }
     }
@@ -271,13 +270,10 @@ mod test {
         ]));
         let client = Some(http_utils::build_client());
         let res = query_type.get_track_source_and_metadata(client).await;
-        match res {
-            Ok(_) => assert!(true),
-            Err(e) => {
-                // let phrase = "Sign in to confirm you’re not a bot";
-                println!("{}", e.to_string());
-                // assert!(e.to_string().contains(phrase));
-            },
+        if let Err(e) = res {
+            // let phrase = "Sign in to confirm you’re not a bot";
+            println!("{}", e);
+            // assert!(e.to_string().contains(phrase));
         }
     }
 
@@ -293,7 +289,7 @@ mod test {
             Err(e) => {
                 //let phrase = "Sign in to confirm you’re not a bot";
                 //assert!(e.to_string().contains(phrase));
-                println!("{}", e.to_string());
+                println!("{}", e);
             },
         }
     }
@@ -311,7 +307,7 @@ mod test {
             Err(e) => {
                 // let phrase = "Sign in to confirm you’re not a bot";
                 // assert!(e.to_string().contains(phrase));
-                println!("{}", e.to_string());
+                println!("{}", e);
             },
         }
     }

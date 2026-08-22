@@ -4,7 +4,7 @@ use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::{Context, Error};
 use chrono::Duration;
 use poise::serenity_prelude as serenity;
-use serenity::ChannelId;
+use serenity::GenericChannelId;
 use serenity::Mentionable;
 use songbird::tracks::PlayMode;
 use std::borrow::Cow;
@@ -16,7 +16,7 @@ pub struct BotStatus<'ctx> {
     pub name: Cow<'ctx, String>,
     pub play_mode: PlayMode,
     pub queue_len: usize,
-    pub current_channel: Option<ChannelId>,
+    pub current_channel: Option<GenericChannelId>,
     pub uptime: Duration,
     pub calling_user: String,
 }
@@ -72,7 +72,7 @@ pub async fn debug_internal(ctx: Context<'_>) -> Result<(), Error> {
             match track {
                 Some(track) => BotStatus {
                     play_mode: track.get_info().await.unwrap_or_default().playing,
-                    current_channel: channel_id.map(|id| serenity::ChannelId::new(id.get())),
+                    current_channel: channel_id.map(|id| serenity::GenericChannelId::new(id.get())),
                     queue_len: queue.clone().len(),
                     ..Default::default()
                 },
@@ -105,7 +105,7 @@ mod test {
             name: Cow::Owned("bot".to_string()),
             play_mode: PlayMode::Play,
             queue_len: 1,
-            current_channel: Some(ChannelId::new(1)),
+            current_channel: Some(GenericChannelId::new(1)),
             uptime: Duration::seconds(1),
             calling_user: "user".to_string(),
         };

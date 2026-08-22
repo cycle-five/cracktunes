@@ -18,8 +18,8 @@ use std::cmp::min;
 pub async fn remove(
     ctx: Context<'_>,
     #[description = "Index in the queue to remove (Or number of tracks to remove if no second argument."]
-    b_index: usize,
-    #[description = "End index in the track queue to remove"] e_index: Option<usize>,
+    b_index: u32,
+    #[description = "End index in the track queue to remove"] e_index: Option<u32>,
     #[flag]
     #[description = "Show the help menu for this command."]
     help: bool,
@@ -27,7 +27,7 @@ pub async fn remove(
     if help {
         return crate::commands::help::wrapper(ctx).await;
     }
-    remove_internal(ctx, b_index, e_index).await
+    remove_internal(ctx, b_index as usize, e_index.map(|i| i as usize)).await
 }
 
 /// Internal remove function.
@@ -94,7 +94,7 @@ pub async fn remove_internal(
     Ok(())
 }
 
-async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
+async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed<'_> {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     CreateEmbed::default()
         .field(
@@ -106,5 +106,5 @@ async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
             ),
             false,
         )
-        .thumbnail(metadata.thumbnail.unwrap())
+        .thumbnail(metadata.thumbnail.unwrap(), None)
 }

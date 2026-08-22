@@ -25,8 +25,10 @@ use serenity::all::GuildId;
 use serenity::small_fixed_array::FixedString;
 use serenity::{
     all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
-    all::{CacheHttp, ChannelId, Mentionable, UserId},
-    builder::{CreateActionRow, CreateButton, CreateEmbedAuthor, CreateEmbedFooter},
+    all::{CacheHttp, GenericChannelId, Mentionable, UserId},
+    builder::{
+        CreateActionRow, CreateButton, CreateComponent, CreateEmbedAuthor, CreateEmbedFooter,
+    },
 };
 use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
@@ -55,7 +57,7 @@ pub async fn build_log_embed<'a>(
     Ok(CreateEmbed::default()
         .title(title)
         .description(description)
-        .thumbnail(avatar_url)
+        .thumbnail(avatar_url, None)
         .footer(footer))
 }
 
@@ -83,7 +85,7 @@ pub async fn build_log_embed_thumb<'a>(
 #[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed_thumb(
     guild_name: &str,
-    channel: &ChannelId,
+    channel: &GenericChannelId,
     cache_http: &impl CacheHttp,
     id: &str,
     title: &str,
@@ -101,7 +103,7 @@ pub async fn send_log_embed_thumb(
 /// Create and sends an log message as an embed.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_log_embed(
-    channel: &ChannelId,
+    channel: &GenericChannelId,
     http: &impl CacheHttp,
     title: &str,
     description: &str,
@@ -200,7 +202,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
     };
 
     CreateEmbed::default()
-        .thumbnail(thumbnail)
+        .thumbnail(thumbnail, None)
         .field(QUEUE_NOW_PLAYING, Cow::Owned(description), false)
         .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
@@ -224,7 +226,7 @@ use tokio::sync::Mutex;
 /// Send the current track information as an ebmed to the given channel.
 #[cfg(not(tarpaulin_include))]
 pub async fn send_now_playing(
-    channel: ChannelId,
+    channel: GenericChannelId,
     http: Arc<Http>,
     call: Arc<Mutex<Call>>,
     //cur_position: Option<Duration>,
@@ -290,6 +292,7 @@ pub fn build_now_playing_embed_metadata<'a>(
                     "".to_string()
                 })
                 .unwrap_or_default(),
+            None,
         )
         .description(vanity)
         .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
@@ -358,14 +361,18 @@ pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_>
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateActionRow<'att>> {
+pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateComponent<'att>> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-    vec![CreateActionRow::Buttons(Cow::Owned(vec![
-        create_single_nav_btn("<<", cant_left),
-        create_single_nav_btn("<", cant_left),
-        create_single_nav_btn(">", cant_right),
-        create_single_nav_btn(">>", cant_right),
-    ]))]
+    // serenity's components-v2 rework wraps every top level component in
+    // `CreateComponent`; an action row is now one variant of that enum.
+    vec![CreateComponent::ActionRow(CreateActionRow::Buttons(
+        Cow::Owned(vec![
+            create_single_nav_btn("<<", cant_left),
+            create_single_nav_btn("<", cant_left),
+            create_single_nav_btn(">", cant_right),
+            create_single_nav_btn(">>", cant_right),
+        ]),
+    ))]
 }
 
 // -------- Search Results -------- //
@@ -439,9 +446,7 @@ pub async fn create_search_response<'ctx>(
         .footer(footer)
         .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
 
-    send_embed_response_poise(*ctx, embed)
-        .await
-        .map_err(Into::into)
+    send_embed_response_poise(*ctx, embed).await
 }
 
 // ---------------------- Joining Channel ---------------------------- //
@@ -450,7 +455,7 @@ use crate::poise_ext::PoiseContextExt;
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_joining_channel<'ctx>(
     ctx: &'ctx CrackContext<'_>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
 ) -> Result<ReplyHandle<'ctx>, Error> {
     let msg = CrackedMessage::Summon {
         mention: channel_id.mention(),
@@ -479,8 +484,6 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 
 #[cfg(test)]
 mod test {
-    use std::fmt::Debug;
-    use std::fmt::{Formatter, FormattingOptions};
 
     #[test]
     fn test_requesting_user_to_string() {
@@ -499,14 +502,9 @@ mod test {
         let embed = super::build_log_embed(title, description, avatar_url).await;
         assert!(embed.is_ok());
         let embed = embed.unwrap();
-        let mut output = String::new();
-        let opts = FormattingOptions::default();
-
-        let mut formatter = Formatter::new(&mut output, opts);
-        // let writer = StringWriter::new();
-        // let fmt = std::fmt::Formatter::new(writer);
-        embed.fmt(&mut formatter).unwrap();
-        let formatted_output = output;
-        println!("{:?}", formatted_output);
+        // Previously this exercised the unstable `std::fmt::FormattingOptions`
+        // API; the plain `Debug` impl gives the same coverage on stable.
+        let formatted_output = format!("{embed:?}");
+        assert!(!formatted_output.is_empty());
     }
 }

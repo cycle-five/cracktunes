@@ -24,10 +24,10 @@ use tokio::sync::MutexGuard;
 )]
 pub async fn skip(
     ctx: Context<'_>,
-    #[description = "Number of tracks to skip"] num_tracks: Option<usize>,
+    #[description = "Number of tracks to skip"] num_tracks: Option<u32>,
 ) -> Result<(), Error> {
     let (call, guild_id) = ctx.get_call_guild_id().await?;
-    let to_skip = num_tracks.unwrap_or(1);
+    let to_skip = num_tracks.unwrap_or(1) as usize;
 
     let handler = call.lock().await;
     let queue = handler.queue();

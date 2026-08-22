@@ -129,7 +129,7 @@ fn load_key(k: String) -> Result<String, Error> {
         Ok(token) => Ok(token),
         Err(_) => {
             tracing::warn!("{} not found in environment.", &k);
-            Err(format!("{} not found in environment.", &k).into())
+            Err(format!("{} not found in environment.", k).into())
         },
     }
 }
@@ -240,6 +240,9 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
 
 #[tracing::instrument]
 /// Initialize logging and tracing.
+// Unused since `main` moved to `init_telemetry`; kept rather than deleted because it
+// predates this branch. `-A warnings` is what kept it invisible.
+#[allow(dead_code)]
 fn init_logging() {
     #[cfg(feature = "crack-tracing")]
     {
@@ -339,9 +342,9 @@ mod test {
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
         let result = load_key(key);
-        match result {
-            Ok(token) => assert!(!token.is_empty()),
-            Err(_error) => assert!(true),
+        // An error is fine: DISCORD_TOKEN need not be set to run the tests.
+        if let Ok(token) = result {
+            assert!(!token.is_empty());
         }
     }
 

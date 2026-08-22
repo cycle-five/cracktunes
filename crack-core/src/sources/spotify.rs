@@ -518,15 +518,15 @@ impl SpotifyTrackTrait for SpotifyTrack {
     fn build_query_lyric(&self) -> String {
         format!(
             "{} {} {}",
-            &self.name(),
-            &self.join_artist_names(),
+            self.name(),
+            self.join_artist_names(),
             MUSIC_SEARCH_SUFFIX
         )
     }
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(&self) -> String {
-        format!("{} {}", &self.name(), &self.join_artist_names())
+        format!("{} {}", self.name(), self.join_artist_names())
     }
 }
 

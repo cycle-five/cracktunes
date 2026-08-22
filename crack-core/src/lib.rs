@@ -1,6 +1,3 @@
-#![allow(internal_features)]
-#![feature(fmt_internals)]
-#![feature(formatting_options)]
 pub mod commands;
 pub mod config;
 pub mod connection;
@@ -750,7 +747,7 @@ mod lib_test {
 
         assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
         assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
-        let want = &vec!["CA".to_string(), "UM".to_string(), "US".to_string()];
+        let want = &["CA".to_string(), "UM".to_string(), "US".to_string()];
         let got = country_by_phone_code.get("1").unwrap();
         // This would be cheaper using a heap or tree
         assert!(got.iter().all(|x| want.contains(x)));

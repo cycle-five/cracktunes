@@ -1,6 +1,6 @@
 use crate::Context;
 use crate::Error;
-use serenity::all::ChannelId;
+use serenity::all::GenericChannelId;
 use serenity::all::ChannelType;
 use serenity::all::GuildChannel;
 use serenity::all::GuildId;
@@ -47,7 +47,7 @@ pub async fn get_guilds(ctx: Context<'_>) -> Result<Vec<(GuildId, String, u64)>,
 #[cfg(not(tarpaulin_include))]
 pub fn get_active_vcs_impl(
     ctx: Context<'_>,
-    guild_channels: ExtractMap<ChannelId, GuildChannel>,
+    guild_channels: ExtractMap<GenericChannelId, GuildChannel>,
     bot_id: UserId,
 ) -> Result<Vec<(GuildId, String)>, Error> {
     let mut active_vcs = Vec::new();

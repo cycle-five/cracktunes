@@ -91,7 +91,6 @@ impl BrainfuckProgram {
     /// Run the brainfuck program.
     /// # Errors
     /// * `Error` - Can error if there is an issue reading from the reader or writing to the writer.
-    #[allow(clippy::match_on_vec_items)]
     pub async fn run_async<R, W>(&mut self, mut reader: R, mut writer: W) -> Result<usize, Error>
     where
         R: AsyncBufRead + Unpin,
@@ -160,7 +159,6 @@ impl BrainfuckProgram {
         let mut pc = 0;
         let mut ptr = 0;
         while pc < code.len() {
-            #[allow(clippy::match_on_vec_items)]
             match code[pc] {
                 b'+' => cells[ptr] = cells[ptr].wrapping_add(1),
                 b'-' => cells[ptr] = cells[ptr].wrapping_sub(1),
@@ -267,9 +265,8 @@ mod tests {
         let stdin = stdio.lock();
         let stdout = std::io::stdout();
         let mut bf = BrainfuckProgram::new(program);
-        if let Err(_) = bf.run(stdin, stdout) {
-            assert!(false)
-        }
+        bf.run(stdin, stdout)
+            .expect("brainfuck program failed to run");
     }
 
     #[tokio::test]
@@ -295,8 +292,8 @@ mod tests {
         let output = Cursor::new(vec![]);
 
         let mut bf = BrainfuckProgram::new(program);
-        if let Err(_) = bf.run_async(input, output).await {
-            assert!(false)
-        }
+        bf.run_async(input, output)
+            .await
+            .expect("brainfuck program failed to run");
     }
 }

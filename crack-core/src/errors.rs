@@ -15,7 +15,7 @@ pub type Error = Box<dyn StdError + Send + Sync>;
 use audiopus::error::Error as AudiopusError;
 use crack_types::TrackResolveError;
 use poise::serenity_prelude::Mentionable;
-use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
+use poise::serenity_prelude::{self as serenity, GenericChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
 use serenity::model::mention::Mention;
@@ -49,7 +49,7 @@ pub enum CrackedError {
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
-    FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
+    FailedToSetChannelSize(&'static str, GenericChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
@@ -59,7 +59,7 @@ pub enum CrackedError {
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
-    NotInMusicChannel(ChannelId),
+    NotInMusicChannel(GenericChannelId),
     NotConnected,
     NoChannelId,
     NotImplemented,
@@ -67,7 +67,7 @@ pub enum CrackedError {
     NoDatabasePool,
     NoGuildCached,
     NoGuildId,
-    NoGuildForChannelId(ChannelId),
+    NoGuildForChannelId(GenericChannelId),
     NoGuildSettings,
     NoLogChannel,
     NoMetadata,
@@ -95,7 +95,7 @@ pub enum CrackedError {
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
-    UnimplementedEvent(ChannelId, &'static str),
+    UnimplementedEvent(GenericChannelId, &'static str),
     VideoError(VideoError),
     WrongVoiceChannel,
 }
@@ -332,10 +332,7 @@ impl From<SerenityError> for CrackedError {
 
 impl From<CrackedError> for SerenityError {
     fn from(_x: CrackedError) -> Self {
-        SerenityError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "CrackedError",
-        ))
+        SerenityError::Io(std::io::Error::other("CrackedError"))
     }
 }
 
@@ -443,7 +440,7 @@ mod test {
     use reqwest::StatusCode;
 
     use super::*;
-    use std::io::{Error as StdError, ErrorKind};
+    use std::io::Error as StdError;
 
     #[test]
     fn test_verify() {
@@ -509,15 +506,15 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
-        /// WTF Why the blocking client? We never use it in the code??
+        // WTF Why the blocking client? We never use it in the code??
         let client = reqwest::blocking::ClientBuilder::new()
             .use_rustls_tls()
             .build()
             .unwrap();
 
         let response = client.get("http://notreallol").send();
-        if response.is_err() {
-            let err = CrackedError::Reqwest(response.unwrap_err());
+        if let Err(e) = response {
+            let err = CrackedError::Reqwest(e);
             assert!(format!("{}", err).starts_with("error sending request for url"));
         }
 
@@ -527,7 +524,7 @@ mod test {
         let err = CrackedError::UnauthorizedUser;
         assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
 
-        let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
+        let err = CrackedError::IO(StdError::other("test"));
         assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::NotInRange("test", 1, 2, 3);
@@ -545,8 +542,11 @@ mod test {
         let err = CrackedError::NoGuildId;
         assert_eq!(err, CrackedError::NoGuildId);
 
-        let err = CrackedError::NoGuildForChannelId(ChannelId::new(1));
-        assert_eq!(err, CrackedError::NoGuildForChannelId(ChannelId::new(1)));
+        let err = CrackedError::NoGuildForChannelId(GenericChannelId::new(1));
+        assert_eq!(
+            err,
+            CrackedError::NoGuildForChannelId(GenericChannelId::new(1))
+        );
 
         let err = CrackedError::NoGuildSettings;
         assert_eq!(err, CrackedError::NoGuildSettings);
@@ -591,17 +591,20 @@ mod test {
 
         let response1 = client.get("http://notreallol").send();
         let response2 = client.get("http://notreallol").send();
-        if response1.is_err() && response2.is_err() {
-            let err = CrackedError::Reqwest(response1.unwrap_err());
-            assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
+        match (response1, response2) {
+            (Err(e1), Err(e2)) => {
+                let err = CrackedError::Reqwest(e1);
+                assert_eq!(err, CrackedError::Reqwest(e2));
 
-            let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-            assert_eq!(
-                err,
-                CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
-            );
-        } else {
-            assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
+                let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+                assert_eq!(
+                    err,
+                    CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+                );
+            },
+            (response1, _) => {
+                assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
+            },
         }
     }
 }

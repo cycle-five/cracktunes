@@ -248,12 +248,9 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
 
 #[cfg(test)]
 mod test {
-    use serde_json;
-    use sqlx::PgPool;
-
-    use crate::get_secret;
-    use crate::{StatusCode, VotingContext, Webhook};
-
+    // Only referenced by the `#[sqlx::test(migrator = "MIGRATOR")]` tests below, which
+    // are commented out. Kept so they still work when uncommented.
+    #[allow(dead_code)]
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     use super::*;
@@ -323,7 +320,7 @@ mod test {
 
     #[sqlx::test]
     async fn test_log_headers() {
-        let app = warp::post().and(log_headers()).map(|| warp::reply());
+        let app = warp::post().and(log_headers()).map(warp::reply);
         let secret = "asdf";
         let _res = warp::test::request()
             .method("POST")

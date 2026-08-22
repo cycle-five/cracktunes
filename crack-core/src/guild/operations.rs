@@ -1,6 +1,6 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::{
-    all::{ChannelId, Context as SerenityContext, GuildId},
+    all::{Context as SerenityContext, GenericChannelId, GuildId},
     small_fixed_array::FixedString,
 };
 use std::str::FromStr;
@@ -25,11 +25,14 @@ pub trait GuildSettingsOperations {
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<(), CrackedError>>;
-    fn get_music_channel(&self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+    fn get_music_channel(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Option<GenericChannelId>>;
     fn set_music_channel(
         &self,
         guild_id: GuildId,
-        channel_id: ChannelId,
+        channel_id: GenericChannelId,
     ) -> impl Future<Output = ()>;
     fn get_timeout(&self, guild_id: GuildId) -> impl Future<Output = Option<u32>>;
     fn set_timeout(&self, guild_id: GuildId, timeout: u32) -> impl Future<Output = ()>;
@@ -95,7 +98,7 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Get the music channel for the guild.
-    async fn get_music_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
+    async fn get_music_channel(&self, guild_id: GuildId) -> Option<GenericChannelId> {
         self.guild_settings_map
             .read()
             .await
@@ -104,7 +107,7 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Set the music channel for the guild.
-    async fn set_music_channel(&self, guild_id: GuildId, channel_id: ChannelId) {
+    async fn set_music_channel(&self, guild_id: GuildId, channel_id: GenericChannelId) {
         let mut guard = self.guild_settings_map.write().await;
         let _ = guard
             .entry(guild_id)
@@ -372,7 +375,7 @@ mod test {
     use super::*;
     use crate::guild::cache::GuildCache;
     use crate::{Data, DataInner};
-    use serenity::model::id::ChannelId;
+    use serenity::model::id::GenericChannelId;
     use std::collections::HashMap;
     use tokio::sync::{Mutex, RwLock};
 
@@ -453,7 +456,7 @@ mod test {
     async fn test_get_music_channel() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
-        let channel_id = ChannelId::new(2);
+        let channel_id = GenericChannelId::new(2);
         let mut settings = crate::GuildSettings::default();
         settings.set_music_channel(channel_id.get());
         guild_settings_map.insert(guild_id, settings);
@@ -469,7 +472,7 @@ mod test {
     async fn test_set_music_channel() {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
-        let channel_id = ChannelId::new(2);
+        let channel_id = GenericChannelId::new(2);
         let mut settings = crate::GuildSettings::default();
         settings.set_music_channel(channel_id.get());
         guild_settings_map.insert(guild_id, settings);
@@ -478,11 +481,12 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_music_channel(guild_id, ChannelId::new(3)).await;
+        data.set_music_channel(guild_id, GenericChannelId::new(3))
+            .await;
 
         assert_eq!(
             data.get_music_channel(guild_id).await,
-            Some(ChannelId::new(3))
+            Some(GenericChannelId::new(3))
         );
     }
 
@@ -647,7 +651,7 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_autopause(guild_id).await, true);
+        assert!(data.get_autopause(guild_id).await);
     }
 
     #[tokio::test]
@@ -668,7 +672,7 @@ mod test {
 
         data.set_autopause(guild_id, false).await;
 
-        assert_eq!(data.get_autopause(guild_id).await, false);
+        assert!(!data.get_autopause(guild_id).await);
     }
 
     #[tokio::test]
@@ -703,6 +707,6 @@ mod test {
             ..Default::default()
         })));
 
-        assert_eq!(data.get_autoplay(guild_id).await, false);
+        assert!(!data.get_autoplay(guild_id).await);
     }
 }

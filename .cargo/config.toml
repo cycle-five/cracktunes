@@ -1,6 +1,11 @@
 [build]
-#rustflags = ['--cfg', 'proc_macro_c_str_literals']
-rustflags = ['--cfg', 'proc_macro_c_str_literals', '-A', 'warnings']
+# `--cfg proc_macro_c_str_literals` was a nightly feature-detection flag for an
+# older serenity; nothing in the tree reads it any more, and leaving it set now
+# only produces `unexpected_cfgs` warnings.
+#
+# `-A warnings` used to be here as well. It hid every lint in the workspace,
+# which is how a pile of deprecations went unnoticed; warnings are on again.
+rustflags = []
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]

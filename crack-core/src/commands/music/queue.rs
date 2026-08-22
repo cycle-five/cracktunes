@@ -115,7 +115,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
 
     let mut cib = message
         .id
-        .collect_component_interactions(ctx.serenity_context().shard.clone())
+        .collect_component_interactions(ctx.serenity_context())
         .timeout(Duration::from_secs(EMBED_TIMEOUT))
         .stream();
 

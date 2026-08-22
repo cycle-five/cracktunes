@@ -219,15 +219,15 @@ impl SpotifyTrackTrait for SpotifyTrack {
     fn build_query_lyric(&self) -> String {
         format!(
             "{} {} {}",
-            &self.name(),
-            &self.join_artist_names(),
+            self.name(),
+            self.join_artist_names(),
             MUSIC_SEARCH_SUFFIX
         )
     }
 
     /// Build a query for searching, from the artist names and the track name.
     fn build_query(&self) -> String {
-        format!("{} {}", &self.name(), &self.join_artist_names())
+        format!("{} {}", self.name(), self.join_artist_names())
     }
 }
 
@@ -240,6 +240,10 @@ impl SpotifyTrackTrait for SpotifyTrack {
 //           -> PlaylistLink   -> Vec<ResolvedTrack>
 //           -> KeywordList    -> Vec<ResolvedTrack>
 //           -> YoutubeSearch  -> Vec<ResolvedTrack>
+// The `NewYoutubeDl` variant is ~560 bytes against ~250 for the next largest.
+// Boxing it is worth doing, but it touches every construction and match site
+// across three crates, so it belongs in its own change rather than here.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum QueryType {
     Keywords(String),

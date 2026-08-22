@@ -27,7 +27,7 @@ use serenity::all::User;
 pub async fn ban(
     ctx: Context<'_>,
     #[description = "User to ban."] user: User,
-    #[description = "Number of day to delete messages of the user."] dmd: Option<u8>,
+    #[description = "Number of day to delete messages of the user."] dmd: Option<u32>,
     #[description = "Reason for the ban."] reason: Option<String>,
 ) -> Result<(), Error> {
     let mention = user.mention();

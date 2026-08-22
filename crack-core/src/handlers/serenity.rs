@@ -21,7 +21,7 @@ use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{gateway::Ready, id::GuildId, prelude::VoiceState},
-    ChannelId, {Context as SerenityContext, EventHandler},
+    GenericChannelId, {Context as SerenityContext, EventHandler, FullEvent},
 };
 use std::{
     sync::{atomic::Ordering, Arc},
@@ -36,7 +36,38 @@ pub struct SerenityHandler {
 
 #[async_trait]
 impl EventHandler for SerenityHandler {
-    async fn ready(&self, ctx: SerenityContext, ready: Ready) {
+    /// serenity's `EventHandler` collapsed its per-event methods into a single
+    /// `dispatch`. The handlers below keep their old shapes; this just routes
+    /// `FullEvent` variants to them.
+    async fn dispatch(&self, ctx: &SerenityContext, event: &FullEvent) {
+        match event {
+            FullEvent::Ready { data_about_bot } => {
+                self.on_ready(ctx.clone(), data_about_bot.clone()).await;
+            },
+            FullEvent::GuildMemberAddition { new_member } => {
+                self.on_guild_member_addition(ctx.clone(), new_member.clone())
+                    .await;
+            },
+            FullEvent::VoiceStateUpdate { old, new } => {
+                self.on_voice_state_update(ctx.clone(), old.clone(), new.clone())
+                    .await;
+            },
+            FullEvent::CacheReady { guilds } => {
+                self.on_cache_ready(ctx.clone(), guilds.clone()).await;
+            },
+            _ => {},
+        }
+
+        // poise removed `FrameworkOptions::event_handler`, so the event log /
+        // router that used to hang off it is driven from here instead.
+        if let Err(e) = crate::handlers::handle_event(ctx, event, ctx.data::<Data>()).await {
+            tracing::error!("Error handling event: {e}");
+        }
+    }
+}
+
+impl SerenityHandler {
+    async fn on_ready(&self, ctx: SerenityContext, ready: Ready) {
         tracing::info!(
             "{} {}",
             ready.user.name,
@@ -74,7 +105,7 @@ impl EventHandler for SerenityHandler {
         // tracing::warn!("num_saved: {}", num_saved);
     }
 
-    async fn guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
+    async fn on_guild_member_addition(&self, ctx: SerenityContext, new_member: Member) {
         tracing::info!(
             "{}{}",
             "new member: ".white(),
@@ -103,7 +134,7 @@ impl EventHandler for SerenityHandler {
             (None, _) => {},
             (_, None) => {},
             (Some(message), Some(channel)) => {
-                let channel = serenity::ChannelId::new(channel);
+                let channel = serenity::GenericChannelId::new(channel);
                 let x = channel
                     .send_message(
                         ctx.http(),
@@ -138,7 +169,7 @@ impl EventHandler for SerenityHandler {
         }
     }
 
-    async fn voice_state_update(
+    async fn on_voice_state_update(
         &self,
         ctx: SerenityContext,
         _old: Option<VoiceState>,
@@ -194,7 +225,7 @@ impl EventHandler for SerenityHandler {
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
-    async fn cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
+    async fn on_cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
         tracing::info!("Cache built successfully! {} guilds cached", guilds.len());
         let cache = match ctx.cache() {
             Some(cache) => cache.clone(),
@@ -484,10 +515,10 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
 
-    // We can use ChannelId directly to send a message to a specific channel; in this case, the
+    // We can use GenericChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
     if let Some(chan_id) = config.sys_log_channel_id {
-        let message = ChannelId::new(chan_id)
+        let message = GenericChannelId::new(chan_id)
             .send_message(
                 ctx.http(),
                 CreateMessage::new().embed({
@@ -562,7 +593,11 @@ pub async fn voice_state_diff_str(
 ) -> Result<String, CrackedError> {
     let guild_id = new.guild_id;
     let channel = match new.channel_id {
-        Some(channel_id) => channel_id.to_channel(cache.clone(), guild_id).await.ok(),
+        Some(channel_id) => channel_id
+            .widen()
+            .to_channel(cache.clone(), guild_id)
+            .await
+            .ok(),
         None => None,
     };
     let premium = true; //DEFAULT_PREMIUM;
@@ -584,65 +619,76 @@ pub async fn voice_state_diff_str(
             return Ok(result);
         },
     };
+    let member = old
+        .member
+        .as_ref()
+        .or(new.member.as_ref())
+        .ok_or(CrackedError::Other("voice state update with no member"))?;
     let user = if premium {
-        if old.member.is_none() {
-            new.member.as_ref().unwrap().user.mention().to_string()
-        } else {
-            old.member.as_ref().unwrap().user.mention().to_string()
-        }
-    } else if old.member.is_none() {
-        new.member.as_ref().unwrap().user.name.to_string()
+        member.user.mention().to_string()
     } else {
-        old.member.as_ref().unwrap().user.name.to_string()
+        member.user.name.to_string()
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
-        if new.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let user_mention = new.member.as_ref().unwrap().user.mention();
-            let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
+        match (old.channel_id, new.channel_id) {
+            (Some(channel_id), None) => {
+                let user_name = &member.user.name;
+                let user_mention = member.user.mention();
+                let channel_mention = channel_id
+                    .widen()
+                    .to_channel(cache, guild_id)
+                    .await?
+                    .mention();
 
-            let user = if premium {
-                user_mention.to_string()
-            } else {
-                user_name.to_string()
-            };
+                let user = if premium {
+                    user_mention.to_string()
+                } else {
+                    user_name.to_string()
+                };
 
-            let channel = if premium {
-                channel_mention.to_string()
-            } else {
-                channel_id.to_string()
-            };
+                let channel = if premium {
+                    channel_mention.to_string()
+                } else {
+                    channel_id.to_string()
+                };
 
-            return Ok(format!(
-                "Member left voice channel\n{} left {}\n",
-                user, channel
-            ));
-        } else if old.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id.to_channel(cache, guild_id).await?.mention();
+                return Ok(format!(
+                    "Member left voice channel\n{} left {}\n",
+                    user, channel
+                ));
+            },
+            (None, Some(channel_id)) => {
+                let user_name = &member.user.name;
+                let channel_mention = channel_id
+                    .widen()
+                    .to_channel(cache, guild_id)
+                    .await?
+                    .mention();
 
-            return Ok(format!(
-                "Member joined voice channel\n{} joined {}\n",
-                user_name, channel_mention
-            ));
-        } else {
-            let old_channel_id = old.channel_id.unwrap();
-            let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            let new_channel_mention = new_channel_id
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            result.push_str(&format!(
-                "Switched voice channels: {} -> {}\n",
-                old_channel_mention, new_channel_mention
-            ));
+                return Ok(format!(
+                    "Member joined voice channel\n{} joined {}\n",
+                    user_name, channel_mention
+                ));
+            },
+            (Some(old_channel_id), Some(new_channel_id)) => {
+                let old_channel_mention = old_channel_id
+                    .widen()
+                    .to_channel(cache.clone(), guild_id)
+                    .await?
+                    .mention();
+                let new_channel_mention = new_channel_id
+                    .widen()
+                    .to_channel(cache.clone(), guild_id)
+                    .await?
+                    .mention();
+                result.push_str(&format!(
+                    "Switched voice channels: {} -> {}\n",
+                    old_channel_mention, new_channel_mention
+                ));
+            },
+            // Unreachable: this block only runs when the two differ.
+            (None, None) => {},
         }
     }
     if old.deaf() != new.deaf() {

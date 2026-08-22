@@ -3,12 +3,17 @@ use serenity::all::{
     Cache, GatewayIntents, Http, ShardManager, ShardManagerOptions, TransportCompression,
 };
 use std::{
-    num::{NonZeroU16, NonZeroUsize},
+    num::NonZeroU16,
     sync::{Arc, OnceLock},
 };
-use tokio::sync::{Mutex, RwLock};
 
 pub struct ShardManagerOptionsBuilder(pub ShardManagerOptions);
+
+impl Default for ShardManagerOptionsBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ShardManagerOptionsBuilder {
     pub fn new() -> Self {
@@ -39,41 +44,33 @@ impl ShardManagerOptionsBuilder {
     }
 }
 
-use futures::channel::mpsc::UnboundedReceiver;
-use serenity::all::GatewayError;
-pub struct ShardManagerBuilder(
-    Arc<ShardManager>,
-    UnboundedReceiver<Result<(), GatewayError>>,
-);
+/// serenity's `ShardManager::new` now returns the manager itself; the shard
+/// monitor channel it used to hand back is internal.
+pub struct ShardManagerBuilder(ShardManager);
+
+impl Default for ShardManagerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ShardManagerBuilder {
     pub fn new() -> Self {
-        let (manager, res) = ShardManager::new(ShardManagerOptionsBuilder::new().build());
-        Self(manager, res)
+        Self(ShardManager::new(ShardManagerOptionsBuilder::new().build()))
     }
 
     pub fn with_opts(opts: ShardManagerOptions) -> Self {
-        let (manager, res) = ShardManager::new(opts);
-        Self(manager, res)
+        Self(ShardManager::new(opts))
     }
 
-    pub fn build(
-        self,
-    ) -> (
-        Arc<ShardManager>,
-        UnboundedReceiver<Result<(), GatewayError>>,
-    ) {
-        (self.0, self.1)
+    pub fn build(self) -> ShardManager {
+        self.0
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZero;
-
     use super::*;
-    use crack_types::Duration;
-    use futures::stream::FusedStream;
 
     #[tokio::test]
     async fn test_create_shard_manager_opts() {
@@ -87,8 +84,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_shard_manager() {
-        let (shard_manager, monitor) = ShardManagerBuilder::new().build();
-        assert!(!monitor.is_terminated());
-        assert_eq!(shard_manager.runners.lock().await.len(), 0);
+        let shard_manager = ShardManagerBuilder::new().build();
+        // `runners` is a DashMap now, not a mutex-guarded map.
+        assert_eq!(shard_manager.runners.len(), 0);
     }
 }

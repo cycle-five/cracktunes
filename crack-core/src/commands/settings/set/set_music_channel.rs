@@ -14,8 +14,8 @@ use serenity::all::Channel;
 pub async fn music_channel(
     ctx: Context<'_>,
     #[description = "Channel to respond to music commands in."] channel: Option<Channel>,
-    #[description = "ChannelId of Channel to respond to music commands in."] channel_id: Option<
-        serenity::model::id::ChannelId,
+    #[description = "GenericChannelId of Channel to respond to music commands in."] channel_id: Option<
+        serenity::model::id::GenericChannelId,
     >,
     #[flag]
     #[description = "Show the help menu for this command."]

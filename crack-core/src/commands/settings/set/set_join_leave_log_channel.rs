@@ -17,8 +17,8 @@ use serenity::all::Channel;
 pub async fn join_leave_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send join/leave logs"] channel: Option<Channel>,
-    #[description = "ChannelId to send join/leave logs"] channel_id: Option<
-        serenity::model::id::ChannelId,
+    #[description = "GenericChannelId to send join/leave logs"] channel_id: Option<
+        serenity::model::id::GenericChannelId,
     >,
 ) -> Result<(), Error> {
     if channel.is_none() && channel_id.is_none() {

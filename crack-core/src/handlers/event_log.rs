@@ -8,15 +8,19 @@ use crate::{
 use cfg_if;
 use colored::Colorize;
 use poise::serenity_prelude as serenity;
-use poise::{
-    serenity_prelude::{ChannelId, FullEvent, GuildId},
-    FrameworkContext,
-};
+use poise::serenity_prelude::{FullEvent, GenericChannelId, GuildId};
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
-pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<ChannelId> =
-    Some(ChannelId::new(1191633527763116039));
+pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<GenericChannelId> =
+    Some(GenericChannelId::new(1191633527763116039));
+
+/// serenity's `FullEvent` dropped `snake_case_name()`; the enum now derives
+/// `strum::IntoStaticStr`, which yields SCREAMING_SNAKE_CASE variant names.
+#[must_use]
+pub fn full_event_name(event: &FullEvent) -> &'static str {
+    <&'static str>::from(event)
+}
 
 #[derive(Debug)]
 pub struct LogEntry<T: Serialize> {
@@ -43,7 +47,7 @@ pub async fn get_log_channel(
     channel_name: &str,
     guild_id: GuildId,
     data: Arc<Data>,
-) -> Option<ChannelId> {
+) -> Option<GenericChannelId> {
     let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
         .get(&guild_id)
@@ -54,7 +58,7 @@ pub async fn get_log_channel(
 // .unwrap_or_else(|| {
 //     tracing::error!("Failed to get guild_settings for guild_id {}", guild_id);
 //     Err(CrackedError::LogChannelWarning(
-//         event.snake_case_name(),
+//         full_event_name(event),
 //         guild_id,
 //     ))
 // })?
@@ -65,7 +69,7 @@ pub async fn get_channel_id(
     guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
     guild_id: GuildId,
     event: &FullEvent,
-) -> Result<ChannelId, CrackedError> {
+) -> Result<GenericChannelId, CrackedError> {
     let guild_settings_map = guild_settings_map.read().await;
 
     match guild_settings_map.get(&guild_id) {
@@ -73,19 +77,19 @@ pub async fn get_channel_id(
             Some(channel_id) => {
                 if guild_settings.ignored_channels.contains(&channel_id.get()) {
                     return Err(CrackedError::LogChannelWarning(
-                        event.snake_case_name(),
+                        full_event_name(event),
                         guild_id,
                     ));
                 }
                 Ok(channel_id)
             },
             None => Err(CrackedError::LogChannelWarning(
-                event.snake_case_name(),
+                full_event_name(event),
                 guild_id,
             )),
         },
         None => DEFAULT_GLOBAL_LOG_CHANNEL.ok_or(CrackedError::LogChannelWarning(
-            event.snake_case_name(),
+            full_event_name(event),
             guild_id,
         )),
     }
@@ -112,17 +116,16 @@ pub async fn update_activity_map(data: Arc<Data>, presence: serenity::Presence) 
 
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
-#[tracing::instrument(skip(ctx, _framework, data_global))]
+#[tracing::instrument(skip(ctx, data_global))]
 #[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
     ctx: &serenity::all::Context,
     event_in: &FullEvent,
-    _framework: FrameworkContext<'_, Data, Error>,
     data_global: Arc<Data>,
 ) -> Result<(), Error> {
     use crate::{db::GuildEntity, guild::settings::DEFAULT_PREFIX};
     let event_log = std::sync::Arc::new(&data_global.event_log_async);
-    let event_name = event_in.snake_case_name();
+    let event_name = full_event_name(event_in);
     let guild_settings = &data_global.guild_settings_map;
 
     match event_in {
@@ -293,7 +296,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, category),
-            category.guild_id,
+            category.base.guild_id,
             &ctx,
             event_log,
             event_name
@@ -303,7 +306,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(event_name, category),
-            category.guild_id,
+            category.base.guild_id,
             &ctx,
             event_log,
             event_name
@@ -313,7 +316,7 @@ pub async fn handle_event(
             guild_settings,
             event_in,
             &(channel, messages),
-            channel.guild_id,
+            channel.base.guild_id,
             &ctx,
             event_log,
             event_name
@@ -331,6 +334,7 @@ pub async fn handle_event(
         FullEvent::ChannelUpdate { old, new } => {
             let guild_id = new
                 .clone()
+                .base
                 .guild(&ctx.cache)
                 .map(|x| x.id)
                 .unwrap_or_default();
@@ -910,9 +914,9 @@ pub async fn handle_event(
         #[cfg(feature = "cache")]
         FullEvent::MessageUpdate {
             old_if_available,
-            new,
             event,
         } => {
+            let new = Some(event.message.clone());
             if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
                 || old_if_available
                     .as_ref()
@@ -925,20 +929,20 @@ pub async fn handle_event(
                 &Option<serenity::model::prelude::Message>,
                 &Option<serenity::model::prelude::Message>,
                 &serenity::model::prelude::MessageUpdateEvent,
-            ) = (old_if_available, new, event);
+            ) = (old_if_available, &new, event);
             log_event!(
                 log_message_update,
                 guild_settings,
                 event_in,
                 &log_data,
-                event.guild_id.unwrap_or_default(),
+                event.message.guild_id.unwrap_or_default(),
                 &ctx,
                 event_log,
                 event_name
             )
             // event_log.write_log_obj_async(event_name, &(old_if_available, new, event))
         },
-        FullEvent::ReactionAdd { add_reaction } => {
+        FullEvent::ReactionAdd { add_reaction, .. } => {
             log_event!(
                 log_reaction_add,
                 guild_settings,
@@ -950,7 +954,9 @@ pub async fn handle_event(
                 event_name
             )
         },
-        FullEvent::ReactionRemove { removed_reaction } => {
+        FullEvent::ReactionRemove {
+            removed_reaction, ..
+        } => {
             log_event!(
                 log_reaction_remove,
                 guild_settings,
@@ -966,6 +972,7 @@ pub async fn handle_event(
             channel_id,
             removed_from_message_id,
             guild_id,
+            ..
         } => {
             event_log
                 .write_log_obj_async(event_name, &(channel_id, removed_from_message_id, guild_id))
@@ -993,7 +1000,7 @@ pub async fn handle_event(
                 .write_log_obj_async(event_name, stage_instance)
                 .await
         },
-        FullEvent::ThreadCreate { thread } => {
+        FullEvent::ThreadCreate { thread, .. } => {
             event_log.write_log_obj_async(event_name, thread).await
         },
         FullEvent::ThreadDelete {
@@ -1045,7 +1052,7 @@ pub async fn handle_event(
             id,
             guild_id,
         } => {
-            let log_data = (old, status, id, guild_id);
+            let log_data = (old, status, &id.widen(), guild_id);
             log_event!(
                 log_voice_channel_status_update,
                 guild_settings,
@@ -1068,13 +1075,13 @@ pub async fn handle_event(
         FullEvent::CacheReady { guilds } => {
             tracing::info!(
                 "{}: {}",
-                event_in.snake_case_name().bright_green(),
+                full_event_name(event_in).bright_green(),
                 guilds.len()
             );
             Ok(())
         },
         _ => {
-            tracing::info!("{}", event_in.snake_case_name().bright_green());
+            tracing::info!("{}", full_event_name(event_in).bright_green());
             Ok(())
         },
     }

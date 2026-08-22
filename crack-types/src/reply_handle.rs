@@ -79,6 +79,9 @@ impl ReplyHandleTrait for ReplyHandleWrapperSimple {
 }
 
 /// Enum that can hold either a message or a reply handle.
+// `Message` is ~600 bytes; boxing it would change a type that callers destructure
+// directly. Deferred with the other large-variant cleanups.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum MessageOrReplyHandle {
     Message(Message),

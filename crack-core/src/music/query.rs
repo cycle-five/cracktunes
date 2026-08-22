@@ -1,5 +1,5 @@
 use super::queue::{queue_track_back, queue_track_front};
-use super::{queue_keyword_list_back, queue_query_list_offset};
+use super::{queue_keyword_list_back, queue_query_list_offset, queue_resolved_list_back};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
 use crate::sources::rusty_ytdl::NewSearchSource;
@@ -42,6 +42,12 @@ use tokio::{process::Command, sync::Mutex};
 use url::Url;
 
 pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
+
+/// Maximum number of playlist entries pulled in when playing a playlist link.
+///
+/// Matches `rusty_ytdl`'s own default, which is what the previous
+/// `Playlist::get(url, None)` call used.
+pub const PLAYLIST_PLAY_LIMIT: u64 = 100;
 
 // #[derive(Clone, Debug)]
 // /// Enum for type of possible queries we have to handle
@@ -106,7 +112,7 @@ impl Queries {
         self.queries.len()
     }
 
-    pub fn iter(&self) -> std::slice::Iter<QueryType> {
+    pub fn iter(&self) -> std::slice::Iter<'_, QueryType> {
         self.queries.iter()
     }
 }
@@ -212,7 +218,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 Ok((status, file_name))
@@ -224,7 +230,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.as_ref().unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 tracing::warn!("file_name: {}", file_name);
@@ -246,7 +252,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -263,7 +269,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -283,7 +289,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -300,7 +306,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -317,7 +323,7 @@ impl NewQueryType {
                 ctx.http(),
                 CreateMessage::new()
                     .content(format!("Download status {}", status))
-                    .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
+                    .add_file(CreateAttachment::path(Path::new(&file_name))?),
             )
             .await?;
 
@@ -392,11 +398,16 @@ impl NewQueryType {
                 tracing::info!("Mode::Next, QueryType::Keywords|VideoLink|File|NewYoutubeDl");
                 queue_track_front(ctx, &call, qt).await?;
             },
-            // FIXME
             QueryType::PlaylistLink(url) => {
                 let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-                let playlist: Playlist =
-                    rusty_ytdl::search::Playlist::get(url.clone(), None).await?;
+                let playlist: Playlist = rusty_ytdl::search::Playlist::get(
+                    url.clone(),
+                    Some(&rusty_ytdl::search::PlaylistSearchOptions {
+                        limit: PLAYLIST_PLAY_LIMIT,
+                        ..Default::default()
+                    }),
+                )
+                .await?;
                 queue_query_list_offset(ctx, call, Queries::from(playlist).to_vec(), 1, search_msg)
                     .await?;
             },
@@ -485,15 +496,18 @@ impl NewQueryType {
                 };
                 Ok(true)
             },
-            // FIXME
             QueryType::PlaylistLink(url) => {
                 tracing::trace!("Mode::End, QueryType::PlaylistLink");
-                // Let's use the new YouTube rust library for this
-                let playlist: Playlist =
-                    rusty_ytdl::search::Playlist::get(url.clone(), None).await?;
-                queue_keyword_list_back(ctx, call, Queries::from(playlist).to_vec(), search_msg)
+                // A playlist fetch already returns title / duration / url for
+                // every entry, so the tracks go straight into the queue. The
+                // old path threw that away and re-resolved each entry with a
+                // separate (serial) yt-dlp invocation.
+                let tracks = ctx
+                    .data()
+                    .ct_client
+                    .resolve_playlist_limit(url, PLAYLIST_PLAY_LIMIT)
                     .await?;
-                // queue_yt_playlist(ctx, call, guild_id, playlist, search_msg).await?;
+                queue_resolved_list_back(ctx, call, tracks, search_msg).await?;
                 Ok(true)
             },
             QueryType::SpotifyTracks(tracks) => {
@@ -510,10 +524,9 @@ impl NewQueryType {
                     .iter()
                     .map(|x| QueryType::Keywords(x.clone()))
                     .collect::<Vec<QueryType>>();
-                // queue_keyword_list_back(ctx, call, queries, search_msg).await?;
-                for query in queries {
-                    queue_track_back(ctx, &call, &query).await?;
-                }
+                // Was a serial `queue_track_back` per keyword; the batched
+                // path resolves them concurrently.
+                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
                 Ok(true)
             },
             QueryType::File(file) => {

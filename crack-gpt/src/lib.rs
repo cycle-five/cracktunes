@@ -2,7 +2,8 @@
 use async_openai::{
     config::AzureConfig,
     error::OpenAIError,
-    types::{
+    // async-openai 0.41 groups request/response types by endpoint.
+    types::chat::{
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
         ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
     },

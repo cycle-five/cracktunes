@@ -93,12 +93,12 @@ impl<'a> CrackTrackQueue<'a> {
     }
 
     /// Get the element at the given index in the queue.
-    pub async fn get(&self, index: usize) -> Option<ResolvedTrack> {
+    pub async fn get(&self, index: usize) -> Option<ResolvedTrack<'_>> {
         self.inner.lock().await.get(index).cloned()
     }
 
     /// Remove the element at the given index in the queue.
-    pub async fn remove(&self, index: usize) -> Option<ResolvedTrack> {
+    pub async fn remove(&self, index: usize) -> Option<ResolvedTrack<'_>> {
         self.inner.lock().await.remove(index)
     }
 
@@ -118,7 +118,7 @@ impl<'a> CrackTrackQueue<'a> {
     }
 
     /// Remove the first track from the queue.
-    pub async fn pop_front(&self) -> Option<ResolvedTrack> {
+    pub async fn pop_front(&self) -> Option<ResolvedTrack<'_>> {
         self.inner.lock().await.pop_front()
     }
 

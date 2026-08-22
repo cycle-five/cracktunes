@@ -1,13 +1,15 @@
 # STAGE1: Build the binary
-FROM rust:1.81.0-alpine3.20 AS builder
+FROM rust:1.98.0-alpine3.22 AS builder
 
 # Install build dependencies
 # RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
+# Versions are deliberately unpinned: the previous pins were exact
+# alpine 3.20 package revisions and do not resolve on newer bases.
 RUN apk add --no-cache \
-  build-base=0.5-r3 \
-  musl-dev=1.2.5-r0 \
-  cmake=3.29.3-r0 \
-  git=2.45.2-r0
+  build-base \
+  musl-dev \
+  cmake \
+  git
 
 # Default directory
 WORKDIR /app
@@ -22,14 +24,14 @@ COPY . .
 RUN cargo build -p cracktunes --profile=dist
 
 # STAGE2: create a slim image with the compiled binary
-FROM alpine:3.20 AS runner
+FROM alpine:3.22 AS runner
 
 # Default directory
 WORKDIR /app
 
 # RUN apk add --no-cache ffmpeg curl
 RUN apk add --no-cache \
-  ffmpeg=6.1.1-r8 \
+  ffmpeg \
   curl
 
 ADD ./data /data

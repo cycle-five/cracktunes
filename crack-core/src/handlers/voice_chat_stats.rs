@@ -11,7 +11,7 @@ use ::serenity::all::CacheHttp;
 use colored::Colorize;
 use serenity::{
     builder::CreateMessage, model::id::GuildId, Channel, ChannelId, Context as SerenityContext,
-    Mentionable, UserId, VoiceState,
+    GenericChannelId, Mentionable, UserId, VoiceState,
 };
 use std::{
     cmp::{Eq, PartialEq},
@@ -155,7 +155,7 @@ async fn run_cam_enforcement(
     //     "mute",
     // );
 
-    for (dc_res, state) in vec![dc_res1, dc_res2] {
+    for (dc_res, state) in [dc_res1, dc_res2] {
         match dc_res {
             Ok(_) => {
                 tracing::error!("User {} has been violated: {}", user.name, state);
@@ -163,7 +163,7 @@ async fn run_cam_enforcement(
                     || state == "mute" && kick_conf.msg_on_mute
                     || state == "disconnect" && kick_conf.msg_on_dc
                 {
-                    let channel = ChannelId::new(kick_conf.chan_id);
+                    let channel = GenericChannelId::new(kick_conf.chan_id);
                     let _ = channel
                         .send_message(
                             cache_http.http(),
@@ -213,9 +213,13 @@ async fn check_camera_status(
                     to_fixed(UNKNOWN)
                 },
             };
-            let channel_name = match chan_id.to_channel(ctx.clone(), Some(guild_id)).await {
+            let channel_name = match chan_id
+                .widen()
+                .to_channel(ctx.clone(), Some(guild_id))
+                .await
+            {
                 Ok(chan) => match chan {
-                    Channel::Guild(chan) => chan.name.to_string(),
+                    Channel::Guild(chan) => chan.base.name.to_string(),
                     Channel::Private(chan) => chan.recipient.name.to_string(),
                     _ => UNKNOWN.to_string(),
                 },
@@ -241,7 +245,7 @@ async fn check_camera_status(
             cams.push(info);
             output.push_str(&format!(
                 "{}|{}|{}|{}|{}|{}\n",
-                guild_name, &user_name, &user_id, &channel_name, &chan_id, status,
+                guild_name, user_name, user_id, channel_name, chan_id, status,
             ));
         }
     }
@@ -318,7 +322,6 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
-    use ::serenity::all::Token;
     use crack_types::get_valid_token;
 
     #[test]

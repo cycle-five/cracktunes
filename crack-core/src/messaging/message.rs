@@ -23,18 +23,18 @@ pub enum CrackedMessage {
     AutoRole(serenity::RoleId),
     BugNone(String),
     CategoryCreated {
-        channel_id: serenity::ChannelId,
+        channel_id: serenity::GenericChannelId,
         channel_name: String,
     },
     CountryName(String),
     Coinflip(bool),
     ChannelSizeSet {
-        id: serenity::ChannelId,
+        id: serenity::GenericChannelId,
         name: String,
         size: u32,
     },
     ChannelDeleted {
-        channel_id: serenity::ChannelId,
+        channel_id: serenity::GenericChannelId,
         channel_name: String,
     },
     Clear,
@@ -136,7 +136,7 @@ pub enum CrackedMessage {
         mention: Mention,
     },
     TextChannelCreated {
-        channel_id: serenity::ChannelId,
+        channel_id: serenity::GenericChannelId,
         channel_name: FixedString<u16>,
     },
     Uptime {
@@ -606,27 +606,27 @@ mod test {
         assert_eq!(message, CrackedMessage::Clean(1));
 
         let message = CrackedMessage::ChannelSizeSet {
-            id: serenity::ChannelId::default(),
+            id: serenity::GenericChannelId::default(),
             name: "test".to_string(),
             size: 1,
         };
         assert_eq!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::ChannelId::default(),
+                id: serenity::GenericChannelId::default(),
                 name: "test".to_string(),
                 size: 1
             }
         );
 
         let message = CrackedMessage::ChannelDeleted {
-            channel_id: serenity::ChannelId::default(),
+            channel_id: serenity::GenericChannelId::default(),
             channel_name: "test".to_string(),
         };
         assert_eq!(
             message,
             CrackedMessage::ChannelDeleted {
-                channel_id: serenity::ChannelId::default(),
+                channel_id: serenity::GenericChannelId::default(),
                 channel_name: "test".to_string()
             }
         );
@@ -668,27 +668,27 @@ mod test {
         assert_ne!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::ChannelId::default(),
+                id: serenity::GenericChannelId::default(),
                 name: "test".to_string(),
                 size: 1,
             }
         );
 
         let message = CrackedMessage::ChannelSizeSet {
-            id: serenity::ChannelId::default(),
+            id: serenity::GenericChannelId::default(),
             name: "test".to_string(),
             size: 1,
         };
         assert_ne!(message, CrackedMessage::Clean(1));
 
         let message = CrackedMessage::ChannelDeleted {
-            channel_id: serenity::ChannelId::default(),
+            channel_id: serenity::GenericChannelId::default(),
             channel_name: "test".to_string(),
         };
         assert_ne!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::ChannelId::default(),
+                id: serenity::GenericChannelId::default(),
                 name: "test".to_string(),
                 size: 1,
             }

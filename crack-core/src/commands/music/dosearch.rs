@@ -36,7 +36,7 @@ pub async fn do_yt_search(
 async fn do_yt_search_internal(
     ctx: Context<'_>,
     search_query: String,
-) -> Result<ReplyHandle, CrackedError> {
+) -> Result<ReplyHandle<'_>, CrackedError> {
     use crate::http_utils;
 
     let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), search_query);

@@ -3,7 +3,7 @@ use crate::{
     connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
     Context, Error,
 };
-use ::serenity::all::{Channel, ChannelId, Mentionable};
+use ::serenity::all::{Channel, ChannelId, GenericChannelId, Mentionable};
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -68,7 +68,9 @@ pub async fn summon_internal(
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
-            let chan_id = handler.current_channel().map(|c| ChannelId::new(c.get()));
+            let chan_id = handler
+                .current_channel()
+                .map(|c| GenericChannelId::new(c.get()));
 
             match (has_current_connection, chan_id) {
                 (true, Some(chan_id)) => {
@@ -84,7 +86,7 @@ pub async fn summon_internal(
         .lock()
         .await
         .current_channel()
-        .map(|c| ChannelId::new(c.get()));
+        .map(|c| GenericChannelId::new(c.get()));
     if let Some(c) = chan_id {
         tracing::info!("joined channel: {c}");
     } else {
@@ -99,7 +101,7 @@ fn parse_channel_id(
     channel_id_str: Option<String>,
 ) -> Result<Option<ChannelId>, Error> {
     if let Some(channel) = channel {
-        return Ok(Some(channel.id()));
+        return Ok(Some(channel.id().expect_channel()));
     }
 
     match channel_id_str {
@@ -128,10 +130,7 @@ mod test {
             parse_channel_id(None, Some("123".to_string())).unwrap(),
             Some(ChannelId::new(123))
         );
-        assert_eq!(
-            parse_channel_id(None, Some("abc".to_string())).is_err(),
-            true
-        );
+        assert!(parse_channel_id(None, Some("abc".to_string())).is_err());
         assert_eq!(parse_channel_id(None, None).unwrap(), None);
     }
 }
