@@ -285,12 +285,7 @@ pub struct MediaSourceStream {
 impl MediaSourceStream {
     async fn read_async(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let opt_bytes = if self.buffer.read().await.is_empty() {
-            either::Left(
-                self.stream
-                    .chunk()
-                    .await
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
-            )
+            either::Left(self.stream.chunk().await.map_err(io::Error::other)?)
         } else {
             either::Right(())
         };
@@ -453,9 +448,7 @@ mod test {
                 let metadata = crate::sources::rusty_ytdl::search_result_to_aux_metadata(&playlist);
                 println!("{:?}", metadata);
             },
-            Ok(None) => {
-                assert!(false)
-            },
+            Ok(None) => panic!("search returned no result"),
             Err(e) => {
                 println!("{:?}", e);
             },
@@ -498,7 +491,7 @@ mod test {
             let res = rusty_yt.search_one(search.to_string(), None).await;
             assert!(
                 res.is_ok() || {
-                    println!("{}", res.unwrap_err().to_string());
+                    println!("{}", res.unwrap_err());
                     true
                 }
             );

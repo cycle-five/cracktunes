@@ -833,10 +833,8 @@ mod tests {
                     .expect("Failed to build display");
                 let disp: String = client.get_display(guild);
                 println!("{}", disp);
-            } else {
-                if !std::env::var("CI").is_ok() {
-                    assert!(false);
-                }
+            } else if std::env::var("CI").is_err() {
+                panic!("failed to enqueue query");
             }
         }
 
@@ -853,7 +851,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_yt_url_type() {
-        let urls = vec![
+        let urls = [
             "https://www.youtube.com/watch?v=X9ukSm5gmKk",
             "https://www.youtube.com/watch?v=X9ukSm5gmKk&list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
             "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP",
@@ -865,11 +863,11 @@ mod tests {
             .collect::<Vec<_>>();
 
         for (url, want) in urls.iter().zip(want_playlist) {
-            let res = yt_url_type(&url).await.expect("Failed to get URL type");
+            let res = yt_url_type(url).await.expect("Failed to get URL type");
             match res {
                 QueryType::VideoLink(_) => assert!(!want),
                 QueryType::PlaylistLink(_) => assert!(want),
-                _ => assert!(false),
+                other => panic!("unexpected query type: {other:?}"),
             }
         }
     }

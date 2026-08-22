@@ -41,7 +41,7 @@ impl QueryContext<'_> {
     }
 
     /// Get the poise context.
-    pub fn ctx(&self) -> &CrackContext {
+    pub fn ctx(&self) -> &CrackContext<'_> {
         &self.ctx
     }
 

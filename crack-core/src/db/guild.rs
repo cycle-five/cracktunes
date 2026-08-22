@@ -243,21 +243,11 @@ impl GuildEntity {
 
         let guild_id = settings.guild_id.get();
 
-        if settings.welcome_settings.is_some() {
-            settings
-                .welcome_settings
-                .as_ref()
-                .unwrap()
-                .save(pool, guild_id)
-                .await?;
+        if let Some(welcome_settings) = settings.welcome_settings.as_ref() {
+            welcome_settings.save(pool, guild_id).await?;
         }
-        if settings.log_settings.is_some() {
-            settings
-                .log_settings
-                .as_ref()
-                .unwrap()
-                .save(pool, guild_id)
-                .await?;
+        if let Some(log_settings) = settings.log_settings.as_ref() {
+            log_settings.save(pool, guild_id).await?;
         }
 
         Ok(())

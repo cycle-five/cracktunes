@@ -95,7 +95,7 @@ pub async fn send_reply<'ctx>(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    ctx.send_reply(message, as_embed).await.map_err(Into::into)
+    ctx.send_reply(message, as_embed).await
 }
 
 /// Sends a reply response, possibly as an embed.
@@ -105,9 +105,7 @@ pub async fn send_reply_owned(
     message: CrackedMessage,
     as_embed: bool,
 ) -> Result<ReplyHandle<'_>, CrackedError> {
-    ctx.send_reply_owned(message, as_embed)
-        .await
-        .map_err(Into::into)
+    ctx.send_reply_owned(message, as_embed).await
 }
 
 /// Sends a regular reply response.
@@ -525,7 +523,7 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed {
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed<'_> {
     let content = if !playlists.is_empty() {
         let start_idx = EMBED_PAGE_SIZE * page;
         let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
@@ -562,7 +560,7 @@ pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
     page: usize,
-) -> CreateEmbed {
+) -> CreateEmbed<'_> {
     CreateEmbed::default()
         //.field("Playlist:", &playlist_name, true)
         .field(
@@ -781,7 +779,9 @@ pub fn check_interaction(result: Result<(), Error>) {
     }
 }
 
-#[allow(deprecated)]
+// `Command(CommandInteraction)` is ~776 bytes against a boxed `Message` variant.
+// Deferred with the other large-variant cleanups.
+#[allow(deprecated, clippy::large_enum_variant)]
 pub enum CommandOrMessageInteraction {
     Command(CommandInteraction),
     Message(Option<Box<MessageInteractionMetadata>>),
@@ -914,10 +914,10 @@ mod test {
         let creat_btn = create_single_nav_btn("<<", true);
         let s = serde_json::to_string_pretty(&creat_btn).unwrap();
         println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(&*s).unwrap();
+        let btn = serde_json::from_str::<Button>(&s).unwrap();
 
         assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
-        assert_eq!(btn.disabled, true);
+        assert!(btn.disabled);
     }
 
     #[test]
@@ -939,7 +939,7 @@ mod test {
             let btn = &btns[0];
             assert_eq!(btns[0], btn.clone());
         } else {
-            assert!(false);
+            panic!("create_nav_btns did not return an action row of buttons");
         }
     }
 }

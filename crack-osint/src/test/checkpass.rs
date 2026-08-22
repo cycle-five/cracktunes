@@ -10,6 +10,6 @@ mod test {
         let result = check_password_pwned(&client, "password123").await;
 
         // Assert that the result is Ok and true
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 }

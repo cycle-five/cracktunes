@@ -94,7 +94,7 @@ pub async fn remove_internal(
     Ok(())
 }
 
-async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed {
+async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed<'_> {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     CreateEmbed::default()
         .field(

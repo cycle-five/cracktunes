@@ -9,6 +9,12 @@ use std::{
 
 pub struct ShardManagerOptionsBuilder(pub ShardManagerOptions);
 
+impl Default for ShardManagerOptionsBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShardManagerOptionsBuilder {
     pub fn new() -> Self {
         let ws_url = "ws://localhost:3030".to_string();
@@ -41,6 +47,12 @@ impl ShardManagerOptionsBuilder {
 /// serenity's `ShardManager::new` now returns the manager itself; the shard
 /// monitor channel it used to hand back is internal.
 pub struct ShardManagerBuilder(ShardManager);
+
+impl Default for ShardManagerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ShardManagerBuilder {
     pub fn new() -> Self {

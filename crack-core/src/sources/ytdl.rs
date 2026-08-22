@@ -84,7 +84,7 @@ impl MyYoutubeDl {
                     None
                 } else {
                     let id_string = String::from_utf8_lossy(x);
-                    let url = format!("{}{}", VIDEO_WATCH_URL, &id_string);
+                    let url = format!("{}{}", VIDEO_WATCH_URL, id_string);
                     drop(id_string);
                     Some(url)
                 }
@@ -102,16 +102,13 @@ mod test {
             "https://www.youtube.com/playlist?list=PLzk-s3QLDrQ8tGpRzZ01woRoUd4ed-84q".to_string();
         let mut ytdl = crate::sources::ytdl::MyYoutubeDl::new(url);
         let playlist = ytdl.get_playlist().await;
-        if playlist.is_err() {
-            println!(
+        match playlist {
+            Err(e) => println!(
                 "{:?}",
-                playlist
-                    .unwrap_err()
-                    .to_string()
+                e.to_string()
                     .contains("Your IP is likely blocked by YouTube.")
-            );
-        } else {
-            println!("{:?}", playlist.unwrap());
+            ),
+            Ok(playlist) => println!("{playlist:?}"),
         }
     }
 }

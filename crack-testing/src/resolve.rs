@@ -156,7 +156,7 @@ impl ResolvedTrack<'_> {
     }
 
     /// Get the video object if it exists.
-    pub fn get_video(&self) -> Option<rusty_ytdl::Video> {
+    pub fn get_video(&self) -> Option<rusty_ytdl::Video<'_>> {
         self.video.clone()
     }
 

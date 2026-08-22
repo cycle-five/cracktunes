@@ -332,10 +332,7 @@ impl From<SerenityError> for CrackedError {
 
 impl From<CrackedError> for SerenityError {
     fn from(_x: CrackedError) -> Self {
-        SerenityError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "CrackedError",
-        ))
+        SerenityError::Io(std::io::Error::other("CrackedError"))
     }
 }
 
@@ -443,7 +440,7 @@ mod test {
     use reqwest::StatusCode;
 
     use super::*;
-    use std::io::{Error as StdError, ErrorKind};
+    use std::io::Error as StdError;
 
     #[test]
     fn test_verify() {
@@ -516,8 +513,8 @@ mod test {
             .unwrap();
 
         let response = client.get("http://notreallol").send();
-        if response.is_err() {
-            let err = CrackedError::Reqwest(response.unwrap_err());
+        if let Err(e) = response {
+            let err = CrackedError::Reqwest(e);
             assert!(format!("{}", err).starts_with("error sending request for url"));
         }
 
@@ -527,7 +524,7 @@ mod test {
         let err = CrackedError::UnauthorizedUser;
         assert_eq!(format!("{}", err), UNAUTHORIZED_USER);
 
-        let err = CrackedError::IO(StdError::new(ErrorKind::Other, "test"));
+        let err = CrackedError::IO(StdError::other("test"));
         assert_eq!(format!("{}", err), "test");
 
         let err = CrackedError::NotInRange("test", 1, 2, 3);
@@ -594,17 +591,20 @@ mod test {
 
         let response1 = client.get("http://notreallol").send();
         let response2 = client.get("http://notreallol").send();
-        if response1.is_err() && response2.is_err() {
-            let err = CrackedError::Reqwest(response1.unwrap_err());
-            assert_eq!(err, CrackedError::Reqwest(response2.unwrap_err()));
+        match (response1, response2) {
+            (Err(e1), Err(e2)) => {
+                let err = CrackedError::Reqwest(e1);
+                assert_eq!(err, CrackedError::Reqwest(e2));
 
-            let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-            assert_eq!(
-                err,
-                CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
-            );
-        } else {
-            assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
+                let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+                assert_eq!(
+                    err,
+                    CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+                );
+            },
+            (response1, _) => {
+                assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
+            },
         }
     }
 }

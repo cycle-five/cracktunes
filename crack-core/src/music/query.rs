@@ -112,7 +112,7 @@ impl Queries {
         self.queries.len()
     }
 
-    pub fn iter(&self) -> std::slice::Iter<QueryType> {
+    pub fn iter(&self) -> std::slice::Iter<'_, QueryType> {
         self.queries.iter()
     }
 }
@@ -218,7 +218,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 Ok((status, file_name))
@@ -230,7 +230,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.as_ref().unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 tracing::warn!("file_name: {}", file_name);
@@ -252,7 +252,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -269,7 +269,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -289,7 +289,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();
@@ -306,7 +306,7 @@ impl NewQueryType {
                     "{}/{} [{}].{}",
                     prefix,
                     metadata.title.unwrap(),
-                    url.split('=').last().unwrap(),
+                    url.split('=').next_back().unwrap(),
                     extension,
                 );
                 let status = output.status.success();

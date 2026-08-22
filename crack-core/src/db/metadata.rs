@@ -289,7 +289,7 @@ pub fn aux_metadata_from_db(metadata: &Metadata) -> Result<AuxMetadata, CrackedE
     let album = metadata.album.clone();
     let date = metadata.date;
     let channel = metadata.channel.clone();
-    let channels = metadata.channels.map(i16::from);
+    let channels = metadata.channels;
     let start_time = metadata.start_time;
     let duration = metadata.duration;
     let sample_rate = metadata.sample_rate.map(|d| i64::from(d) as i32);

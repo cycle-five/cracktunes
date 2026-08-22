@@ -330,8 +330,7 @@ pub async fn poise_framework(
         let mut saved_guilds = Vec::with_capacity(guilds.len());
 
         println!("Saving guilds...");
-        if pool.is_some() {
-            let p = pool.unwrap();
+        if let Some(p) = pool {
             for (k, v) in guilds {
                 //tracing::warn!("Saving Guild: {}", k);
                 match v.save(&p).await {

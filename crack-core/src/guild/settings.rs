@@ -1071,16 +1071,16 @@ mod test {
         let settings = crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
         assert_eq!(settings.prefix, "r!");
         assert_eq!(settings.allowed_domains.len(), 1);
-        assert_eq!(settings.allowed_domains.contains("youtube.com"), true);
+        assert!(settings.allowed_domains.contains("youtube.com"));
         assert_eq!(settings.banned_domains.len(), 0);
         assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
         assert_eq!(settings.old_volume, 1.0);
         assert_eq!(settings.volume, 1.0);
-        assert_eq!(settings.self_deafen, true);
+        assert!(settings.self_deafen);
         assert_eq!(settings.timeout, 600);
-        assert_eq!(settings.welcome_settings.is_none(), true);
-        assert_eq!(settings.log_settings.is_none(), true);
+        assert!(settings.welcome_settings.is_none());
+        assert!(settings.log_settings.is_none());
         assert_eq!(settings.additional_prefixes.len(), 0);
     }
 
@@ -1122,8 +1122,8 @@ mod test {
         assert_eq!(authorized_users_default().len(), 0);
         assert_eq!(additional_prefixes_default().len(), 0);
         assert_eq!(volume_default(), 1.0);
-        assert_eq!(premium_default(), false);
-        assert_eq!(default_false(), false);
-        assert_eq!(default_true(), true);
+        assert!(!premium_default());
+        assert!(!default_false());
+        assert!(default_true());
     }
 }

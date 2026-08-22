@@ -619,75 +619,76 @@ pub async fn voice_state_diff_str(
             return Ok(result);
         },
     };
+    let member = old
+        .member
+        .as_ref()
+        .or(new.member.as_ref())
+        .ok_or(CrackedError::Other("voice state update with no member"))?;
     let user = if premium {
-        if old.member.is_none() {
-            new.member.as_ref().unwrap().user.mention().to_string()
-        } else {
-            old.member.as_ref().unwrap().user.mention().to_string()
-        }
-    } else if old.member.is_none() {
-        new.member.as_ref().unwrap().user.name.to_string()
+        member.user.mention().to_string()
     } else {
-        old.member.as_ref().unwrap().user.name.to_string()
+        member.user.name.to_string()
     };
     let mut result = String::new();
     if old.channel_id != new.channel_id {
-        if new.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let user_mention = new.member.as_ref().unwrap().user.mention();
-            let channel_id = old.channel_id.unwrap();
-            let channel_mention = channel_id
-                .widen()
-                .to_channel(cache, guild_id)
-                .await?
-                .mention();
+        match (old.channel_id, new.channel_id) {
+            (Some(channel_id), None) => {
+                let user_name = &member.user.name;
+                let user_mention = member.user.mention();
+                let channel_mention = channel_id
+                    .widen()
+                    .to_channel(cache, guild_id)
+                    .await?
+                    .mention();
 
-            let user = if premium {
-                user_mention.to_string()
-            } else {
-                user_name.to_string()
-            };
+                let user = if premium {
+                    user_mention.to_string()
+                } else {
+                    user_name.to_string()
+                };
 
-            let channel = if premium {
-                channel_mention.to_string()
-            } else {
-                channel_id.to_string()
-            };
+                let channel = if premium {
+                    channel_mention.to_string()
+                } else {
+                    channel_id.to_string()
+                };
 
-            return Ok(format!(
-                "Member left voice channel\n{} left {}\n",
-                user, channel
-            ));
-        } else if old.channel_id.is_none() {
-            let user_name = &new.member.as_ref().unwrap().user.name;
-            let channel_id = new.channel_id.unwrap();
-            let channel_mention = channel_id
-                .widen()
-                .to_channel(cache, guild_id)
-                .await?
-                .mention();
+                return Ok(format!(
+                    "Member left voice channel\n{} left {}\n",
+                    user, channel
+                ));
+            },
+            (None, Some(channel_id)) => {
+                let user_name = &member.user.name;
+                let channel_mention = channel_id
+                    .widen()
+                    .to_channel(cache, guild_id)
+                    .await?
+                    .mention();
 
-            return Ok(format!(
-                "Member joined voice channel\n{} joined {}\n",
-                user_name, channel_mention
-            ));
-        } else {
-            let old_channel_id = old.channel_id.unwrap();
-            let new_channel_id = new.channel_id.unwrap();
-            let old_channel_mention = old_channel_id
-                .widen()
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            let new_channel_mention = new_channel_id
-                .widen()
-                .to_channel(cache.clone(), guild_id)
-                .await?
-                .mention();
-            result.push_str(&format!(
-                "Switched voice channels: {} -> {}\n",
-                old_channel_mention, new_channel_mention
-            ));
+                return Ok(format!(
+                    "Member joined voice channel\n{} joined {}\n",
+                    user_name, channel_mention
+                ));
+            },
+            (Some(old_channel_id), Some(new_channel_id)) => {
+                let old_channel_mention = old_channel_id
+                    .widen()
+                    .to_channel(cache.clone(), guild_id)
+                    .await?
+                    .mention();
+                let new_channel_mention = new_channel_id
+                    .widen()
+                    .to_channel(cache.clone(), guild_id)
+                    .await?
+                    .mention();
+                result.push_str(&format!(
+                    "Switched voice channels: {} -> {}\n",
+                    old_channel_mention, new_channel_mention
+                ));
+            },
+            // Unreachable: this block only runs when the two differ.
+            (None, None) => {},
         }
     }
     if old.deaf() != new.deaf() {

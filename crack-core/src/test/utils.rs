@@ -7,6 +7,6 @@ mod test {
         let embed = build_log_embed("test", "test", "test").await.unwrap();
         println!("{:?}", embed);
         // FIXME: How can be actually access the CreateEmbed and truly test this?
-        assert!(true);
+        // For now, `build_log_embed` returning Ok is the whole assertion.
     }
 }
