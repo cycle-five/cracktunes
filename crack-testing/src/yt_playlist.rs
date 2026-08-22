@@ -87,7 +87,10 @@ pub async fn fetch_playlist(
             Ok(next) => next,
             Err(e) => {
                 // Partial results beat no results.
-                tracing::warn!("playlist continuation failed after {} entries: {e}", entries.len());
+                tracing::warn!(
+                    "playlist continuation failed after {} entries: {e}",
+                    entries.len()
+                );
                 break;
             },
         };
@@ -405,7 +408,10 @@ mod tests {
         // Braces inside strings must not confuse the scanner.
         assert_eq!(take_json_object(r#"{"a":"}"};x"#), Some(r#"{"a":"}"}"#));
         assert_eq!(take_json_object(r#"{"a":"\""};x"#), Some(r#"{"a":"\""}"#));
-        assert_eq!(take_json_object(r#"{"a":{"b":2}} "#), Some(r#"{"a":{"b":2}}"#));
+        assert_eq!(
+            take_json_object(r#"{"a":{"b":2}} "#),
+            Some(r#"{"a":{"b":2}}"#)
+        );
         assert_eq!(take_json_object("[1,2]"), None);
         assert_eq!(take_json_object(r#"{"a":1"#), None);
     }

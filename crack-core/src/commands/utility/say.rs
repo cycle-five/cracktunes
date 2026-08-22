@@ -52,7 +52,11 @@ pub async fn saychanid(
 }
 
 /// Internal say function.
-pub async fn say_internal(ctx: Context<'_>, chan_id: GenericChannelId, msg: String) -> Result<(), Error> {
+pub async fn say_internal(
+    ctx: Context<'_>,
+    chan_id: GenericChannelId,
+    msg: String,
+) -> Result<(), Error> {
     chan_id.say(ctx.http(), msg).await?;
     Ok(())
 }

@@ -358,8 +358,7 @@ pub async fn queue_keyword_list_back(
             if let Err(e) = msg
                 .edit(
                     &ctx,
-                    EditMessage::new()
-                        .embed(CreateEmbed::default().description(description)),
+                    EditMessage::new().embed(CreateEmbed::default().description(description)),
                 )
                 .await
             {
@@ -407,8 +406,7 @@ pub async fn queue_resolved_list_back(
     let mut last_edit = std::time::Instant::now();
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
-        let queue =
-            enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
+        let queue = enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
         queued += chunk.len();
         update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
 
@@ -493,11 +491,7 @@ pub async fn queue_query_list_offset(
     )?;
 
     // Resolved concurrently; this was a serial round trip per track.
-    let tracks = ctx
-        .data()
-        .ct_client
-        .resolve_track_many(queries)
-        .await?;
+    let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
     // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
     // for query in queries {
     //     let ready_track = ready_query(ctx, query).await?;

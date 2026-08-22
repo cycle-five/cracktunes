@@ -5,10 +5,13 @@ use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let url = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP".into());
-    let limit: usize = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(100);
+    let url = std::env::args().nth(1).unwrap_or_else(|| {
+        "https://www.youtube.com/playlist?list=PLc1HPXyC5ookjUsyLkdfek0WUIGuGXRcP".into()
+    });
+    let limit: usize = std::env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
 
     let client = crack_testing::build_configured_reqwest_client();
 
@@ -57,7 +60,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tracks.len(),
             per * tracks.len() as u32
         );
-        println!("  new path took {page_time:?} for all {} tracks", tracks.len());
+        println!(
+            "  new path took {page_time:?} for all {} tracks",
+            tracks.len()
+        );
     }
     Ok(())
 }

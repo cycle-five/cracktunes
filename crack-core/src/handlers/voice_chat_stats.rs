@@ -10,8 +10,8 @@ use poise::serenity_prelude as serenity;
 use ::serenity::all::CacheHttp;
 use colored::Colorize;
 use serenity::{
-    builder::CreateMessage, model::id::GuildId, Channel, ChannelId, GenericChannelId, Context as SerenityContext,
-    Mentionable, UserId, VoiceState,
+    builder::CreateMessage, model::id::GuildId, Channel, ChannelId, Context as SerenityContext,
+    GenericChannelId, Mentionable, UserId, VoiceState,
 };
 use std::{
     cmp::{Eq, PartialEq},
@@ -213,7 +213,11 @@ async fn check_camera_status(
                     to_fixed(UNKNOWN)
                 },
             };
-            let channel_name = match chan_id.widen().to_channel(ctx.clone(), Some(guild_id)).await {
+            let channel_name = match chan_id
+                .widen()
+                .to_channel(ctx.clone(), Some(guild_id))
+                .await
+            {
                 Ok(chan) => match chan {
                     Channel::Guild(chan) => chan.base.name.to_string(),
                     Channel::Private(chan) => chan.recipient.name.to_string(),

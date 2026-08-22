@@ -5,7 +5,7 @@ use crate::errors::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, GenericChannelId, FullEvent};
+use poise::serenity_prelude::{self as serenity, FullEvent, GenericChannelId};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::BTreeMap;
@@ -1000,7 +1000,12 @@ impl GuildSettings {
     pub fn get_music_channel(&self) -> Option<GenericChannelId> {
         self.command_settings
             .get("music")
-            .and_then(|x| x.allowed_channels.iter().map(|x| GenericChannelId::new(*x)).next())
+            .and_then(|x| {
+                x.allowed_channels
+                    .iter()
+                    .map(|x| GenericChannelId::new(*x))
+                    .next()
+            })
             .or(None)
     }
 

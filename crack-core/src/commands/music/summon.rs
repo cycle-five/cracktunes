@@ -68,7 +68,9 @@ pub async fn summon_internal(
         Some(call) => {
             let handler = call.lock().await;
             let has_current_connection = handler.current_connection().is_some();
-            let chan_id = handler.current_channel().map(|c| GenericChannelId::new(c.get()));
+            let chan_id = handler
+                .current_channel()
+                .map(|c| GenericChannelId::new(c.get()));
 
             match (has_current_connection, chan_id) {
                 (true, Some(chan_id)) => {

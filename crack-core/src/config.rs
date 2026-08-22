@@ -223,7 +223,8 @@ pub async fn poise_framework(
         None => None,
     };
 
-    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode(Default::default()));
+    let songbird_config =
+        songbird::Config::default().decode_mode(DecodeMode::Decode(Default::default()));
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
 
     let cloned_map = guild_settings_map.clone();

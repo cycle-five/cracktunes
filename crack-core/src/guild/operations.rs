@@ -1,6 +1,6 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
 use serenity::{
-    all::{GenericChannelId, Context as SerenityContext, GuildId},
+    all::{Context as SerenityContext, GenericChannelId, GuildId},
     small_fixed_array::FixedString,
 };
 use std::str::FromStr;
@@ -25,7 +25,10 @@ pub trait GuildSettingsOperations {
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<(), CrackedError>>;
-    fn get_music_channel(&self, guild_id: GuildId) -> impl Future<Output = Option<GenericChannelId>>;
+    fn get_music_channel(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Option<GenericChannelId>>;
     fn set_music_channel(
         &self,
         guild_id: GuildId,
@@ -478,7 +481,8 @@ mod test {
             ..Default::default()
         })));
 
-        data.set_music_channel(guild_id, GenericChannelId::new(3)).await;
+        data.set_music_channel(guild_id, GenericChannelId::new(3))
+            .await;
 
         assert_eq!(
             data.get_music_channel(guild_id).await,

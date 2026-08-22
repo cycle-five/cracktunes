@@ -7,8 +7,8 @@ use colored::Colorize;
 use serde::Serialize;
 use serenity::{
     all::{
-        ActionExecution, ApplicationId, CacheHttp, GenericChannelId, ClientStatus, CommandPermissions,
-        Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
+        ActionExecution, ApplicationId, CacheHttp, ClientStatus, CommandPermissions,
+        Context as SerenityContext, CurrentUser, GenericChannelId, Guild, GuildChannel, GuildId,
         GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
         IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message,
         MessageId, MessageUpdateEvent, Presence, Role, RoleId, ScheduledEvent, Sticker, StickerId,
@@ -734,7 +734,10 @@ pub async fn log_message_delete(
     let title = format!("Message Deleted: {}", id);
     let guild_id2 = guild_id_opt.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let description = format!("GenericChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
+    let description = format!(
+        "GenericChannelId: {}\nGuildId: {}",
+        del_channel_id, guild_id
+    );
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
@@ -1299,7 +1302,12 @@ pub async fn log_voice_channel_status_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
     ctx: &SerenityContext,
-    log_data: &(&Option<String>, &Option<String>, &GenericChannelId, &GuildId),
+    log_data: &(
+        &Option<String>,
+        &Option<String>,
+        &GenericChannelId,
+        &GuildId,
+    ),
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, status, _, _) = log_data;
     let title = format!("Voice Channel Status Update: {:?} -> {:?}", old, status);

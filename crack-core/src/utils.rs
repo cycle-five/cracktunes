@@ -19,8 +19,8 @@ use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, GenericChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
-        CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction,
+        CacheHttp, Colour, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
+        CreateSelectMenuOption, GenericChannelId, GuildId, Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,

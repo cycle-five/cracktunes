@@ -546,7 +546,10 @@ mod test {
         assert_eq!(err, CrackedError::NoGuildId);
 
         let err = CrackedError::NoGuildForChannelId(GenericChannelId::new(1));
-        assert_eq!(err, CrackedError::NoGuildForChannelId(GenericChannelId::new(1)));
+        assert_eq!(
+            err,
+            CrackedError::NoGuildForChannelId(GenericChannelId::new(1))
+        );
 
         let err = CrackedError::NoGuildSettings;
         assert_eq!(err, CrackedError::NoGuildSettings);

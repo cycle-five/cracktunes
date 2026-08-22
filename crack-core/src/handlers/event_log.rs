@@ -954,7 +954,9 @@ pub async fn handle_event(
                 event_name
             )
         },
-        FullEvent::ReactionRemove { removed_reaction, .. } => {
+        FullEvent::ReactionRemove {
+            removed_reaction, ..
+        } => {
             log_event!(
                 log_reaction_remove,
                 guild_settings,

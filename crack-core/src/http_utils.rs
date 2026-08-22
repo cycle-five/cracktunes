@@ -8,7 +8,9 @@ use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
-use serenity::all::{CacheHttp, GenericChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
+use serenity::all::{
+    CacheHttp, CreateEmbed, CreateMessage, GenericChannelId, GuildId, Message, UserId,
+};
 use serenity::small_fixed_array::FixedString;
 
 #[derive(Debug)]
@@ -345,7 +347,7 @@ mod test {
     fn test_build_send_message_params() {
         use crate::http_utils::SendMessageParams;
         use crate::messaging::message::CrackedMessage;
-        use serenity::all::{GenericChannelId, Colour};
+        use serenity::all::{Colour, GenericChannelId};
 
         let channel_id = GenericChannelId::new(1);
         let msg = CrackedMessage::Other("Hello, world!".to_string());
