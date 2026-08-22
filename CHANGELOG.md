@@ -10,7 +10,7 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
-## Unreleased (2026/08)
+## v0.4.0 (2026/08/22)
 
 ### Toolchain
 
@@ -20,6 +20,17 @@
 - `.cargo/config.toml` no longer sets `-A warnings` (it was hiding every lint in
   the workspace) or `--cfg proc_macro_c_str_literals` (nothing reads it now).
 - Dockerfile builder moved to `rust:1.98.0-alpine3.22`.
+- **The workspace is clippy-clean again**, which it had not been in a long time.
+  With `-A warnings` gone, `cargo clippy --all -- -D warnings` -- what the lint
+  workflow actually runs -- surfaced roughly 120 warnings, and `cargo fmt --check`
+  another 33 hunks. Notable substance behind the noise: six `unnecessary_unwrap`
+  sites that unwrapped a value right after testing it (the voice-state handler's
+  channel-change branch is now a `match` on the pair, and no longer panics when a
+  member is missing from both the old and new state), stale `#[allow]`s for a lint
+  clippy has since removed, and dead imports. The three `large_enum_variant`
+  offenders (`QueryType`, `MessageOrReplyHandle`, `CommandOrMessageInteraction`)
+  carry a documented `#[allow]`: boxing them is worth doing, but it touches every
+  construction and match site and belongs in its own change.
 
 ### Dependencies
 
