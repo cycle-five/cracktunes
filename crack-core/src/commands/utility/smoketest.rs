@@ -2,13 +2,13 @@
 use crate::errors::CrackedError;
 use crate::CrackedResult;
 use crate::{Context, Error};
-use serenity::all::{ChannelId, GuildId};
+use serenity::all::{GenericChannelId, GuildId};
 
 /// Struct that defines a smoke test to run.
 #[derive(Debug, Clone)]
 pub struct SmokeTest<'a> {
     ctx: Context<'a>,
-    chan: ChannelId,
+    chan: GenericChannelId,
     say_msg: String,
     wait_secs: Option<u64>,
     want_response: Option<String>,
@@ -16,7 +16,7 @@ pub struct SmokeTest<'a> {
 
 /// Implemention of the SmokeTest struct.
 impl<'a> SmokeTest<'a> {
-    pub fn new(ctx: Context<'a>, chan: ChannelId, say_msg: String) -> Self {
+    pub fn new(ctx: Context<'a>, chan: GenericChannelId, say_msg: String) -> Self {
         Self {
             ctx,
             chan,
@@ -26,7 +26,7 @@ impl<'a> SmokeTest<'a> {
         }
     }
 
-    pub fn new_generator(ctx: Context<'a>, chan: ChannelId) -> impl Fn(String) -> Self {
+    pub fn new_generator(ctx: Context<'a>, chan: GenericChannelId) -> impl Fn(String) -> Self {
         move |say_msg| SmokeTest {
             ctx,
             chan,
@@ -78,7 +78,7 @@ pub async fn smoketest(
 pub async fn smoketest_internal(ctx: Context<'_>) -> Result<(), Error> {
     let beg = std::time::SystemTime::now();
 
-    let test_chan = ChannelId::new(1232025110802862180);
+    let test_chan = GenericChannelId::new(1232025110802862180);
     let _test_guild = GuildId::new(1220832110210846800);
 
     // Send message to testing channel to trigger the testee bot to respond

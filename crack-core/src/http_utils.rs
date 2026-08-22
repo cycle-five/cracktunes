@@ -8,13 +8,13 @@ use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
-use serenity::all::{CacheHttp, ChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
+use serenity::all::{CacheHttp, GenericChannelId, CreateEmbed, CreateMessage, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams<'a> {
-    pub channel: ChannelId,
+    pub channel: GenericChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub reply: bool,
@@ -42,7 +42,7 @@ impl PartialEq for SendMessageParams<'_> {
 impl Default for SendMessageParams<'_> {
     fn default() -> Self {
         SendMessageParams {
-            channel: ChannelId::new(1),
+            channel: GenericChannelId::new(1),
             as_embed: true,
             ephemeral: false,
             reply: true,
@@ -84,7 +84,7 @@ impl<'a> SendMessageParams<'a> {
         Self { msg, ..self }
     }
 
-    pub fn with_channel(self, channel: ChannelId) -> Self {
+    pub fn with_channel(self, channel: GenericChannelId) -> Self {
         Self { channel, ..self }
     }
 
@@ -106,7 +106,7 @@ pub trait CacheHttpExt {
     ) -> impl Future<Output = String> + Send;
     fn channel_id_to_guild_name(
         &self,
-        channel_id: ChannelId,
+        channel_id: GenericChannelId,
         guild_id: GuildId,
     ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
     fn send_channel_message(
@@ -131,7 +131,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
 
     async fn channel_id_to_guild_name(
         &self,
-        channel_id: ChannelId,
+        channel_id: GenericChannelId,
         guild_id: GuildId,
     ) -> CrackedResult<FixedString> {
         get_guild_name(self, channel_id, guild_id).await
@@ -279,14 +279,14 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 #[cfg(not(tarpaulin_include))]
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
 ) -> Result<FixedString, CrackedError> {
     channel_id
         .to_channel(cache_http, Some(guild_id))
         .await?
         .guild()
-        .map(|x| x.guild_id)
+        .map(|x| x.base.guild_id)
         .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
         .to_partial_guild(cache_http)
         .await
@@ -345,9 +345,9 @@ mod test {
     fn test_build_send_message_params() {
         use crate::http_utils::SendMessageParams;
         use crate::messaging::message::CrackedMessage;
-        use serenity::all::{ChannelId, Colour};
+        use serenity::all::{GenericChannelId, Colour};
 
-        let channel_id = ChannelId::new(1);
+        let channel_id = GenericChannelId::new(1);
         let msg = CrackedMessage::Other("Hello, world!".to_string());
         let params = SendMessageParams::new(msg)
             .with_as_embed(true)

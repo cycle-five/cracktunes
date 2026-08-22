@@ -11,7 +11,7 @@ use core::panic;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
-use serenity::all::{ChannelId, CreateEmbed, GuildId, Message, UserId};
+use serenity::all::{GenericChannelId, CreateEmbed, GuildId, Message, UserId};
 use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
 use std::{future::Future, sync::Arc};
@@ -54,7 +54,7 @@ pub trait ContextExt<'ctx> {
         msg: Message,
     ) -> impl Future<Output = Option<Message>>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
-    fn get_active_channel_id(self, guild_id: GuildId) -> impl Future<Output = Option<ChannelId>>;
+    fn get_active_channel_id(self, guild_id: GuildId) -> impl Future<Output = Option<GenericChannelId>>;
 
     // ----- Send message utility functions ------ //
 
@@ -195,14 +195,14 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     /// Gets the channel id that the bot is currently playing in for a given guild.
-    async fn get_active_channel_id(self, guild_id: GuildId) -> Option<ChannelId> {
+    async fn get_active_channel_id(self, guild_id: GuildId) -> Option<GenericChannelId> {
         //let serenity_context = self.serenity_context();
         let manager = self.data().songbird.clone();
         let call_lock = manager.get(guild_id)?;
         let call = call_lock.lock().await;
 
         let channel_id = call.current_channel()?;
-        let serenity_channel_id = ChannelId::new(channel_id.get());
+        let serenity_channel_id = GenericChannelId::new(channel_id.get());
 
         Some(serenity_channel_id)
     }
@@ -487,7 +487,10 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let guild = self.guild().try_unwrap()?;
 
         // Does not access cache, but relies on above guild cache reference.
-        let channel = guild.channels.get(&self.channel_id()).try_unwrap()?;
+        let channel = guild
+            .channels
+            .get(&self.channel_id().expect_channel())
+            .try_unwrap()?;
 
         // Does not access cache.
         Ok(guild.user_permissions_in(channel, &member))

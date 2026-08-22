@@ -19,7 +19,7 @@ use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, ChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
+        CacheHttp, GenericChannelId, Colour, ComponentInteractionDataKind, CreateSelectMenu,
         CreateSelectMenuKind, CreateSelectMenuOption, GuildId, Interaction,
     },
     builder::{
@@ -161,7 +161,7 @@ use poise::serenity_prelude::CollectComponentInteractions;
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
     ctx: SerenityContext,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     metadata: Vec<AuxMetadata>,
 ) -> Result<QueryType, Error> {
     let res = metadata.iter().map(|x| {
@@ -202,7 +202,7 @@ pub async fn yt_search_select(
     // manually in the EventHandler.
     let interaction = match m
         .id
-        .collect_component_interactions(ctx.shard.clone())
+        .collect_component_interactions(&ctx)
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
@@ -612,14 +612,12 @@ pub async fn create_paged_embed(
         // };
         // let reply_handle = ctx.clone().send(create_reply).await?;
         // drop(create_reply);
-        let shard_messanger = ctx.serenity_context().clone().shard;
-
         let mut cib = reply_handle
             .clone()
             .into_message()
             .await?
             .id
-            .collect_component_interactions(shard_messanger.clone())
+            .collect_component_interactions(ctx.serenity_context())
             .timeout(Duration::from_secs(60 * 10))
             .stream();
 
@@ -872,7 +870,10 @@ pub fn duration_to_string(duration: Duration) -> String {
 #[cfg(test)]
 mod test {
 
-    use ::serenity::{all::Button, builder::CreateActionRow};
+    use ::serenity::{
+        all::Button,
+        builder::{CreateActionRow, CreateComponent},
+    };
 
     use crate::messaging::interface::create_single_nav_btn;
     use crack_types::to_fixed;
@@ -922,7 +923,7 @@ mod test {
     #[test]
     fn test_build_nav_btns() {
         let nav_btns_vev = create_nav_btns(0, 1);
-        if let CreateActionRow::Buttons(nav_btns) = &nav_btns_vev[0] {
+        if let CreateComponent::ActionRow(CreateActionRow::Buttons(nav_btns)) = &nav_btns_vev[0] {
             let mut btns = Vec::new();
             for btn in nav_btns.iter() {
                 let s = serde_json::to_string_pretty(&btn).unwrap();

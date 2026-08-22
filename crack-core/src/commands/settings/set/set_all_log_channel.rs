@@ -3,7 +3,7 @@ use crate::guild::settings::{GuildSettings, DEFAULT_PREFIX};
 use crate::Data;
 use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, Error};
 use serenity::all::{Channel, GuildId};
-use serenity::model::id::ChannelId;
+use serenity::model::id::GenericChannelId;
 use std::sync::Arc;
 
 /// Set a log channel for a specific guild.
@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub async fn log_channel_for_guild(
     ctx: Context<'_>,
     #[description = "GuildId to set logging for"] guild_id: GuildId,
-    #[description = "ChannelId to sendlogs"] channel_id: ChannelId,
+    #[description = "GenericChannelId to sendlogs"] channel_id: GenericChannelId,
     #[description = "Type of logs to send"] _log_type: String,
 ) -> Result<(), Error> {
     // set_all_log_channel_old_data(ctx.serenity_context().data.clone(), guild_id, channel_id).await?;
@@ -42,8 +42,8 @@ pub async fn log_channel_for_guild(
 pub async fn all_log_channel(
     ctx: Context<'_>,
     #[description = "Channel to send all logs"] channel: Option<Channel>,
-    #[description = "ChannelId to send all logs"] channel_id: Option<
-        serenity::model::id::ChannelId,
+    #[description = "GenericChannelId to send all logs"] channel_id: Option<
+        serenity::model::id::GenericChannelId,
     >,
     #[flag]
     #[description = "Show the help menu for this command"]
@@ -79,7 +79,7 @@ pub async fn all_log_channel(
 pub async fn set_all_log_channel_data(
     data: Arc<Data>,
     guild_id: GuildId,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
 ) -> Result<(), Error> {
     data.guild_settings_map
         .write()

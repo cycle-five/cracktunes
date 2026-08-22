@@ -317,7 +317,7 @@ impl NewQueryType {
                 ctx.http(),
                 CreateMessage::new()
                     .content(format!("Download status {}", status))
-                    .add_file(CreateAttachment::path(Path::new(&file_name)).await?),
+                    .add_file(CreateAttachment::path(Path::new(&file_name))?),
             )
             .await?;
 

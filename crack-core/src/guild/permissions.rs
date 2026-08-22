@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serenity::all::{ChannelId, GuildId};
+use serenity::all::{GenericChannelId, GuildId};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
@@ -401,7 +401,7 @@ impl GenericPermissionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandChannel {
     pub command: String,
-    pub channel_id: ChannelId,
+    pub channel_id: GenericChannelId,
     pub guild_id: GuildId,
     pub permission_settings: GenericPermissionSettings,
 }
@@ -419,7 +419,7 @@ impl Default for CommandChannel {
     fn default() -> Self {
         Self {
             command: "".to_string(),
-            channel_id: ChannelId::new(0),
+            channel_id: GenericChannelId::new(0),
             guild_id: GuildId::new(0),
             permission_settings: GenericPermissionSettings::default(),
         }
@@ -439,7 +439,7 @@ impl CommandChannel {
         .await?;
         Ok(Self {
             command: read.command,
-            channel_id: ChannelId::new(read.channel_id as u64),
+            channel_id: GenericChannelId::new(read.channel_id as u64),
             guild_id: GuildId::new(read.guild_id as u64),
             permission_settings: perms,
         })
@@ -735,7 +735,7 @@ mod tests {
         settings.add_allowed_user(1);
         let channel = CommandChannel {
             permission_settings: settings,
-            channel_id: ChannelId::new(1),
+            channel_id: GenericChannelId::new(1),
             guild_id: GuildId::new(1),
             command: "test".to_string(),
         };

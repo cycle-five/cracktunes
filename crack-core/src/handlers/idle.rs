@@ -12,7 +12,7 @@ use crate::messaging::messages::IDLE_ALERT;
 pub struct IdleHandler {
     pub serenity_ctx: Arc<serenity::Context>,
     pub guild_id: serenity::GuildId,
-    pub channel_id: serenity::ChannelId,
+    pub channel_id: serenity::GenericChannelId,
     pub limit: usize,
     pub count: Arc<AtomicUsize>,
     pub no_timeout: Arc<AtomicBool>,

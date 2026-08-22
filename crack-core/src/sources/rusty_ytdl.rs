@@ -212,7 +212,6 @@ impl Compose for RustyYoutubeSearch<'_> {
 
                 AudioStream {
                     input: Box::new(stream) as Box<dyn MediaSource>,
-                    hint: None,
                 }
             })
             .map_err(|e| AudioStreamError::from(CrackedError::from(e)))

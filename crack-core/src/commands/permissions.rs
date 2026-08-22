@@ -3,7 +3,7 @@ use crate::{
     Error,
 };
 use poise::serenity_prelude as serenity;
-use serenity::all::{ChannelId, Member, Permissions, RoleId};
+use serenity::all::{GenericChannelId, Member, Permissions, RoleId};
 use std::borrow::Cow;
 
 /// Public function to check if the user is authorized to use the music commands.
@@ -12,7 +12,7 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
         return Ok(false);
     };
 
-    let channel_id: ChannelId = ctx.channel_id();
+    let channel_id: GenericChannelId = ctx.channel_id();
     let member = ctx.author_member().await;
 
     cmd_check_music_internal(member, channel_id, ctx).await
@@ -21,7 +21,7 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
 /// Internal function (doesn't parse arguments).
 pub async fn cmd_check_music_internal(
     member: Option<Cow<'_, Member>>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     ctx: Context<'_>,
 ) -> Result<bool, Error> {
     let guild_id = ctx.guild_id().try_unwrap()?;

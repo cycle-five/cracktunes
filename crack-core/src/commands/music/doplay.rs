@@ -750,7 +750,7 @@ async fn build_queued_embed<'att>(
         .author(author)
         .title(meta_title)
         .url(source_url)
-        .thumbnail(thumbnail)
+        .thumbnail(thumbnail, None)
         .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 

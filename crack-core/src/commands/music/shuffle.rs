@@ -16,10 +16,10 @@ use rand::Rng;
 )]
 pub async fn movesong(
     ctx: Context<'_>,
-    #[description = "Index song is currently at"] at: usize,
-    #[description = "Index song will be moved to"] to: usize,
+    #[description = "Index song is currently at"] at: u32,
+    #[description = "Index song will be moved to"] to: u32,
 ) -> Result<(), Error> {
-    movesong_internal(ctx, at, to).await
+    movesong_internal(ctx, at as usize, to as usize).await
 }
 
 /// Move a song in the queue to a different position, internal function.

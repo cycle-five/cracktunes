@@ -1,4 +1,4 @@
-use serenity::all::{ChannelId, GuildId, UserId};
+use serenity::all::{GenericChannelId, GuildId, UserId};
 use songbird::input::AuxMetadata;
 use sqlx::postgres::PgPool;
 use std::fmt;
@@ -19,7 +19,7 @@ pub struct MetadataMsg {
     pub user_id: Option<UserId>,
     pub username: Option<String>,
     pub guild_id: GuildId,
-    pub channel_id: ChannelId,
+    pub channel_id: GenericChannelId,
 }
 
 impl Display for MetadataMsg {
@@ -138,7 +138,7 @@ mod test {
             user_id: Some(UserId::new(100)),
             username: Some("test".to_string()),
             guild_id: GuildId::new(1),
-            channel_id: ChannelId::new(1),
+            channel_id: GenericChannelId::new(1),
         };
         sender.send(data).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;

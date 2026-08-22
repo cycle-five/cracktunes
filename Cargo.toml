@@ -19,7 +19,7 @@ authors = ["Cycle Five <cycle.five@proton.me>"]
 [workspace.dependencies.typesize]
 version = "0.1.6"
 features = [
-  "dervice",
+  "derive",
   "details",
   "chrono",
   "url",
@@ -45,9 +45,11 @@ features = [
 ]
 
 [workspace.dependencies.serenity]
-# Broken? try self-host.
-# version = "0.12.3"
-git = "https://github.com/CycleFive/serenity"
+# Tracks the upstream `next` branch (serenity 0.12.5+). The old CycleFive
+# mirror had no custom commits and had fallen ~30 commits behind, and both
+# songbird and poise resolve serenity from this URL -- pointing at the mirror
+# forced two incompatible copies of serenity into the graph.
+git = "https://github.com/serenity-rs/serenity"
 branch = "next"
 default-features = false
 # features = ["full", "temp_cache", "typesize", "unstable", "chrono"]
@@ -62,7 +64,6 @@ features = [
   "http",
   "gateway",
   "model",
-  "voice_model",
   "utils",
   "rustls_backend",
   "voice",
@@ -71,10 +72,11 @@ features = [
 ]
 
 [workspace.dependencies.songbird]
-# Broken? try self-hosted?
-git = "https://github.com/CycleFive/songbird"
+# Upstream `serenity-next` (songbird 0.6.x). The CycleFive mirror pointed at
+# the same commit, so there is nothing to lose by depending on it directly.
+git = "https://github.com/serenity-rs/songbird"
 branch = "serenity-next"
-version = "0.4.5"
+version = "0.6"
 features = [
   "driver",
   "gateway",
@@ -102,7 +104,7 @@ features = ["full"]
 # crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
 # poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
-poise = { branch = "serenity-next", git = "https://github.com/CycleFive/poise", default-features = true, features = [
+poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true, features = [
   "cache",
   "collector",
 ] }
@@ -117,10 +119,6 @@ reqwest = { version = "0.12.9", default-features = false, features = [
   "http2",
   "macos-system-configuration",
 ] }
-
-[patch.crates-io.serenity-voice-model]
-git = "https://github.com/CycleFive/serenity"
-branch = "next"
 
 [profile.release]
 incremental = true
@@ -142,8 +140,6 @@ inherits = "release-with-performance"
 lto = "thin"
 
 [patch.crates-io]
-backoff = { git = "https://github.com/CycleFive/backoff", branch = "v0.4.1-alpha.1" }
-async-openai = { git = "https://github.com/cycle-five/async-openai", branch = "main" }
 rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
-poise = { git = "https://github.com/CycleFive/poise", branch = "serenity-next" }
-serenity = { git = "https://github.com/CycleFive/serenity", branch = "next" }
+poise = { git = "https://github.com/serenity-rs/poise", branch = "serenity-next" }
+serenity = { git = "https://github.com/serenity-rs/serenity", branch = "next" }

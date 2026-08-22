@@ -191,7 +191,9 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
             .style(serenity::ButtonStyle::Danger)
             .emoji('🗑'),
     ];
-    let components = serenity::CreateActionRow::Buttons(Cow::Owned(buttons));
+    let components = serenity::CreateComponent::ActionRow(serenity::CreateActionRow::Buttons(
+        Cow::Owned(buttons),
+    ));
 
     let builder = poise::CreateReply::default()
         .content("Choose what to do with the commands:")
@@ -204,7 +206,7 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         .await?
         .into_owned()
         .id
-        .collect_component_interactions(ctx.serenity_context().shard.clone())
+        .collect_component_interactions(ctx.serenity_context())
         .author_id(ctx.author().id)
         .await;
 

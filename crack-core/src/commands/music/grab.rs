@@ -27,7 +27,7 @@ pub async fn grab(
 #[cfg(not(tarpaulin_include))]
 /// Internal function for grab.
 async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
-    let chan_id = ctx.author().create_dm_channel(&ctx).await?.id;
+    let chan_id = ctx.author().create_dm_channel(&ctx).await?.id.widen();
     let call = ctx.get_call().await?;
 
     interface::send_now_playing(chan_id, ctx.serenity_context().http.clone(), call).await?;

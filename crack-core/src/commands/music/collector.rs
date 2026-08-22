@@ -1,7 +1,7 @@
 use crate::{Context, Error};
 use ::serenity::builder::{
-    CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage,
-    EditMessage,
+    CreateActionRow, CreateButton, CreateComponent, CreateInteractionResponse,
+    CreateInteractionResponseMessage, EditMessage,
 };
 use poise::{serenity_prelude as serenity, CreateReply};
 
@@ -17,17 +17,17 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(
         CreateReply::default()
             .content("I want some boops!")
-            .components(Cow::Owned(vec![CreateActionRow::buttons(Cow::Owned(
-                vec![CreateButton::new(id_str)
+            .components(Cow::Owned(vec![CreateComponent::ActionRow(
+                CreateActionRow::buttons(Cow::Owned(vec![CreateButton::new(id_str)
                     .style(serenity::ButtonStyle::Primary)
-                    .label("Boop me!")],
-            ))])),
+                    .label("Boop me!")])),
+            )])),
     )
     .await?;
 
     let mut boop_count = 0;
     while let Some(mci) =
-        serenity::ComponentInteractionCollector::new(ctx.serenity_context().clone().shard)
+        serenity::ComponentInteractionCollector::new(ctx.serenity_context())
             .author_id(ctx.author().id)
             .channel_id(ctx.channel_id())
             .timeout(std::time::Duration::from_secs(120))

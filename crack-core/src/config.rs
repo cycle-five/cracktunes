@@ -8,7 +8,7 @@ use crate::{
     db,
     errors::CrackedError,
     guild::settings::GuildSettings,
-    handlers::{handle_event, SerenityHandler},
+    handlers::SerenityHandler,
     http_utils::CacheHttpExt,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -17,7 +17,7 @@ use crate::{
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
-use poise::serenity_prelude::{Client, FullEvent, GatewayIntents, GuildId, UserId};
+use poise::serenity_prelude::{Client, GatewayIntents, GuildId, UserId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
@@ -31,16 +31,17 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // and forward the rest to the default handler
     match error {
         //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::EventHandler { error, event, .. } => match event {
-            FullEvent::PresenceUpdate { .. } => { /* Ignore PresenceUpdate in terminal logging, too spammy */
+        poise::FrameworkError::CommandPanic { payload, ctx, .. } => match payload {
+            None => {
+                tracing::warn!("{}", "Command panicked with no payload".yellow());
             },
-            _ => {
+            Some(payload) => {
                 tracing::warn!(
                     "{} {} {} {}",
-                    "In event handler for ".yellow(),
-                    event.snake_case_name().yellow().italic(),
-                    " event: ".yellow(),
-                    error.to_string().yellow().bold(),
+                    "Command ".yellow(),
+                    ctx.command().qualified_name.yellow().italic(),
+                    " panicked: ".yellow(),
+                    payload.yellow().bold(),
                 );
             },
         },
@@ -192,13 +193,6 @@ pub async fn poise_framework(
                 Ok(true)
             })
         }),
-        //event_handler: |ctx, event, framework, data_global| {
-        event_handler: |framework, event| {
-            Box::pin(async move {
-                let ctx = framework.serenity_context;
-                handle_event(ctx, event, framework, framework.user_data()).await
-            })
-        },
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
@@ -229,7 +223,7 @@ pub async fn poise_framework(
         None => None,
     };
 
-    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode);
+    let songbird_config = songbird::Config::default().decode_mode(DecodeMode::Decode(Default::default()));
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
 
     let cloned_map = guild_settings_map.clone();
@@ -288,15 +282,15 @@ pub async fn poise_framework(
     };
 
     let client = Client::builder(token, intents)
-        .voice_manager::<Songbird>(manager.clone())
-        .event_handler(serenity_handler)
+        .voice_manager(manager.clone())
+        .event_handler(Arc::new(serenity_handler))
         .data(data2.clone().into())
-        .framework(framework)
+        .framework(Box::new(framework))
         //.event_handler_arc(bot_test_handler.clone())
         .await
         .unwrap();
     //*bot_test_handler.shard_manager.lock().unwrap() = Some(client.shard_manager.clone());
-    let shard_manager = client.shard_manager.clone();
+    let shutdown_trigger = client.shard_manager.get_shutdown_trigger();
 
     // let data2 = client.data.clone();
     tokio::spawn(async move {
@@ -353,7 +347,7 @@ pub async fn poise_framework(
         println!("Saved guilds: {:?}", saved_guilds);
         tracing::trace!("Saved guilds: {:?}", saved_guilds);
 
-        shard_manager.clone().shutdown_all().await;
+        shutdown_trigger();
 
         exit(0);
     });

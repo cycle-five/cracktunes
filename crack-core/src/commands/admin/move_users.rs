@@ -2,7 +2,7 @@ use crate::errors::CrackedError;
 use crate::Context;
 use crate::Error;
 use serenity::all::ChannelType;
-use serenity::all::{ChannelId, UserId};
+use serenity::all::{GenericChannelId, UserId};
 use serenity::builder::EditMember;
 
 /// Move usrers to a given channel.
@@ -16,7 +16,7 @@ use serenity::builder::EditMember;
 pub async fn move_users_to(
     ctx: Context<'_>,
     #[description = "Users to move"] user_ids: Vec<UserId>,
-    #[description = "Channel to move users to"] chan_id: ChannelId,
+    #[description = "Channel to move users to"] chan_id: GenericChannelId,
     #[flag]
     #[description = "Show help menu."]
     help: bool,

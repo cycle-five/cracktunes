@@ -52,7 +52,7 @@ sqlx = { workspace = true }
 
 [build-dependencies]
 # All features enabled
-vergen-gitcl = { version = "1.0.1", features = ["build"] }
+vergen-gitcl = { version = "10.0", features = ["build"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

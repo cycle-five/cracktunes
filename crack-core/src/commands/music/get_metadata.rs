@@ -19,7 +19,7 @@ pub struct CopyableContext {
     pub http: Arc<dyn CacheHttp>,
     pub data: crate::Data,
     pub guild_id: serenity::model::id::GuildId,
-    pub channel_id: serenity::model::id::ChannelId,
+    pub channel_id: serenity::model::id::GenericChannelId,
 }
 
 impl Debug for CopyableContext {

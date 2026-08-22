@@ -15,7 +15,7 @@ pub type Error = Box<dyn StdError + Send + Sync>;
 use audiopus::error::Error as AudiopusError;
 use crack_types::TrackResolveError;
 use poise::serenity_prelude::Mentionable;
-use poise::serenity_prelude::{self as serenity, ChannelId, GuildId};
+use poise::serenity_prelude::{self as serenity, GenericChannelId, GuildId};
 use rspotify::ClientError as RSpotifyClientError;
 use rusty_ytdl::VideoError;
 use serenity::model::mention::Mention;
@@ -49,7 +49,7 @@ pub enum CrackedError {
     EmptyVector(&'static str),
     FailedResume,
     FailedToInsert,
-    FailedToSetChannelSize(&'static str, ChannelId, u32, Error),
+    FailedToSetChannelSize(&'static str, GenericChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
     Json(serde_json::Error),
@@ -59,7 +59,7 @@ pub enum CrackedError {
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
-    NotInMusicChannel(ChannelId),
+    NotInMusicChannel(GenericChannelId),
     NotConnected,
     NoChannelId,
     NotImplemented,
@@ -67,7 +67,7 @@ pub enum CrackedError {
     NoDatabasePool,
     NoGuildCached,
     NoGuildId,
-    NoGuildForChannelId(ChannelId),
+    NoGuildForChannelId(GenericChannelId),
     NoGuildSettings,
     NoLogChannel,
     NoMetadata,
@@ -95,7 +95,7 @@ pub enum CrackedError {
     TrackFail(Error),
     UrlParse(url::ParseError),
     UnauthorizedUser,
-    UnimplementedEvent(ChannelId, &'static str),
+    UnimplementedEvent(GenericChannelId, &'static str),
     VideoError(VideoError),
     WrongVoiceChannel,
 }
@@ -545,8 +545,8 @@ mod test {
         let err = CrackedError::NoGuildId;
         assert_eq!(err, CrackedError::NoGuildId);
 
-        let err = CrackedError::NoGuildForChannelId(ChannelId::new(1));
-        assert_eq!(err, CrackedError::NoGuildForChannelId(ChannelId::new(1)));
+        let err = CrackedError::NoGuildForChannelId(GenericChannelId::new(1));
+        assert_eq!(err, CrackedError::NoGuildForChannelId(GenericChannelId::new(1)));
 
         let err = CrackedError::NoGuildSettings;
         assert_eq!(err, CrackedError::NoGuildSettings);

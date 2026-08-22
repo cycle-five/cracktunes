@@ -7,7 +7,7 @@ use colored::Colorize;
 use serde::Serialize;
 use serenity::{
     all::{
-        ActionExecution, ApplicationId, CacheHttp, ChannelId, ClientStatus, CommandPermissions,
+        ActionExecution, ApplicationId, CacheHttp, GenericChannelId, ClientStatus, CommandPermissions,
         Context as SerenityContext, CurrentUser, Guild, GuildChannel, GuildId,
         GuildScheduledEventUserAddEvent, GuildScheduledEventUserRemoveEvent, Integration,
         IntegrationId, Interaction, InviteCreateEvent, InviteDeleteEvent, Member, Message,
@@ -30,7 +30,7 @@ macro_rules! guild_ids_match {
 
 /// Catchall for logging events that are not implemented.
 pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: T,
@@ -50,7 +50,7 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 /// Log Integration Update Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Integration,
@@ -84,7 +84,7 @@ pub async fn log_integration_update(
 /// Log Integration Delete Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &(&IntegrationId, &GuildId, &Option<ApplicationId>),
@@ -113,7 +113,7 @@ pub async fn log_integration_delete(
 /// Log Integration Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_integration_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Integration,
@@ -142,7 +142,7 @@ use crate::utils::interaction_to_guild_id;
 /// Log Interaction Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_interaction_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     cache_http: &impl CacheHttp,
     log_data: &Interaction,
@@ -171,7 +171,7 @@ pub async fn log_interaction_create(
 /// Log Invite Delete Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_invite_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &InviteDeleteEvent,
@@ -199,7 +199,7 @@ pub async fn log_invite_delete(
 /// Log Invite Create Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_invite_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &InviteCreateEvent,
@@ -228,7 +228,7 @@ use extract_map::ExtractMap;
 /// Log Guild Stickers Update Event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_stickers_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &&ExtractMap<StickerId, Sticker>,
@@ -254,7 +254,7 @@ pub async fn log_guild_stickers_update(
 /// Log a guild scheduled event create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
@@ -290,7 +290,7 @@ pub async fn log_guild_scheduled_event_delete(
 /// Log a guild scheduled user add event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_add(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &GuildScheduledEventUserAddEvent,
@@ -322,7 +322,7 @@ pub async fn log_guild_scheduled_event_user_add(
 /// Log a guild scheduled user remove event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_remove(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &GuildScheduledEventUserRemoveEvent,
@@ -354,7 +354,7 @@ pub async fn log_guild_scheduled_event_user_remove(
 /// Log a guild scheduled event create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
@@ -390,7 +390,7 @@ pub async fn log_guild_scheduled_event_update(
 /// Logs a guild create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&Guild, &Option<bool>),
@@ -434,7 +434,7 @@ pub async fn log_guild_create(
 /// Logs a guild delete event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_delete_event(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&UnavailableGuild, &Option<Guild>),
@@ -486,7 +486,7 @@ pub async fn log_guild_delete_event(
 /// Logs a guild role cteate event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Role,
@@ -511,7 +511,7 @@ pub async fn log_guild_role_create(
 /// Logs a guild role delete.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildId, &RoleId, &Option<Role>),
@@ -540,7 +540,7 @@ pub async fn log_guild_role_delete(
 /// Log an automod rule update event
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(String, AutoModRule),
@@ -572,7 +572,7 @@ pub async fn log_automod_rule_update(
 /// Log a guild scheduled event create event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ScheduledEvent,
@@ -608,7 +608,7 @@ pub async fn log_guild_scheduled_event_create(
 /// Log a automod rule create event
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &AutoModRule,
@@ -639,7 +639,7 @@ pub async fn log_automod_rule_create(
 /// Log a automod command exec
 #[cfg(not(tarpaulin_include))]
 pub async fn log_automod_command_execution(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &ActionExecution,
@@ -670,7 +670,7 @@ pub async fn log_automod_command_execution(
 /// Log a command permissions update event
 #[cfg(not(tarpaulin_include))]
 pub async fn log_command_permissions_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &CommandPermissions,
@@ -696,7 +696,7 @@ pub async fn log_command_permissions_update(
 }
 
 pub async fn log_channel_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildChannel, &Option<VecDeque<Message>>),
@@ -724,17 +724,17 @@ pub async fn log_channel_delete(
 }
 
 pub async fn log_message_delete(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
-    log_data: &(&ChannelId, &MessageId, &Option<GuildId>),
+    log_data: &(&GenericChannelId, &MessageId, &Option<GuildId>),
 ) -> Result<(), Error> {
     let &(del_channel_id, message_id, guild_id_opt) = log_data;
     let id = message_id.to_string();
     let title = format!("Message Deleted: {}", id);
     let guild_id2 = guild_id_opt.unwrap_or_default();
     guild_ids_match!(guild_id, guild_id2);
-    let description = format!("ChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
+    let description = format!("GenericChannelId: {}\nGuildId: {}", del_channel_id, guild_id);
     let avatar_url = "";
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
@@ -751,7 +751,7 @@ pub async fn log_message_delete(
 }
 
 pub async fn log_user_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&Option<CurrentUser>, &CurrentUser),
@@ -793,7 +793,7 @@ pub async fn log_user_update(
 }
 
 pub async fn log_reaction_remove(
-    channel_id_first: ChannelId,
+    channel_id_first: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Reaction,
@@ -824,7 +824,7 @@ pub async fn log_reaction_remove(
 }
 
 pub async fn log_reaction_add(
-    channel_id_first: ChannelId,
+    channel_id_first: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &serenity::model::prelude::Reaction,
@@ -859,7 +859,7 @@ pub async fn log_reaction_add(
 
 /// Log a message update event.
 pub async fn log_message_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(
@@ -870,7 +870,7 @@ pub async fn log_message_update(
 ) -> Result<(), Error> {
     // Don't log message updates from bots
     // TODO: Make this configurable
-    if log_data.2.author.as_ref().map(|x| x.bot()).unwrap_or(false) {
+    if log_data.2.message.author.bot() {
         return Ok(());
     }
 
@@ -902,19 +902,19 @@ pub async fn log_message_update(
         let id = old.author.id.to_string();
         (id, title, description, avatar_url)
     } else {
+        // `MessageUpdateEvent` is now just `{ message: Message }`, so the
+        // author is always present and the `default_msg_string` fallback
+        // (kept below for callers) is no longer reachable from here.
         let &(_, _, msg) = log_data;
-        if let Some(author) = &msg.author {
-            let title = format!("Message Updated: {}", author.name);
-            let description = format!(
-                "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: None",
-                author.name, author.id, channel_id
-            );
-            let avatar_url = author.avatar_url().unwrap_or_default();
-            let id = author.id.to_string();
-            (id, title, description, avatar_url)
-        } else {
-            default_msg_string(msg)
-        }
+        let author = &msg.message.author;
+        let title = format!("Message Updated: {}", author.name);
+        let description = format!(
+            "User: {}\nID: {}\nChannel: {}\nOld Message: None\nNew Message: None",
+            author.name, author.id, channel_id
+        );
+        let avatar_url = author.avatar_url().unwrap_or_default();
+        let id = author.id.to_string();
+        (id, title, description, avatar_url)
     };
     let guild_name = get_guild_name(http, channel_id, guild_id).await?;
     send_log_embed_thumb(
@@ -932,7 +932,7 @@ pub async fn log_message_update(
 
 pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, String) {
     let title = "Message Updated".to_string();
-    let description = msg.id.to_string();
+    let description = msg.message.id.to_string();
     let avatar_url = "".to_string();
     let id = "".to_string();
     (id, title, description, avatar_url)
@@ -940,7 +940,7 @@ pub fn default_msg_string(msg: &MessageUpdateEvent) -> (String, String, String, 
 
 /// Log a guild ban.
 pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&str, &GuildId, &serenity::model::prelude::User),
@@ -967,7 +967,7 @@ pub async fn log_guild_ban_addition<T: Serialize + std::fmt::Debug>(
 
 /// Log a guild ban removal
 pub async fn log_guild_ban_removal<T: Serialize + std::fmt::Debug>(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&str, &GuildId, &serenity::model::prelude::User),
@@ -1042,7 +1042,7 @@ pub fn guild_role_diff(
 
 /// Log a guild role update event.
 pub async fn log_guild_role_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(
@@ -1073,7 +1073,7 @@ pub async fn log_guild_role_update(
 
 /// Log a guild role creation event.
 pub async fn log_guild_member_removal(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     log_data: &(&GuildId, &serenity::model::prelude::User, &Option<Member>),
@@ -1101,7 +1101,7 @@ pub async fn log_guild_member_removal(
 
 /// Log a guild member addition event.
 pub async fn log_guild_member_addition(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     new_member: &Member,
@@ -1255,7 +1255,7 @@ impl std::fmt::Display for ClientStatusPrinter {
 /// Log a presence update event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_presence_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     new_data: &Presence,
@@ -1296,10 +1296,10 @@ pub async fn log_presence_update(
 /// Log a voice state update event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_voice_channel_status_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     ctx: &SerenityContext,
-    log_data: &(&Option<String>, &Option<String>, &ChannelId, &GuildId),
+    log_data: &(&Option<String>, &Option<String>, &GenericChannelId, &GuildId),
 ) -> Result<serenity::model::prelude::Message, Error> {
     let &(old, status, _, _) = log_data;
     let title = format!("Voice Channel Status Update: {:?} -> {:?}", old, status);
@@ -1322,7 +1322,7 @@ pub async fn log_voice_channel_status_update(
 /// Log a voice state update event.
 #[cfg(not(tarpaulin_include))]
 pub async fn log_voice_state_update(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     ctx: &SerenityContext,
     log_data: &(
@@ -1357,7 +1357,7 @@ pub async fn log_voice_state_update(
 
 /// Noop log a typing start event.
 pub async fn log_typing_start_noop(
-    _channel_id: ChannelId,
+    _channel_id: GenericChannelId,
     _guild_id: GuildId,
     _http: &impl CacheHttp,
     _event: &serenity::model::prelude::TypingStartEvent,
@@ -1367,7 +1367,7 @@ pub async fn log_typing_start_noop(
 
 /// Log a typing start event.
 pub async fn log_typing_start(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     event: &serenity::model::prelude::TypingStartEvent,
@@ -1413,7 +1413,7 @@ pub async fn log_typing_start(
 }
 
 pub async fn log_message(
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     guild_id: GuildId,
     http: &impl CacheHttp,
     new_message: &serenity::model::prelude::Message,
