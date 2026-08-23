@@ -17,6 +17,12 @@ on:
     branches: [ "master" ]
   schedule:
     - cron: '0 0 * * *'
+  # Lets this be re-run by hand. GitHub disables workflows with a `schedule:`
+  # trigger after 60 days of repository inactivity, which is what happened here --
+  # it went dormant on 2025-11-30 and its stale results sat in code scanning for
+  # nine months. Re-enabling it does not itself schedule a run, and without this
+  # there was no way to start one short of pushing to master or waiting for the cron.
+  workflow_dispatch:
 
 jobs:
   rust-clippy-analyze:
