@@ -24,11 +24,41 @@ Thanks to the guys over at [alwaysdata](https://www.alwaysdata.com/) for hosting
 - _Optional_ define `VIRUSTOTAL_API_KEY` for osint URL checking.
 - Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
 
-### Docker **FIXME**
+### Docker
+
+A single image, no database of your own to run:
 
 ```shell
 docker run -d --env-file .env --restart unless-stopped --name cracktunes ghcr.io/cycle-five/cracktunes:latest
 ```
+
+Images are published to two registries by CI: `ghcr.io/cycle-five/cracktunes` and
+`docker.io/cyclefive/cracktunes`. Tagged releases get version tags; branch builds get
+floating ones.
+
+### Docker Compose (the full stack)
+
+Use `scripts/cracktunes.sh` rather than driving `docker compose` directly — it pins
+the project name and env file, and refuses on the failure modes that are otherwise
+silent (wrong Docker context, database password divergence, missing external volumes,
+missing `DISCORD_TOKEN`).
+
+```shell
+cp .env.example .env          # then fill it in
+./scripts/cracktunes.sh preflight   # verify without changing anything
+./scripts/cracktunes.sh up
+```
+
+To ship a new version, `deploy` (pull + recreate) rather than `restart` (recreate
+only, picks up no new code):
+
+```shell
+./scripts/cracktunes.sh deploy
+./scripts/cracktunes.sh logs cracktunes
+```
+
+`./scripts/cracktunes.sh help` lists everything. See [scripts/README.md](scripts/README.md)
+for what the other scripts in that directory are, and which of them are broken.
 
 ## Development
 
@@ -117,14 +147,16 @@ git push --tags
 cargo publish
 ```
 
-### Docker Compose
-
-Within the project folder, simply run the following:
+### Building the image locally
 
 ```shell
 docker build -t cracktunes .
-docker compose up -d
 ```
+
+Note that `docker-compose.yml` references the published `cyclefive/cracktunes:dev`
+image, not a locally built one — so building with the tag above does not change what
+`docker compose up` runs. Retag it or edit the compose file if you want your local
+build in the stack. Deploying is covered under [Deployment](#deployment) above.
 
 <p align="center">
 <sub><sup>Originally forked from <a href="https://github.com/aquelemiguel/parrot">Parrot</a></sup></sub>
