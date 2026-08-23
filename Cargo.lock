@@ -79,6 +79,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+dependencies = [
+ "cfg-if",
+ "getrandom 0.3.4",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1066,14 +1079,14 @@ dependencies = [
 
 [[package]]
 name = "crack-bf"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "crack-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1128,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "async-openai",
  "const_format",
@@ -1138,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crack-types",
  "ipinfo",
@@ -1153,7 +1166,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1176,7 +1189,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "humantime",
  "poise",
@@ -1193,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1208,7 +1221,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "config-file",
  "crack-core",
@@ -1218,6 +1231,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "tracing-bunyan-formatter",
  "tracing-subscriber",
  "vergen-gitcl",
 ]
@@ -2209,6 +2223,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gethostname"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1ebd34e35c46e00bb73e81363248d627782724609fe1b6396f553f68fe3862e"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "getopts"
 version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2329,7 +2353,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
- "ahash",
+ "ahash 0.7.8",
 ]
 
 [[package]]
@@ -7117,6 +7141,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-bunyan-formatter"
+version = "0.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d637245a0d8774bd48df6482e086c59a8b5348a910c3b0579354045a9d82411"
+dependencies = [
+ "ahash 0.8.12",
+ "gethostname",
+ "log",
+ "serde",
+ "serde_json",
+ "time",
+ "tracing",
+ "tracing-core",
+ "tracing-log 0.1.4",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-core"
 version = "0.1.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7134,6 +7176,17 @@ checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
 dependencies = [
  "pin-project",
  "tracing",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f751112709b4e791d8ce53e32c4ed2d353565a795ce84da2285393f41557bdf2"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
 ]
 
 [[package]]
@@ -7162,7 +7215,7 @@ dependencies = [
  "thread_local",
  "tracing",
  "tracing-core",
- "tracing-log",
+ "tracing-log 0.2.0",
 ]
 
 [[package]]

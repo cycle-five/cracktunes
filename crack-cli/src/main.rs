@@ -6,7 +6,7 @@ use tokio::runtime::Handle;
 #[cfg(feature = "crack-tracing")]
 use crack_core::guild::settings::get_log_prefix;
 #[cfg(feature = "crack-telemetry")]
-use std::sync::Arc;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 #[cfg(feature = "crack-tracing")]
 use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 // #[cfg(feature = "crack-metrics")]
@@ -21,8 +21,6 @@ use tracing_subscriber::{filter, prelude::*, EnvFilter, Registry};
 
 // #[cfg(feature = "crack-telemetry")]
 // const SERVICE_NAME: &str = "cracktunes";
-#[cfg(feature = "crack-metrics")]
-const WARP_PORT: u16 = 8833;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -280,35 +278,33 @@ pub async fn init_telemetry(_exporter_endpoint: &str) {
     //     .install_batch(opentelemetry_sdk::runtime::Tokio)
     //     .expect("Error: Failed to initialize the tracer.");
 
+    // The whole function is gated on `crack-tracing`, so the inner cfgs that used to
+    // repeat that gate are gone. A `set_text_map_propagator(TraceContextPropagator)`
+    // call also used to sit here, gated on `crack-metrics` of all things: it is OTLP
+    // context propagation with no exporter behind it and no opentelemetry dependency
+    // in the tree, left over from the commented-out block above. Removed rather than
+    // pulling in opentelemetry to feed a tracer nothing reads.
+
     // Define a subscriber.
-    #[cfg(feature = "crack-tracing")]
     let subscriber = Registry::default();
     // Level filter layer to filter traces based on level (trace, debug, info, warn, error).
-    #[cfg(feature = "crack-tracing")]
     let level_filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO"));
-    // Layer for adding our configured tracer.
-    // let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-    // Layer for printing spans to a file.
-    #[cfg(feature = "crack-telemetry")]
-    let stdout_formatting_layer = get_current_log_layer();
-
     // Layer for printing to stdout.
-    #[cfg(feature = "crack-tracing")]
     let stdout_formatting_layer = get_current_log_layer();
 
-    // global::set_text_map_propagator(TraceContextPropagator::new());
-    #[cfg(feature = "crack-metrics")]
-    set_text_map_propagator(TraceContextPropagator::new());
-
-    #[cfg(feature = "crack-tracing")]
     let x = subscriber
         .with(stdout_formatting_layer)
         .with(level_filter_layer);
-    // .with(tracing_layer)
-    #[cfg(feature = "crack-telemetry")]
-    let x = x.with(JsonStorageLayer).with(formatting_layer);
 
-    #[cfg(any(feature = "crack-tracing", feature = "crack-telemetry"))]
+    // Structured JSON on top: JsonStorageLayer carries span fields through to
+    // BunyanFormattingLayer, which is what `formatting_layer` referred to before it
+    // was left dangling.
+    #[cfg(feature = "crack-telemetry")]
+    let x = x.with(JsonStorageLayer).with(BunyanFormattingLayer::new(
+        SERVICE_NAME.to_string(),
+        std::io::stdout,
+    ));
+
     x.init()
 }
 
