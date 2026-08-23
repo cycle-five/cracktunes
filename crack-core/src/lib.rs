@@ -9,7 +9,7 @@ pub mod http_utils;
 #[macro_use]
 pub mod macros;
 pub mod messaging;
-// pub mod metrics;
+pub mod metrics;
 #[cfg(feature = "crack-music")]
 pub mod music;
 pub mod poise_ext;
