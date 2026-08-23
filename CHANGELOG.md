@@ -10,6 +10,42 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## v0.4.1 (2026/08/23)
+
+### Security
+
+- Cleared the four Dependabot alerts v0.4.0 left behind. protobuf 2.28 -> 3.7.2
+  (via prometheus 0.13 -> 0.14), idna down to 1.1 only (via whois-rust 1.6 -> 3.1),
+  and lru 0.12.5 -> 0.16.4 by dropping the `cycle-five/ipinfo-rs` fork for upstream
+  ipinfo 3.5 -- upstream had since removed the openssl dependency the fork existed
+  to avoid. The fourth, a libcrux panic, is unreachable: davey supports only the
+  AES-128-GCM ciphersuite, so ChaCha20Poly1305 is never selected.
+- Every workflow now declares an explicit `permissions:` block.
+
+### Dead features repaired
+
+Three optional features had rotted into a state where turning them on would not
+compile. `-A warnings` and a lint workflow that had been auto-disabled for
+inactivity meant nothing complained.
+
+- **`crack-metrics`** was `[]`, so it never enabled `dep:prometheus`;
+  `pub mod metrics;` was commented out of lib.rs, so `crate::metrics` did not exist
+  for `utils.rs` to import; and the module held a private, unreferenced
+  `metrics_handler` returning a `warp::Reply`, a crate crack-core does not depend on.
+- **`crack-telemetry`** was `[]` as well, while `init_telemetry` referenced
+  `JsonStorageLayer`, an undefined `formatting_layer`, and an OTLP
+  `set_text_map_propagator` -- all left dangling when the opentelemetry imports were
+  commented out. It now means structured JSON logs: `tracing-bunyan-formatter`
+  behind the feature, with `SERVICE_NAME` finally used as the bunyan service name.
+  The propagator call is gone rather than pulling in opentelemetry to feed a tracer
+  nothing reads.
+- **`crack-metrics` in crack-cli** was an empty feature that gated one dead const;
+  it now forwards to `crack-core/crack-metrics`.
+
+`cargo clippy --all-features` is clean for the first time in a long while, and
+`rust-clippy.yml` -- disabled by GitHub for inactivity since 2025-11-30 -- is
+enabled again now that it has something green to report.
+
 ## v0.4.0 (2026/08/22)
 
 ### Toolchain

@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.4.0"
+version = "0.4.1"
 description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
 publish = true
 edition = "2021"
@@ -25,8 +25,12 @@ eula = false
 default = ["crack-tracing"]
 
 crack-tracing = ["tracing-subscriber"]
-crack-metrics = []
-crack-telemetry = []
+# Forwards to crack-core, which owns the prometheus registry. This was an empty
+# list, so turning it on here did nothing at all.
+crack-metrics = ["crack-core/crack-metrics"]
+# Structured JSON logs. Implies crack-tracing: `init_telemetry` is gated on it, so
+# crack-telemetry on its own would silently do nothing.
+crack-telemetry = ["crack-tracing", "tracing-bunyan-formatter"]
 
 [dependencies]
 crack-core = { path = "../crack-core/" }
@@ -37,6 +41,7 @@ dotenvy = "0.15"
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",
 ], optional = true }
+tracing-bunyan-formatter = { version = "0.3", optional = true }
 
 # Core's dependencies
 poise = { workspace = true }
