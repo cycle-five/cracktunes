@@ -3,6 +3,10 @@ name: Lint
 on:
   workflow_call:
 
+# Least privilege: these jobs only check out and build.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Fmt and clippy

@@ -13,12 +13,16 @@ jobs:
   build:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Build
+    permissions:
+      contents: read
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
   lint:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Lint
+    permissions:
+      contents: read
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
@@ -26,6 +30,11 @@ jobs:
     name: Docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: [build, lint]
+    # docker.yml pushes an image, so this caller must grant packages: write --
+    # a called workflow only ever gets what the calling job holds.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/docker.yml
     secrets: inherit
 
