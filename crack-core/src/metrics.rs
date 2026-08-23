@@ -41,23 +41,12 @@ mod metrics_internal {
             .expect("collector can be registered");
     }
 
-    /// Prometheus handler
-    #[cfg(feature = "crack-metrics")]
-    #[cfg(not(tarpaulin_include))]
-    async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
-        let encoder = TextEncoder::new();
-        let mut metric_families = prometheus::gather();
-        metric_families.extend(REGISTRY.gather());
-        // tracing::info!("Metrics: {:?}", metric_families);
-        let mut buffer = vec![];
-        encoder.encode(&metric_families, &mut buffer).unwrap();
-
-        Ok(warp::reply::with_header(
-            buffer,
-            "content-type",
-            encoder.format_type(),
-        ))
-    }
+    // A `metrics_handler` returning a warp reply used to live here. It was private
+    // and unreferenced -- its only callers are commented out in crack-cli/src/main.rs
+    // -- and it referenced `warp`, which crack-core does not depend on, plus an
+    // unimported `TextEncoder`. So the whole feature failed to compile. Serving these
+    // metrics over HTTP belongs in whatever actually runs an HTTP server (crack-voting
+    // already has warp), not in crack-core; `REGISTRY.gather()` is what it would call.
 
     #[cfg(test)]
     mod test {

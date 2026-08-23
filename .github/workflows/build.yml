@@ -3,6 +3,10 @@ name: Main Workflow
 on:
   workflow_call:
 
+# Least privilege: these jobs only check out and build.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build

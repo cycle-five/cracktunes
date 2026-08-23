@@ -1,6 +1,10 @@
 name: coverage
 
 on: [push]
+
+# Least privilege: these jobs only check out and build.
+permissions:
+  contents: read
 jobs:
   test:
     name: coverage
