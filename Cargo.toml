@@ -87,7 +87,7 @@ features = [
 ]
 
 [workspace.dependencies.symphonia]
-version = "0.5.4"
+version = "0.6.1"
 features = ["all-formats", "all-codecs", "opt-simd"]
 
 [workspace.dependencies.symphonia-metadata]
