@@ -11,7 +11,7 @@
 # Config via env (sensible defaults):
 #   STACK             compose project name         (default: cracktunes)
 #   ENV_FILE          env file compose reads       (default: .env)
-#   EXPECTED_CONTEXT  docker context to require    (default: default)
+#   EXPECTED_CONTEXT  docker context to require    (default: pve-staging)
 #
 # Guards. Each of these refuses rather than warns, and each exists because the
 # failure it prevents is silent:
@@ -19,13 +19,16 @@
 #   1. DOCKER CONTEXT. `docker compose` targets whatever context is current, and
 #      this machine has several pointing at remote hosts (proxmox, pve-staging,
 #      homelab-*). Deploying to the wrong one does not fail — it builds a
-#      complete parallel stack over there and looks like success. It matters
-#      more than usual here because docker-compose.yml bind-mounts RELATIVE host
-#      paths (./.env, ./cracktunes.toml): on a remote context those resolve on
-#      the REMOTE filesystem, so the bot comes up reading someone else's config
-#      or an empty file. Default is `default` (the local socket) because the
-#      compose file is written for a local host. Deploying elsewhere is fine,
-#      but you have to say so: EXPECTED_CONTEXT=proxmox ./scripts/cracktunes.sh up
+#      complete parallel stack over there, with its own network and volumes,
+#      and looks like success. The stack lives on `pve-staging`, so that is the
+#      default; running against anything else — including the local socket —
+#      has to be asked for: EXPECTED_CONTEXT=default ./scripts/cracktunes.sh up
+#
+#      Relatedly: the compose file no longer bind-mounts anything from this
+#      checkout. It used to mount ./.env and ./cracktunes.toml, which resolve
+#      on the DOCKER HOST — so driving a remote context meant the bot read
+#      whatever sat at those paths over there, or an empty directory docker
+#      helpfully created. Config now arrives via compose's `env_file:`.
 #
 #   2. DATABASE PASSWORD DIVERGENCE. docker-compose.yml hardcodes
 #      `DATABASE_URL=postgresql://postgres:mysecretpassword@...` for the app
@@ -72,7 +75,7 @@ cd "$SCRIPT_DIR"
 
 STACK="${STACK:-cracktunes}"
 ENV_FILE="${ENV_FILE:-.env}"
-EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-default}"
+EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-pve-staging}"
 CURRENT_CONTEXT="$(docker context show 2>/dev/null || echo unknown)"
 ORIGINAL_ARGS="$*"
 
@@ -117,10 +120,9 @@ require_docker_context() {
     die "docker context is '$CURRENT_CONTEXT', expected '$EXPECTED_CONTEXT'.
 
        Deploying from the wrong context does NOT fail. It builds a complete
-       parallel stack on that host and looks exactly like success. Worse here:
-       docker-compose.yml bind-mounts ./.env and ./cracktunes.toml, which
-       resolve on the DOCKER HOST — so on a remote context the bot reads
-       whatever is at those paths over there, or nothing at all.
+       parallel stack on that host, with its own network and volumes, and
+       looks exactly like success — the only tell is that every container
+       says 'Creating' rather than 'Recreating'.
 
        Fix:       DOCKER_CONTEXT=$EXPECTED_CONTEXT $0 $ORIGINAL_ARGS
        Intended?  EXPECTED_CONTEXT=$CURRENT_CONTEXT $0 $ORIGINAL_ARGS"
@@ -210,7 +212,12 @@ preflight() {
 dc() {
   require_docker_context
   require_env_file
-  docker compose -p "$STACK" --env-file "$ENV_FILE" "$@"
+  # ENV_FILE is exported as well as passed: --env-file drives interpolation,
+  # while the services' own `env_file:` entry reads ${ENV_FILE} so the file the
+  # caller selected is the file whose variables reach the containers. Without
+  # the export those two could disagree, and the containers would silently take
+  # a different .env than the one this run was told to use.
+  ENV_FILE="$ENV_FILE" docker compose -p "$STACK" --env-file "$ENV_FILE" "$@"
 }
 
 banner() { printf "[cracktunes] stack=%s env=%s context=%s — %s\n" "$STACK" "$ENV_FILE" "$CURRENT_CONTEXT" "$*"; }
