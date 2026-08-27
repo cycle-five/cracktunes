@@ -12,7 +12,6 @@ use crate::{
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
-        messages::SPOTIFY_AUTH_FAILED,
     },
     sources::spotify::{Spotify, SPOTIFY},
     utils::{edit_response_poise, yt_search_select},
@@ -906,7 +905,7 @@ pub async fn query_type_from_url(
                     final_url.underline().bright_blue()
                 );
                 let spotify = SPOTIFY.lock().await;
-                let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+                let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
                 Some(Spotify::extract(spotify, &final_url).await?)
             },
             Some("cdn.discordapp.com") => {
@@ -967,8 +966,7 @@ pub async fn query_type_from_url(
                         format!("https://open.spotify.com/track/{}", parts.last().unwrap());
                     tracing::warn!("spotify: {} -> {}", url, final_url);
                     let spotify = SPOTIFY.lock().await;
-                    let spotify =
-                        verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+                    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
                     Some(Spotify::extract(spotify, &final_url).await?)
                 } else {
                     Some(QueryType::Keywords(url.to_string()))

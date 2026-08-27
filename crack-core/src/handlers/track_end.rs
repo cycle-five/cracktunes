@@ -4,7 +4,7 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     messaging::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
-        messages::SPOTIFY_AUTH_FAILED,
+        messages::{AUTOPLAY_DISABLED_ERROR, AUTOPLAY_DISABLED_SPOTIFY, SPOTIFY_AUTH_FAILED},
     },
     music::query::NewQueryType,
     sources::spotify::{Spotify, SPOTIFY},
@@ -18,7 +18,7 @@ use crate::{
 use ::serenity::{
     all::{Cache, GenericChannelId},
     async_trait,
-    builder::EditMessage,
+    builder::{CreateMessage, EditMessage},
     http::Http,
     model::id::GuildId,
 };
@@ -138,7 +138,15 @@ impl EventHandler for TrackEndHandler {
             //if is_stopped(x) || is_errored(x) {
             if states.errored {
                 self.data.set_autoplay(self.guild_id, false).await;
-                // FIXME: Send error message
+                tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
+                // `channel` is not resolved yet at this point, so this can only
+                // speak up when a music channel is configured. Better than the
+                // silence this replaced (it was a bare `// FIXME: Send error
+                // message`), and it does not justify hoisting the channel lookup
+                // above the early returns below it.
+                if let Some(c) = music_channel {
+                    send_plain(c, self.http.clone(), AUTOPLAY_DISABLED_ERROR).await;
+                }
                 return None;
             }
         }
@@ -172,9 +180,13 @@ impl EventHandler for TrackEndHandler {
         let query = match get_recommended_track_query(pool, self.guild_id).await {
             Ok(query) => query,
             Err(e) => {
+                // Turning a feature the user switched ON back OFF is not something
+                // to do silently. This used to be a `tracing::warn!` and nothing
+                // else, so from the channel's point of view the music simply
+                // stopped and autoplay was mysteriously off.
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
-                tracing::warn!("{}", msg);
+                tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
+                announce_autoplay_off(channel, self.http.clone(), &e).await;
                 return None;
             },
         };
@@ -184,8 +196,8 @@ impl EventHandler for TrackEndHandler {
             Ok(_) => (),
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
-                let msg = format!("Error: {}", e);
-                tracing::warn!("{}", msg);
+                tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
+                announce_autoplay_off(channel, self.http.clone(), &e).await;
             },
         }
 
@@ -296,6 +308,37 @@ pub async fn update_queue_messages(
     }
 }
 
+/// Send a plain-text line to a channel, best effort.
+///
+/// Failing to deliver an explanation must never be louder than the thing being
+/// explained, so a send error is logged and swallowed.
+async fn send_plain(channel: GenericChannelId, http: Arc<Http>, content: &str) {
+    if let Err(e) = channel
+        .send_message(&http, CreateMessage::new().content(content))
+        .await
+    {
+        tracing::warn!("could not send autoplay notice to {}: {}", channel, e);
+    }
+}
+
+/// Tell the channel autoplay has been switched off, and say which kind of
+/// problem caused it.
+///
+/// The distinction is the point. "Spotify is unavailable" is a standing
+/// condition the listener can route around by queueing tracks themselves;
+/// "I couldn't work out what to play next" is a one-off. Collapsing both into a
+/// single message trains people to ignore it.
+async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>, err: &CrackedError) {
+    let content = match err {
+        CrackedError::SpotifyAuth
+        | CrackedError::RSpotify(_)
+        | CrackedError::RSpotifyLockError(_) => AUTOPLAY_DISABLED_SPOTIFY,
+        CrackedError::Other(msg) if *msg == SPOTIFY_AUTH_FAILED => AUTOPLAY_DISABLED_SPOTIFY,
+        _ => AUTOPLAY_DISABLED_ERROR,
+    };
+    send_plain(channel, http, content).await;
+}
+
 /// Get's the recommended tracks for a guild. Returns `QueryType::None` on failure.
 /// Looks at the top
 async fn get_recommended_track_query(
@@ -303,7 +346,7 @@ async fn get_recommended_track_query(
     guild_id: GuildId,
 ) -> CrackedResult<QueryType> {
     let spotify = SPOTIFY.lock().await;
-    let spotify = verify(spotify.as_ref(), CrackedError::Other(SPOTIFY_AUTH_FAILED))?;
+    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
 
     let last_played = pool.get_last_played_by_guild(guild_id, 5).await?;
     let res_rec = Spotify::get_recommendations(spotify, last_played.clone()).await?;

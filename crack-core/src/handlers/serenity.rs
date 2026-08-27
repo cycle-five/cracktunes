@@ -76,8 +76,22 @@ impl SerenityHandler {
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
-        // attempts to authenticate to spotify
-        *SPOTIFY.lock().await = Spotify::auth(None).await;
+        // Attempt to authenticate to Spotify, and SAY SO EITHER WAY.
+        //
+        // This result used to be stored and never read, so a bot booting with no
+        // Spotify credentials looked identical to one booting with working ones.
+        // The first anybody learned of it was a user pasting a Spotify link and
+        // getting an error -- or, worse, autoplay quietly switching itself off.
+        let spotify_auth = Spotify::auth(None).await;
+        match &spotify_auth {
+            Ok(_) => tracing::info!("{}", crate::messaging::messages::SPOTIFY_ENABLED_LOG),
+            Err(e) => tracing::warn!(
+                "{} Reason: {}",
+                crate::messaging::messages::SPOTIFY_DISABLED_LOG,
+                e
+            ),
+        }
+        *SPOTIFY.lock().await = spotify_auth;
 
         // These are the guild settings defined in the config file.
         // Should they always override the ones in the database?
