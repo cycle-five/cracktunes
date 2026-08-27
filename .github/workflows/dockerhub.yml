@@ -16,8 +16,8 @@ on:
       - 'master'
     tags: ['v*.*.*']
   pull_request:
-    #branches:
-    #  - 'master'
+    branches:
+      - 'master'
   workflow_call:
 
 env:
@@ -26,9 +26,14 @@ env:
 
 jobs:
   push:
-    #if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build') 
-    #if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build') 
+    name: Build & Push to Docker Hub
     runs-on: ubuntu-latest
+    # Never on a pull request. Dependabot PRs carry no secrets, so the
+    # Docker Hub login below fails outright -- but the real hazard is the
+    # branch where it would succeed: a PR build pushed under `push: true`
+    # publishes unreviewed code to cyclefive/cracktunes. docker.yml (GHCR)
+    # has carried this same guard all along; only this file lost it.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build')
     permissions:
       contents: read
       packages: write
@@ -59,6 +64,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
