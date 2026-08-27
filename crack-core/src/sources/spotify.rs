@@ -369,15 +369,23 @@ impl Spotify {
             .map_err(|_| CrackedError::Other(SPOTIFY_PLAYLIST_FAILED))?;
 
         let query_list: Vec<String> = playlist
-            .tracks
+            .items
             .items
             .iter()
-            .filter_map(|item| match item.track.as_ref().unwrap() {
+            .filter_map(|item| match item.item.as_ref().unwrap() {
                 PlayableItem::Track(track) => {
                     let artist_names = Self::join_artist_names(&track.album.artists);
                     Some(Self::build_query(&artist_names, &track.name))
                 },
                 PlayableItem::Episode(_) => None,
+                // rspotify 0.16 added this to capture raw JSON when Spotify
+                // returns an item it cannot model. Unlike Episode -- a known
+                // type we deliberately skip -- an Unknown may well BE a track,
+                // so say so rather than dropping it in silence.
+                PlayableItem::Unknown(raw) => {
+                    tracing::warn!("skipping unparseable Spotify playlist item: {raw}");
+                    None
+                },
             })
             .collect();
 
@@ -398,12 +406,16 @@ impl Spotify {
             .map_err(|_| CrackedError::Other(SPOTIFY_PLAYLIST_FAILED))?;
 
         let query_list: Vec<SpotifyTrack> = playlist
-            .tracks
+            .items
             .items
             .iter()
-            .filter_map(|item| match item.track.as_ref().unwrap() {
+            .filter_map(|item| match item.item.as_ref().unwrap() {
                 PlayableItem::Track(track) => Some(SpotifyTrack::new(track.clone())),
                 PlayableItem::Episode(_) => None,
+                PlayableItem::Unknown(raw) => {
+                    tracing::warn!("skipping unparseable Spotify playlist item: {raw}");
+                    None
+                },
             })
             .collect();
 
@@ -531,6 +543,15 @@ impl SpotifyTrackTrait for SpotifyTrack {
 }
 
 /// Implementation of From for SpotifyTrack.
+///
+/// `#[allow(deprecated)]`: rspotify 0.16 deprecated `popularity`,
+/// `linked_from` and `available_markets` on `FullTrack`, and `album_group` /
+/// `available_markets` on `SimplifiedAlbum`, because Spotify removed those
+/// fields from its API. They are still struct fields, so a literal must
+/// initialize them -- and CI runs `-D warnings`. We never READ any of them;
+/// they exist here only to satisfy the constructor. Drop the attribute once
+/// rspotify removes the fields outright.
+#[allow(deprecated)]
 pub fn build_fake_spotify_track() -> SpotifyTrack {
     SpotifyTrack::new(FullTrack {
         id: None,
@@ -569,6 +590,7 @@ pub fn build_fake_spotify_track() -> SpotifyTrack {
         is_local: false,
         available_markets: vec![],
         duration: chrono::TimeDelta::new(60, 0).unwrap(),
+        r#type: rspotify::model::Type::Track,
     })
 }
 

@@ -40,7 +40,7 @@ thiserror = "1.0.69"
 humantime = "2.1"
 
 [dependencies.rspotify]
-version = "0.13"
+version = "0.16"
 default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 

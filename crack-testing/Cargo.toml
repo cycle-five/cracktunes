@@ -47,7 +47,7 @@ default-features = false
 features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
 
 [dependencies.rspotify]
-version = "0.13"
+version = "0.16"
 default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
