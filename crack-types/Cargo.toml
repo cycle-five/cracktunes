@@ -24,7 +24,7 @@ poise = { workspace = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
 tokio = { workspace = true }
-typemap_rev = "0.3.0"
+typemap_rev = "0.4.0"
 reqwest = { version = "0.12.9", default-features = false, features = [
   "blocking",
   "json",
