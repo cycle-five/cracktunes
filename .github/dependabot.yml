@@ -11,3 +11,29 @@ updates:
       interval: "daily"
     allow:
       - dependency-type: "all"
+    ignore:
+      # symphonia's version is not ours to choose. songbird pins `^0.5.2` on
+      # EVERY branch -- current, next, serenity-next (the one we track) and
+      # v0.4.x -- with no open issue or PR proposing 0.6. Our direct dependency
+      # exists to unify with songbird's and to switch on the codec features
+      # songbird itself declares `default-features = false` for; it is not an
+      # independent choice we can bump.
+      #
+      # A 0.5 -> 0.6 bump therefore cannot compile: two `symphonia-core` crates
+      # land in one graph, and `impl MediaSource` in crack-core is then written
+      # against a different trait than the one songbird's `Compose` expects.
+      # That is E0053, and it is trait *identity*, not a trait change -- the
+      # `MediaSource` trait is byte-identical between 0.5.5 and 0.6.1.
+      #
+      # Patch updates inside 0.5.x are still wanted, so only minor and major are
+      # ignored. Revisit when songbird ships symphonia 0.6; see
+      # docs/symphonia-and-songbird.md for what that port involves.
+      - dependency-name: "symphonia"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      # Must track symphonia exactly, so it hits the same wall.
+      - dependency-name: "symphonia-metadata"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"

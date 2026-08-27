@@ -86,6 +86,13 @@ features = [
   "builtin-queue",
 ]
 
+# 🪤 This version is NOT an independent choice -- songbird pins `^0.5.2` on every
+# branch, and bumping only our side puts two `symphonia-core` crates in one graph
+# (E0053 on `Compose::create`). The features are load-bearing too: songbird
+# declares symphonia with `default-features = false`, so THIS line is what
+# enables MP3/AAC/FLAC/Vorbis/MKV/ISO-MP4 decoding, and dropping the dependency
+# in favour of songbird's re-export would silently lose them.
+# See docs/symphonia-and-songbird.md.
 [workspace.dependencies.symphonia]
 version = "0.5.4"
 features = ["all-formats", "all-codecs", "opt-simd"]
