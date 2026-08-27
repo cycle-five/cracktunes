@@ -180,7 +180,7 @@ mod test {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     // /// Make sure the DATABASE_URL is set before running tests.
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn set_env() {
         use std::env;
 

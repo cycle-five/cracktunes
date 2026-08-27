@@ -540,7 +540,7 @@ mod tests {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn set_env() {
         use std::env;
         if env::var("DATABASE_URL").is_err() {

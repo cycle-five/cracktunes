@@ -110,7 +110,7 @@ mod test {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn set_env() {
         use std::env;
 
