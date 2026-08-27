@@ -21,8 +21,12 @@ services:
   crack-voting:
     container_name: crack-voting
     image: cyclefive/crack-voting:dev
-    volumes:
-      - ./.env:/app/.env:ro
+    # env_file rather than a bind mount: compose reads this on the CLIENT and
+    # injects the variables, so nothing has to exist on the docker host. A
+    # bind mount of ./.env resolves to an absolute path on the host, which is
+    # wrong the moment the stack is driven through a remote context.
+    env_file:
+      - ${ENV_FILE:-.env}
     environment:
       - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-test_secret}
@@ -36,8 +40,13 @@ services:
     image: cyclefive/cracktunes:dev
     volumes:
       - crack_data:/data:rw
-      - ./.env:/app/.env:rw
-      - ./cracktunes.toml:/app/cracktunes.toml:rw
+      # ./cracktunes.toml is NOT mounted. It resolves on the docker host, so it
+      # only ever worked when the stack ran on the same machine as this
+      # checkout. The file is optional -- the bot logs "Using default config"
+      # and carries on -- but it also sets the command prefix, so anything set
+      # there must move into the environment instead. See #403.
+    env_file:
+      - ${ENV_FILE:-.env}
     environment:
       - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-test_key}
