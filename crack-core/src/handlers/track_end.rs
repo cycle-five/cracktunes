@@ -112,19 +112,26 @@ impl EventHandler for TrackEndHandler {
             (autopause, volume)
         };
 
-        if autopause {
-            tracing::trace!("Pausing");
-            self.call.lock().await.queue().pause().ok();
-        } else {
-            tracing::trace!("Not pausing");
-        }
-
         tracing::trace!("Forgetting skip votes");
         // FIXME
         match self.data.forget_skip_votes(self.guild_id).await {
             Ok(_) => tracing::trace!("Forgot skip votes"),
             Err(e) => tracing::warn!("Error forgetting skip votes: {}", e),
         };
+
+        // A guilty pleasure game owns playback: its per-track handler advances
+        // the rounds, so no autopause, no autoplay filler and no duplicate
+        // now-playing embed while it runs.
+        if self.data.gp_is_playing(self.guild_id) {
+            return None;
+        }
+
+        if autopause {
+            tracing::trace!("Pausing");
+            self.call.lock().await.queue().pause().ok();
+        } else {
+            tracing::trace!("Not pausing");
+        }
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
 

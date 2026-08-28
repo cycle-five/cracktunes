@@ -217,6 +217,21 @@ pub enum CrackedMessage {
         url: String,
     },
     WelcomeSettings(String),
+    // Guilty pleasure game (`commands::music::gp`). Appended last so the
+    // discriminants of the variants above are unchanged.
+    GpSubmitted {
+        title: String,
+        count: usize,
+    },
+    GpBegan {
+        rounds: usize,
+        players: usize,
+        cleared_queue: bool,
+    },
+    GpRoundSkipped,
+    GpEnded {
+        by: String,
+    },
 }
 
 impl CrackedMessage {
@@ -436,6 +451,29 @@ impl Display for CrackedMessage {
             },
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::WelcomeSettings(settings) => f.write_str(settings),
+            Self::GpSubmitted { title, count } => f.write_str(&format!(
+                "{} **{}** ({} {})",
+                GP_SUBMITTED, title, count, GP_SUBMITTED_COUNT
+            )),
+            Self::GpBegan {
+                rounds,
+                players,
+                cleared_queue,
+            } => f.write_str(&format!(
+                "{} {} {}, {} {}{}",
+                GP_BEGIN,
+                rounds,
+                GP_BEGIN_ROUNDS,
+                players,
+                GP_BEGIN_PLAYERS,
+                if *cleared_queue {
+                    format!(" {}", GP_QUEUE_CLEARED)
+                } else {
+                    String::new()
+                }
+            )),
+            Self::GpRoundSkipped => f.write_str(GP_ROUND_SKIPPED),
+            Self::GpEnded { by } => f.write_str(&format!("{} {}", GP_ENDED_BY, by)),
         }
     }
 }
@@ -568,6 +606,58 @@ mod test {
 
         let message = CrackedMessage::Clear;
         assert_eq!(message.discriminant(), 11);
+    }
+
+    #[test]
+    fn test_gp_messages_display() {
+        use crate::messaging::messages::{
+            GP_BEGIN, GP_BEGIN_PLAYERS, GP_BEGIN_ROUNDS, GP_ENDED_BY, GP_QUEUE_CLEARED,
+            GP_ROUND_SKIPPED, GP_SUBMITTED, GP_SUBMITTED_COUNT,
+        };
+
+        let msg = CrackedMessage::GpSubmitted {
+            title: "Never Gonna Give You Up".to_string(),
+            count: 2,
+        };
+        assert_eq!(
+            msg.to_string(),
+            format!(
+                "{} **Never Gonna Give You Up** (2 {})",
+                GP_SUBMITTED, GP_SUBMITTED_COUNT
+            )
+        );
+
+        let msg = CrackedMessage::GpBegan {
+            rounds: 5,
+            players: 3,
+            cleared_queue: false,
+        };
+        assert_eq!(
+            msg.to_string(),
+            format!("{} 5 {}, 3 {}", GP_BEGIN, GP_BEGIN_ROUNDS, GP_BEGIN_PLAYERS)
+        );
+        let msg = CrackedMessage::GpBegan {
+            rounds: 5,
+            players: 3,
+            cleared_queue: true,
+        };
+        assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
+
+        assert_eq!(CrackedMessage::GpRoundSkipped.to_string(), GP_ROUND_SKIPPED);
+        assert_eq!(
+            CrackedMessage::GpEnded {
+                by: "alice".to_string()
+            }
+            .to_string(),
+            format!("{} alice", GP_ENDED_BY)
+        );
+
+        // Appended after every existing variant, so the discriminants the
+        // `test_discriminant` test pins are untouched.
+        assert!(
+            CrackedMessage::GpRoundSkipped.discriminant()
+                > CrackedMessage::WelcomeSettings(String::new()).discriminant()
+        );
     }
 
     #[test]

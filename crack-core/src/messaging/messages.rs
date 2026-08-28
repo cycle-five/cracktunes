@@ -215,3 +215,47 @@ pub const INVITE_TEXT: &str = "🔗 ";
 pub const INVITE_LINK_TEXT: &str = "Invite Crack Tunes to your server!";
 pub const INVITE_LINK_TEXT_SHORT: &str = "invite";
 pub const INVITE_URL: &str = "https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands";
+
+// ---- Guilty pleasure game (`commands::music::gp`) ----
+pub const GP_LOBBY_OPEN: &str = "🎭 Guilty Pleasures";
+pub const GP_RULES_TEXT: &str = "Everyone in the voice channel secretly submits one or more of their guilty pleasure tracks. The bot plays them one at a time and everyone guesses who submitted each one. The submitter is revealed when the track ends.";
+pub const GP_LOBBY_RULES: &str = "How to play";
+pub const GP_LOBBY_HOW_TO: &str = "• `/gp submit <song>` — add a track (only you can see the reply; add as many as you like)\n• `/gp status` — who has submitted so far\n• `/gp begin` — host closes submissions and starts round 1\n• Pick a name from the dropdown during each track; you can change your pick until it ends\n• `/gp skip` — host ends the round early · `/gp end` — abort\n\n**Scoring:** +1 for a correct guess. If nobody guesses you, +1 for you.";
+pub const GP_SUBMITTED: &str = "🤫 Got it:";
+pub const GP_SUBMITTED_COUNT: &str = "submitted so far";
+pub const GP_BEGIN: &str = "🎭 Game on!";
+pub const GP_BEGIN_ROUNDS: &str = "rounds";
+pub const GP_BEGIN_PLAYERS: &str = "players";
+pub const GP_QUEUE_CLEARED: &str = "(cleared the existing queue)";
+pub const GP_ROUND_TITLE: &str = "🎭 Round";
+pub const GP_ROUND_HINT: &str = "Whose guilty pleasure is this? Pick a name below.";
+pub const GP_SELECT_PLACEHOLDER: &str = "Whose guilty pleasure is this?";
+pub const GP_GUESS_RECORDED: &str = "🤫 Guess locked in. You can change it until the track ends.";
+pub const GP_GUESS_CHANGED: &str = "🔁 Guess changed.";
+pub const GP_REVEAL: &str = "🎉 It was";
+pub const GP_NOBODY_GUESSED: &str = "nobody!";
+pub const GP_FOOLED_EVERYONE: &str = "🃏 Fooled everyone";
+pub const GP_SCOREBOARD: &str = "🏆 Scoreboard";
+pub const GP_GAME_OVER: &str = "🏆 Game over — final scores";
+pub const GP_ROUND_SKIPPED: &str = "⏭️ Round skipped.";
+pub const GP_ENDED_BY: &str = "🛑 Game ended by";
+pub const GP_STATUS_LOBBY: &str = "🎭 Lobby open";
+pub const GP_STATUS_PLAYING: &str = "🎭 Round";
+pub const GP_STATUS_SUBMITTERS: &str = "Submitted (tracks)";
+pub const GP_STATUS_GUESSED: &str = "Guessed this round";
+pub const GP_STATUS_SCORES: &str = "Scores";
+pub const GP_NO_GUESSES_YET: &str = "nobody yet";
+
+pub const FAIL_GP_ALREADY_RUNNING: &str = "🎭 A guilty pleasure game is already running here. `/gp status` to see it, `/gp end` to abort.";
+pub const FAIL_GP_NO_GAME: &str = "🎭 No guilty pleasure game is running. `/gp start` to open one.";
+pub const FAIL_GP_NOT_PLAYING: &str = "🎭 The game hasn't started yet. The host runs `/gp begin`.";
+pub const FAIL_GP_OWNS_PLAYBACK: &str = "🎭 A guilty pleasure game is playing; that command would break the rounds. `/gp skip` or `/gp end` instead.";
+pub const FAIL_GP_NOT_HOST: &str = "🎭 Only the game's host can do that.";
+pub const FAIL_GP_NOT_ENOUGH_PLAYERS: &str =
+    "🎭 Need tracks from at least two different people before beginning.";
+pub const FAIL_GP_SUBMISSIONS_CLOSED: &str =
+    "🎭 Submissions are closed; the game has already begun.";
+pub const FAIL_GP_NOT_IN_GAME_VC: &str = "🎭 You need to be in the game's voice channel for that.";
+pub const FAIL_GP_TOO_MANY: &str = "🎭 That's the maximum number of players:";
+pub const FAIL_GP_STALE_ROUND: &str = "🎭 That round is over.";
+pub const FAIL_GP_NOT_A_PLAYER: &str = "🎭 That person hasn't submitted a track.";

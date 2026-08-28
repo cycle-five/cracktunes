@@ -6,6 +6,7 @@ pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
 pub mod get_metadata;
+pub mod gp;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;
@@ -33,6 +34,7 @@ pub use collector::*;
 pub use doplay::*;
 pub use gambling::*;
 pub use get_metadata::*;
+pub use gp::*;
 pub use grab::*;
 pub use leave::*;
 pub use lyrics::*;
@@ -95,7 +97,7 @@ pub fn music_commands() -> Vec<crate::Command> {
 /// Get the game commands.
 pub fn game_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {
-        vec![coinflip(), rolldice()]
+        vec![coinflip(), rolldice(), gp()]
     } else {
         vec![]
     }

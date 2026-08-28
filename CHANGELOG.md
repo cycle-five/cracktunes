@@ -10,6 +10,24 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## Unreleased
+
+### Added
+
+- **Guilty pleasure game** (`/gp`, alias `/guiltypleasure`), category Games. People in a
+  voice channel secretly submit tracks with the ephemeral `/gp submit <song>`; the host
+  runs `/gp begin` and the bot plays the submissions one per round, hiding the requester
+  ("(auto)" in the now-playing/queue embeds). Everyone in the voice channel picks the
+  submitter from a dropdown; the round message is edited with the reveal and scores when
+  the track ends. `/gp skip` (host) ends a round early, `/gp status` shows who has
+  submitted/guessed, `/gp end` (host or Manage Server) aborts. Scoring: +1 per correct
+  guess, +1 to the submitter if nobody guessed them. Scores are in memory for the game
+  only. While a game is playing, queue-mutating music commands (`play`, `skip`, `stop`,
+  `leave`, ...) are refused with a pointer to `/gp skip` / `/gp end`, autoplay and
+  autopause are suspended, and the game is discarded if the bot is disconnected from voice.
+- `game_commands()` is now registered, which also makes the previously written but
+  unregistered `coinflip` and `rolldice` live.
+
 ## v0.4.1 (2026/08/23)
 
 ### Security

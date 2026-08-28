@@ -1,6 +1,6 @@
 use crate::{
-    guild::operations::GuildSettingsOperations, utils::OptionTryUnwrap, Context, CrackedError,
-    Error,
+    commands::music::gp::GP_BLOCKED_COMMANDS, guild::operations::GuildSettingsOperations,
+    utils::OptionTryUnwrap, Context, CrackedError, Error,
 };
 use poise::serenity_prelude as serenity;
 use serenity::all::{GenericChannelId, Member, Permissions, RoleId};
@@ -11,6 +11,17 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     if ctx.author().bot() {
         return Ok(false);
     };
+
+    // While a guilty pleasure game owns playback, queue-mutating commands would
+    // corrupt the round order. Matched on the qualified name so the game's own
+    // `gp skip` is not caught by the top-level `skip`.
+    if let Some(guild_id) = ctx.guild_id() {
+        if ctx.data().gp_is_playing(guild_id)
+            && GP_BLOCKED_COMMANDS.contains(&&*ctx.command().qualified_name)
+        {
+            return Err(CrackedError::GameInProgress.into());
+        }
+    }
 
     let channel_id: GenericChannelId = ctx.channel_id();
     let member = ctx.author_member().await;
