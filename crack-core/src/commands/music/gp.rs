@@ -1,11 +1,16 @@
-//! Guilty pleasure party game (`/gp`).
+//! "What's your song?" party game (`/gp`).
 //!
-//! Players in a voice channel privately submit one or more tracks with the
-//! ephemeral `/gp submit` command. When the host runs `/gp begin` the bot plays
-//! the submissions one per round; everyone in the voice channel picks, from a
-//! dropdown of the players, who they think submitted the track. When the track
-//! ends (naturally, or via `/gp skip`) the submitter is revealed, points are
-//! awarded and the next round starts. Scores live in memory for the game only.
+//! The host picks a category (see [`gp_prompts`]) and a round count. Each
+//! round the bot posts a prompt ("What song do you cry to?") and opens a timed
+//! submission window: everyone in the voice channel secretly submits one song
+//! with the ephemeral `/gp submit` (resubmitting replaces it). The window
+//! closes on the timer, as soon as every non-bot member of the voice channel
+//! has submitted, or when the host runs `/gp close`. The round's songs are
+//! then shuffled and played back-to-back; while a song plays everyone picks,
+//! from a dropdown of that round's submitters, who they think submitted it,
+//! and can 👍 the song. When the track ends (naturally, or via `/gp skip`) the
+//! submitter is revealed, points are awarded and the next song -- or the next
+//! prompt -- follows. Scores live in memory for the game only.
 //!
 //! # Locking rule
 //!
@@ -15,6 +20,15 @@
 //! before returning. Never hold a `DashMap` ref across an `.await` -- the round
 //! end handler runs on songbird's event task and then takes the call lock, so a
 //! held entry there is a deadlock waiting to happen.
+//!
+//! # Stale timers and double fires
+//!
+//! Every phase transition bumps `GpGame::generation`. The window timer captures
+//! the generation it was spawned for and asks `gp_close_window_if` /
+//! `gp_warning_if`, which are no-ops once it has moved (the host closed the
+//! window, everyone submitted, the game ended). Track-end handlers likewise only
+//! act on the *current* round/track, so `End` and `Error` firing for one track
+//! is harmless.
 //!
 //! # Hiding the requester
 //!
@@ -26,16 +40,20 @@
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
+    commands::music::gp_prompts::{draw_prompts, GpCategory},
     commands::music::skip::force_skip_top_track,
     errors::CrackedError,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     messaging::messages::{
-        GP_FOOLED_EVERYONE, GP_GAME_OVER, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_LOBBY_HOW_TO,
-        GP_LOBBY_OPEN, GP_LOBBY_RULES, GP_NOBODY_GUESSED, GP_NO_GUESSES_YET, GP_REVEAL,
-        GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER,
-        GP_STATUS_GUESSED, GP_STATUS_LOBBY, GP_STATUS_PLAYING, GP_STATUS_SCORES,
-        GP_STATUS_SUBMITTERS,
+        GP_FOOLED_EVERYONE, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_GUESS_CHANGED, GP_GUESS_RECORDED,
+        GP_HOW_TO, GP_HOW_TO_TITLE, GP_LIKED, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL,
+        GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_EARLY, GP_PROMPT_CLOSES_TITLE,
+        GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_REVEAL, GP_ROUND_HINT, GP_ROUND_TITLE,
+        GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES,
+        GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES,
+        GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_UNLIKED, GP_WINDOW_CLOSED,
+        GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
     },
     music::queue::build_track,
     poise_ext::PoiseContextExt,
@@ -43,12 +61,12 @@ use crate::{
 };
 use ::serenity::{
     all::{
-        ChannelId, Colour, ComponentInteraction, ComponentInteractionDataKind, GenericChannelId,
-        GuildId, Mentionable, MessageId, UserId,
+        ButtonStyle, ChannelId, Colour, ComponentInteraction, ComponentInteractionDataKind,
+        GenericChannelId, GuildId, Mentionable, MessageId, UserId,
     },
     async_trait,
     builder::{
-        CreateActionRow, CreateComponent, CreateEmbed, CreateInteractionResponse,
+        CreateActionRow, CreateButton, CreateComponent, CreateEmbed, CreateInteractionResponse,
         CreateInteractionResponseMessage, CreateMessage, CreateSelectMenu, CreateSelectMenuKind,
         CreateSelectMenuOption, EditMessage,
     },
@@ -59,18 +77,39 @@ use crack_types::QueryType;
 use poise::serenity_prelude::Context as SerenityContext;
 use rand::{seq::SliceRandom, Rng};
 use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
-use std::{borrow::Cow, collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
-/// Discord caps a string select menu at 25 options.
+/// Discord caps a string select menu at 25 options, so at most 25 people can
+/// submit in one round.
 pub const GP_MAX_PLAYERS: usize = 25;
-/// Pause between the reveal and the next round, so people can read it.
+/// Pause between a reveal and the next song, so people can read it.
 pub const GP_REVEAL_PAUSE_SECS: u64 = 5;
 /// Points for guessing the submitter correctly.
-pub const GP_POINTS_CORRECT: u32 = 1;
+pub const GP_POINTS_CORRECT: u32 = 100;
 /// Points to the submitter when nobody guessed them.
-pub const GP_POINTS_FOOLED_ALL: u32 = 1;
-/// Component custom ids look like `gp:<guild_id>:<round_idx>`.
+pub const GP_POINTS_FOOLED_ALL: u32 = 100;
+/// Points to the submitter per 👍 their song gets.
+pub const GP_POINTS_PER_LIKE: u32 = 10;
+/// Rounds per game when the host doesn't say.
+pub const GP_DEFAULT_ROUNDS: u32 = 5;
+/// Submission window when the host doesn't say.
+pub const GP_DEFAULT_TIMER_SECS: u64 = 180;
+/// Bounds for `/gp start`'s `rounds` and `timer`. poise's `#[min]`/`#[max]`
+/// only accept literals, so the attributes on `gp_start` repeat these numbers
+/// -- keep them in sync by hand.
+pub const GP_MAX_ROUNDS: u32 = 20;
+pub const GP_MIN_TIMER_SECS: u64 = 30;
+pub const GP_MAX_TIMER_SECS: u64 = 600;
+/// A heads-up is posted this long before the window closes.
+pub const GP_WARNING_SECS: u64 = 30;
+/// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// Music commands that would corrupt the round order while a game owns playback.
 /// Matched against the command's *qualified* name so `gp skip` is not caught by `skip`.
@@ -92,6 +131,12 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "repeat",
 ];
 
+/// Unix seconds now; the game stores `closes_at` this way so the prompt embed
+/// can show Discord's live `<t:..:R>` countdown with a single send.
+pub fn now() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
 // ------------------------------------------------------------------
 // State
 // ------------------------------------------------------------------
@@ -99,30 +144,69 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
 /// Which stage the game is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpPhase {
-    /// Accepting submissions.
-    Lobby,
-    /// Rounds are being played.
+    /// A prompt is up and the submission window is open.
+    Submitting,
+    /// The round's songs are being played.
     Playing,
-    /// Last round revealed; the game is torn down once the scoreboard is posted.
+    /// Last song revealed; the game is torn down once the scoreboard is posted.
     Finished,
 }
 
-/// One submitted track.
+/// One song in a round, with everyone's guesses and likes.
 #[derive(Clone, Debug)]
-pub struct GpSubmission {
-    pub submitter: UserId,
-    pub track: ResolvedTrack<'static>,
-}
-
-/// One round: a track, its submitter, and everyone's guesses.
-#[derive(Clone, Debug)]
-pub struct GpRound {
+pub struct GpTrack {
     pub submitter: UserId,
     pub track: ResolvedTrack<'static>,
     /// guesser -> guessed submitter. Last guess wins.
     pub guesses: HashMap<UserId, UserId>,
-    /// The round message, so the reveal can edit it in place.
+    pub likes: HashSet<UserId>,
+    /// The song message, so the reveal can edit it in place.
     pub message: Option<(GenericChannelId, MessageId)>,
+}
+
+/// One prompt: what people submitted while the window was open, then the
+/// shuffled play order once it closed.
+#[derive(Clone, Debug)]
+pub struct GpRound {
+    pub prompt: String,
+    /// One song per player while the window is open; resubmitting replaces.
+    pub submissions: HashMap<UserId, ResolvedTrack<'static>>,
+    /// Filled (shuffled) when the window closes.
+    pub tracks: Vec<GpTrack>,
+    /// The prompt message, so the close can edit it in place.
+    pub prompt_message: Option<(GenericChannelId, MessageId)>,
+    /// Unix seconds; `Some` while the window is open.
+    pub closes_at: Option<i64>,
+}
+
+impl GpRound {
+    fn new(prompt: String) -> Self {
+        Self {
+            prompt,
+            submissions: HashMap::new(),
+            tracks: Vec::new(),
+            prompt_message: None,
+            closes_at: None,
+        }
+    }
+
+    /// Distinct people with a song in this round (the only valid guesses).
+    fn submitters(&self) -> Vec<UserId> {
+        let mut ids: Vec<UserId> = if self.tracks.is_empty() {
+            self.submissions.keys().copied().collect()
+        } else {
+            self.tracks.iter().map(|t| t.submitter).collect()
+        };
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    /// A one-song round has nothing to guess: the dropdown is left out and no
+    /// guess/fooled points are awarded (likes still count).
+    fn guessable(&self) -> bool {
+        self.tracks.len() >= 2
+    }
 }
 
 /// The per-guild game.
@@ -132,92 +216,246 @@ pub struct GpGame {
     pub voice_channel: ChannelId,
     pub text_channel: GenericChannelId,
     pub phase: GpPhase,
-    /// Everyone who has submitted or guessed, with the display name we saw at the time.
-    pub players: HashMap<UserId, String>,
-    /// Filled during the lobby, drained into `rounds` by `begin`.
-    pub submissions: Vec<GpSubmission>,
+    pub category: GpCategory,
+    /// Pre-drawn, one per prompt.
     pub rounds: Vec<GpRound>,
-    /// Index of the round currently playing.
-    pub current: usize,
+    pub current_round: usize,
+    pub current_track: usize,
+    pub timer_secs: u64,
+    /// Bumped on every transition; see the module docs.
+    pub generation: u64,
+    /// Everyone who has submitted, guessed or liked, with the display name we saw.
+    pub players: HashMap<UserId, String>,
     pub scores: HashMap<UserId, u32>,
 }
 
 impl GpGame {
-    fn new(host: UserId, voice_channel: ChannelId, text_channel: GenericChannelId) -> Self {
+    fn new(
+        host: UserId,
+        voice_channel: ChannelId,
+        text_channel: GenericChannelId,
+        category: GpCategory,
+        prompts: Vec<String>,
+        timer_secs: u64,
+    ) -> Self {
         Self {
             host,
             voice_channel,
             text_channel,
-            phase: GpPhase::Lobby,
+            phase: GpPhase::Submitting,
+            category,
+            rounds: prompts.into_iter().map(GpRound::new).collect(),
+            current_round: 0,
+            current_track: 0,
+            timer_secs,
+            generation: 0,
             players: HashMap::new(),
-            submissions: Vec::new(),
-            rounds: Vec::new(),
-            current: 0,
             scores: HashMap::new(),
         }
     }
 
-    /// Distinct users who submitted at least one track (the only valid answers).
-    fn submitters(&self) -> Vec<UserId> {
-        let mut ids: Vec<UserId> = match self.phase {
-            GpPhase::Lobby => self.submissions.iter().map(|s| s.submitter).collect(),
-            _ => self.rounds.iter().map(|r| r.submitter).collect(),
-        };
-        ids.sort_unstable();
-        ids.dedup();
-        ids
+    fn name_of(&self, id: UserId) -> String {
+        self.players
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| id.to_string())
     }
 
-    /// Submitters with their display names, sorted by name for a stable dropdown.
-    fn submitter_names(&self) -> Vec<(UserId, String)> {
-        let mut v: Vec<(UserId, String)> = self
+    /// Submitters of `round` with their display names, sorted by name for a
+    /// stable dropdown.
+    fn submitter_names(&self, round: &GpRound) -> Vec<(UserId, String)> {
+        let mut v: Vec<(UserId, String)> = round
             .submitters()
             .into_iter()
-            .map(|id| {
-                let name = self
-                    .players
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| id.to_string());
-                (id, name)
-            })
+            .map(|id| (id, self.name_of(id)))
             .collect();
         v.sort_by_key(|(_, name)| name.to_lowercase());
         v
     }
 
-    /// Every player (submitters *and* guessers) with their points, best first;
-    /// ties broken by name so the order is stable between edits.
+    /// Every player with their points, best first; ties broken by name so the
+    /// order is stable between edits.
     fn sorted_scores(&self) -> Vec<(UserId, u32)> {
-        let mut ids: Vec<UserId> = self.players.keys().copied().collect();
-        ids.extend(self.submitters());
-        ids.sort_unstable();
-        ids.dedup();
-        let mut v: Vec<(UserId, u32)> = ids
-            .into_iter()
-            .map(|id| (id, self.scores.get(&id).copied().unwrap_or(0)))
+        let mut v: Vec<(UserId, u32)> = self
+            .players
+            .keys()
+            .map(|id| (*id, self.scores.get(id).copied().unwrap_or(0)))
             .collect();
         v.sort_by(|a, b| {
             b.1.cmp(&a.1).then_with(|| {
-                let name = |id: &UserId| {
-                    self.players
-                        .get(id)
-                        .map(|n| n.to_lowercase())
-                        .unwrap_or_default()
-                };
-                name(&a.0).cmp(&name(&b.0))
+                self.name_of(a.0)
+                    .to_lowercase()
+                    .cmp(&self.name_of(b.0).to_lowercase())
             })
         });
         v
     }
+
+    /// Open the submission window for `current_round`.
+    fn open_window(&mut self, now: i64) -> GpWindowOpened {
+        self.phase = GpPhase::Submitting;
+        self.current_track = 0;
+        self.generation += 1;
+        let closes_at = now + self.timer_secs as i64;
+        let idx = self.current_round;
+        let total_rounds = self.rounds.len();
+        let round = &mut self.rounds[idx];
+        round.closes_at = Some(closes_at);
+        GpWindowOpened {
+            round_idx: idx,
+            total_rounds,
+            prompt: round.prompt.clone(),
+            closes_at,
+            timer_secs: self.timer_secs,
+            generation: self.generation,
+            text_channel: self.text_channel,
+        }
+    }
+
+    /// Close the window: shuffle the submissions into play order and either
+    /// start playing, skip an empty round, or finish.
+    fn close_window(&mut self, rng: &mut impl Rng, now: i64) -> GpWindowClosed {
+        self.generation += 1;
+        let idx = self.current_round;
+        let total_rounds = self.rounds.len();
+        let round = &mut self.rounds[idx];
+        // Sort before shuffling so a seeded rng gives the same order regardless
+        // of HashMap iteration order.
+        let mut subs: Vec<(UserId, ResolvedTrack<'static>)> = round.submissions.drain().collect();
+        subs.sort_by_key(|(id, _)| *id);
+        subs.shuffle(rng);
+        round.tracks = subs
+            .into_iter()
+            .map(|(submitter, track)| GpTrack {
+                submitter,
+                track,
+                guesses: HashMap::new(),
+                likes: HashSet::new(),
+                message: None,
+            })
+            .collect();
+        round.closes_at = None;
+        let count = round.tracks.len();
+        let prompt = round.prompt.clone();
+        let prompt_message = round.prompt_message;
+        let next = if count == 0 {
+            self.advance_round(now)
+        } else {
+            self.phase = GpPhase::Playing;
+            self.current_track = 0;
+            GpNext::Track(Box::new(self.track_start()))
+        };
+        GpWindowClosed {
+            round_idx: idx,
+            total_rounds,
+            prompt,
+            prompt_message,
+            count,
+            text_channel: self.text_channel,
+            next,
+        }
+    }
+
+    /// Move to the next prompt, or finish.
+    fn advance_round(&mut self, now: i64) -> GpNext {
+        self.current_round += 1;
+        if self.current_round < self.rounds.len() {
+            GpNext::Window(self.open_window(now))
+        } else {
+            self.phase = GpPhase::Finished;
+            self.generation += 1;
+            GpNext::Finished(self.sorted_scores())
+        }
+    }
+
+    /// Everything needed to play `current_track` of `current_round`.
+    fn track_start(&self) -> GpTrackStart {
+        let round = &self.rounds[self.current_round];
+        let t = &round.tracks[self.current_track];
+        GpTrackStart {
+            round_idx: self.current_round,
+            total_rounds: self.rounds.len(),
+            track_idx: self.current_track,
+            total_tracks: round.tracks.len(),
+            prompt: round.prompt.clone(),
+            track: t.track.clone(),
+            players: self.submitter_names(round),
+            guessable: round.guessable(),
+            text_channel: self.text_channel,
+        }
+    }
 }
 
-/// What `gp_begin` hands back: round 0's track, the dropdown options and the round count.
+/// A submission window just opened.
 #[derive(Clone, Debug)]
-pub struct GpBegun {
-    pub first_track: ResolvedTrack<'static>,
+pub struct GpWindowOpened {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub closes_at: i64,
+    pub timer_secs: u64,
+    pub generation: u64,
+    pub text_channel: GenericChannelId,
+}
+
+/// A song is about to play.
+#[derive(Clone, Debug)]
+pub struct GpTrackStart {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub track_idx: usize,
+    pub total_tracks: usize,
+    pub prompt: String,
+    pub track: ResolvedTrack<'static>,
+    /// Dropdown options: the round's submitters, sorted by name.
     pub players: Vec<(UserId, String)>,
-    pub total: usize,
+    pub guessable: bool,
+    pub text_channel: GenericChannelId,
+}
+
+/// What happens after a window closes or a song ends.
+#[derive(Clone, Debug)]
+pub enum GpNext {
+    /// Boxed: a `ResolvedTrack` is a couple of KB and the other variants are tiny.
+    Track(Box<GpTrackStart>),
+    Window(GpWindowOpened),
+    /// Final scores, sorted.
+    Finished(Vec<(UserId, u32)>),
+}
+
+/// A submission window just closed.
+#[derive(Clone, Debug)]
+pub struct GpWindowClosed {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub prompt_message: Option<(GenericChannelId, MessageId)>,
+    pub count: usize,
+    pub text_channel: GenericChannelId,
+    pub next: GpNext,
+}
+
+/// The 30-second heads-up.
+#[derive(Clone, Debug)]
+pub struct GpWindowWarning {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub count: usize,
+    pub closes_at: i64,
+    pub text_channel: GenericChannelId,
+}
+
+/// What `gp_submit` did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpSubmitOutcome {
+    pub replaced: bool,
+    /// Songs in so far this round.
+    pub submitted: usize,
+    /// Every non-bot member of the voice channel has a song in.
+    pub everyone_in: bool,
+    /// Pass to `gp_close_window_if` to close early.
+    pub generation: u64,
 }
 
 /// What `gp_record_guess` did.
@@ -227,37 +465,55 @@ pub enum GpGuessOutcome {
     Changed,
 }
 
+/// What `gp_toggle_like` did; the payload is the song's new like count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpLikeOutcome {
+    Liked(usize),
+    Unliked(usize),
+}
+
 /// Everything the reveal needs, cloned out of the map so no lock is held.
 #[derive(Clone, Debug)]
-pub struct GpRoundResult {
+pub struct GpTrackResult {
     pub round_idx: usize,
-    pub total: usize,
+    pub total_rounds: usize,
+    pub track_idx: usize,
+    pub total_tracks: usize,
+    pub prompt: String,
     pub submitter: UserId,
     pub title: String,
     pub url: String,
     pub correct: Vec<UserId>,
     pub fooled_everyone: bool,
+    pub likes: usize,
+    pub guessable: bool,
     /// Sorted descending.
     pub scores: Vec<(UserId, u32)>,
     pub message: Option<(GenericChannelId, MessageId)>,
     pub text_channel: GenericChannelId,
-    /// The next round's track, or `None` when the game is over.
-    pub next: Option<ResolvedTrack<'static>>,
-    /// Dropdown options for the next round.
-    pub players: Vec<(UserId, String)>,
+    pub next: GpNext,
 }
 
 /// Snapshot for `/gp status`.
 #[derive(Clone, Debug)]
 pub enum GpStatus {
-    Lobby {
+    Submitting {
         host: UserId,
-        submitters: Vec<(String, usize)>,
+        round: usize,
+        total: usize,
+        prompt: String,
+        closes_at: i64,
+        submitted: Vec<String>,
+        scores: Vec<(UserId, u32)>,
     },
     Playing {
         round: usize,
         total: usize,
+        track: usize,
+        tracks: usize,
+        prompt: String,
         guessed: Vec<String>,
+        likes: usize,
         scores: Vec<(UserId, u32)>,
     },
 }
@@ -267,7 +523,8 @@ pub enum GpStatus {
 // ------------------------------------------------------------------
 
 impl Data {
-    /// Open a lobby for `guild_id`.
+    /// Create the game and open round 0's window.
+    #[allow(clippy::too_many_arguments)]
     pub fn gp_start(
         &self,
         guild_id: GuildId,
@@ -275,55 +532,89 @@ impl Data {
         host_name: String,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
-    ) -> CrackedResult<()> {
+        category: GpCategory,
+        prompts: Vec<String>,
+        timer_secs: u64,
+        now: i64,
+    ) -> CrackedResult<GpWindowOpened> {
         if self.gp_games.contains_key(&guild_id) {
             return Err(CrackedError::GameAlreadyRunning);
         }
-        let mut game = GpGame::new(host, voice_channel, text_channel);
+        if prompts.is_empty() {
+            return Err(CrackedError::Other("That category has no prompts."));
+        }
+        let mut game = GpGame::new(
+            host,
+            voice_channel,
+            text_channel,
+            category,
+            prompts,
+            timer_secs,
+        );
         game.players.insert(host, host_name);
+        let opened = game.open_window(now);
         self.gp_games.insert(guild_id, game);
+        Ok(opened)
+    }
+
+    /// Cheap check before resolving a query: is a window open here?
+    pub fn gp_window_open(&self, guild_id: GuildId) -> CrackedResult<()> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.phase != GpPhase::Submitting {
+            return Err(CrackedError::WindowClosed);
+        }
         Ok(())
     }
 
-    /// Record a submission. Returns how many tracks this user has submitted.
+    /// Record (or replace) this user's song for the current prompt.
+    /// `vc_members` are the non-bot members of the game's voice channel, used
+    /// to tell the caller whether everyone is in.
     pub fn gp_submit(
         &self,
         guild_id: GuildId,
         user: UserId,
         name: String,
         track: ResolvedTrack<'static>,
-    ) -> CrackedResult<usize> {
-        let mut game = self
+        vc_members: &[UserId],
+    ) -> CrackedResult<GpSubmitOutcome> {
+        let mut entry = self
             .gp_games
             .get_mut(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
-        if game.phase != GpPhase::Lobby {
-            return Err(CrackedError::SubmissionsClosed);
+        let game: &mut GpGame = &mut entry;
+        if game.phase != GpPhase::Submitting {
+            return Err(CrackedError::WindowClosed);
         }
-        let is_new = !game.submissions.iter().any(|s| s.submitter == user);
-        if is_new && game.submitters().len() >= GP_MAX_PLAYERS {
+        let idx = game.current_round;
+        let round = &mut game.rounds[idx];
+        let is_new = !round.submissions.contains_key(&user);
+        if is_new && round.submissions.len() >= GP_MAX_PLAYERS {
             return Err(CrackedError::TooManyPlayers(GP_MAX_PLAYERS));
         }
         game.players.insert(user, name);
-        game.submissions.push(GpSubmission {
-            submitter: user,
-            track,
-        });
-        Ok(game
-            .submissions
-            .iter()
-            .filter(|s| s.submitter == user)
-            .count())
+        let replaced = round.submissions.insert(user, track).is_some();
+        let submitted = round.submissions.len();
+        let everyone_in =
+            !vc_members.is_empty() && vc_members.iter().all(|u| round.submissions.contains_key(u));
+        Ok(GpSubmitOutcome {
+            replaced,
+            submitted,
+            everyone_in,
+            generation: game.generation,
+        })
     }
 
-    /// Close submissions, shuffle them into rounds and return round 0's track
-    /// together with the dropdown options.
-    pub fn gp_begin(
+    /// Host closes the window early.
+    pub fn gp_close_window(
         &self,
         guild_id: GuildId,
         caller: UserId,
         rng: &mut impl Rng,
-    ) -> CrackedResult<GpBegun> {
+        now: i64,
+    ) -> CrackedResult<GpWindowClosed> {
         let mut game = self
             .gp_games
             .get_mut(&guild_id)
@@ -331,35 +622,48 @@ impl Data {
         if game.host != caller {
             return Err(CrackedError::NotGameHost);
         }
-        if game.phase != GpPhase::Lobby {
-            return Err(CrackedError::SubmissionsClosed);
+        if game.phase != GpPhase::Submitting {
+            return Err(CrackedError::WindowClosed);
         }
-        if game.submitters().len() < 2 {
-            return Err(CrackedError::NotEnoughPlayers);
+        Ok(game.close_window(rng, now))
+    }
+
+    /// Close the window the timer (or "everyone submitted") was started for.
+    /// `None` if there is no game, no window is open, or the window it was
+    /// spawned for has already closed (the generation moved).
+    pub fn gp_close_window_if(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        rng: &mut impl Rng,
+        now: i64,
+    ) -> Option<GpWindowClosed> {
+        let mut game = self.gp_games.get_mut(&guild_id)?;
+        if game.phase != GpPhase::Submitting || game.generation != generation {
+            return None;
         }
-        let mut submissions = std::mem::take(&mut game.submissions);
-        submissions.shuffle(rng);
-        game.rounds = submissions
-            .into_iter()
-            .map(|s| GpRound {
-                submitter: s.submitter,
-                track: s.track,
-                guesses: HashMap::new(),
-                message: None,
-            })
-            .collect();
-        game.current = 0;
-        game.phase = GpPhase::Playing;
-        let total = game.rounds.len();
-        Ok(GpBegun {
-            first_track: game.rounds[0].track.clone(),
-            players: game.submitter_names(),
-            total,
+        Some(game.close_window(rng, now))
+    }
+
+    /// The 30-second heads-up, if the window it was spawned for is still open.
+    pub fn gp_warning_if(&self, guild_id: GuildId, generation: u64) -> Option<GpWindowWarning> {
+        let game = self.gp_games.get(&guild_id)?;
+        if game.phase != GpPhase::Submitting || game.generation != generation {
+            return None;
+        }
+        let round = &game.rounds[game.current_round];
+        Some(GpWindowWarning {
+            round_idx: game.current_round,
+            total_rounds: game.rounds.len(),
+            prompt: round.prompt.clone(),
+            count: round.submissions.len(),
+            closes_at: round.closes_at.unwrap_or(0),
+            text_channel: game.text_channel,
         })
     }
 
-    /// Remember where the round message went so the reveal can edit it.
-    pub fn gp_set_round_message(
+    /// Remember where the prompt message went so the close can edit it.
+    pub fn gp_set_prompt_message(
         &self,
         guild_id: GuildId,
         round_idx: usize,
@@ -374,90 +678,166 @@ impl Data {
             .rounds
             .get_mut(round_idx)
             .ok_or(CrackedError::StaleRound)?;
-        round.message = Some((channel, message_id));
+        round.prompt_message = Some((channel, message_id));
         Ok(())
     }
 
-    /// Record (or change) a guess for the current round.
-    pub fn gp_record_guess(
+    /// Remember where a song's message went so the reveal can edit it.
+    pub fn gp_set_track_message(
         &self,
         guild_id: GuildId,
         round_idx: usize,
-        guesser: UserId,
-        guesser_name: String,
-        guessed: UserId,
-    ) -> CrackedResult<GpGuessOutcome> {
+        track_idx: usize,
+        channel: GenericChannelId,
+        message_id: MessageId,
+    ) -> CrackedResult<()> {
         let mut game = self
             .gp_games
             .get_mut(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
+        let t = game
+            .rounds
+            .get_mut(round_idx)
+            .and_then(|r| r.tracks.get_mut(track_idx))
+            .ok_or(CrackedError::StaleRound)?;
+        t.message = Some((channel, message_id));
+        Ok(())
+    }
+
+    /// Record (or change) a guess for the song that is playing.
+    pub fn gp_record_guess(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+        guesser: UserId,
+        guesser_name: String,
+        guessed: UserId,
+    ) -> CrackedResult<GpGuessOutcome> {
+        let mut entry = self
+            .gp_games
+            .get_mut(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        let game: &mut GpGame = &mut entry;
         if game.phase != GpPhase::Playing {
             return Err(CrackedError::GameNotPlaying);
         }
-        if round_idx != game.current {
+        if round_idx != game.current_round || track_idx != game.current_track {
             return Err(CrackedError::StaleRound);
         }
-        if !game.submitters().contains(&guessed) {
+        let round = &mut game.rounds[round_idx];
+        if !round.guessable() {
+            return Err(CrackedError::NotGuessable);
+        }
+        if !round.submitters().contains(&guessed) {
             return Err(CrackedError::NotAPlayer);
         }
         game.players.entry(guesser).or_insert(guesser_name);
-        let current = game.current;
-        let previous = game.rounds[current].guesses.insert(guesser, guessed);
+        let previous = round.tracks[track_idx].guesses.insert(guesser, guessed);
         Ok(match previous {
             Some(p) if p != guessed => GpGuessOutcome::Changed,
             _ => GpGuessOutcome::Recorded,
         })
     }
 
-    /// Score the round `round_idx` and advance. Returns `None` unless the game
-    /// is playing **and** `round_idx` is the current round, which makes it safe
-    /// to call twice (End and Error can both fire for one track).
+    /// Toggle a 👍 on the song that is playing.
+    pub fn gp_toggle_like(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+        liker: UserId,
+        liker_name: String,
+    ) -> CrackedResult<GpLikeOutcome> {
+        let mut entry = self
+            .gp_games
+            .get_mut(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        let game: &mut GpGame = &mut entry;
+        if game.phase != GpPhase::Playing {
+            return Err(CrackedError::GameNotPlaying);
+        }
+        if round_idx != game.current_round || track_idx != game.current_track {
+            return Err(CrackedError::StaleRound);
+        }
+        let t = &mut game.rounds[round_idx].tracks[track_idx];
+        if t.submitter == liker {
+            return Err(CrackedError::CannotLikeOwnSong);
+        }
+        game.players.entry(liker).or_insert(liker_name);
+        Ok(if t.likes.remove(&liker) {
+            GpLikeOutcome::Unliked(t.likes.len())
+        } else {
+            t.likes.insert(liker);
+            GpLikeOutcome::Liked(t.likes.len())
+        })
+    }
+
+    /// Score the song that just ended and advance. Returns `None` unless the
+    /// game is playing **and** this is the current song, which makes it safe to
+    /// call twice (End and Error can both fire for one track).
     pub fn gp_reveal_and_advance(
         &self,
         guild_id: GuildId,
         round_idx: usize,
-    ) -> Option<GpRoundResult> {
+        track_idx: usize,
+        now: i64,
+    ) -> Option<GpTrackResult> {
         let mut game = self.gp_games.get_mut(&guild_id)?;
-        if game.phase != GpPhase::Playing || round_idx != game.current {
+        if game.phase != GpPhase::Playing
+            || round_idx != game.current_round
+            || track_idx != game.current_track
+        {
             return None;
         }
-        let round = game.rounds[round_idx].clone();
-        let correct: Vec<UserId> = round
-            .guesses
-            .iter()
-            .filter(|(guesser, guessed)| {
-                **guesser != round.submitter && **guessed == round.submitter
-            })
-            .map(|(guesser, _)| *guesser)
-            .collect();
+        let round = &game.rounds[round_idx];
+        let guessable = round.guessable();
+        let t = round.tracks[track_idx].clone();
+        let correct: Vec<UserId> = if guessable {
+            t.guesses
+                .iter()
+                .filter(|(guesser, guessed)| **guesser != t.submitter && **guessed == t.submitter)
+                .map(|(guesser, _)| *guesser)
+                .collect()
+        } else {
+            Vec::new()
+        };
         for g in &correct {
             *game.scores.entry(*g).or_insert(0) += GP_POINTS_CORRECT;
         }
-        let fooled_everyone = correct.is_empty();
+        let fooled_everyone = guessable && correct.is_empty();
         if fooled_everyone {
-            *game.scores.entry(round.submitter).or_insert(0) += GP_POINTS_FOOLED_ALL;
+            *game.scores.entry(t.submitter).or_insert(0) += GP_POINTS_FOOLED_ALL;
         }
-        game.current += 1;
-        let total = game.rounds.len();
-        let next = if game.current < total {
-            Some(game.rounds[game.current].track.clone())
+        let likes = t.likes.len();
+        if likes > 0 {
+            *game.scores.entry(t.submitter).or_insert(0) += likes as u32 * GP_POINTS_PER_LIKE;
+        }
+        game.generation += 1;
+        game.current_track += 1;
+        let total_tracks = game.rounds[round_idx].tracks.len();
+        let next = if game.current_track < total_tracks {
+            GpNext::Track(Box::new(game.track_start()))
         } else {
-            game.phase = GpPhase::Finished;
-            None
+            game.advance_round(now)
         };
-        Some(GpRoundResult {
+        Some(GpTrackResult {
             round_idx,
-            total,
-            submitter: round.submitter,
-            title: round.track.get_title(),
-            url: round.track.get_url(),
+            total_rounds: game.rounds.len(),
+            track_idx,
+            total_tracks,
+            prompt: game.rounds[round_idx].prompt.clone(),
+            submitter: t.submitter,
+            title: t.track.get_title(),
+            url: t.track.get_url(),
             correct,
             fooled_everyone,
+            likes,
+            guessable,
             scores: game.sorted_scores(),
-            message: round.message,
+            message: t.message,
             text_channel: game.text_channel,
             next,
-            players: game.submitter_names(),
         })
     }
 
@@ -494,62 +874,48 @@ impl Data {
             .gp_games
             .get(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
+        let total = game.rounds.len();
+        let round_idx = game.current_round.min(total.saturating_sub(1));
+        let round = &game.rounds[round_idx];
+        let names = |ids: Vec<UserId>| {
+            let mut v: Vec<String> = ids.into_iter().map(|id| game.name_of(id)).collect();
+            v.sort_by_key(|n| n.to_lowercase());
+            v
+        };
         Ok(match game.phase {
-            GpPhase::Lobby => {
-                let submitters = game
-                    .submitter_names()
-                    .into_iter()
-                    .map(|(id, name)| {
-                        let n = game
-                            .submissions
-                            .iter()
-                            .filter(|s| s.submitter == id)
-                            .count();
-                        (name, n)
-                    })
-                    .collect();
-                GpStatus::Lobby {
-                    host: game.host,
-                    submitters,
-                }
+            GpPhase::Submitting => GpStatus::Submitting {
+                host: game.host,
+                round: round_idx + 1,
+                total,
+                prompt: round.prompt.clone(),
+                closes_at: round.closes_at.unwrap_or(0),
+                submitted: names(round.submissions.keys().copied().collect()),
+                scores: game.sorted_scores(),
             },
             GpPhase::Playing | GpPhase::Finished => {
-                let guessed = game
-                    .rounds
-                    .get(game.current)
-                    .map(|r| {
-                        let mut names: Vec<String> = r
-                            .guesses
-                            .keys()
-                            .map(|id| {
-                                game.players
-                                    .get(id)
-                                    .cloned()
-                                    .unwrap_or_else(|| id.to_string())
-                            })
-                            .collect();
-                        names.sort();
-                        names
-                    })
-                    .unwrap_or_default();
+                let t = round.tracks.get(game.current_track);
                 GpStatus::Playing {
-                    round: (game.current + 1).min(game.rounds.len()),
-                    total: game.rounds.len(),
-                    guessed,
+                    round: round_idx + 1,
+                    total,
+                    track: (game.current_track + 1).min(round.tracks.len()),
+                    tracks: round.tracks.len(),
+                    prompt: round.prompt.clone(),
+                    guessed: names(
+                        t.map(|t| t.guesses.keys().copied().collect())
+                            .unwrap_or_default(),
+                    ),
+                    likes: t.map(|t| t.likes.len()).unwrap_or(0),
                     scores: game.sorted_scores(),
                 }
             },
         })
     }
 
-    /// True while a game owns playback for this guild: rounds are being played,
-    /// or the last round has been revealed and the scoreboard is on its way.
-    /// A lobby does **not** own playback, so normal music keeps working until `begin`.
+    /// True while a game owns playback for this guild -- from `/gp start`
+    /// until the scoreboard is posted. There is no lobby any more: even while a
+    /// window is open, a stray `/play` would land in front of the round's songs.
     pub fn gp_is_playing(&self, guild_id: GuildId) -> bool {
-        self.gp_games
-            .get(&guild_id)
-            .map(|g| matches!(g.phase, GpPhase::Playing | GpPhase::Finished))
-            .unwrap_or(false)
+        self.gp_games.contains_key(&guild_id)
     }
 
     /// True if a game exists for the guild in any phase.
@@ -567,41 +933,98 @@ impl Data {
 // Components and embeds
 // ------------------------------------------------------------------
 
-/// Build the `gp:<guild>:<round>` custom id.
-pub fn gp_custom_id(guild_id: GuildId, round_idx: usize) -> String {
-    format!("{GP_CUSTOM_ID_PREFIX}{}:{round_idx}", guild_id.get())
+/// Which control a custom id belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpComponent {
+    /// The "who submitted this?" dropdown.
+    Guess,
+    /// The 👍 button.
+    Like,
 }
 
-/// Parse a `gp:<guild>:<round>` custom id.
-pub fn parse_custom_id(custom_id: &str) -> Option<(GuildId, usize)> {
-    let rest = custom_id.strip_prefix(GP_CUSTOM_ID_PREFIX)?;
-    let (guild, round) = rest.split_once(':')?;
-    let guild = guild.parse::<u64>().ok().filter(|g| *g != 0)?;
-    let round = round.parse::<usize>().ok()?;
-    Some((GuildId::new(guild), round))
+impl GpComponent {
+    fn tag(self) -> &'static str {
+        match self {
+            Self::Guess => "g",
+            Self::Like => "l",
+        }
+    }
 }
 
-/// The "who submitted this?" dropdown for one round.
-pub fn gp_select_menu(
+/// Build a `gp:<g|l>:<guild>:<round>:<track>` custom id.
+pub fn gp_custom_id(
+    kind: GpComponent,
     guild_id: GuildId,
     round_idx: usize,
-    players: &[(UserId, String)],
-) -> CreateComponent<'static> {
-    let options: Vec<CreateSelectMenuOption<'static>> = players
-        .iter()
-        .take(GP_MAX_PLAYERS)
-        .map(|(id, name)| CreateSelectMenuOption::new(name.clone(), id.to_string()))
-        .collect();
-    let menu = CreateSelectMenu::new(
-        gp_custom_id(guild_id, round_idx),
-        CreateSelectMenuKind::String {
-            options: Cow::Owned(options),
-        },
+    track_idx: usize,
+) -> String {
+    format!(
+        "{GP_CUSTOM_ID_PREFIX}{}:{}:{round_idx}:{track_idx}",
+        kind.tag(),
+        guild_id.get()
     )
-    .placeholder(GP_SELECT_PLACEHOLDER)
-    .min_values(1)
-    .max_values(1);
-    CreateComponent::ActionRow(CreateActionRow::SelectMenu(menu))
+}
+
+/// Parse a `gp:<g|l>:<guild>:<round>:<track>` custom id.
+pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, usize)> {
+    let rest = custom_id.strip_prefix(GP_CUSTOM_ID_PREFIX)?;
+    let mut parts = rest.split(':');
+    let kind = match parts.next()? {
+        "g" => GpComponent::Guess,
+        "l" => GpComponent::Like,
+        _ => return None,
+    };
+    let guild = parts.next()?.parse::<u64>().ok().filter(|g| *g != 0)?;
+    let round = parts.next()?.parse::<usize>().ok()?;
+    let track = parts.next()?.parse::<usize>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((kind, GuildId::new(guild), round, track))
+}
+
+/// The controls under a playing song: the "who submitted this?" dropdown
+/// (only when there is something to guess) and the 👍 button.
+pub fn gp_components(
+    guild_id: GuildId,
+    round_idx: usize,
+    track_idx: usize,
+    players: &[(UserId, String)],
+    guessable: bool,
+) -> Vec<CreateComponent<'static>> {
+    let mut rows = Vec::with_capacity(2);
+    if guessable {
+        let options: Vec<CreateSelectMenuOption<'static>> = players
+            .iter()
+            .take(GP_MAX_PLAYERS)
+            .map(|(id, name)| CreateSelectMenuOption::new(name.clone(), id.to_string()))
+            .collect();
+        let menu = CreateSelectMenu::new(
+            gp_custom_id(GpComponent::Guess, guild_id, round_idx, track_idx),
+            CreateSelectMenuKind::String {
+                options: Cow::Owned(options),
+            },
+        )
+        .placeholder(GP_SELECT_PLACEHOLDER)
+        .min_values(1)
+        .max_values(1);
+        rows.push(CreateComponent::ActionRow(CreateActionRow::SelectMenu(
+            menu,
+        )));
+    }
+    let like = CreateButton::new(gp_custom_id(
+        GpComponent::Like,
+        guild_id,
+        round_idx,
+        track_idx,
+    ))
+    .emoji('👍')
+    .label(GP_LIKE_LABEL)
+    .style(ButtonStyle::Secondary);
+    rows.push(CreateComponent::ActionRow(CreateActionRow::Buttons(
+        Cow::Owned(vec![like]),
+    )));
+    rows
 }
 
 fn scores_lines(scores: &[(UserId, u32)]) -> String {
@@ -616,69 +1039,131 @@ fn scores_lines(scores: &[(UserId, u32)]) -> String {
         .join("\n")
 }
 
-/// The rules / how-to embed used by `/gp` and `/gp start`.
-pub fn gp_rules_embed(host: Option<UserId>) -> CreateEmbed<'static> {
-    let mut e = CreateEmbed::new()
-        .title(GP_LOBBY_OPEN)
-        .description(GP_RULES_TEXT)
-        .field(GP_LOBBY_RULES, GP_LOBBY_HOW_TO, false)
-        .colour(Colour::FOOYOO);
-    if let Some(host) = host {
-        e = e.field("Host", host.mention().to_string(), true);
-    }
-    e
+fn round_title(round_idx: usize, total_rounds: usize) -> String {
+    format!("{GP_ROUND_TITLE} {}/{total_rounds}", round_idx + 1)
 }
 
-/// The round message: which round, the title, and the prompt. No submitter.
-pub fn gp_round_embed(
+fn song_title(
     round_idx: usize,
-    total: usize,
-    track: &ResolvedTrack<'_>,
-) -> CreateEmbed<'static> {
+    total_rounds: usize,
+    track_idx: usize,
+    total_tracks: usize,
+) -> String {
+    format!(
+        "{} · {GP_SONG_TITLE} {}/{total_tracks}",
+        round_title(round_idx, total_rounds),
+        track_idx + 1
+    )
+}
+
+/// The rules / how-to embed used by `/gp`.
+pub fn gp_rules_embed() -> CreateEmbed<'static> {
     CreateEmbed::new()
-        .title(format!("{GP_ROUND_TITLE} {}/{total}", round_idx + 1))
+        .title(GP_TITLE)
+        .description(GP_RULES_TEXT)
+        .field(GP_HOW_TO_TITLE, GP_HOW_TO, false)
+        .colour(Colour::FOOYOO)
+}
+
+/// The prompt message with its live countdown.
+pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
+    CreateEmbed::new()
+        .title(round_title(w.round_idx, w.total_rounds))
+        .description(format!("**{}**", w.prompt))
+        .field(GP_PROMPT_HOW_TO_TITLE, GP_PROMPT_HOW_TO, false)
+        .field(
+            GP_PROMPT_CLOSES_TITLE,
+            format!("<t:{}:R> {GP_PROMPT_CLOSES_EARLY}", w.closes_at),
+            false,
+        )
+        .colour(Colour::FOOYOO)
+}
+
+/// The prompt message once the window has closed.
+pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
+    let status = if c.count == 0 {
+        GP_WINDOW_EMPTY.to_string()
+    } else {
+        format!("{GP_WINDOW_CLOSED} {} {GP_WINDOW_CLOSED_SONGS}", c.count)
+    };
+    CreateEmbed::new()
+        .title(round_title(c.round_idx, c.total_rounds))
+        .description(format!("**{}**\n\n{status}", c.prompt))
+        .colour(Colour::DARKER_GREY)
+}
+
+/// The 30-second heads-up, as plain text.
+pub fn gp_warning_text(w: &GpWindowWarning) -> String {
+    format!(
+        "{GP_WINDOW_WARNING} **{}** — {} {GP_WINDOW_WARNING_IN} <t:{}:R>",
+        w.prompt, w.count, w.closes_at
+    )
+}
+
+/// The song message: prompt, title and what to do. Never the submitter.
+pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
+    let hint = if s.guessable {
+        format!("{GP_ROUND_HINT}\n{GP_LIKE_HINT}")
+    } else {
+        GP_LIKE_HINT.to_string()
+    };
+    CreateEmbed::new()
+        .title(song_title(
+            s.round_idx,
+            s.total_rounds,
+            s.track_idx,
+            s.total_tracks,
+        ))
         .description(format!(
-            "**[{}]({})**\n\n{GP_ROUND_HINT}",
-            track.get_title(),
-            track.get_url()
+            "*{}*\n\n**[{}]({})**\n\n{hint}",
+            s.prompt,
+            s.track.get_title(),
+            s.track.get_url()
         ))
         .colour(Colour::BLURPLE)
 }
 
-/// The reveal, written into the round message once the track is over.
-pub fn gp_reveal_embed(res: &GpRoundResult) -> CreateEmbed<'static> {
-    let correct = if res.correct.is_empty() {
-        GP_NOBODY_GUESSED.to_string()
-    } else {
-        res.correct
-            .iter()
-            .map(|id| id.mention().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+/// The reveal, written into the song message once the track is over.
+pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
     let mut e = CreateEmbed::new()
-        .title(format!(
-            "{GP_ROUND_TITLE} {}/{}",
-            res.round_idx + 1,
-            res.total
+        .title(song_title(
+            res.round_idx,
+            res.total_rounds,
+            res.track_idx,
+            res.total_tracks,
         ))
         .description(format!(
-            "**[{}]({})**\n\n{GP_REVEAL} {}",
+            "*{}*\n\n**[{}]({})**\n\n{GP_REVEAL} {}",
+            res.prompt,
             res.title,
             res.url,
             res.submitter.mention()
         ))
-        .field("Guessed right", correct, false)
-        .field(GP_SCOREBOARD, scores_lines(&res.scores), false)
         .colour(Colour::DARK_GREEN);
-    if res.fooled_everyone {
-        e = e.field(
-            GP_FOOLED_EVERYONE,
-            res.submitter.mention().to_string(),
-            false,
-        );
+    if res.guessable {
+        let correct = if res.correct.is_empty() {
+            GP_NOBODY_GUESSED.to_string()
+        } else {
+            res.correct
+                .iter()
+                .map(|id| id.mention().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        e = e.field(GP_GUESSED_RIGHT, correct, false);
+        if res.fooled_everyone {
+            e = e.field(
+                GP_FOOLED_EVERYONE,
+                res.submitter.mention().to_string(),
+                false,
+            );
+        }
     }
-    e
+    e.field(GP_LIKES, res.likes.to_string(), true).field(
+        GP_SCOREBOARD,
+        scores_lines(&res.scores),
+        false,
+    )
 }
 
 /// The final scoreboard.
@@ -691,40 +1176,48 @@ pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> CreateEmbed
 
 /// The status embed.
 pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
+    let list = |names: &[String]| {
+        if names.is_empty() {
+            GP_NOBODY_YET.to_string()
+        } else {
+            names.join(", ")
+        }
+    };
     match status {
-        GpStatus::Lobby { host, submitters } => {
-            let list = if submitters.is_empty() {
-                "-".to_string()
-            } else {
-                submitters
-                    .iter()
-                    .map(|(name, n)| format!("{name} ({n})"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-            CreateEmbed::new()
-                .title(GP_STATUS_LOBBY)
-                .field("Host", host.mention().to_string(), true)
-                .field(GP_STATUS_SUBMITTERS, list, false)
-                .colour(Colour::FOOYOO)
-        },
+        GpStatus::Submitting {
+            host,
+            round,
+            total,
+            prompt,
+            closes_at,
+            submitted,
+            scores,
+        } => CreateEmbed::new()
+            .title(format!("{GP_STATUS_SUBMITTING} {round}/{total}"))
+            .field(GP_STATUS_PROMPT, prompt.clone(), false)
+            .field("Host", host.mention().to_string(), true)
+            .field(GP_STATUS_CLOSES, format!("<t:{closes_at}:R>"), true)
+            .field(GP_STATUS_SUBMITTED, list(submitted), false)
+            .field(GP_STATUS_SCORES, scores_lines(scores), false)
+            .colour(Colour::FOOYOO),
         GpStatus::Playing {
             round,
             total,
+            track,
+            tracks,
+            prompt,
             guessed,
+            likes,
             scores,
-        } => {
-            let guessed = if guessed.is_empty() {
-                GP_NO_GUESSES_YET.to_string()
-            } else {
-                guessed.join(", ")
-            };
-            CreateEmbed::new()
-                .title(format!("{GP_STATUS_PLAYING} {round}/{total}"))
-                .field(GP_STATUS_GUESSED, guessed, false)
-                .field(GP_STATUS_SCORES, scores_lines(scores), false)
-                .colour(Colour::BLURPLE)
-        },
+        } => CreateEmbed::new()
+            .title(format!(
+                "{GP_STATUS_PLAYING} {round}/{total} · {GP_SONG_TITLE} {track}/{tracks}"
+            ))
+            .field(GP_STATUS_PROMPT, prompt.clone(), false)
+            .field(GP_STATUS_GUESSED, list(guessed), false)
+            .field(GP_STATUS_LIKES, likes.to_string(), true)
+            .field(GP_STATUS_SCORES, scores_lines(scores), false)
+            .colour(Colour::BLURPLE),
     }
 }
 
@@ -733,7 +1226,7 @@ pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
 // ------------------------------------------------------------------
 
 /// What the playback side of a game needs: shared state, HTTP, the call, and
-/// the guild. Cloned into every per-track handler.
+/// the guild. Cloned into every per-track handler and timer task.
 #[derive(Clone)]
 pub struct GpPlayback {
     pub data: Arc<Data>,
@@ -742,45 +1235,144 @@ pub struct GpPlayback {
     pub guild_id: GuildId,
 }
 
-/// Per-track handler: when the round's track ends, reveal and move on.
-pub struct GpRoundEndHandler {
+/// Per-track handler: when a song ends, reveal and move on.
+pub struct GpTrackEndHandler {
     pub pb: GpPlayback,
     pub round_idx: usize,
+    pub track_idx: usize,
 }
 
 #[async_trait]
-impl EventHandler for GpRoundEndHandler {
+impl EventHandler for GpTrackEndHandler {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let (pb, round_idx) = (self.pb.clone(), self.round_idx);
+        let (pb, round_idx, track_idx) = (self.pb.clone(), self.round_idx, self.track_idx);
         // Do the reveal off the driver's event task: it edits messages, sleeps,
-        // and takes the call lock to enqueue the next round.
+        // and takes the call lock to enqueue the next song.
         tokio::spawn(async move {
             let guild_id = pb.guild_id;
-            if let Err(e) = gp_advance_round(pb, round_idx).await {
-                tracing::warn!("gp: advancing round {round_idx} in {guild_id}: {e}");
+            if let Err(e) = gp_advance_track(pb, round_idx, track_idx).await {
+                tracing::warn!(
+                    "gp: advancing round {round_idx} song {track_idx} in {guild_id}: {e}"
+                );
             }
         });
         Some(Event::Cancel)
     }
 }
 
-/// Enqueue one round's track, hook its end, and post the round message.
-pub async fn gp_play_round(
-    pb: &GpPlayback,
-    round_idx: usize,
-    total: usize,
-    track: ResolvedTrack<'static>,
-    players: &[(UserId, String)],
-    text_channel: GenericChannelId,
-) -> Result<(), Error> {
+/// Post the prompt and start the window timer.
+pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<(), Error> {
     let guild_id = pb.guild_id;
-    if !pb.data.gp_is_playing(guild_id) {
-        // Ended or torn down while we were between rounds.
+    if !pb.data.gp_is_active(guild_id) {
+        return Ok(());
+    }
+    let msg = opened
+        .text_channel
+        .send_message(
+            &pb.http,
+            CreateMessage::new().embed(gp_prompt_embed(&opened)),
+        )
+        .await?;
+    pb.data
+        .gp_set_prompt_message(guild_id, opened.round_idx, opened.text_channel, msg.id)?;
+    gp_spawn_window_timer(pb.clone(), &opened);
+    Ok(())
+}
+
+/// The window timer: a heads-up 30 s before the end, then close. Both steps
+/// are no-ops if the window it was spawned for has already closed.
+pub fn gp_spawn_window_timer(pb: GpPlayback, opened: &GpWindowOpened) {
+    let (generation, timer, text_channel) =
+        (opened.generation, opened.timer_secs, opened.text_channel);
+    tokio::spawn(async move {
+        let guild_id = pb.guild_id;
+        if timer > GP_WARNING_SECS {
+            tokio::time::sleep(Duration::from_secs(timer - GP_WARNING_SECS)).await;
+            let Some(warning) = pb.data.gp_warning_if(guild_id, generation) else {
+                return;
+            };
+            if let Err(e) = text_channel
+                .send_message(
+                    &pb.http,
+                    CreateMessage::new().content(gp_warning_text(&warning)),
+                )
+                .await
+            {
+                tracing::warn!("gp: window warning in {guild_id}: {e}");
+            }
+            tokio::time::sleep(Duration::from_secs(GP_WARNING_SECS)).await;
+        } else {
+            tokio::time::sleep(Duration::from_secs(timer)).await;
+        }
+        let closed =
+            pb.data
+                .gp_close_window_if(guild_id, generation, &mut rand::thread_rng(), now());
+        if let Some(closed) = closed {
+            if let Err(e) = gp_after_close(pb, closed).await {
+                tracing::warn!("gp: closing window in {guild_id}: {e}");
+            }
+        }
+    });
+}
+
+/// After a window closed (timer, everyone in, or the host): update the prompt
+/// message, then play, skip, or finish.
+pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<(), Error> {
+    let embed = gp_prompt_closed_embed(&closed);
+    let edited = match closed.prompt_message {
+        Some((chan, msg_id)) => chan
+            .edit_message(&pb.http, msg_id, EditMessage::new().embed(embed.clone()))
+            .await
+            .is_ok(),
+        None => false,
+    };
+    if !edited {
+        closed
+            .text_channel
+            .send_message(&pb.http, CreateMessage::new().embed(embed))
+            .await?;
+    }
+    gp_follow(pb, closed.next, closed.text_channel, false).await
+}
+
+/// Take the next step of the game.
+async fn gp_follow(
+    pb: GpPlayback,
+    next: GpNext,
+    text_channel: GenericChannelId,
+    pause_before_track: bool,
+) -> Result<(), Error> {
+    match next {
+        GpNext::Track(start) => {
+            if pause_before_track {
+                tokio::time::sleep(Duration::from_secs(GP_REVEAL_PAUSE_SECS)).await;
+            }
+            gp_play_track(&pb, *start).await
+        },
+        GpNext::Window(opened) => gp_open_round(&pb, opened).await,
+        GpNext::Finished(scores) => {
+            text_channel
+                .send_message(
+                    &pb.http,
+                    CreateMessage::new().embed(gp_scoreboard_embed(&scores, GP_GAME_OVER)),
+                )
+                .await?;
+            pb.data.gp_remove(pb.guild_id);
+            Ok(())
+        },
+    }
+}
+
+/// Enqueue one song, hook its end, and post the song message.
+pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), Error> {
+    let guild_id = pb.guild_id;
+    if !pb.data.gp_is_active(guild_id) {
+        // Ended or torn down while we were between songs.
         return Ok(());
     }
     // `build_track` is lazy; the stream is fetched when songbird starts it.
     // Note: no `.with_user_id` -- see the module docs.
-    let songbird_track = build_track(&track, &pb.data.http_client)?;
+    let songbird_track = build_track(&start.track, &pb.data.http_client)?;
     let handle = {
         let mut handler = pb.call.lock().await;
         handler.enqueue(songbird_track).await
@@ -788,30 +1380,50 @@ pub async fn gp_play_round(
     for event in [TrackEvent::End, TrackEvent::Error] {
         handle.add_event(
             Event::Track(event),
-            GpRoundEndHandler {
+            GpTrackEndHandler {
                 pb: pb.clone(),
-                round_idx,
+                round_idx: start.round_idx,
+                track_idx: start.track_idx,
             },
         )?;
     }
 
-    let msg = text_channel
+    let msg = start
+        .text_channel
         .send_message(
             &pb.http,
             CreateMessage::new()
-                .embed(gp_round_embed(round_idx, total, &track))
-                .components(vec![gp_select_menu(guild_id, round_idx, players)]),
+                .embed(gp_track_embed(&start))
+                .components(gp_components(
+                    guild_id,
+                    start.round_idx,
+                    start.track_idx,
+                    &start.players,
+                    start.guessable,
+                )),
         )
         .await?;
-    pb.data
-        .gp_set_round_message(guild_id, round_idx, text_channel, msg.id)?;
+    pb.data.gp_set_track_message(
+        guild_id,
+        start.round_idx,
+        start.track_idx,
+        start.text_channel,
+        msg.id,
+    )?;
     Ok(())
 }
 
-/// Reveal the round that just ended and start the next one (or finish).
-pub async fn gp_advance_round(pb: GpPlayback, round_idx: usize) -> Result<(), Error> {
+/// Reveal the song that just ended and take the next step.
+pub async fn gp_advance_track(
+    pb: GpPlayback,
+    round_idx: usize,
+    track_idx: usize,
+) -> Result<(), Error> {
     let guild_id = pb.guild_id;
-    let Some(res) = pb.data.gp_reveal_and_advance(guild_id, round_idx) else {
+    let Some(res) = pb
+        .data
+        .gp_reveal_and_advance(guild_id, round_idx, track_idx, now())
+    else {
         return Ok(());
     };
 
@@ -834,54 +1446,40 @@ pub async fn gp_advance_round(pb: GpPlayback, round_idx: usize) -> Result<(), Er
             .send_message(&pb.http, CreateMessage::new().embed(reveal))
             .await?;
     }
-
-    tokio::time::sleep(Duration::from_secs(GP_REVEAL_PAUSE_SECS)).await;
-
-    match res.next {
-        Some(track) => {
-            gp_play_round(
-                &pb,
-                res.round_idx + 1,
-                res.total,
-                track,
-                &res.players,
-                res.text_channel,
-            )
-            .await
-        },
-        None => {
-            res.text_channel
-                .send_message(
-                    &pb.http,
-                    CreateMessage::new().embed(gp_scoreboard_embed(&res.scores, GP_GAME_OVER)),
-                )
-                .await?;
-            pb.data.gp_remove(guild_id);
-            Ok(())
-        },
-    }
+    gp_follow(pb, res.next, res.text_channel, true).await
 }
 
-/// Handle a dropdown pick. Called from `SerenityHandler::dispatch` for every
-/// component interaction whose custom id starts with [`GP_CUSTOM_ID_PREFIX`].
-/// Every branch answers the interaction (ephemerally), otherwise Discord shows
-/// "This interaction failed".
-pub async fn handle_gp_guess(
+/// Handle a dropdown pick or a 👍. Called from `SerenityHandler::dispatch` for
+/// every component interaction whose custom id starts with
+/// [`GP_CUSTOM_ID_PREFIX`]. Every branch answers the interaction (ephemerally),
+/// otherwise Discord shows "This interaction failed".
+pub async fn handle_gp_component(
     data: &Data,
     ctx: &SerenityContext,
     mci: &ComponentInteraction,
 ) -> Result<(), Error> {
-    let Some((guild_id, round_idx)) = parse_custom_id(&mci.data.custom_id) else {
+    let Some((kind, guild_id, round_idx, track_idx)) = parse_custom_id(&mci.data.custom_id) else {
         return Ok(());
     };
     if mci.guild_id != Some(guild_id) {
         return Ok(());
     }
 
-    let outcome = gp_guess_outcome(data, ctx, mci, guild_id, round_idx);
-    let content = match outcome {
-        Ok(GpGuessOutcome::Recorded) => GP_GUESS_RECORDED.to_string(),
-        Ok(GpGuessOutcome::Changed) => GP_GUESS_CHANGED.to_string(),
+    let content = match gp_component_vc_check(data, ctx, mci, guild_id).and_then(|()| match kind {
+        GpComponent::Guess => {
+            gp_guess_outcome(data, mci, guild_id, round_idx, track_idx).map(|o| match o {
+                GpGuessOutcome::Recorded => GP_GUESS_RECORDED.to_string(),
+                GpGuessOutcome::Changed => GP_GUESS_CHANGED.to_string(),
+            })
+        },
+        GpComponent::Like => {
+            gp_like_outcome(data, mci, guild_id, round_idx, track_idx).map(|o| match o {
+                GpLikeOutcome::Liked(n) => format!("{GP_LIKED} ({n})"),
+                GpLikeOutcome::Unliked(n) => format!("{GP_UNLIKED} ({n})"),
+            })
+        },
+    }) {
+        Ok(text) => text,
         Err(e) => e.to_string(),
     };
     mci.create_response(
@@ -896,14 +1494,13 @@ pub async fn handle_gp_guess(
     Ok(())
 }
 
-/// The synchronous part of a guess: voice-channel check + record.
-fn gp_guess_outcome(
+/// The user must be in the game's voice channel to guess or like.
+fn gp_component_vc_check(
     data: &Data,
     ctx: &SerenityContext,
     mci: &ComponentInteraction,
     guild_id: GuildId,
-    round_idx: usize,
-) -> CrackedResult<GpGuessOutcome> {
+) -> CrackedResult<()> {
     let game_vc = data
         .gp_voice_channel(guild_id)
         .ok_or(CrackedError::NoGameInProgress)?;
@@ -919,6 +1516,24 @@ fn gp_guess_outcome(
     if user_vc != Some(game_vc) {
         return Err(CrackedError::NotInGameVoiceChannel);
     }
+    Ok(())
+}
+
+fn interaction_display_name(mci: &ComponentInteraction) -> String {
+    mci.member
+        .as_ref()
+        .map(|m| m.display_name().to_string())
+        .unwrap_or_else(|| mci.user.name.to_string())
+}
+
+/// The synchronous part of a guess.
+fn gp_guess_outcome(
+    data: &Data,
+    mci: &ComponentInteraction,
+    guild_id: GuildId,
+    round_idx: usize,
+    track_idx: usize,
+) -> CrackedResult<GpGuessOutcome> {
     let guessed = match &mci.data.kind {
         ComponentInteractionDataKind::StringSelect { values } => values
             .first()
@@ -928,12 +1543,34 @@ fn gp_guess_outcome(
             .ok_or(CrackedError::NotAPlayer)?,
         _ => return Err(CrackedError::NotAPlayer),
     };
-    let name = mci
-        .member
-        .as_ref()
-        .map(|m| m.display_name().to_string())
-        .unwrap_or_else(|| mci.user.name.to_string());
-    data.gp_record_guess(guild_id, round_idx, mci.user.id, name, guessed)
+    data.gp_record_guess(
+        guild_id,
+        round_idx,
+        track_idx,
+        mci.user.id,
+        interaction_display_name(mci),
+        guessed,
+    )
+}
+
+/// The synchronous part of a 👍.
+fn gp_like_outcome(
+    data: &Data,
+    mci: &ComponentInteraction,
+    guild_id: GuildId,
+    round_idx: usize,
+    track_idx: usize,
+) -> CrackedResult<GpLikeOutcome> {
+    if !matches!(mci.data.kind, ComponentInteractionDataKind::Button) {
+        return Err(CrackedError::StaleRound);
+    }
+    data.gp_toggle_like(
+        guild_id,
+        round_idx,
+        track_idx,
+        mci.user.id,
+        interaction_display_name(mci),
+    )
 }
 
 // ------------------------------------------------------------------
@@ -947,7 +1584,31 @@ async fn author_display_name(ctx: Context<'_>) -> String {
     }
 }
 
-/// Guilty pleasure party game: submit tracks in secret, guess who queued what.
+/// Non-bot members of `vc`, from the cache. Empty if the guild isn't cached
+/// (then the window simply waits for the timer or the host).
+fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
+    let Some(guild) = ctx.guild() else {
+        return Vec::new();
+    };
+    guild
+        .voice_states
+        .iter()
+        .filter(|vs| vs.channel_id == Some(vc))
+        .filter(|vs| guild.members.get(&vs.user_id).is_none_or(|m| !m.user.bot()))
+        .map(|vs| vs.user_id)
+        .collect()
+}
+
+fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> GpPlayback {
+    GpPlayback {
+        data: ctx.data().clone(),
+        http: ctx.serenity_context().http.clone(),
+        call,
+        guild_id,
+    }
+}
+
+/// "What's your song?" party game: a prompt, secret submissions, guess whose is whose.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Games",
@@ -955,14 +1616,14 @@ async fn author_display_name(ctx: Context<'_>) -> String {
     prefix_command,
     guild_only,
     aliases("guiltypleasure"),
-    subcommands("gp_start", "gp_submit", "gp_begin", "gp_skip", "gp_status", "gp_end")
+    subcommands("gp_start", "gp_submit", "gp_close", "gp_skip", "gp_status", "gp_end")
 )]
 pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.send_embed_response(gp_rules_embed(None)).await?;
+    ctx.send_embed_response(gp_rules_embed()).await?;
     Ok(())
 }
 
-/// Open a guilty pleasure lobby in your voice channel.
+/// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "start",
@@ -972,18 +1633,83 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
     guild_only,
     check = "cmd_check_music"
 )]
-pub async fn gp_start(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn gp_start(
+    ctx: Context<'_>,
+    #[description = "Prompt category (or Mixed)."] category: GpCategory,
+    #[description = "Number of rounds (default 5)."]
+    #[min = 1]
+    #[max = 20]
+    rounds: Option<u32>,
+    #[description = "Seconds to submit each round (default 180)."]
+    #[min = 30]
+    #[max = 600]
+    timer: Option<u32>,
+) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let data = ctx.data();
+    if data.gp_is_active(guild_id) {
+        return Err(CrackedError::GameAlreadyRunning.into());
+    }
     let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
     let host = ctx.author().id;
     let host_name = author_display_name(ctx).await;
-    ctx.data()
-        .gp_start(guild_id, host, host_name, vc, ctx.channel_id())?;
-    ctx.send_embed_response(gp_rules_embed(Some(host))).await?;
-    Ok(())
+
+    // Join (or reuse) the call, and make sure it is the host's channel.
+    let call = get_call_or_join_author(ctx).await?;
+    {
+        let handler = call.lock().await;
+        if let Some(chan) = handler.current_channel() {
+            if chan.get() != vc.get() {
+                return Err(CrackedError::WrongVoiceChannel.into());
+            }
+        }
+    }
+
+    let rounds = rounds.unwrap_or(GP_DEFAULT_ROUNDS).clamp(1, GP_MAX_ROUNDS) as usize;
+    let timer_secs = timer
+        .map(u64::from)
+        .unwrap_or(GP_DEFAULT_TIMER_SECS)
+        .clamp(GP_MIN_TIMER_SECS, GP_MAX_TIMER_SECS);
+    let prompts = draw_prompts(category, rounds, &mut rand::thread_rng());
+
+    // Create the game first so the global TrackEndHandler ignores the End
+    // event that stopping an existing queue fires.
+    let opened = data.gp_start(
+        guild_id,
+        host,
+        host_name,
+        vc,
+        ctx.channel_id(),
+        category,
+        prompts,
+        timer_secs,
+        now(),
+    )?;
+    let cleared_queue = {
+        let handler = call.lock().await;
+        let non_empty = !handler.queue().is_empty();
+        if non_empty {
+            handler.queue().stop();
+        }
+        non_empty
+    };
+
+    ctx.send_reply(
+        CrackedMessage::GpStarted {
+            category: category.display(),
+            rounds: opened.total_rounds,
+            timer_secs,
+            cleared_queue,
+        },
+        true,
+    )
+    .await?;
+
+    let pb = gp_playback(ctx, call, guild_id);
+    gp_open_round(&pb, opened).await
 }
 
-/// Secretly submit a guilty pleasure track (link or search).
+/// Secretly submit your song for the current prompt (link or search). Resubmitting replaces it.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "submit",
@@ -1008,103 +1734,83 @@ pub async fn gp_submit(
     Ok(())
 }
 
-/// Resolve the query and store it. Returns the confirmation message.
+/// Resolve the query and store it; close the window if everyone is in.
 #[cfg(not(tarpaulin_include))]
 pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResult<CrackedMessage> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let game_vc = ctx
-        .data()
-        .gp_voice_channel(guild_id)
-        .ok_or(CrackedError::NoGameInProgress)?;
-    if ctx.author_vc() != Some(game_vc) {
-        return Err(CrackedError::NotInGameVoiceChannel);
-    }
-    let query = query.trim();
-    if query.is_empty() {
-        return Err(CrackedError::NoQuery);
-    }
-    let query_type = QueryType::from_str(query).map_err(CrackedError::TrackResolveError)?;
-    let track = ctx
-        .data()
-        .ct_client
-        .resolve_track(query_type)
-        .await
-        .map_err(CrackedError::TrackFail)?;
-    let name = author_display_name(ctx).await;
-    let title = track.get_title();
-    let count = ctx
-        .data()
-        .gp_submit(guild_id, ctx.author().id, name, track)?;
-    Ok(CrackedMessage::GpSubmitted { title, count })
-}
-
-/// Close submissions and start playing the rounds (host only).
-#[cfg(not(tarpaulin_include))]
-#[poise::command(
-    rename = "begin",
-    category = "Games",
-    slash_command,
-    prefix_command,
-    guild_only,
-    check = "cmd_check_music"
-)]
-pub async fn gp_begin(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     let game_vc = data
         .gp_voice_channel(guild_id)
         .ok_or(CrackedError::NoGameInProgress)?;
     if ctx.author_vc() != Some(game_vc) {
-        return Err(CrackedError::NotInGameVoiceChannel.into());
+        return Err(CrackedError::NotInGameVoiceChannel);
     }
+    data.gp_window_open(guild_id)?;
+    let query = query.trim();
+    if query.is_empty() {
+        return Err(CrackedError::NoQuery);
+    }
+    let query_type = QueryType::from_str(query).map_err(CrackedError::TrackResolveError)?;
+    let track = data
+        .ct_client
+        .resolve_track(query_type)
+        .await
+        .map_err(CrackedError::TrackFail)?;
+    let name = author_display_name(ctx).await;
+    let title = track.get_title();
+    let vc_members = gp_vc_members(ctx, game_vc);
+    let outcome = data.gp_submit(guild_id, ctx.author().id, name, track, &vc_members)?;
 
-    // Join (or reuse) the call, and make sure it is the game's channel.
-    let call = get_call_or_join_author(ctx).await?;
-    {
-        let handler = call.lock().await;
-        if let Some(chan) = handler.current_channel() {
-            if chan.get() != game_vc.get() {
-                return Err(CrackedError::WrongVoiceChannel.into());
-            }
+    if outcome.everyone_in {
+        let closed =
+            data.gp_close_window_if(guild_id, outcome.generation, &mut rand::thread_rng(), now());
+        if let (Some(closed), Some(call)) = (closed, data.songbird.get(guild_id)) {
+            let pb = gp_playback(ctx, call, guild_id);
+            // Off this task so the ephemeral confirmation isn't held up.
+            tokio::spawn(async move {
+                if let Err(e) = gp_after_close(pb, closed).await {
+                    tracing::warn!("gp: closing window in {guild_id}: {e}");
+                }
+            });
         }
     }
+    Ok(CrackedMessage::GpSubmitted {
+        title,
+        replaced: outcome.replaced,
+        submitted: outcome.submitted,
+        of: vc_members.len(),
+    })
+}
 
-    // Flip the phase first so the global TrackEndHandler ignores the End event
-    // that stopping the existing queue fires.
-    let GpBegun {
-        first_track,
-        players,
-        total,
-    } = data.gp_begin(guild_id, ctx.author().id, &mut rand::thread_rng())?;
-    let cleared_queue = {
-        let handler = call.lock().await;
-        let non_empty = !handler.queue().is_empty();
-        if non_empty {
-            handler.queue().stop();
-        }
-        non_empty
-    };
-
+/// Close submissions early and start playing this round (host only).
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    rename = "close",
+    category = "Games",
+    slash_command,
+    prefix_command,
+    guild_only,
+    check = "cmd_check_music"
+)]
+pub async fn gp_close(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let data = ctx.data();
+    let closed = data.gp_close_window(guild_id, ctx.author().id, &mut rand::thread_rng(), now())?;
     ctx.send_reply(
-        CrackedMessage::GpBegan {
-            rounds: total,
-            players: players.len(),
-            cleared_queue,
+        CrackedMessage::GpWindowClosed {
+            count: closed.count,
         },
         true,
     )
     .await?;
-
-    let pb = GpPlayback {
-        data: data.clone(),
-        http: ctx.serenity_context().http.clone(),
-        call,
-        guild_id,
-    };
-    gp_play_round(&pb, 0, total, first_track, &players, ctx.channel_id()).await
+    let call = data
+        .songbird
+        .get(guild_id)
+        .ok_or(CrackedError::NotConnected)?;
+    gp_after_close(gp_playback(ctx, call, guild_id), closed).await
 }
 
-/// End the current round early (host only).
+/// End the current song early (host only).
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "skip",
@@ -1138,14 +1844,14 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying.into());
         }
-        // stop() fires TrackEvent::End, which is what advances the round.
+        // stop() fires TrackEvent::End, which is what advances the game.
         force_skip_top_track(&handler).await?;
     }
     ctx.send_reply(CrackedMessage::GpRoundSkipped, true).await?;
     Ok(())
 }
 
-/// Who has submitted / guessed, and the scores so far.
+/// The prompt, who has submitted or guessed, likes, and the scores so far.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "status",
@@ -1181,16 +1887,15 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
         .map(|p| p.manage_guild())
         .unwrap_or(false);
     // Remove the game *before* stopping playback, so the End event finds no
-    // game and the round-end handler is a no-op.
+    // game and the track-end handler (and any window timer) is a no-op.
     let game = data.gp_end(guild_id, ctx.author().id, is_admin)?;
-    if matches!(game.phase, GpPhase::Playing | GpPhase::Finished) {
-        if let Some(call) = data.songbird.get(guild_id) {
-            call.lock().await.queue().stop();
-        }
+    if let Some(call) = data.songbird.get(guild_id) {
+        call.lock().await.queue().stop();
     }
     let by = author_display_name(ctx).await;
     ctx.send_reply(CrackedMessage::GpEnded { by }, true).await?;
-    if !game.rounds.is_empty() {
+    let nothing_played = game.phase == GpPhase::Submitting && game.current_round == 0;
+    if !nothing_played {
         ctx.send_embed_response(gp_scoreboard_embed(&game.sorted_scores(), GP_SCOREBOARD))
             .await?;
     }
@@ -1214,6 +1919,8 @@ mod test {
     const A: UserId = UserId::new(100);
     const B: UserId = UserId::new(200);
     const C: UserId = UserId::new(300);
+    const NOW: i64 = 1_700_000_000;
+    const TIMER: u64 = 120;
 
     fn data() -> Data {
         Data(Arc::new(DataInner {
@@ -1232,193 +1939,616 @@ mod test {
         })
     }
 
-    fn lobby_with(data: &Data, users: &[(UserId, &str, usize)]) {
-        data.gp_start(G, A, "alice".into(), VC, TC).unwrap();
-        for (id, name, n) in users {
-            for i in 0..*n {
-                data.gp_submit(G, *id, name.to_string(), track(&format!("{name}{i}")))
-                    .unwrap();
-            }
-        }
-    }
-
     fn rng() -> StdRng {
         StdRng::seed_from_u64(0)
     }
 
+    fn prompts(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// A game hosted by alice with the given prompts; round 0's window is open.
+    fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
+        data.gp_start(
+            G,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            prompts(prompt_list),
+            TIMER,
+            NOW,
+        )
+        .unwrap()
+    }
+
+    fn submit(data: &Data, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
+        data.gp_submit(G, user, name.into(), track(title), &[])
+            .unwrap()
+    }
+
+    fn game(data: &Data) -> GpGame {
+        data.gp_games.get(&G).unwrap().clone()
+    }
+
     #[test]
-    fn start_twice_and_submit_without_game() {
+    fn start_opens_round_one() {
         let data = data();
         assert_eq!(
-            data.gp_submit(G, A, "a".into(), track("x")).unwrap_err(),
+            data.gp_submit(G, A, "a".into(), track("x"), &[])
+                .unwrap_err(),
             CrackedError::NoGameInProgress
         );
-        data.gp_start(G, A, "alice".into(), VC, TC).unwrap();
+        let opened = game_with(&data, &["p1", "p2"]);
+        assert_eq!((opened.round_idx, opened.total_rounds), (0, 2));
+        assert_eq!(opened.prompt, "p1");
+        assert_eq!(opened.closes_at, NOW + TIMER as i64);
+        assert_eq!(opened.generation, 1);
+        assert_eq!(opened.text_channel, TC);
+        let g = game(&data);
+        assert_eq!(g.phase, GpPhase::Submitting);
+        assert_eq!(g.rounds[0].closes_at, Some(NOW + TIMER as i64));
+        // The game owns playback from the start; there is no lobby.
+        assert!(data.gp_is_playing(G));
+        assert!(data.gp_is_active(G));
+        assert_eq!(data.gp_voice_channel(G), Some(VC));
+        assert!(data.gp_window_open(G).is_ok());
         assert_eq!(
-            data.gp_start(G, B, "bob".into(), VC, TC).unwrap_err(),
+            data.gp_start(
+                G,
+                B,
+                "bob".into(),
+                VC,
+                TC,
+                GpCategory::Mixed,
+                prompts(&["x"]),
+                TIMER,
+                NOW
+            )
+            .unwrap_err(),
             CrackedError::GameAlreadyRunning
         );
-        assert!(data.gp_is_active(G));
-        assert!(!data.gp_is_playing(G));
-    }
-
-    #[test]
-    fn begin_needs_two_submitters_and_shuffles_all() {
-        let data = data();
-        lobby_with(&data, &[(A, "alice", 2)]);
         assert_eq!(
-            data.gp_begin(G, A, &mut rng()).unwrap_err(),
-            CrackedError::NotEnoughPlayers
-        );
-        data.gp_submit(G, B, "bob".into(), track("bob0")).unwrap();
-        assert_eq!(
-            data.gp_begin(G, B, &mut rng()).unwrap_err(),
-            CrackedError::NotGameHost
-        );
-        let GpBegun { players, total, .. } = data.gp_begin(G, A, &mut rng()).unwrap();
-        assert_eq!(total, 3);
-        assert_eq!(players.len(), 2);
-        assert!(data.gp_is_playing(G));
-        let game = data.gp_games.get(&G).unwrap().clone();
-        assert_eq!(game.phase, GpPhase::Playing);
-        assert!(game.submissions.is_empty());
-        assert_eq!(game.rounds.len(), 3);
-        assert_eq!(
-            data.gp_submit(G, C, "carol".into(), track("c"))
-                .unwrap_err(),
-            CrackedError::SubmissionsClosed
+            data.gp_start(
+                GuildId::new(2),
+                B,
+                "bob".into(),
+                VC,
+                TC,
+                GpCategory::Mixed,
+                vec![],
+                TIMER,
+                NOW
+            )
+            .unwrap_err(),
+            CrackedError::Other("That category has no prompts.")
         );
     }
 
     #[test]
-    fn too_many_players() {
+    fn resubmit_replaces() {
         let data = data();
-        data.gp_start(G, A, "alice".into(), VC, TC).unwrap();
-        for i in 0..GP_MAX_PLAYERS as u64 {
-            data.gp_submit(G, UserId::new(1000 + i), format!("u{i}"), track("t"))
-                .unwrap();
-        }
-        // An existing player may still add tracks...
-        data.gp_submit(G, UserId::new(1000), "u0".into(), track("t2"))
+        game_with(&data, &["p1"]);
+        let first = submit(&data, B, "bob", "one");
+        assert_eq!(
+            first,
+            GpSubmitOutcome {
+                replaced: false,
+                submitted: 1,
+                everyone_in: false,
+                generation: 1
+            }
+        );
+        let second = submit(&data, B, "bob", "two");
+        assert!(second.replaced);
+        assert_eq!(second.submitted, 1);
+        let g = game(&data);
+        assert_eq!(g.rounds[0].submissions.len(), 1);
+        assert_eq!(g.rounds[0].submissions[&B].get_title(), "two");
+        assert_eq!(g.players.get(&B).map(String::as_str), Some("bob"));
+    }
+
+    #[test]
+    fn everyone_in_is_set_based() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        // Nobody known in the VC (cache miss): never closes early.
+        assert!(!submit(&data, A, "alice", "a").everyone_in);
+        // Bob is in the VC and hasn't submitted.
+        let out = data
+            .gp_submit(G, A, "alice".into(), track("a2"), &[A, B])
             .unwrap();
-        // ...but a 26th distinct player may not.
+        assert!(!out.everyone_in);
+        // Bob submits; carol (a leaver) isn't in the VC list, so she doesn't block.
+        let out = data
+            .gp_submit(G, B, "bob".into(), track("b"), &[A, B])
+            .unwrap();
+        assert!(out.everyone_in);
+        // A newcomer who hasn't submitted blocks again.
+        let out = data
+            .gp_submit(G, B, "bob".into(), track("b2"), &[A, B, C])
+            .unwrap();
+        assert!(!out.everyone_in);
+    }
+
+    #[test]
+    fn too_many_players_per_round() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        for i in 0..GP_MAX_PLAYERS as u64 {
+            submit(&data, UserId::new(1000 + i), &format!("u{i}"), "t");
+        }
+        // An existing submitter may still swap their song...
+        assert!(submit(&data, UserId::new(1000), "u0", "t2").replaced);
+        // ...but a 26th distinct submitter may not.
         assert_eq!(
-            data.gp_submit(G, UserId::new(5000), "new".into(), track("t"))
+            data.gp_submit(G, UserId::new(5000), "new".into(), track("t"), &[])
                 .unwrap_err(),
             CrackedError::TooManyPlayers(GP_MAX_PLAYERS)
         );
     }
 
     #[test]
-    fn guesses_and_scoring() {
+    fn close_shuffles_and_plays() {
         let data = data();
-        lobby_with(&data, &[(A, "alice", 1), (B, "bob", 1)]);
-        data.gp_begin(G, A, &mut rng()).unwrap();
-        let submitter0 = data.gp_games.get(&G).unwrap().rounds[0].submitter;
-        let other = if submitter0 == A { B } else { A };
-
+        game_with(&data, &["p1", "p2"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert_eq!((closed.round_idx, closed.total_rounds), (0, 2));
+        assert_eq!(closed.prompt, "p1");
+        assert_eq!(closed.count, 3);
+        let GpNext::Track(start) = &closed.next else {
+            panic!("expected a track, got {:?}", closed.next);
+        };
         assert_eq!(
-            data.gp_record_guess(G, 1, C, "carol".into(), A)
+            (start.round_idx, start.track_idx, start.total_tracks),
+            (0, 0, 3)
+        );
+        assert!(start.guessable);
+        assert_eq!(start.prompt, "p1");
+        assert_eq!(
+            start.players,
+            vec![
+                (A, "alice".to_string()),
+                (B, "bob".to_string()),
+                (C, "carol".to_string())
+            ]
+        );
+        let g = game(&data);
+        assert_eq!(g.phase, GpPhase::Playing);
+        assert_eq!(g.generation, 2);
+        assert!(g.rounds[0].submissions.is_empty());
+        assert_eq!(g.rounds[0].closes_at, None);
+        let mut submitters: Vec<UserId> = g.rounds[0].tracks.iter().map(|t| t.submitter).collect();
+        submitters.sort_unstable();
+        assert_eq!(submitters, vec![A, B, C]);
+        // Seeded shuffles are reproducible.
+        let data2 = data_with_same_round();
+        let closed2 = data2.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let GpNext::Track(start2) = closed2.next else {
+            unreachable!()
+        };
+        assert_eq!(start2.track.get_title(), start.track.get_title());
+        // Submissions are closed now.
+        assert_eq!(
+            data.gp_submit(G, A, "alice".into(), track("late"), &[])
+                .unwrap_err(),
+            CrackedError::WindowClosed
+        );
+        assert_eq!(
+            data.gp_window_open(G).unwrap_err(),
+            CrackedError::WindowClosed
+        );
+    }
+
+    fn data_with_same_round() -> Data {
+        let data = data();
+        game_with(&data, &["p1", "p2"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data
+    }
+
+    #[test]
+    fn close_zero_submissions_skips_to_next_window() {
+        let data = data();
+        game_with(&data, &["p1", "p2"]);
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW + 5).unwrap();
+        assert_eq!(closed.count, 0);
+        let GpNext::Window(opened) = &closed.next else {
+            panic!("expected next window, got {:?}", closed.next);
+        };
+        assert_eq!(opened.round_idx, 1);
+        assert_eq!(opened.prompt, "p2");
+        assert_eq!(opened.closes_at, NOW + 5 + TIMER as i64);
+        let g = game(&data);
+        assert_eq!(g.phase, GpPhase::Submitting);
+        assert_eq!(g.current_round, 1);
+    }
+
+    #[test]
+    fn close_zero_submissions_finishes_on_last_round() {
+        let data = data();
+        game_with(&data, &["only"]);
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert!(matches!(closed.next, GpNext::Finished(_)));
+        let g = game(&data);
+        assert_eq!(g.phase, GpPhase::Finished);
+        assert!(data.gp_is_playing(G));
+        // No window to close any more.
+        assert_eq!(
+            data.gp_close_window(G, A, &mut rng(), NOW).unwrap_err(),
+            CrackedError::WindowClosed
+        );
+        data.gp_remove(G);
+        assert!(!data.gp_is_playing(G));
+    }
+
+    #[test]
+    fn close_if_generation_guard() {
+        let data = data();
+        let opened = game_with(&data, &["p1", "p2"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        // A timer from a generation that never existed does nothing.
+        assert!(data.gp_close_window_if(G, 99, &mut rng(), NOW).is_none());
+        assert!(data.gp_warning_if(G, 99).is_none());
+        // The right generation warns and closes.
+        let w = data.gp_warning_if(G, opened.generation).unwrap();
+        assert_eq!(
+            (w.round_idx, w.count, w.closes_at),
+            (0, 2, opened.closes_at)
+        );
+        assert_eq!(w.prompt, "p1");
+        let closed = data
+            .gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+            .unwrap();
+        assert_eq!(closed.count, 2);
+        // The same timer firing again (or the host) is a no-op / error now.
+        assert!(data
+            .gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+            .is_none());
+        assert!(data.gp_warning_if(G, opened.generation).is_none());
+        assert_eq!(
+            data.gp_close_window(G, A, &mut rng(), NOW).unwrap_err(),
+            CrackedError::WindowClosed
+        );
+        // No game at all.
+        assert!(data
+            .gp_close_window_if(GuildId::new(9), 1, &mut rng(), NOW)
+            .is_none());
+    }
+
+    #[test]
+    fn host_close_permissions() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        assert_eq!(
+            data.gp_close_window(G, B, &mut rng(), NOW).unwrap_err(),
+            CrackedError::NotGameHost
+        );
+        assert_eq!(
+            data.gp_close_window(GuildId::new(9), A, &mut rng(), NOW)
+                .unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+    }
+
+    #[test]
+    fn single_submission_is_likes_only() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let GpNext::Track(start) = &closed.next else {
+            unreachable!()
+        };
+        assert!(!start.guessable);
+        assert_eq!(start.total_tracks, 1);
+        // No dropdown, so no guessing...
+        assert_eq!(
+            data.gp_record_guess(G, 0, 0, B, "bob".into(), A)
+                .unwrap_err(),
+            CrackedError::NotGuessable
+        );
+        // ...but likes still count.
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, B, "bob".into()).unwrap(),
+            GpLikeOutcome::Liked(1)
+        );
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(!res.guessable);
+        assert!(!res.fooled_everyone);
+        assert!(res.correct.is_empty());
+        assert_eq!(res.likes, 1);
+        assert_eq!(game(&data).scores.get(&A), Some(&GP_POINTS_PER_LIKE));
+        assert!(matches!(res.next, GpNext::Finished(_)));
+    }
+
+    #[test]
+    fn guesses_likes_and_scoring() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let g = game(&data);
+        let s0 = g.rounds[0].tracks[0].submitter;
+        let other = if s0 == A { B } else { A };
+
+        // Wrong round / track are stale.
+        assert_eq!(
+            data.gp_record_guess(G, 1, 0, C, "carol".into(), A)
                 .unwrap_err(),
             CrackedError::StaleRound
         );
         assert_eq!(
-            data.gp_record_guess(G, 0, C, "carol".into(), C)
+            data.gp_record_guess(G, 0, 1, C, "carol".into(), A)
+                .unwrap_err(),
+            CrackedError::StaleRound
+        );
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 1, C, "carol".into()).unwrap_err(),
+            CrackedError::StaleRound
+        );
+        // Only submitters are valid answers.
+        assert_eq!(
+            data.gp_record_guess(G, 0, 0, C, "carol".into(), C)
                 .unwrap_err(),
             CrackedError::NotAPlayer
         );
         assert_eq!(
-            data.gp_record_guess(G, 0, C, "carol".into(), other)
+            data.gp_record_guess(G, 0, 0, C, "carol".into(), other)
                 .unwrap(),
             GpGuessOutcome::Recorded
         );
         assert_eq!(
-            data.gp_record_guess(G, 0, C, "carol".into(), submitter0)
+            data.gp_record_guess(G, 0, 0, C, "carol".into(), s0)
                 .unwrap(),
             GpGuessOutcome::Changed
         );
-        // The submitter may guess on their own track; it never scores.
-        data.gp_record_guess(G, 0, submitter0, "self".into(), submitter0)
+        assert_eq!(
+            data.gp_record_guess(G, 0, 0, C, "carol".into(), s0)
+                .unwrap(),
+            GpGuessOutcome::Recorded
+        );
+        // The submitter may pick on their own song; it never scores.
+        data.gp_record_guess(G, 0, 0, s0, "self".into(), s0)
             .unwrap();
         // The other player guesses wrong.
-        data.gp_record_guess(G, 0, other, "other".into(), other)
+        data.gp_record_guess(G, 0, 0, other, "other".into(), other)
             .unwrap();
+        // Likes: own song rejected, others toggle.
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, s0, "self".into()).unwrap_err(),
+            CrackedError::CannotLikeOwnSong
+        );
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, other, "other".into()).unwrap(),
+            GpLikeOutcome::Liked(1)
+        );
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, C, "carol".into()).unwrap(),
+            GpLikeOutcome::Liked(2)
+        );
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, other, "other".into()).unwrap(),
+            GpLikeOutcome::Unliked(1)
+        );
 
-        let res = data.gp_reveal_and_advance(G, 0).unwrap();
-        assert_eq!(res.submitter, submitter0);
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert_eq!(res.submitter, s0);
         assert_eq!(res.correct, vec![C]);
         assert!(!res.fooled_everyone);
-        assert!(res.next.is_some());
-        let game = data.gp_games.get(&G).unwrap().clone();
-        assert_eq!(game.scores.get(&C), Some(&GP_POINTS_CORRECT));
-        assert_eq!(game.scores.get(&submitter0), None);
-        assert_eq!(game.scores.get(&other), None);
+        assert_eq!(res.likes, 1);
+        assert!(res.guessable);
+        assert!(matches!(res.next, GpNext::Track(_)));
+        let g = game(&data);
+        assert_eq!(g.scores.get(&C), Some(&GP_POINTS_CORRECT));
+        assert_eq!(g.scores.get(&s0), Some(&GP_POINTS_PER_LIKE));
+        assert_eq!(g.scores.get(&other), None);
+        assert_eq!(g.current_track, 1);
 
-        // Second call for the same round is a no-op.
-        assert!(data.gp_reveal_and_advance(G, 0).is_none());
-
-        // Round 1: nobody guesses -> submitter is rewarded, game finishes.
-        let submitter1 = game.rounds[1].submitter;
-        let res = data.gp_reveal_and_advance(G, 1).unwrap();
-        assert!(res.fooled_everyone);
-        assert!(res.next.is_none());
-        let game = data.gp_games.get(&G).unwrap().clone();
-        assert_eq!(game.phase, GpPhase::Finished);
-        assert_eq!(game.scores.get(&submitter1), Some(&GP_POINTS_FOOLED_ALL));
-        // Finished still owns playback until the scoreboard removes it.
-        assert!(data.gp_is_playing(G));
+        // Second call for the same song is a no-op.
+        assert!(data.gp_reveal_and_advance(G, 0, 0, NOW).is_none());
+        // Guessing on the finished song is stale now.
         assert_eq!(
-            data.gp_record_guess(G, 1, C, "carol".into(), A)
+            data.gp_record_guess(G, 0, 0, C, "carol".into(), s0)
+                .unwrap_err(),
+            CrackedError::StaleRound
+        );
+
+        // Song 2: nobody guesses -> fooled everyone, game finishes.
+        let s1 = g.rounds[0].tracks[1].submitter;
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.fooled_everyone);
+        assert_eq!(res.likes, 0);
+        assert!(matches!(res.next, GpNext::Finished(_)));
+        let g = game(&data);
+        assert_eq!(g.phase, GpPhase::Finished);
+        assert_ne!(s1, s0);
+        assert_eq!(g.scores.get(&s1), Some(&GP_POINTS_FOOLED_ALL));
+        assert_eq!(
+            data.gp_record_guess(G, 0, 1, C, "carol".into(), A)
                 .unwrap_err(),
             CrackedError::GameNotPlaying
         );
-        data.gp_remove(G);
-        assert!(!data.gp_is_playing(G));
-        assert!(data.gp_reveal_and_advance(G, 2).is_none());
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 1, C, "carol".into()).unwrap_err(),
+            CrackedError::GameNotPlaying
+        );
     }
 
     #[test]
-    fn end_permissions() {
+    fn tracks_then_next_prompt() {
         let data = data();
-        lobby_with(&data, &[(A, "alice", 1), (B, "bob", 1)]);
+        game_with(&data, &["p1", "p2"]);
+        for round in 0..2 {
+            submit(&data, A, "alice", &format!("a{round}"));
+            submit(&data, B, "bob", &format!("b{round}"));
+            let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+            assert!(matches!(closed.next, GpNext::Track(_)));
+            let first = data.gp_reveal_and_advance(G, round, 0, NOW).unwrap();
+            assert!(matches!(first.next, GpNext::Track(ref s) if s.track_idx == 1));
+            let second = data.gp_reveal_and_advance(G, round, 1, NOW).unwrap();
+            if round == 0 {
+                assert!(
+                    matches!(second.next, GpNext::Window(ref w) if w.round_idx == 1 && w.prompt == "p2")
+                );
+                assert_eq!(game(&data).phase, GpPhase::Submitting);
+            } else {
+                let GpNext::Finished(scores) = second.next else {
+                    panic!("expected finished");
+                };
+                assert_eq!(scores.len(), 2);
+            }
+        }
+        assert_eq!(game(&data).phase, GpPhase::Finished);
+    }
+
+    #[test]
+    fn end_permissions_and_missing_game() {
+        let data = data();
+        game_with(&data, &["p1"]);
         assert_eq!(
             data.gp_end(G, B, false).unwrap_err(),
             CrackedError::NotGameHost
         );
-        data.gp_end(G, C, true).unwrap();
+        let g = data.gp_end(G, C, true).unwrap();
+        assert_eq!(g.host, A);
         assert!(!data.gp_is_active(G));
         assert_eq!(
             data.gp_end(G, A, false).unwrap_err(),
             CrackedError::NoGameInProgress
+        );
+        assert_eq!(
+            data.gp_status(G).unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+        assert_eq!(
+            data.gp_window_open(G).unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+        assert!(data.gp_remove(G).is_none());
+        assert!(data.gp_reveal_and_advance(G, 0, 0, NOW).is_none());
+        assert_eq!(data.gp_voice_channel(G), None);
+        assert_eq!(
+            data.gp_record_guess(G, 0, 0, A, "a".into(), B).unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+        assert_eq!(
+            data.gp_toggle_like(G, 0, 0, A, "a".into()).unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+        assert_eq!(
+            data.gp_set_prompt_message(G, 0, TC, MessageId::new(1))
+                .unwrap_err(),
+            CrackedError::NoGameInProgress
+        );
+        assert!(!data.gp_is_playing(G));
+    }
+
+    #[test]
+    fn message_bookkeeping() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        assert_eq!(
+            data.gp_set_prompt_message(G, 3, TC, MessageId::new(1))
+                .unwrap_err(),
+            CrackedError::StaleRound
+        );
+        data.gp_set_prompt_message(G, 0, TC, MessageId::new(7))
+            .unwrap();
+        assert_eq!(
+            data.gp_set_track_message(G, 0, 0, TC, MessageId::new(1))
+                .unwrap_err(),
+            CrackedError::StaleRound,
+            "no tracks before the window closes"
+        );
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert_eq!(closed.prompt_message, Some((TC, MessageId::new(7))));
+        data.gp_set_track_message(G, 0, 0, TC, MessageId::new(42))
+            .unwrap();
+        assert_eq!(
+            data.gp_set_track_message(G, 0, 5, TC, MessageId::new(1))
+                .unwrap_err(),
+            CrackedError::StaleRound
+        );
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert_eq!(res.message, Some((TC, MessageId::new(42))));
+        assert_eq!(res.text_channel, TC);
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert_eq!(res.message, None);
+    }
+
+    #[test]
+    fn scores_tie_break_by_name() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, B, "bob", "b");
+        submit(&data, A, "alice", "a");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        // Carol guesses right both songs; alice and bob tie at 0.
+        for i in 0..2 {
+            let s = game(&data).rounds[0].tracks[i].submitter;
+            data.gp_record_guess(G, 0, i, C, "carol".into(), s).unwrap();
+            data.gp_reveal_and_advance(G, 0, i, NOW).unwrap();
+        }
+        assert_eq!(
+            game(&data).sorted_scores(),
+            vec![(C, 2 * GP_POINTS_CORRECT), (A, 0), (B, 0)]
         );
     }
 
     #[test]
     fn status_snapshots() {
         let data = data();
-        lobby_with(&data, &[(A, "alice", 2), (B, "bob", 1)]);
+        game_with(&data, &["p1", "p2"]);
+        submit(&data, B, "bob", "b");
         match data.gp_status(G).unwrap() {
-            GpStatus::Lobby { host, submitters } => {
+            GpStatus::Submitting {
+                host,
+                round,
+                total,
+                prompt,
+                closes_at,
+                submitted,
+                scores,
+            } => {
                 assert_eq!(host, A);
-                assert_eq!(
-                    submitters,
-                    vec![("alice".to_string(), 2), ("bob".to_string(), 1)]
-                );
+                assert_eq!((round, total), (1, 2));
+                assert_eq!(prompt, "p1");
+                assert_eq!(closes_at, NOW + TIMER as i64);
+                assert_eq!(submitted, vec!["bob".to_string()]);
+                assert_eq!(scores.len(), 2);
             },
-            other => panic!("expected lobby, got {other:?}"),
+            other => panic!("expected submitting, got {other:?}"),
         }
-        data.gp_begin(G, A, &mut rng()).unwrap();
-        data.gp_record_guess(G, 0, C, "carol".into(), A).unwrap();
+        submit(&data, A, "alice", "a");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_record_guess(G, 0, 0, C, "carol".into(), A).unwrap();
+        data.gp_toggle_like(G, 0, 0, C, "carol".into()).unwrap();
         match data.gp_status(G).unwrap() {
             GpStatus::Playing {
                 round,
                 total,
+                track,
+                tracks,
+                prompt,
                 guessed,
+                likes,
                 scores,
             } => {
-                assert_eq!((round, total), (1, 3));
+                assert_eq!((round, total, track, tracks), (1, 2, 1, 2));
+                assert_eq!(prompt, "p1");
                 assert_eq!(guessed, vec!["carol".to_string()]);
-                // alice, bob (submitters) and carol (guesser only)
+                assert_eq!(likes, 1);
                 assert_eq!(scores.len(), 3);
             },
             other => panic!("expected playing, got {other:?}"),
@@ -1426,118 +2556,226 @@ mod test {
     }
 
     #[test]
-    fn custom_ids_and_select_menu() {
-        assert_eq!(parse_custom_id("gp:1:0"), Some((GuildId::new(1), 0)));
-        assert_eq!(parse_custom_id("gp:1:7"), Some((GuildId::new(1), 7)));
-        assert_eq!(parse_custom_id(&gp_custom_id(G, 3)), Some((G, 3)));
-        assert_eq!(parse_custom_id("gp:0:1"), None);
-        assert_eq!(parse_custom_id("gp:x:1"), None);
+    fn custom_ids() {
+        assert_eq!(
+            parse_custom_id("gp:g:1:0:0"),
+            Some((GpComponent::Guess, GuildId::new(1), 0, 0))
+        );
+        assert_eq!(
+            parse_custom_id("gp:l:1:2:7"),
+            Some((GpComponent::Like, GuildId::new(1), 2, 7))
+        );
+        assert_eq!(
+            parse_custom_id(&gp_custom_id(GpComponent::Guess, G, 3, 4)),
+            Some((GpComponent::Guess, G, 3, 4))
+        );
+        assert_eq!(parse_custom_id("gp:x:1:0:0"), None);
+        assert_eq!(parse_custom_id("gp:g:0:0:0"), None);
+        assert_eq!(parse_custom_id("gp:g:1:0"), None);
+        assert_eq!(parse_custom_id("gp:g:1:0:0:9"), None);
+        assert_eq!(parse_custom_id("gp:1:0"), None, "the v1 shape is rejected");
         assert_eq!(parse_custom_id("song_select"), None);
-
-        let players = vec![(A, "alice".to_string()), (B, "bob".to_string())];
-        let component = gp_select_menu(G, 0, &players);
-        assert!(matches!(
-            component,
-            CreateComponent::ActionRow(CreateActionRow::SelectMenu(_))
-        ));
     }
 
-    /// The dropdown as Discord will receive it: one string select in one action
-    /// row, custom id `gp:<guild>:<round>`, one option per player (label = name,
-    /// value = user id), single choice, capped at 25.
+    /// The controls as Discord will receive them: a string select (only when
+    /// guessable) and a 👍 button, each in its own action row.
     #[test]
-    fn select_menu_json() {
+    fn components_json() {
         let players = vec![(B, "bob".to_string()), (A, "alice".to_string())];
-        let v = serde_json::to_value(gp_select_menu(G, 4, &players)).unwrap();
-        let menu = &v["components"][0];
-        assert_eq!(menu["custom_id"], "gp:1:4");
+        let rows = gp_components(G, 1, 2, &players, true);
+        assert_eq!(rows.len(), 2);
+        let v = serde_json::to_value(&rows).unwrap();
+        let menu = &v[0]["components"][0];
+        assert_eq!(menu["custom_id"], "gp:g:1:1:2");
         assert_eq!(menu["placeholder"], GP_SELECT_PLACEHOLDER);
         assert_eq!(menu["min_values"], 1);
         assert_eq!(menu["max_values"], 1);
         let options = menu["options"].as_array().unwrap();
         assert_eq!(options.len(), 2);
-        // Order is whatever the caller passed (submitter_names() pre-sorts).
         assert_eq!(options[0]["label"], "bob");
         assert_eq!(options[0]["value"], "200");
-        assert_eq!(options[1]["label"], "alice");
-        assert_eq!(options[1]["value"], "100");
+        let button = &v[1]["components"][0];
+        assert_eq!(button["custom_id"], "gp:l:1:1:2");
+        assert_eq!(button["label"], GP_LIKE_LABEL);
+        assert_eq!(button["emoji"]["name"], "👍");
+        assert_eq!(button["style"], 2, "secondary");
 
+        // Not guessable: only the like button.
+        let rows = gp_components(G, 0, 0, &players, false);
+        assert_eq!(rows.len(), 1);
+        let v = serde_json::to_value(&rows).unwrap();
+        assert_eq!(v[0]["components"][0]["custom_id"], "gp:l:1:0:0");
+
+        // Options are capped at 25.
         let many: Vec<(UserId, String)> = (1..=40u64)
             .map(|i| (UserId::new(i), format!("u{i}")))
             .collect();
-        let v = serde_json::to_value(gp_select_menu(G, 0, &many)).unwrap();
+        let v = serde_json::to_value(gp_components(G, 0, 0, &many, true)).unwrap();
         assert_eq!(
-            v["components"][0]["options"].as_array().unwrap().len(),
+            v[0]["components"][0]["options"].as_array().unwrap().len(),
             GP_MAX_PLAYERS
         );
     }
 
-    /// The round message must name the track but never the submitter.
     #[test]
-    fn round_embed_hides_submitter() {
-        let t = track("secret");
-        let v = serde_json::to_value(gp_round_embed(1, 5, &t)).unwrap();
-        assert_eq!(v["title"], format!("{GP_ROUND_TITLE} 2/5"));
+    fn prompt_embeds_json() {
+        let opened = GpWindowOpened {
+            round_idx: 1,
+            total_rounds: 3,
+            prompt: "What song do you cry to?".into(),
+            closes_at: NOW,
+            timer_secs: TIMER,
+            generation: 4,
+            text_channel: TC,
+        };
+        let v = serde_json::to_value(gp_prompt_embed(&opened)).unwrap();
+        assert_eq!(v["title"], format!("{GP_ROUND_TITLE} 2/3"));
+        assert_eq!(v["description"], "**What song do you cry to?**");
+        let fields = v["fields"].as_array().unwrap();
+        assert_eq!(fields[0]["name"], GP_PROMPT_HOW_TO_TITLE);
+        assert_eq!(fields[1]["name"], GP_PROMPT_CLOSES_TITLE);
+        assert!(fields[1]["value"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("<t:{NOW}:R>")));
+
+        let closed = GpWindowClosed {
+            round_idx: 1,
+            total_rounds: 3,
+            prompt: "p".into(),
+            prompt_message: None,
+            count: 4,
+            text_channel: TC,
+            next: GpNext::Finished(vec![]),
+        };
+        let v = serde_json::to_value(gp_prompt_closed_embed(&closed)).unwrap();
         let desc = v["description"].as_str().unwrap();
+        assert!(
+            desc.contains(&format!("{GP_WINDOW_CLOSED} 4 {GP_WINDOW_CLOSED_SONGS}")),
+            "{desc}"
+        );
+        let empty = GpWindowClosed { count: 0, ..closed };
+        let v = serde_json::to_value(gp_prompt_closed_embed(&empty)).unwrap();
+        assert!(v["description"].as_str().unwrap().contains(GP_WINDOW_EMPTY));
+
+        let w = GpWindowWarning {
+            round_idx: 0,
+            total_rounds: 1,
+            prompt: "p".into(),
+            count: 2,
+            closes_at: NOW,
+            text_channel: TC,
+        };
+        let text = gp_warning_text(&w);
+        assert!(text.starts_with(GP_WINDOW_WARNING));
+        assert!(text.contains(&format!("<t:{NOW}:R>")));
+    }
+
+    /// The song message must show the prompt and the track but never a mention.
+    #[test]
+    fn track_embed_hides_submitter() {
+        let start = GpTrackStart {
+            round_idx: 0,
+            total_rounds: 2,
+            track_idx: 1,
+            total_tracks: 3,
+            prompt: "Cry song.".into(),
+            track: track("secret"),
+            players: vec![],
+            guessable: true,
+            text_channel: TC,
+        };
+        let v = serde_json::to_value(gp_track_embed(&start)).unwrap();
+        assert_eq!(
+            v["title"],
+            format!("{GP_ROUND_TITLE} 1/2 · {GP_SONG_TITLE} 2/3")
+        );
+        let desc = v["description"].as_str().unwrap();
+        assert!(desc.contains("*Cry song.*"), "{desc}");
         assert!(desc.contains("secret"), "{desc}");
         assert!(desc.contains(GP_ROUND_HINT), "{desc}");
-        assert!(
-            !desc.contains("<@"),
-            "round embed must not mention anyone: {desc}"
-        );
-        assert!(v.get("fields").is_none() || v["fields"].as_array().unwrap().is_empty());
+        assert!(desc.contains(GP_LIKE_HINT), "{desc}");
+        assert!(!desc.contains("<@"), "must not mention anyone: {desc}");
+
+        let solo = GpTrackStart {
+            guessable: false,
+            ..start
+        };
+        let desc = serde_json::to_value(gp_track_embed(&solo)).unwrap()["description"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(!desc.contains(GP_ROUND_HINT), "{desc}");
+        assert!(desc.contains(GP_LIKE_HINT), "{desc}");
     }
 
     #[test]
     fn reveal_embed_json() {
-        let res = GpRoundResult {
+        let res = GpTrackResult {
             round_idx: 0,
-            total: 2,
+            total_rounds: 2,
+            track_idx: 0,
+            total_tracks: 2,
+            prompt: "Cry song.".into(),
             submitter: A,
             title: "song".into(),
             url: "https://example.invalid/song".into(),
             correct: vec![B, C],
             fooled_everyone: false,
-            scores: vec![(B, 1), (C, 1), (A, 0)],
+            likes: 3,
+            guessable: true,
+            scores: vec![(B, 100), (C, 100), (A, 30)],
             message: None,
             text_channel: TC,
-            next: None,
-            players: vec![],
+            next: GpNext::Finished(vec![]),
         };
         let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
-        assert_eq!(v["title"], format!("{GP_ROUND_TITLE} 1/2"));
+        assert_eq!(
+            v["title"],
+            format!("{GP_ROUND_TITLE} 1/2 · {GP_SONG_TITLE} 1/2")
+        );
         let desc = v["description"].as_str().unwrap();
+        assert!(desc.contains("*Cry song.*"), "{desc}");
         assert!(
             desc.contains("[song](https://example.invalid/song)"),
             "{desc}"
         );
         assert!(desc.contains(&format!("{GP_REVEAL} <@100>")), "{desc}");
         let fields = v["fields"].as_array().unwrap();
-        assert_eq!(
-            fields.len(),
-            2,
-            "no 'fooled everyone' field when someone was right"
-        );
-        assert_eq!(fields[0]["name"], "Guessed right");
+        assert_eq!(fields.len(), 3, "guessed right, likes, scoreboard");
+        assert_eq!(fields[0]["name"], GP_GUESSED_RIGHT);
         assert_eq!(fields[0]["value"], "<@200>, <@300>");
-        assert_eq!(fields[1]["name"], GP_SCOREBOARD);
+        assert_eq!(fields[1]["name"], GP_LIKES);
+        assert_eq!(fields[1]["value"], "3");
+        assert_eq!(fields[2]["name"], GP_SCOREBOARD);
         assert_eq!(
-            fields[1]["value"],
-            "1. <@200> — 1\n2. <@300> — 1\n3. <@100> — 0"
+            fields[2]["value"],
+            "1. <@200> — 100\n2. <@300> — 100\n3. <@100> — 30"
         );
 
-        let fooled = GpRoundResult {
+        let fooled = GpTrackResult {
             correct: vec![],
             fooled_everyone: true,
-            scores: vec![(A, 1)],
-            ..res
+            likes: 0,
+            ..res.clone()
         };
         let v = serde_json::to_value(gp_reveal_embed(&fooled)).unwrap();
         let fields = v["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 3);
+        assert_eq!(fields.len(), 4);
         assert_eq!(fields[0]["value"], GP_NOBODY_GUESSED);
-        assert_eq!(fields[2]["name"], GP_FOOLED_EVERYONE);
-        assert_eq!(fields[2]["value"], "<@100>");
+        assert_eq!(fields[1]["name"], GP_FOOLED_EVERYONE);
+        assert_eq!(fields[1]["value"], "<@100>");
+
+        // Not guessable: no guess fields at all.
+        let solo = GpTrackResult {
+            correct: vec![],
+            guessable: false,
+            ..res
+        };
+        let v = serde_json::to_value(gp_reveal_embed(&solo)).unwrap();
+        let fields = v["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0]["name"], GP_LIKES);
     }
 
     #[test]
@@ -1546,128 +2784,44 @@ mod test {
         assert_eq!(v["title"], GP_GAME_OVER);
         assert_eq!(v["description"], "-");
 
-        let lobby = GpStatus::Lobby {
+        let submitting = GpStatus::Submitting {
             host: A,
-            submitters: vec![("alice".into(), 2), ("bob".into(), 1)],
+            round: 1,
+            total: 5,
+            prompt: "p".into(),
+            closes_at: NOW,
+            submitted: vec!["alice".into(), "bob".into()],
+            scores: vec![(A, 0)],
         };
-        let v = serde_json::to_value(gp_status_embed(&lobby)).unwrap();
-        assert_eq!(v["title"], GP_STATUS_LOBBY);
+        let v = serde_json::to_value(gp_status_embed(&submitting)).unwrap();
+        assert_eq!(v["title"], format!("{GP_STATUS_SUBMITTING} 1/5"));
         let fields = v["fields"].as_array().unwrap();
-        assert_eq!(fields[0]["value"], "<@100>");
-        assert_eq!(fields[1]["value"], "alice (2)\nbob (1)");
+        assert_eq!(fields[0]["value"], "p");
+        assert_eq!(fields[1]["value"], "<@100>");
+        assert_eq!(fields[2]["value"], format!("<t:{NOW}:R>"));
+        assert_eq!(fields[3]["value"], "alice, bob");
         // Titles never appear in status output.
-        assert!(!serde_json::to_string(&v).unwrap().contains("alice0"));
+        assert!(!serde_json::to_string(&v).unwrap().contains("watch?v="));
 
         let playing = GpStatus::Playing {
             round: 2,
             total: 3,
+            track: 1,
+            tracks: 4,
+            prompt: "p".into(),
             guessed: vec![],
-            scores: vec![(A, 2)],
+            likes: 2,
+            scores: vec![(A, 110)],
         };
         let v = serde_json::to_value(gp_status_embed(&playing)).unwrap();
-        assert_eq!(v["title"], format!("{GP_STATUS_PLAYING} 2/3"));
+        assert_eq!(
+            v["title"],
+            format!("{GP_STATUS_PLAYING} 2/3 · {GP_SONG_TITLE} 1/4")
+        );
         let fields = v["fields"].as_array().unwrap();
-        assert_eq!(fields[0]["value"], GP_NO_GUESSES_YET);
-        assert_eq!(fields[1]["value"], "1. <@100> — 2");
-    }
-
-    #[test]
-    fn round_message_bookkeeping() {
-        let data = data();
-        lobby_with(&data, &[(A, "alice", 1), (B, "bob", 1)]);
-        assert_eq!(
-            data.gp_set_round_message(G, 0, TC, MessageId::new(1))
-                .unwrap_err(),
-            CrackedError::StaleRound,
-            "no rounds exist before begin"
-        );
-        data.gp_begin(G, A, &mut rng()).unwrap();
-        assert_eq!(
-            data.gp_set_round_message(G, 5, TC, MessageId::new(1))
-                .unwrap_err(),
-            CrackedError::StaleRound
-        );
-        data.gp_set_round_message(G, 0, TC, MessageId::new(42))
-            .unwrap();
-
-        // Only the *current* round can be revealed; a future index is ignored.
-        assert!(data.gp_reveal_and_advance(G, 1).is_none());
-        let res = data.gp_reveal_and_advance(G, 0).unwrap();
-        assert_eq!(res.message, Some((TC, MessageId::new(42))));
-        assert_eq!(res.text_channel, TC);
-        assert_eq!((res.round_idx, res.total), (0, 2));
-        // Dropdown options for the next round are sorted by name.
-        assert_eq!(
-            res.players,
-            vec![(A, "alice".to_string()), (B, "bob".to_string())]
-        );
-        // The next round has no message yet.
-        let res = data.gp_reveal_and_advance(G, 1).unwrap();
-        assert_eq!(res.message, None);
-        assert!(res.next.is_none());
-    }
-
-    #[test]
-    fn scores_accumulate_and_tie_break_by_name() {
-        let data = data();
-        lobby_with(&data, &[(A, "alice", 1), (B, "bob", 2)]);
-        data.gp_begin(G, A, &mut rng()).unwrap();
-        let rounds: Vec<UserId> = data
-            .gp_games
-            .get(&G)
-            .unwrap()
-            .rounds
-            .iter()
-            .map(|r| r.submitter)
-            .collect();
-        // Carol (never submitted) guesses right every round; nobody else guesses.
-        for (i, submitter) in rounds.iter().enumerate() {
-            data.gp_record_guess(G, i, C, "carol".into(), *submitter)
-                .unwrap();
-            let res = data.gp_reveal_and_advance(G, i).unwrap();
-            assert_eq!(res.correct, vec![C]);
-        }
-        let game = data.gp_games.get(&G).unwrap().clone();
-        assert_eq!(game.phase, GpPhase::Finished);
-        assert_eq!(game.scores.get(&C), Some(&(3 * GP_POINTS_CORRECT)));
-        // Carol first; alice and bob tie at 0 and sort by name.
-        assert_eq!(game.sorted_scores(), vec![(C, 3), (A, 0), (B, 0)]);
-    }
-
-    #[test]
-    fn missing_game_paths() {
-        let data = data();
-        assert_eq!(
-            data.gp_status(G).unwrap_err(),
-            CrackedError::NoGameInProgress
-        );
-        assert!(data.gp_remove(G).is_none());
-        assert!(data.gp_reveal_and_advance(G, 0).is_none());
-        assert_eq!(data.gp_voice_channel(G), None);
-        assert_eq!(
-            data.gp_record_guess(G, 0, A, "a".into(), B).unwrap_err(),
-            CrackedError::NoGameInProgress
-        );
-        assert_eq!(
-            data.gp_begin(G, A, &mut rng()).unwrap_err(),
-            CrackedError::NoGameInProgress
-        );
-        assert!(!data.gp_is_playing(G));
-        assert!(!data.gp_is_active(G));
-    }
-
-    #[test]
-    fn lobby_does_not_own_playback() {
-        let data = data();
-        lobby_with(&data, &[(A, "alice", 1), (B, "bob", 1)]);
-        assert_eq!(data.gp_voice_channel(G), Some(VC));
-        // Normal music keeps working until `begin`.
-        assert!(!data.gp_is_playing(G));
-        data.gp_begin(G, A, &mut rng()).unwrap();
-        assert!(data.gp_is_playing(G));
-        let game = data.gp_end(G, A, false).unwrap();
-        assert_eq!(game.rounds.len(), 2);
-        assert!(!data.gp_is_playing(G));
+        assert_eq!(fields[1]["value"], GP_NOBODY_YET);
+        assert_eq!(fields[2]["value"], "2");
+        assert_eq!(fields[3]["value"], "1. <@100> — 110");
     }
 
     /// Every blocked name must be a real top-level music command (so the list
@@ -1715,7 +2869,7 @@ mod test {
         names.sort_unstable();
         assert_eq!(
             names,
-            vec!["begin", "end", "skip", "start", "status", "submit"]
+            vec!["close", "end", "skip", "start", "status", "submit"]
         );
         for sub in &cmd.subcommands {
             assert!(sub.guild_only, "{} must be guild_only", sub.name);
@@ -1741,6 +2895,13 @@ mod test {
                     "{} should work as a prefix command",
                     sub.name
                 );
+            }
+            if sub.name == "start" {
+                let params: Vec<&str> = sub.parameters.iter().map(|p| p.name.as_ref()).collect();
+                assert_eq!(params, vec!["category", "rounds", "timer"]);
+                assert!(sub.parameters[0].required);
+                assert_eq!(sub.parameters[0].choices.len(), 12, "11 categories + Mixed");
+                assert!(!sub.parameters[1].required && !sub.parameters[2].required);
             }
         }
     }
