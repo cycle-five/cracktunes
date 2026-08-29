@@ -123,7 +123,7 @@ impl Display for CamKickConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct BotCredentials {
     pub discord_token: String,
     pub discord_app_id: String,
@@ -131,6 +131,56 @@ pub struct BotCredentials {
     pub spotify_client_secret: Option<String>,
     pub openai_api_key: Option<String>,
     pub virustotal_api_key: Option<String>,
+}
+
+/// Hand-written so no `{:?}` anywhere can print a secret. The startup config
+/// dump did exactly that with the Discord token, which is a full bot-takeover
+/// credential; a derived Debug puts it in the logs of every deployment. What
+/// is useful in a log is whether a credential is PRESENT, never its value.
+impl std::fmt::Debug for BotCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn shown(v: &Option<String>) -> &'static str {
+            if v.is_some() {
+                "<set>"
+            } else {
+                "<unset>"
+            }
+        }
+        f.debug_struct("BotCredentials")
+            .field("discord_token", &"<redacted>")
+            .field(
+                "discord_app_id",
+                &if self.discord_app_id.is_empty() {
+                    "<unset>"
+                } else {
+                    "<set>"
+                },
+            )
+            .field("spotify_client_id", &shown(&self.spotify_client_id))
+            .field("spotify_client_secret", &shown(&self.spotify_client_secret))
+            .field("openai_api_key", &shown(&self.openai_api_key))
+            .field("virustotal_api_key", &shown(&self.virustotal_api_key))
+            .finish()
+    }
+}
+
+/// A connection URL with its password replaced. These get logged at startup,
+/// so the password must not survive the trip.
+pub fn redact_url(url: &str) -> String {
+    let Some(scheme_end) = url.find("://") else {
+        return url.to_string();
+    };
+    let rest = &url[scheme_end + 3..];
+    let Some(at) = rest.rfind('@') else {
+        return url.to_string();
+    };
+    let user = rest[..at].split(':').next().unwrap_or("");
+    format!(
+        "{}{}:<redacted>{}",
+        &url[..scheme_end + 3],
+        user,
+        &rest[at..]
+    )
 }
 
 impl Default for BotCredentials {
@@ -176,7 +226,9 @@ impl Default for BotConfig {
             guild_settings_map: None,
             prefix: Some(DEFAULT_PREFIX.to_string()),
             credentials: Some(BotCredentials::default()),
-            database_url: Some(DEFAULT_DB_URL.to_string()),
+            // None, not a localhost guess: the bot must not assume a Postgres
+            // nobody configured. DATABASE_URL or cracktunes.toml supplies it.
+            database_url: None,
             log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
         }
     }
@@ -209,7 +261,10 @@ impl Display for BotConfig {
                 .unwrap_or(DEFAULT_PREFIX.to_string())
         ));
         result.push_str(&format!("credentials: {:?}\n", self.credentials.is_some()));
-        result.push_str(&format!("database_url: {:?}\n", self.database_url));
+        result.push_str(&format!(
+            "database_url: {:?}\n",
+            self.database_url.as_deref().map(redact_url)
+        ));
         result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
         write!(f, "{}", result)
     }
