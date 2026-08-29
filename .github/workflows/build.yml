@@ -70,7 +70,9 @@ jobs:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
-        run: cargo test --workspace
+        # CI provisions postgres above, so the database-backed tests run here.
+        # They are ignored by default so the suite is green without one.
+        run: cargo test --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests
 
       - name: Run Release Unit Tests
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
@@ -79,7 +81,7 @@ jobs:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
-        run: cargo test --release --locked
+        run: cargo test --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests
 
       # - name: Build Binary
       #   if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')

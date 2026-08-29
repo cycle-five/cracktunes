@@ -703,6 +703,10 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_permission_settings(pool: PgPool) {
         let mut settings = GenericPermissionSettings::default();
         // settings.add_allowed_command("test".to_string());
@@ -727,6 +731,10 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_command_channel(pool: PgPool) {
         let mut settings = GenericPermissionSettings::default();
         // settings.add_allowed_command("test".to_string());

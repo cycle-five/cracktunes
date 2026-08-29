@@ -476,6 +476,10 @@ mod test {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_get_or_create(pool: PgPool) {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
@@ -493,6 +497,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_update_prefix(pool: PgPool) {
         let (mut guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
@@ -517,6 +525,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_get_write_settings(pool: PgPool) {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
@@ -559,6 +571,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_write_banned_comains(pool: PgPool) {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
@@ -585,6 +601,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_write_allowed_domains(pool: PgPool) {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
@@ -611,6 +631,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_write_log_settings(pool: PgPool) {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,

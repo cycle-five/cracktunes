@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.4.2"
+version = "0.5.0"
 description = "Cracktunes is a hassle-free, highly performant, host-it-yourself, cracking smoking, discord-music-bot."
 publish = true
 edition = "2021"
@@ -31,6 +31,13 @@ crack-metrics = ["crack-core/crack-metrics"]
 # Structured JSON logs. Implies crack-tracing: `init_telemetry` is gated on it, so
 # crack-telemetry on its own would silently do nothing.
 crack-telemetry = ["crack-tracing", "tracing-bunyan-formatter"]
+
+# Tests that need a live postgres at DATABASE_URL. Off by default: the bot runs
+# without a database, so its test suite has to as well -- otherwise every
+# checkout without postgres reports 20+ red tests that say nothing about the
+# change under review. The gated tests are still COMPILED, so they cannot rot;
+# CI turns this on. See docs/testing.md.
+db-tests = []
 
 [dependencies]
 crack-core = { path = "../crack-core/" }

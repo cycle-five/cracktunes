@@ -319,6 +319,10 @@ mod test {
     // }
 
     #[sqlx::test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_log_headers() {
         let app = warp::post().and(log_headers()).map(warp::reply);
         let secret = "asdf";
