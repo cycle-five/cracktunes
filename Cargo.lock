@@ -1115,6 +1115,7 @@ dependencies = [
  "crack-bf",
  "crack-gpt",
  "crack-osint",
+ "crack-sleevenote",
  "crack-testing",
  "crack-types",
  "crack-voting",

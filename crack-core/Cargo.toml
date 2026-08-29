@@ -75,6 +75,10 @@ crack-bf = { path = "../crack-bf", optional = true }
 crack-voting = { path = "../crack-voting", optional = true }
 crack-testing = { path = "../crack-testing", optional = true }
 crack-types = { path = "../crack-types", optional = true }
+# Not optional and not feature-gated: it pulls in nothing the crate does not
+# already have (reqwest, serde), so gating it would only put cfg noise on the
+# command that uses it.
+crack-sleevenote = { path = "../crack-sleevenote" }
 
 reqwest = { workspace = true }
 tracing = { workspace = true }
