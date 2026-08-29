@@ -134,8 +134,14 @@ fn load_key(k: String) -> Result<String, Error> {
 
 /// Load the bot's config
 fn load_bot_config() -> Result<BotConfig, Error> {
+    // The token is the one thing the bot genuinely cannot start without.
     let discord_token = load_key("DISCORD_TOKEN".to_string())?;
-    let discord_app_id = load_key("DISCORD_APP_ID".to_string())?;
+    // Optional: nothing reads it. serenity derives the application id from the
+    // token itself, and requiring this was the sole reason a bot with a valid
+    // token would refuse to boot.
+    let discord_app_id = load_key("DISCORD_APP_ID".to_string())
+        .ok()
+        .unwrap_or_default();
     let spotify_client_id = load_key("SPOTIFY_CLIENT_ID".to_string()).ok();
     let spotify_client_secret = load_key("SPOTIFY_CLIENT_SECRET".to_string()).ok();
     let openai_api_key = load_key("OPENAI_API_KEY".to_string()).ok();
@@ -149,6 +155,13 @@ fn load_bot_config() -> Result<BotConfig, Error> {
             BotConfig::default()
         },
     };
+    // Env wins over the file. Nothing read DATABASE_URL before this, so the
+    // documented docker-compose deployment set it and the bot ignored it,
+    // silently running with no persistence while appearing configured.
+    if let Ok(database_url) = env::var("DATABASE_URL") {
+        config.database_url = Some(database_url);
+    }
+
     let config_with_creds = config.set_credentials(BotCredentials {
         discord_token,
         discord_app_id,
