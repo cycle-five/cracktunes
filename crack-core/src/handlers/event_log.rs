@@ -12,9 +12,6 @@ use poise::serenity_prelude::{FullEvent, GenericChannelId, GuildId};
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
-pub(crate) const DEFAULT_GLOBAL_LOG_CHANNEL: Option<GenericChannelId> =
-    Some(GenericChannelId::new(1191633527763116039));
-
 /// serenity's `FullEvent` dropped `snake_case_name()`; the enum now derives
 /// `strum::IntoStaticStr`, which yields SCREAMING_SNAKE_CASE variant names.
 #[must_use]
@@ -51,8 +48,7 @@ pub async fn get_log_channel(
     let guild_settings_map = data.guild_settings_map.read().await;
     guild_settings_map
         .get(&guild_id)
-        .map(|x| x.get_log_channel(channel_name))
-        .unwrap()
+        .and_then(|x| x.get_log_channel(channel_name))
 }
 
 // .unwrap_or_else(|| {
@@ -88,7 +84,12 @@ pub async fn get_channel_id(
                 guild_id,
             )),
         },
-        None => DEFAULT_GLOBAL_LOG_CHANNEL.ok_or(CrackedError::LogChannelWarning(
+        // A guild we hold no settings for has not opted into event logging.
+        // This used to fall back to a single hardcoded channel ID living in one
+        // specific server, so every event in every other guild tried to post
+        // there and came back 403 Missing Access. Without a database the
+        // settings map is empty, so that was every guild.
+        None => Err(CrackedError::LogChannelWarning(
             full_event_name(event),
             guild_id,
         )),

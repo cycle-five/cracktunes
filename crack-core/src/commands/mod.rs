@@ -71,26 +71,14 @@ pub fn all_commands() -> Vec<crate::Command> {
     .collect()
 }
 
-/// Return all the commands that are available in the bot.
+/// The commands registered with Discord as application (slash) commands.
+///
+/// Delegates to [`all_commands`] on purpose: this list and the framework's
+/// dispatch list must be the same set. A slash command registered but absent
+/// from the framework silently does nothing when invoked, and one in the
+/// framework but unregistered can never be invoked at all.
 pub fn commands_to_register() -> Vec<crate::Command> {
-    vec![
-        register(),
-        #[cfg(feature = "crack-bf")]
-        bf(),
-        #[cfg(feature = "crack-osint")]
-        osint(),
-        #[cfg(feature = "crack-gpt")]
-        chat(),
-    ]
-    .into_iter()
-    //.chain(help::help_commands())
-    .chain(music::music_commands())
-    // .chain(music::game_commands())
-    .chain(utility::utility_commands())
-    //.chain(settings::commands())
-    //.chain(admin::commands())
-    //.chain(playlist::commands())
-    .collect()
+    all_commands()
 }
 
 pub fn all_command_names() -> Vec<Cow<'static, str>> {
