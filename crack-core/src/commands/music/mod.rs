@@ -20,6 +20,7 @@ pub mod resume;
 pub mod seek;
 pub mod shuffle;
 pub mod skip;
+pub mod spotify;
 pub mod stop;
 pub mod summon;
 pub mod volume;
@@ -47,6 +48,7 @@ pub use resume::*;
 pub use seek::*;
 pub use shuffle::*;
 pub use skip::*;
+pub use spotify::*;
 pub use stop::*;
 pub use summon::*;
 pub use volume::*;
@@ -86,6 +88,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             vote(),
             voteskip(),
             get_metadata(),
+            spotify(),
         ]
     } else {
         vec![]
