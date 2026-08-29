@@ -188,5 +188,101 @@
       "Shower song.",
       "\"I need to disappear\" song."
     ]
+  },
+  {
+    "key": "social",
+    "name": "🎤 Social / Go-To",
+    "prompts": [
+      "What's your go-to karaoke song?",
+      "You get handed the aux for the homies—what are you playing?",
+      "What song gets you immediately out of your seat?",
+      "What song do you know every single word to?",
+      "What's your \"I'm feeling myself\" song?",
+      "What song would you play to get the party started?",
+      "What song makes you feel like the main character?",
+      "What's your road-trip anthem?",
+      "What song are you putting on at 2 a.m. with your closest friends?",
+      "What song would you play if you had exactly one song to represent you?"
+    ]
+  },
+  {
+    "key": "guilty",
+    "name": "😈 Guilty Pleasures / Secret Taste",
+    "prompts": [
+      "What's your most embarrassing guilty-pleasure song?",
+      "What song would you never voluntarily play around someone you're trying to impress?",
+      "What song do you secretly fuck with way harder than you should?",
+      "What artist would you be embarrassed to admit is in your rotation?",
+      "What song do you know is objectively terrible but you'll defend with your life?",
+      "What's your \"don't judge me\" song?",
+      "What song would expose your questionable taste immediately?",
+      "What song do you listen to when nobody else is around?",
+      "What song would your friends roast you for loving?",
+      "What's the most unserious song you genuinely enjoy?"
+    ]
+  },
+  {
+    "key": "romance",
+    "name": "💋 Sex / Romance / Attraction",
+    "prompts": [
+      "What song belongs on your sex playlist?",
+      "What song instantly puts you in a seductive mood?",
+      "What song makes someone hotter to you when they play it?",
+      "What song would you put on during a romantic night?",
+      "What song reminds you of someone you were attracted to?",
+      "What song has the strongest \"I should text my ex\" energy?",
+      "What song makes you feel dangerously attractive?",
+      "What song would you use to set the mood without saying a word?",
+      "What song reminds you of your best kiss?",
+      "What song would you want playing during the opening scene of your next relationship?"
+    ]
+  },
+  {
+    "key": "damage",
+    "name": "🥀 Emotional Damage",
+    "prompts": [
+      "What song could ruin your entire day if it came on unexpectedly?",
+      "What song reminds you of your worst breakup?",
+      "What song have you cried to?",
+      "What song perfectly describes your last relationship?",
+      "What song do you associate with someone you can't have?",
+      "What song makes you nostalgic for a version of yourself that doesn't exist anymore?",
+      "What song feels like your personal emotional support animal?",
+      "What song would you send to someone if you couldn't say how you feel?",
+      "What song reminds you of the person who hurt you the most?",
+      "What song did you completely misunderstand when you were younger?"
+    ]
+  },
+  {
+    "key": "funny",
+    "name": "🕺 Chaotic / Funny",
+    "prompts": [
+      "What song would play during your villain origin story?",
+      "What song would play while you make an absolutely terrible decision?",
+      "What song describes your dating life?",
+      "What song describes your financial situation?",
+      "What song would play during your walk of shame?",
+      "What song would play over the credits of your life?",
+      "What song would play while you dramatically leave a party?",
+      "What song would play while you're drunk texting someone?",
+      "What song describes your current mental state?",
+      "What song would make everyone in the room question what happened to you?"
+    ]
+  },
+  {
+    "key": "personality",
+    "name": "🧠 Personality Reveals",
+    "prompts": [
+      "What song do you think says the most about who you are?",
+      "What song represents your childhood?",
+      "What song represents your teenage years?",
+      "What song represents who you are now?",
+      "What song represents who you're becoming?",
+      "What song would you want people to associate with you?",
+      "What song makes you feel understood?",
+      "What song feels like it was written specifically about you?",
+      "What song captures your worldview?",
+      "What song would you put on your autobiography?"
+    ]
   }
 ]

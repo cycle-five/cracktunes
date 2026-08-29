@@ -16,9 +16,11 @@
 
 - **`/gp` — "What's your song?" party game** (alias `/guiltypleasure`, category Games).
   The host runs `/gp start <category> [rounds] [timer]` in a voice channel, picking one of
-  eleven prompt categories (🥹 Nostalgia, 🔥 Slightly More Dangerous, 🎶 The Really Good
+  seventeen prompt categories (🥹 Nostalgia, 🔥 Slightly More Dangerous, 🎶 The Really Good
   Game Prompts, 🚗 Car / Driving, 🌿 Altered-State / Chill, 😭 Emotional, 🤢 Bad Music,
-  🎧 Hyper-Specific, 🖤 Weirdly Revealing, 😂 Game Chaos, ⚡ One-Worders) or 🎲 Mixed.
+  🎧 Hyper-Specific, 🖤 Weirdly Revealing, 😂 Game Chaos, ⚡ One-Worders, 🎤 Social / Go-To,
+  😈 Guilty Pleasures / Secret Taste, 💋 Sex / Romance / Attraction, 🥀 Emotional Damage,
+  🕺 Chaotic / Funny, 🧠 Personality Reveals) or 🎲 Mixed.
   Each round the bot posts a prompt ("What song do you cry to?") with a live countdown;
   everyone in the voice channel secretly submits one song with the ephemeral, slash-only
   `/gp submit <song>` (resubmitting replaces it). The window closes on the timer (default

@@ -2900,7 +2900,11 @@ mod test {
                 let params: Vec<&str> = sub.parameters.iter().map(|p| p.name.as_ref()).collect();
                 assert_eq!(params, vec!["category", "rounds", "timer"]);
                 assert!(sub.parameters[0].required);
-                assert_eq!(sub.parameters[0].choices.len(), 12, "11 categories + Mixed");
+                assert_eq!(
+                    sub.parameters[0].choices.len(),
+                    crate::commands::music::gp_prompts::GP_PROMPTS.len() + 1,
+                    "every category + Mixed"
+                );
                 assert!(!sub.parameters[1].required && !sub.parameters[2].required);
             }
         }

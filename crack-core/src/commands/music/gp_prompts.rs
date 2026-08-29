@@ -48,6 +48,24 @@ pub enum GpCategory {
     #[name = "⚡ One-Worders"]
     #[name = "one_worders"]
     OneWorders,
+    #[name = "🎤 Social / Go-To"]
+    #[name = "social"]
+    Social,
+    #[name = "😈 Guilty Pleasures / Secret Taste"]
+    #[name = "guilty"]
+    Guilty,
+    #[name = "💋 Sex / Romance / Attraction"]
+    #[name = "romance"]
+    Romance,
+    #[name = "🥀 Emotional Damage"]
+    #[name = "damage"]
+    Damage,
+    #[name = "🕺 Chaotic / Funny"]
+    #[name = "funny"]
+    Funny,
+    #[name = "🧠 Personality Reveals"]
+    #[name = "personality"]
+    Personality,
     /// Draws from every category.
     #[name = "🎲 Mixed"]
     #[name = "mixed"]
@@ -69,6 +87,12 @@ impl GpCategory {
             Self::Revealing => "revealing",
             Self::Chaos => "chaos",
             Self::OneWorders => "one_worders",
+            Self::Social => "social",
+            Self::Guilty => "guilty",
+            Self::Romance => "romance",
+            Self::Damage => "damage",
+            Self::Funny => "funny",
+            Self::Personality => "personality",
             Self::Mixed => return None,
         })
     }
