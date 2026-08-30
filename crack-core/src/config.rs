@@ -13,7 +13,7 @@ use crate::{
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     utils::{check_reply, count_command},
-    BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
+    BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
@@ -120,6 +120,16 @@ pub async fn poise_framework(
                             return Ok(Some(msg.content.split_at(7)));
                         }
                     }
+                    // The bot is Discord-verified WITHOUT the MESSAGE_CONTENT
+                    // intent, so `content` is empty on every guild message
+                    // except the ones that mention us -- Discord exempts those.
+                    // Returning early hands the message straight to poise's
+                    // `mention_as_prefix` fallback, and skips a settings lookup
+                    // (plus a WARN) per message across every guild the bot is
+                    // in, none of which could ever have matched a prefix.
+                    if msg.content.is_empty() {
+                        return Ok(None);
+                    }
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
@@ -158,7 +168,7 @@ pub async fn poise_framework(
                             Ok(None)
                         }
                     } else {
-                        tracing::warn!("Guild not found in guild settings map");
+                        tracing::trace!("Guild not found in guild settings map");
                         Ok(None)
                     }
                 })
@@ -265,6 +275,12 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
+    // No MESSAGE_CONTENT. The bot is Discord-verified without it, and it is not
+    // coming back for an application in 100+ guilds without a review. Message
+    // content therefore arrives EMPTY unless the message mentions the bot, so
+    // prefix commands work only as `@CrackTunes <command>`. Everything a user
+    // is meant to reach has to be a slash command --
+    // `commands::test::every_registered_command_is_reachable` enforces that.
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_VOICE_STATES
@@ -401,13 +417,4 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
         }
     }
     None
-}
-
-#[poise::command(prefix_command, owners_only)]
-async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
-    let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
-
-    ctx.say("Successfully registered slash commands!").await?;
-    Ok(())
 }

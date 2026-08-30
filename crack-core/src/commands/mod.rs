@@ -71,26 +71,14 @@ pub fn all_commands() -> Vec<crate::Command> {
     .collect()
 }
 
-/// Return all the commands that are available in the bot.
+/// The commands registered with Discord as application (slash) commands.
+///
+/// Delegates to [`all_commands`] on purpose: this list and the framework's
+/// dispatch list must be the same set. A slash command registered but absent
+/// from the framework silently does nothing when invoked, and one in the
+/// framework but unregistered can never be invoked at all.
 pub fn commands_to_register() -> Vec<crate::Command> {
-    vec![
-        register(),
-        #[cfg(feature = "crack-bf")]
-        bf(),
-        #[cfg(feature = "crack-osint")]
-        osint(),
-        #[cfg(feature = "crack-gpt")]
-        chat(),
-    ]
-    .into_iter()
-    //.chain(help::help_commands())
-    .chain(music::music_commands())
-    // .chain(music::game_commands())
-    .chain(utility::utility_commands())
-    //.chain(settings::commands())
-    //.chain(admin::commands())
-    //.chain(playlist::commands())
-    .collect()
+    all_commands()
 }
 
 pub fn all_command_names() -> Vec<Cow<'static, str>> {
@@ -161,4 +149,34 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
 pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     register_application_commands_buttons_cracked(ctx).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::commands_to_register;
+
+    /// Every command we register must be invocable as a slash or context-menu
+    /// command.
+    ///
+    /// The bot runs without the MESSAGE_CONTENT intent, so a prefix-only
+    /// command is unreachable in practice: message content is empty unless the
+    /// message mentions the bot. This is the check that turns "nobody can call
+    /// it and nobody notices" into a failing test.
+    #[test]
+    fn every_registered_command_is_reachable() {
+        let unreachable: Vec<String> = commands_to_register()
+            .iter()
+            .filter(|c| {
+                c.create_as_slash_command().is_none()
+                    && c.create_as_context_menu_command().is_none()
+            })
+            .map(|c| c.name.to_string())
+            .collect();
+
+        assert!(
+            unreachable.is_empty(),
+            "prefix-only commands cannot be invoked without the MESSAGE_CONTENT \
+             intent; add `slash_command` to: {unreachable:?}"
+        );
+    }
 }

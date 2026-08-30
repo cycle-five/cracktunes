@@ -132,6 +132,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_check_and_record_vote(pool: sqlx::PgPool) {
         let user_id = 285219649921220608;
         let username = "test".to_string();

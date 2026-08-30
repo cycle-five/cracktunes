@@ -1,6 +1,6 @@
 [package]
 name = "crack-voting"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -27,6 +27,14 @@ eula = false
 
 # [package.metadata.dist]
 # dist = false
+
+[features]
+# Tests that need a live postgres at DATABASE_URL. Off by default: the bot runs
+# without a database, so its test suite has to as well -- otherwise every
+# checkout without postgres reports 20+ red tests that say nothing about the
+# change under review. The gated tests are still COMPILED, so they cannot rot;
+# CI turns this on. See docs/testing.md.
+db-tests = []
 
 [dependencies]
 lazy_static = "1.5"

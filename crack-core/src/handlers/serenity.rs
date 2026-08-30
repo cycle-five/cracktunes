@@ -61,7 +61,15 @@ impl EventHandler for SerenityHandler {
         // poise removed `FrameworkOptions::event_handler`, so the event log /
         // router that used to hang off it is driven from here instead.
         if let Err(e) = crate::handlers::handle_event(ctx, event, ctx.data::<Data>()).await {
-            tracing::error!("Error handling event: {e}");
+            // A guild that has not configured a log channel is the ordinary
+            // case, not a failure -- logging it at ERROR put one line on every
+            // event in every such guild.
+            match e.downcast_ref::<CrackedError>() {
+                Some(CrackedError::LogChannelWarning(..)) => {
+                    tracing::trace!("Event not logged: {e}")
+                },
+                _ => tracing::error!("Error handling event: {e}"),
+            }
         }
     }
 }
@@ -75,6 +83,32 @@ impl SerenityHandler {
         );
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
+
+        // Sync THIS build's command list to Discord.
+        //
+        // Nothing did this before. The setup closure that called
+        // `register_globally_cracked` was commented out when poise dropped the
+        // old `Framework` builder, and the only remaining path was an admin
+        // manually running `register`. So the application kept whatever the
+        // last bot to run under it had registered -- a stale list that never
+        // contained `/spotify`.
+        //
+        // `Ready` fires once per shard and again after a full reconnect, so
+        // this is gated to once per process.
+        static COMMANDS_REGISTERED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if !COMMANDS_REGISTERED.swap(true, Ordering::SeqCst) {
+            let commands = crate::commands::commands_to_register();
+            match crate::commands::register_globally_cracked(&ctx.http, &commands).await {
+                Ok(()) => tracing::info!("Registered {} global commands", commands.len()),
+                Err(e) => {
+                    tracing::error!("Failed to register global commands: {e}");
+                    // Clear the gate so a later `Ready` retries; otherwise one
+                    // transient failure leaves the process with no commands.
+                    COMMANDS_REGISTERED.store(false, Ordering::SeqCst);
+                },
+            }
+        }
 
         // Attempt to authenticate to Spotify, and SAY SO EITHER WAY.
         //
