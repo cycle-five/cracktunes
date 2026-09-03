@@ -259,6 +259,9 @@ pub const GP_FOOLED_EVERYONE: &str = "🃏 Fooled everyone";
 pub const GP_SCOREBOARD: &str = "🏆 Scoreboard";
 pub const GP_GAME_OVER: &str = "🏆 Game over — final scores";
 pub const GP_ROUND_SKIPPED: &str = "⏭️ Song skipped.";
+pub const GP_TRACK_FAILED: &str = "⚠️ Couldn't play this one";
+pub const GP_TRACK_FAILED_NOTE: &str =
+    "The song wouldn't stream, so it was skipped. Nobody scored for it.";
 pub const GP_ENDED_BY: &str = "🛑 Game ended by";
 pub const GP_STATUS_SUBMITTING: &str = "🎭 Submissions open — round";
 pub const GP_STATUS_PLAYING: &str = "🎭 Round";

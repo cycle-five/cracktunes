@@ -52,8 +52,9 @@ use crate::{
         GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_REVEAL, GP_ROUND_HINT, GP_ROUND_TITLE,
         GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES,
         GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES,
-        GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_UNLIKED, GP_WINDOW_CLOSED,
-        GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
+        GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE,
+        GP_UNLIKED, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
+        GP_WINDOW_WARNING_IN,
     },
     music::queue::build_track,
     poise_ext::PoiseContextExt,
@@ -76,6 +77,7 @@ use crack_testing::ResolvedTrack;
 use crack_types::QueryType;
 use poise::serenity_prelude::Context as SerenityContext;
 use rand::{seq::SliceRandom, Rng};
+use songbird::tracks::PlayMode;
 use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
 use std::{
     borrow::Cow,
@@ -492,6 +494,9 @@ pub struct GpTrackResult {
     pub message: Option<(GenericChannelId, MessageId)>,
     pub text_channel: GenericChannelId,
     pub next: GpNext,
+    /// The song never played: songbird failed to open the stream. Nothing was
+    /// scored for it.
+    pub failed: bool,
 }
 
 /// Snapshot for `/gp status`.
@@ -783,6 +788,32 @@ impl Data {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
+        self.gp_finish_track(guild_id, round_idx, track_idx, now, false)
+    }
+
+    /// Like [`Self::gp_reveal_and_advance`], but for a song that never played:
+    /// songbird could not open the stream, so the track went straight from
+    /// `Preparing` to `Errored` without mixing a single frame. Nobody heard it,
+    /// so nothing is scored -- no guess points, no fooled-everyone bonus and no
+    /// like points -- and the game moves on to the next song.
+    pub fn gp_fail_and_advance(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+        now: i64,
+    ) -> Option<GpTrackResult> {
+        self.gp_finish_track(guild_id, round_idx, track_idx, now, true)
+    }
+
+    fn gp_finish_track(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+        now: i64,
+        failed: bool,
+    ) -> Option<GpTrackResult> {
         let mut game = self.gp_games.get_mut(&guild_id)?;
         if game.phase != GpPhase::Playing
             || round_idx != game.current_round
@@ -793,7 +824,7 @@ impl Data {
         let round = &game.rounds[round_idx];
         let guessable = round.guessable();
         let t = round.tracks[track_idx].clone();
-        let correct: Vec<UserId> = if guessable {
+        let correct: Vec<UserId> = if guessable && !failed {
             t.guesses
                 .iter()
                 .filter(|(guesser, guessed)| **guesser != t.submitter && **guessed == t.submitter)
@@ -805,12 +836,12 @@ impl Data {
         for g in &correct {
             *game.scores.entry(*g).or_insert(0) += GP_POINTS_CORRECT;
         }
-        let fooled_everyone = guessable && correct.is_empty();
+        let fooled_everyone = guessable && !failed && correct.is_empty();
         if fooled_everyone {
             *game.scores.entry(t.submitter).or_insert(0) += GP_POINTS_FOOLED_ALL;
         }
         let likes = t.likes.len();
-        if likes > 0 {
+        if likes > 0 && !failed {
             *game.scores.entry(t.submitter).or_insert(0) += likes as u32 * GP_POINTS_PER_LIKE;
         }
         game.generation += 1;
@@ -838,6 +869,7 @@ impl Data {
             message: t.message,
             text_channel: game.text_channel,
             next,
+            failed,
         })
     }
 
@@ -1125,6 +1157,25 @@ pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
 
 /// The reveal, written into the song message once the track is over.
 pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
+    if res.failed {
+        return CreateEmbed::new()
+            .title(song_title(
+                res.round_idx,
+                res.total_rounds,
+                res.track_idx,
+                res.total_tracks,
+            ))
+            .description(format!(
+                "*{}*\n\n**[{}]({})**\n\n{GP_REVEAL} {}",
+                res.prompt,
+                res.title,
+                res.url,
+                res.submitter.mention()
+            ))
+            .field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)
+            .field(GP_SCOREBOARD, scores_lines(&res.scores), false)
+            .colour(Colour::RED);
+    }
     let mut e = CreateEmbed::new()
         .title(song_title(
             res.round_idx,
@@ -1242,15 +1293,30 @@ pub struct GpTrackEndHandler {
     pub track_idx: usize,
 }
 
+/// Did the song fail instead of finish? The handler is registered for both
+/// `End` and `Error`, and songbird reports a stream it could never open as an
+/// `End` whose state is still `Errored` -- it goes `Preparing` -> `Errored`
+/// without mixing a frame, so `play_time` never leaves zero. Without this the
+/// game treats a dead link as a song everyone just listened to.
+fn track_errored(ctx: &EventContext<'_>) -> bool {
+    match ctx {
+        EventContext::Track(states) => states
+            .iter()
+            .any(|(state, _)| matches!(state.playing, PlayMode::Errored(_))),
+        _ => false,
+    }
+}
+
 #[async_trait]
 impl EventHandler for GpTrackEndHandler {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         let (pb, round_idx, track_idx) = (self.pb.clone(), self.round_idx, self.track_idx);
+        let failed = track_errored(ctx);
         // Do the reveal off the driver's event task: it edits messages, sleeps,
         // and takes the call lock to enqueue the next song.
         tokio::spawn(async move {
             let guild_id = pb.guild_id;
-            if let Err(e) = gp_advance_track(pb, round_idx, track_idx).await {
+            if let Err(e) = gp_advance_track(pb, round_idx, track_idx, failed).await {
                 tracing::warn!(
                     "gp: advancing round {round_idx} song {track_idx} in {guild_id}: {e}"
                 );
@@ -1418,12 +1484,16 @@ pub async fn gp_advance_track(
     pb: GpPlayback,
     round_idx: usize,
     track_idx: usize,
+    failed: bool,
 ) -> Result<(), Error> {
     let guild_id = pb.guild_id;
-    let Some(res) = pb
-        .data
-        .gp_reveal_and_advance(guild_id, round_idx, track_idx, now())
-    else {
+    let advance = if failed {
+        tracing::warn!("gp: round {round_idx} song {track_idx} in {guild_id} never played");
+        Data::gp_fail_and_advance
+    } else {
+        Data::gp_reveal_and_advance
+    };
+    let Some(res) = advance(&pb.data, guild_id, round_idx, track_idx, now()) else {
         return Ok(());
     };
 
@@ -2383,6 +2453,62 @@ mod test {
         );
     }
 
+    /// A song that never played must not be scored. songbird reports a stream
+    /// it could not open as an `End` whose state is still `Errored`, and before
+    /// this the game happily revealed it and paid out guesses and likes for a
+    /// song nobody had heard.
+    #[test]
+    fn failed_track_scores_nothing_and_advances() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let submitter = game(&data).rounds[0].tracks[0].submitter;
+        let guesser = if submitter == A { B } else { A };
+
+        // A correct guess and a like, both of which would normally pay out.
+        data.gp_record_guess(G, 0, 0, guesser, "guesser".into(), submitter)
+            .unwrap();
+        data.gp_toggle_like(G, 0, 0, guesser, "guesser".into())
+            .unwrap();
+
+        let res = data.gp_fail_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(res.failed);
+        assert!(res.correct.is_empty(), "a correct guess must not count");
+        assert!(!res.fooled_everyone, "an unheard song fools nobody");
+        assert!(res.scores.iter().all(|(_, points)| *points == 0));
+        // The game still moves on to the next song.
+        assert!(matches!(res.next, GpNext::Track(ref s) if s.track_idx == 1));
+
+        // The surviving song scores normally, so only the failure is skipped.
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(!res.failed);
+        assert!(res.scores.iter().any(|(_, points)| *points > 0));
+    }
+
+    /// The reveal for a failed song says so, and drops the guess/like fields
+    /// rather than reporting zeroes for a song that never played.
+    #[test]
+    fn failed_reveal_embed_json() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let res = data.gp_fail_and_advance(G, 0, 0, NOW).unwrap();
+
+        let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+        let fields = v["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 2, "failure note and scoreboard only");
+        assert_eq!(fields[0]["name"], GP_TRACK_FAILED);
+        assert_eq!(fields[0]["value"], GP_TRACK_FAILED_NOTE);
+        assert_eq!(fields[1]["name"], GP_SCOREBOARD);
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert!(!names.contains(&GP_GUESSED_RIGHT), "{names:?}");
+        assert!(!names.contains(&GP_LIKES), "{names:?}");
+    }
+
     #[test]
     fn tracks_then_next_prompt() {
         let data = data();
@@ -2728,6 +2854,7 @@ mod test {
             message: None,
             text_channel: TC,
             next: GpNext::Finished(vec![]),
+            failed: false,
         };
         let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
         assert_eq!(
