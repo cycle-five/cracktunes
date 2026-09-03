@@ -60,17 +60,13 @@ use tokio::sync::Mutex;
 /// Discord caps a string select menu at 25 options, so at most 25 people can
 /// submit in one round.
 pub const GP_MAX_PLAYERS: usize = 25;
-/// Pause between a reveal and the next song, so people can read it.
 pub const GP_REVEAL_PAUSE_SECS: u64 = 5;
-/// Points for guessing the submitter correctly.
 pub const GP_POINTS_CORRECT: u32 = 100;
 /// Points to the submitter when nobody guessed them.
 pub const GP_POINTS_FOOLED_ALL: u32 = 100;
 /// Points to the submitter per 👍 their song gets.
 pub const GP_POINTS_PER_LIKE: u32 = 10;
-/// Rounds per game when the host doesn't say.
 pub const GP_DEFAULT_ROUNDS: u32 = 5;
-/// Submission window when the host doesn't say.
 pub const GP_DEFAULT_TIMER_SECS: u64 = 180;
 /// Bounds for `/gp start`'s `rounds` and `timer`. poise's `#[min]`/`#[max]`
 /// only accept literals, so the attributes on `gp_start` repeat these numbers
@@ -78,7 +74,6 @@ pub const GP_DEFAULT_TIMER_SECS: u64 = 180;
 pub const GP_MAX_ROUNDS: u32 = 20;
 pub const GP_MIN_TIMER_SECS: u64 = 30;
 pub const GP_MAX_TIMER_SECS: u64 = 600;
-/// A heads-up is posted this long before the window closes.
 pub const GP_WARNING_SECS: u64 = 30;
 /// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
@@ -112,18 +107,14 @@ pub fn now() -> i64 {
 // State
 // ------------------------------------------------------------------
 
-/// Which stage the game is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpPhase {
-    /// A prompt is up and the submission window is open.
     Submitting,
-    /// The round's songs are being played.
     Playing,
     /// Last song revealed; the game is torn down once the scoreboard is posted.
     Finished,
 }
 
-/// One song in a round, with everyone's guesses and likes.
 #[derive(Clone, Debug)]
 pub struct GpTrack {
     pub submitter: UserId,
@@ -135,8 +126,6 @@ pub struct GpTrack {
     pub message: Option<(GenericChannelId, MessageId)>,
 }
 
-/// One prompt: what people submitted while the window was open, then the
-/// shuffled play order once it closed.
 #[derive(Clone, Debug)]
 pub struct GpRound {
     pub prompt: String,
@@ -180,7 +169,6 @@ impl GpRound {
     }
 }
 
-/// The per-guild game.
 #[derive(Clone, Debug)]
 pub struct GpGame {
     pub host: UserId,
@@ -264,7 +252,6 @@ impl GpGame {
         v
     }
 
-    /// Open the submission window for `current_round`.
     fn open_window(&mut self, now: i64) -> GpWindowOpened {
         self.phase = GpPhase::Submitting;
         self.current_track = 0;
@@ -329,7 +316,6 @@ impl GpGame {
         }
     }
 
-    /// Move to the next prompt, or finish.
     fn advance_round(&mut self, now: i64) -> GpNext {
         self.current_round += 1;
         if self.current_round < self.rounds.len() {
@@ -341,7 +327,6 @@ impl GpGame {
         }
     }
 
-    /// Everything needed to play `current_track` of `current_round`.
     fn track_start(&self) -> GpTrackStart {
         let round = &self.rounds[self.current_round];
         let t = &round.tracks[self.current_track];
@@ -359,7 +344,6 @@ impl GpGame {
     }
 }
 
-/// A submission window just opened.
 #[derive(Clone, Debug)]
 pub struct GpWindowOpened {
     pub round_idx: usize,
@@ -371,7 +355,6 @@ pub struct GpWindowOpened {
     pub text_channel: GenericChannelId,
 }
 
-/// A song is about to play.
 #[derive(Clone, Debug)]
 pub struct GpTrackStart {
     pub round_idx: usize,
@@ -386,7 +369,6 @@ pub struct GpTrackStart {
     pub text_channel: GenericChannelId,
 }
 
-/// What happens after a window closes or a song ends.
 #[derive(Clone, Debug)]
 pub enum GpNext {
     /// Boxed: a `ResolvedTrack` is a couple of KB and the other variants are tiny.
@@ -396,7 +378,6 @@ pub enum GpNext {
     Finished(Vec<(UserId, u32)>),
 }
 
-/// A submission window just closed.
 #[derive(Clone, Debug)]
 pub struct GpWindowClosed {
     pub round_idx: usize,
@@ -408,7 +389,6 @@ pub struct GpWindowClosed {
     pub next: GpNext,
 }
 
-/// The 30-second heads-up.
 #[derive(Clone, Debug)]
 pub struct GpWindowWarning {
     pub round_idx: usize,
@@ -419,7 +399,6 @@ pub struct GpWindowWarning {
     pub text_channel: GenericChannelId,
 }
 
-/// What `gp_submit` did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GpSubmitOutcome {
     pub replaced: bool,
@@ -431,7 +410,6 @@ pub struct GpSubmitOutcome {
     pub generation: u64,
 }
 
-/// What `gp_record_guess` did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpGuessOutcome {
     Recorded,
@@ -470,7 +448,6 @@ pub struct GpTrackResult {
     pub failed: bool,
 }
 
-/// Snapshot for `/gp status`.
 #[derive(Clone, Debug)]
 pub enum GpStatus {
     Submitting {
@@ -550,7 +527,6 @@ impl Data {
         Ok(())
     }
 
-    /// Record (or replace) this user's song for the current prompt.
     /// `vc_members` are the non-bot members of the game's voice channel, used
     /// to tell the caller whether everyone is in.
     pub fn gp_submit(
@@ -588,7 +564,6 @@ impl Data {
         })
     }
 
-    /// Host closes the window early.
     pub fn gp_close_window(
         &self,
         guild_id: GuildId,
@@ -685,7 +660,6 @@ impl Data {
         Ok(())
     }
 
-    /// Record (or change) a guess for the song that is playing.
     pub fn gp_record_guess(
         &self,
         guild_id: GuildId,
@@ -721,7 +695,6 @@ impl Data {
         })
     }
 
-    /// Toggle a 👍 on the song that is playing.
     pub fn gp_toggle_like(
         &self,
         guild_id: GuildId,
@@ -876,7 +849,6 @@ impl Data {
         self.gp_games.remove(&guild_id).map(|(_, g)| g)
     }
 
-    /// Snapshot for the status command.
     pub fn gp_status(&self, guild_id: GuildId) -> CrackedResult<GpStatus> {
         let game = self
             .gp_games
@@ -926,12 +898,10 @@ impl Data {
         self.gp_games.contains_key(&guild_id)
     }
 
-    /// True if a game exists for the guild in any phase.
     pub fn gp_is_active(&self, guild_id: GuildId) -> bool {
         self.gp_games.contains_key(&guild_id)
     }
 
-    /// The game's voice channel, if a game exists.
     pub fn gp_voice_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
         self.gp_games.get(&guild_id).map(|g| g.voice_channel)
     }
@@ -941,12 +911,9 @@ impl Data {
 // Components and embeds
 // ------------------------------------------------------------------
 
-/// Which control a custom id belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpComponent {
-    /// The "who submitted this?" dropdown.
     Guess,
-    /// The 👍 button.
     Like,
 }
 
@@ -959,7 +926,6 @@ impl GpComponent {
     }
 }
 
-/// Build a `gp:<g|l>:<guild>:<round>:<track>` custom id.
 pub fn gp_custom_id(
     kind: GpComponent,
     guild_id: GuildId,
@@ -973,7 +939,6 @@ pub fn gp_custom_id(
     )
 }
 
-/// Parse a `gp:<g|l>:<guild>:<round>:<track>` custom id.
 pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, usize)> {
     let rest = custom_id.strip_prefix(GP_CUSTOM_ID_PREFIX)?;
     let mut parts = rest.split(':');
@@ -1064,7 +1029,6 @@ fn song_title(
     )
 }
 
-/// The rules / how-to embed used by `/gp`.
 pub fn gp_rules_embed() -> CreateEmbed<'static> {
     CreateEmbed::new()
         .title(GP_TITLE)
@@ -1073,7 +1037,6 @@ pub fn gp_rules_embed() -> CreateEmbed<'static> {
         .colour(Colour::FOOYOO)
 }
 
-/// The prompt message with its live countdown.
 pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
     CreateEmbed::new()
         .title(round_title(w.round_idx, w.total_rounds))
@@ -1087,7 +1050,6 @@ pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
         .colour(Colour::FOOYOO)
 }
 
-/// The prompt message once the window has closed.
 pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
     let status = if c.count == 0 {
         GP_WINDOW_EMPTY.to_string()
@@ -1100,7 +1062,6 @@ pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
         .colour(Colour::DARKER_GREY)
 }
 
-/// The 30-second heads-up, as plain text.
 pub fn gp_warning_text(w: &GpWindowWarning) -> String {
     format!(
         "{GP_WINDOW_WARNING} **{}** — {} {GP_WINDOW_WARNING_IN} <t:{}:R>",
@@ -1131,7 +1092,6 @@ pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
         .colour(Colour::BLURPLE)
 }
 
-/// The reveal, written into the song message once the track is over.
 pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
     if res.failed {
         return CreateEmbed::new()
@@ -1193,7 +1153,6 @@ pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
     )
 }
 
-/// The final scoreboard.
 pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> CreateEmbed<'static> {
     CreateEmbed::new()
         .title(title.to_string())
@@ -1201,7 +1160,6 @@ pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> CreateEmbed
         .colour(Colour::GOLD)
 }
 
-/// The status embed.
 pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
     let list = |names: &[String]| {
         if names.is_empty() {
@@ -1262,7 +1220,6 @@ pub struct GpPlayback {
     pub guild_id: GuildId,
 }
 
-/// Per-track handler: when a song ends, reveal and move on.
 pub struct GpTrackEndHandler {
     pub pb: GpPlayback,
     pub round_idx: usize,
@@ -1302,7 +1259,6 @@ impl EventHandler for GpTrackEndHandler {
     }
 }
 
-/// Post the prompt and start the window timer.
 pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<(), Error> {
     let guild_id = pb.guild_id;
     if !pb.data.gp_is_active(guild_id) {
@@ -1357,8 +1313,6 @@ pub fn gp_spawn_window_timer(pb: GpPlayback, opened: &GpWindowOpened) {
     });
 }
 
-/// After a window closed (timer, everyone in, or the host): update the prompt
-/// message, then play, skip, or finish.
 pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<(), Error> {
     let embed = gp_prompt_closed_embed(&closed);
     let edited = match closed.prompt_message {
@@ -1377,7 +1331,6 @@ pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<()
     gp_follow(pb, closed.next, closed.text_channel, false).await
 }
 
-/// Take the next step of the game.
 async fn gp_follow(
     pb: GpPlayback,
     next: GpNext,
@@ -1405,7 +1358,6 @@ async fn gp_follow(
     }
 }
 
-/// Enqueue one song, hook its end, and post the song message.
 pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), Error> {
     let guild_id = pb.guild_id;
     if !pb.data.gp_is_active(guild_id) {
@@ -1457,7 +1409,6 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     Ok(())
 }
 
-/// Reveal the song that just ended and take the next step.
 pub async fn gp_advance_track(
     pb: GpPlayback,
     round_idx: usize,
@@ -1542,7 +1493,6 @@ pub async fn handle_gp_component(
     Ok(())
 }
 
-/// The user must be in the game's voice channel to guess or like.
 fn gp_component_vc_check(
     data: &Data,
     ctx: &SerenityContext,
@@ -1782,7 +1732,6 @@ pub async fn gp_submit(
     Ok(())
 }
 
-/// Resolve the query and store it; close the window if everyone is in.
 #[cfg(not(tarpaulin_include))]
 pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResult<CrackedMessage> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -2954,7 +2903,6 @@ mod test {
         }
     }
 
-    /// Registration and the attributes the design relies on.
     #[cfg(not(tarpaulin_include))]
     #[test]
     fn command_registration() {
