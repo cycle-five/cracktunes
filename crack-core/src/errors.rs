@@ -1,9 +1,9 @@
 use crate::messaging::messages::{
     EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
     FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_GP_ALREADY_RUNNING,
-    FAIL_GP_NOT_A_PLAYER, FAIL_GP_NOT_ENOUGH_PLAYERS, FAIL_GP_NOT_HOST, FAIL_GP_NOT_IN_GAME_VC,
-    FAIL_GP_NOT_PLAYING, FAIL_GP_NO_GAME, FAIL_GP_OWNS_PLAYBACK, FAIL_GP_STALE_ROUND,
-    FAIL_GP_SUBMISSIONS_CLOSED, FAIL_GP_TOO_MANY, FAIL_INSERT, FAIL_INVALID_PERMS,
+    FAIL_GP_NOT_A_PLAYER, FAIL_GP_NOT_GUESSABLE, FAIL_GP_NOT_HOST, FAIL_GP_NOT_IN_GAME_VC,
+    FAIL_GP_NOT_PLAYING, FAIL_GP_NO_GAME, FAIL_GP_OWNS_PLAYBACK, FAIL_GP_OWN_SONG,
+    FAIL_GP_STALE_ROUND, FAIL_GP_TOO_MANY, FAIL_GP_WINDOW_CLOSED, FAIL_INSERT, FAIL_INVALID_PERMS,
     FAIL_INVALID_TOPGG_TOKEN, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_QUERY_PROVIDED,
     FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY,
@@ -107,12 +107,13 @@ pub enum CrackedError {
     GameNotPlaying,
     GameInProgress,
     NotGameHost,
-    NotEnoughPlayers,
-    SubmissionsClosed,
     NotInGameVoiceChannel,
     TooManyPlayers(usize),
     StaleRound,
     NotAPlayer,
+    WindowClosed,
+    CannotLikeOwnSong,
+    NotGuessable,
 }
 
 /// `CrackedError` implements the [`Debug`] and [`Display`] traits
@@ -233,12 +234,13 @@ impl Display for CrackedError {
             Self::GameNotPlaying => f.write_str(FAIL_GP_NOT_PLAYING),
             Self::GameInProgress => f.write_str(FAIL_GP_OWNS_PLAYBACK),
             Self::NotGameHost => f.write_str(FAIL_GP_NOT_HOST),
-            Self::NotEnoughPlayers => f.write_str(FAIL_GP_NOT_ENOUGH_PLAYERS),
-            Self::SubmissionsClosed => f.write_str(FAIL_GP_SUBMISSIONS_CLOSED),
             Self::NotInGameVoiceChannel => f.write_str(FAIL_GP_NOT_IN_GAME_VC),
             Self::TooManyPlayers(max) => f.write_fmt(format_args!("{} {}", FAIL_GP_TOO_MANY, max)),
             Self::StaleRound => f.write_str(FAIL_GP_STALE_ROUND),
             Self::NotAPlayer => f.write_str(FAIL_GP_NOT_A_PLAYER),
+            Self::WindowClosed => f.write_str(FAIL_GP_WINDOW_CLOSED),
+            Self::CannotLikeOwnSong => f.write_str(FAIL_GP_OWN_SONG),
+            Self::NotGuessable => f.write_str(FAIL_GP_NOT_GUESSABLE),
         }
     }
 }
@@ -562,17 +564,18 @@ mod test {
 
     #[test]
     fn test_gp_error_display() {
-        let cases: [(CrackedError, &str); 10] = [
+        let cases: [(CrackedError, &str); 11] = [
             (CrackedError::GameAlreadyRunning, FAIL_GP_ALREADY_RUNNING),
             (CrackedError::NoGameInProgress, FAIL_GP_NO_GAME),
             (CrackedError::GameNotPlaying, FAIL_GP_NOT_PLAYING),
             (CrackedError::GameInProgress, FAIL_GP_OWNS_PLAYBACK),
             (CrackedError::NotGameHost, FAIL_GP_NOT_HOST),
-            (CrackedError::NotEnoughPlayers, FAIL_GP_NOT_ENOUGH_PLAYERS),
-            (CrackedError::SubmissionsClosed, FAIL_GP_SUBMISSIONS_CLOSED),
             (CrackedError::NotInGameVoiceChannel, FAIL_GP_NOT_IN_GAME_VC),
             (CrackedError::StaleRound, FAIL_GP_STALE_ROUND),
             (CrackedError::NotAPlayer, FAIL_GP_NOT_A_PLAYER),
+            (CrackedError::WindowClosed, FAIL_GP_WINDOW_CLOSED),
+            (CrackedError::CannotLikeOwnSong, FAIL_GP_OWN_SONG),
+            (CrackedError::NotGuessable, FAIL_GP_NOT_GUESSABLE),
         ];
         for (err, expected) in cases {
             assert_eq!(format!("{err}"), expected);

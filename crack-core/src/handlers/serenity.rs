@@ -1,6 +1,6 @@
 use crate::{
     // commands::queue_aux_metadata,
-    commands::music::gp::{handle_gp_guess, GP_CUSTOM_ID_PREFIX},
+    commands::music::gp::{handle_gp_component, GP_CUSTOM_ID_PREFIX},
     db::GuildEntity,
     errors::CrackedError,
     guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
@@ -56,13 +56,13 @@ impl EventHandler for SerenityHandler {
             FullEvent::CacheReady { guilds } => {
                 self.on_cache_ready(ctx.clone(), guilds.clone()).await;
             },
-            // Guilty pleasure dropdown picks. Poise ignores component
+            // `/gp` dropdown picks and 👍s. Poise ignores component
             // interactions, so they are routed here by custom-id prefix.
             FullEvent::InteractionCreate {
                 interaction: Interaction::Component(mci),
             } if mci.data.custom_id.starts_with(GP_CUSTOM_ID_PREFIX) => {
-                if let Err(e) = handle_gp_guess(&self.data, ctx, mci).await {
-                    tracing::warn!("gp guess: {e}");
+                if let Err(e) = handle_gp_component(&self.data, ctx, mci).await {
+                    tracing::warn!("gp component: {e}");
                 }
             },
             _ => {},

@@ -7,6 +7,7 @@ pub mod dosearch;
 pub mod gambling;
 pub mod get_metadata;
 pub mod gp;
+pub mod gp_prompts;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;
