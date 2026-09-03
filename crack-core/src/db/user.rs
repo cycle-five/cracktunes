@@ -191,6 +191,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_user(pool: PgPool) {
         let _ = User::insert_test_user(&pool, Some(1), Some(TEST.to_string())).await;
         let user = User::get_user(&pool, 1).await.unwrap();
@@ -198,6 +202,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_user_failed(pool: PgPool) {
         // Inserting the same user twice must not clobber the row; the
         // duplicate insert is expected to be rejected.
@@ -208,6 +216,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_or_update_user(pool: PgPool) {
         User::insert_or_update_user(&pool, 1, TEST.to_string())
             .await
@@ -217,6 +229,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_insert_user_vote(pool: PgPool) {
         let insert_res = UserVote::insert_user_vote(&pool, 1, TEST.to_string()).await;
         assert!(insert_res.is_ok());
@@ -230,6 +246,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_has_voted_recently(pool: PgPool) {
         UserVote::insert_user_vote(&pool, 1, TEST.to_string())
             .await
@@ -249,6 +269,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_has_voted_recently_topgg(pool: PgPool) {
         UserVote::insert_user_vote(&pool, 1, "top.gg".to_string())
             .await

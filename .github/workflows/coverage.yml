@@ -74,7 +74,8 @@ jobs:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
           WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
         run: |
-          cargo tarpaulin --ignore-tests --verbose --all --timeout 120 --out xml
+          cargo tarpaulin --ignore-tests --verbose --all --timeout 120 --out xml \
+            --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v4

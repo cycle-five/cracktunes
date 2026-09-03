@@ -13,7 +13,7 @@ use crate::{
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     utils::{check_reply, count_command},
-    BotConfig, Context, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
+    BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
@@ -120,6 +120,16 @@ pub async fn poise_framework(
                             return Ok(Some(msg.content.split_at(7)));
                         }
                     }
+                    // The bot is Discord-verified WITHOUT the MESSAGE_CONTENT
+                    // intent, so `content` is empty on every guild message
+                    // except the ones that mention us -- Discord exempts those.
+                    // Returning early hands the message straight to poise's
+                    // `mention_as_prefix` fallback, and skips a settings lookup
+                    // (plus a WARN) per message across every guild the bot is
+                    // in, none of which could ever have matched a prefix.
+                    if msg.content.is_empty() {
+                        return Ok(None);
+                    }
                     let guild_id = match msg.guild_id {
                         Some(id) => id,
                         None => {
@@ -158,7 +168,7 @@ pub async fn poise_framework(
                             Ok(None)
                         }
                     } else {
-                        tracing::warn!("Guild not found in guild settings map");
+                        tracing::trace!("Guild not found in guild settings map");
                         Ok(None)
                     }
                 })
@@ -210,12 +220,38 @@ pub async fn poise_framework(
         })
         .unwrap_or_default();
 
-    let db_url: &str = &config_ref.get_database_url();
-    let database_pool = match sqlx::postgres::PgPoolOptions::new().connect(db_url).await {
-        Ok(pool) => Some(pool),
-        Err(e) => {
-            tracing::error!("Error getting database pool: {}, db_url: {}", e, db_url);
+    // Only attempt a connection when a database was actually configured.
+    // Guessing at a localhost Postgres cost every DB-less boot a 30s pool
+    // timeout, for a deployment that never had one to reach.
+    //
+    // The failure arm deliberately does NOT log the URL: it carries the
+    // password, and this used to put it in the logs at ERROR on every start
+    // without a database.
+    let database_pool = match config_ref.database_url.as_deref() {
+        None => {
+            tracing::info!(
+                "No database configured (set DATABASE_URL) -- running without persistence. \
+                 Play history, track reactions and playlist storage are disabled; \
+                 everything else works."
+            );
             None
+        },
+        Some(db_url) => match sqlx::postgres::PgPoolOptions::new()
+            // Bounded so an unreachable database costs seconds at startup, not
+            // the 30s sqlx defaults to.
+            .acquire_timeout(Duration::from_secs(5))
+            .connect(db_url)
+            .await
+        {
+            Ok(pool) => Some(pool),
+            Err(e) => {
+                tracing::warn!(
+                    "Database configured but unreachable ({e}) -- continuing without \
+                     persistence. Play history, track reactions and playlist storage \
+                     are disabled."
+                );
+                None
+            },
         },
     };
     let db_channel = match database_pool.clone().map(db::worker_pool::setup_workers) {
@@ -239,6 +275,12 @@ pub async fn poise_framework(
         ..Default::default()
     }));
 
+    // No MESSAGE_CONTENT. The bot is Discord-verified without it, and it is not
+    // coming back for an application in 100+ guilds without a review. Message
+    // content therefore arrives EMPTY unless the message mentions the bot, so
+    // prefix commands work only as `@CrackTunes <command>`. Everything a user
+    // is meant to reach has to be a slash command --
+    // `commands::test::every_registered_command_is_reachable` enforces that.
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::GUILD_VOICE_STATES
@@ -375,13 +417,4 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
         }
     }
     None
-}
-
-#[poise::command(prefix_command, owners_only)]
-async fn register_commands_new(ctx: Context<'_>) -> Result<(), Error> {
-    let commands = &ctx.framework().options().commands;
-    poise::builtins::register_globally(ctx.http(), commands).await?;
-
-    ctx.say("Successfully registered slash commands!").await?;
-    Ok(())
 }

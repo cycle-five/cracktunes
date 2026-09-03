@@ -22,6 +22,7 @@ pub mod resume;
 pub mod seek;
 pub mod shuffle;
 pub mod skip;
+pub mod spotify;
 pub mod stop;
 pub mod summon;
 pub mod volume;
@@ -50,6 +51,7 @@ pub use resume::*;
 pub use seek::*;
 pub use shuffle::*;
 pub use skip::*;
+pub use spotify::*;
 pub use stop::*;
 pub use summon::*;
 pub use volume::*;
@@ -89,16 +91,28 @@ pub fn music_commands() -> Vec<crate::Command> {
             vote(),
             voteskip(),
             get_metadata(),
+            spotify(),
         ]
     } else {
         vec![]
     }
 }
 
-/// Get the game commands.
+/// Get the game commands. Not registered -- see [`crate::commands::all_commands`].
 pub fn game_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {
-        vec![coinflip(), rolldice(), gp()]
+        vec![coinflip(), rolldice()]
+    } else {
+        vec![]
+    }
+}
+
+/// The guilty pleasure game. Kept out of [`game_commands`] so that registering
+/// it does not drag in `coinflip` and `rolldice`, which are deliberately not
+/// registered.
+pub fn gp_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![gp()]
     } else {
         vec![]
     }

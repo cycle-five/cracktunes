@@ -127,6 +127,10 @@ mod test {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_workers(pool: PgPool) {
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let sender = setup_workers(pool.clone()).await;
@@ -151,6 +155,10 @@ mod test {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_get_failed_metadata(pool: PgPool) {
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
         let metadata = crate::db::metadata::Metadata::get_by_url(&pool, &url)

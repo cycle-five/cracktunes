@@ -1094,14 +1094,14 @@ dependencies = [
 
 [[package]]
 name = "crack-bf"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "crack-core"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1115,6 +1115,7 @@ dependencies = [
  "crack-bf",
  "crack-gpt",
  "crack-osint",
+ "crack-sleevenote",
  "crack-testing",
  "crack-types",
  "crack-voting",
@@ -1156,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "crack-gpt"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "async-openai",
  "const_format",
@@ -1166,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "crack-osint"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "crack-types",
  "ipinfo",
@@ -1180,8 +1181,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-sleevenote"
+version = "0.5.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "crack-testing"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1204,7 +1218,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "humantime",
  "poise",
@@ -1221,7 +1235,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1236,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "config-file",
  "crack-core",

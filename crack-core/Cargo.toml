@@ -1,6 +1,6 @@
 [package]
 name = "crack-core"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 edition = "2021"
 description = "Core module for the cracking smoking, discord-music-bot Cracktunes."
@@ -39,6 +39,13 @@ crack-testing = ["dep:crack-testing"]
 crack-types = ["dep:crack-types"]
 ignore-presence-log = []
 
+# Tests that need a live postgres at DATABASE_URL. Off by default: the bot runs
+# without a database, so its test suite has to as well -- otherwise every
+# checkout without postgres reports 20+ red tests that say nothing about the
+# change under review. The gated tests are still COMPILED, so they cannot rot;
+# CI turns this on. See docs/testing.md.
+db-tests = []
+
 [dependencies]
 cfg-if = "1"
 dashmap = "6"
@@ -75,6 +82,10 @@ crack-bf = { path = "../crack-bf", optional = true }
 crack-voting = { path = "../crack-voting", optional = true }
 crack-testing = { path = "../crack-testing", optional = true }
 crack-types = { path = "../crack-types", optional = true }
+# Not optional and not feature-gated: it pulls in nothing the crate does not
+# already have (reqwest, serde), so gating it would only put cfg noise on the
+# command that uses it.
+crack-sleevenote = { path = "../crack-sleevenote" }
 
 reqwest = { workspace = true }
 tracing = { workspace = true }

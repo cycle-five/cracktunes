@@ -278,6 +278,10 @@ mod tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_playlog(pool: PgPool) -> Result<(), Error> {
         let user_id = 1;
         let guild_id = 1;
@@ -290,6 +294,10 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_playlog_get_last_played(pool: PgPool) -> Result<(), Error> {
         let user_id = 2;
         let guild_id = 1;
@@ -301,6 +309,10 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_playlog_get_last_played_by_user(pool: PgPool) -> Result<(), Error> {
         let user_id = 3;
         let guild_id = 1;

@@ -13,16 +13,28 @@
 #   ENV_FILE          env file compose reads       (default: .env)
 #   EXPECTED_CONTEXT  docker context to require    (default: pve-staging)
 #
-# Guards. Each of these refuses rather than warns, and each exists because the
-# failure it prevents is silent:
+# Guards. Each exists because the failure it prevents is silent. How they
+# behave depends on what you asked for:
+#
+#   * State-changing subcommands (up, deploy, restart, down, destroy, migrate)
+#     refuse at the FIRST failed guard. These replace a working container, so
+#     stopping early is the point.
+#   * Read-only subcommands (preflight, ps, logs, status) never refuse. They
+#     degrade: preflight runs every guard and reports all of them before
+#     exiting nonzero, so you fix the set rather than rediscovering one per
+#     run; ps/logs/status warn and carry on, because reading the wrong host or
+#     reading without a .env is recoverable by looking at the banner.
 #
 #   1. DOCKER CONTEXT. `docker compose` targets whatever context is current, and
-#      this machine has several pointing at remote hosts (proxmox, pve-staging,
-#      homelab-*). Deploying to the wrong one does not fail — it builds a
-#      complete parallel stack over there, with its own network and volumes,
-#      and looks like success. The stack lives on `pve-staging`, so that is the
-#      default; running against anything else — including the local socket —
-#      has to be asked for: EXPECTED_CONTEXT=default ./scripts/cracktunes.sh up
+#      a machine may have several pointing at remote hosts. Deploying to the
+#      wrong one does not fail — it builds a complete parallel stack over
+#      there, with its own network and volumes, and looks like success.
+#
+#      The default is `default`, the local docker socket: this compose file is
+#      the self-host stack (postgres, pgadmin, the bot), and a clone of this
+#      repo has no idea what remote contexts you keep. Deploying anywhere else
+#      has to be asked for, which is the guard doing its job:
+#          EXPECTED_CONTEXT=my-host DOCKER_CONTEXT=my-host ./scripts/cracktunes.sh up
 #
 #      Relatedly: the compose file no longer bind-mounts anything from this
 #      checkout. It used to mount ./.env and ./cracktunes.toml, which resolve
@@ -47,7 +59,8 @@
 #      anything is replaced.
 #
 # Subcommands:
-#   preflight        Run every guard and report, changing nothing. Safe anywhere.
+#   preflight        Run every guard and report ALL failures, changing nothing.
+#                    Exits nonzero if any failed. Safe anywhere.
 #   up               Bring the stack up (compose up -d).
 #   deploy [svc]     Pull fresh images and force-recreate. This is the one that
 #                    actually ships a new version. Services pin floating tags
@@ -75,7 +88,7 @@ cd "$SCRIPT_DIR"
 
 STACK="${STACK:-cracktunes}"
 ENV_FILE="${ENV_FILE:-.env}"
-EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-pve-staging}"
+EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-default}"
 CURRENT_CONTEXT="$(docker context show 2>/dev/null || echo unknown)"
 ORIGINAL_ARGS="$*"
 
@@ -92,6 +105,19 @@ ok()   { printf "%s✓%s %s\n" "$c_g" "$c_z" "$*"; }
 warn() { printf "%s!%s %s\n" "$c_y" "$c_z" "$*"; }
 die()  { printf "%s✗ %s%s\n" "$c_r" "$*" "$c_z" >&2; exit 1; }
 hdr()  { printf "\n%s== %s ==%s\n" "$c_b" "$*" "$c_z"; }
+
+# STRICT=1 (the default) is for anything that changes the stack: the first
+# failed guard exits. preflight clears it so a single run can report every
+# problem instead of handing them back one per invocation.
+STRICT=1
+PROBLEMS=0
+fail() {
+  if (( STRICT )); then
+    die "$@"
+  fi
+  printf "%s✗%s %s\n" "$c_r" "$c_z" "$*" >&2
+  PROBLEMS=$((PROBLEMS + 1))
+}
 
 read_env() {
   # Read one key out of $ENV_FILE without echoing the value. Tolerates the
@@ -146,7 +172,7 @@ check_db_password() {
   [[ -z "$env_pw" ]] && { ok "POSTGRES_PASSWORD unset in $ENV_FILE; compose default applies"; return 0; }
 
   if [[ "$env_pw" != "$baked" ]]; then
-    die "POSTGRES_PASSWORD in $ENV_FILE does not match the password hardcoded in
+    fail "POSTGRES_PASSWORD in $ENV_FILE does not match the password hardcoded in
        docker-compose.yml's DATABASE_URL for the app services.
 
        crack-postgres would come up with YOUR password and every app service
@@ -155,6 +181,7 @@ check_db_password() {
 
        Fix either side so they agree. The durable fix is to make compose build
        DATABASE_URL from \${POSTGRES_PASSWORD} instead of hardcoding it."
+    return 0
   fi
   ok "database password agrees between $ENV_FILE and docker-compose.yml"
 }
@@ -166,12 +193,13 @@ check_volumes() {
     docker volume inspect "$v" >/dev/null 2>&1 || missing+=("$v")
   done
   if (( ${#missing[@]} )); then
-    die "external volume(s) missing on context '$CURRENT_CONTEXT': ${missing[*]}
+    fail "external volume(s) missing on context '$CURRENT_CONTEXT': ${missing[*]}
 
        docker-compose.yml declares these 'external: true', so compose will not
        create them — a cold start on a fresh host fails here.
 
        Fix: docker volume create ${missing[*]}"
+    return 0
   fi
   ok "external volumes present (pgdata, crack_data)"
 }
@@ -181,30 +209,51 @@ check_discord_token() {
   local tok
   tok="$(read_env DISCORD_TOKEN)"
   if [[ -z "$tok" || "$tok" == "XXXXXX" ]]; then
-    die "DISCORD_TOKEN is missing or still the placeholder in $ENV_FILE.
+    fail "DISCORD_TOKEN is missing or still the placeholder in $ENV_FILE.
 
        The bot fail-closes at boot, not at deploy: this would not fail the
        deploy, it would replace a working container with one that panics on
        'Failed to load bot config' and restarts until it is given up on."
+    return 0
   fi
   ok "DISCORD_TOKEN present"
 }
 
 preflight() {
+  # Report everything, refuse nothing. Dying on the first failed guard turns
+  # "your deploy is not ready" into one problem per invocation; this is the
+  # subcommand whose entire job is to hand back the whole list at once.
+  STRICT=0
   hdr "preflight — stack=$STACK env=$ENV_FILE context=$CURRENT_CONTEXT"
-  require_env_file
-  ok "$ENV_FILE present"
+
+  if [[ -f "$ENV_FILE" ]]; then
+    ok "$ENV_FILE present"
+    check_discord_token
+    check_db_password
+  else
+    fail "$ENV_FILE not found in $SCRIPT_DIR
+       Copy .env.example to .env and fill it in, or set ENV_FILE=<path>."
+    warn "skipping the DISCORD_TOKEN and database-password checks — both read $ENV_FILE"
+  fi
+
+  # Volume presence is context-specific, so it only means anything once the
+  # context is the one a deploy would actually use.
   if [[ "$CURRENT_CONTEXT" == "$EXPECTED_CONTEXT" ]]; then
     ok "docker context is '$CURRENT_CONTEXT' as expected"
-  else
-    warn "docker context is '$CURRENT_CONTEXT', expected '$EXPECTED_CONTEXT' — state-changing commands will refuse"
-  fi
-  check_discord_token
-  check_db_password
-  # Volume presence is context-specific; only meaningful once the context is right.
-  if [[ "$CURRENT_CONTEXT" == "$EXPECTED_CONTEXT" ]]; then
     check_volumes
+  else
+    fail "docker context is '$CURRENT_CONTEXT', expected '$EXPECTED_CONTEXT'
+       State-changing subcommands will refuse until these agree.
+       Fix:       DOCKER_CONTEXT=$EXPECTED_CONTEXT $0 $ORIGINAL_ARGS
+       Intended?  EXPECTED_CONTEXT=$CURRENT_CONTEXT $0 $ORIGINAL_ARGS"
+    warn "skipping the external-volume check — it is specific to the target context"
   fi
+
+  echo
+  if (( PROBLEMS )); then
+    die "$PROBLEMS problem(s) above. Nothing was changed."
+  fi
+  ok "all guards passed"
   echo
 }
 
@@ -218,6 +267,24 @@ dc() {
   # the export those two could disagree, and the containers would silently take
   # a different .env than the one this run was told to use.
   ENV_FILE="$ENV_FILE" docker compose -p "$STACK" --env-file "$ENV_FILE" "$@"
+}
+
+# Read-only compose invocation. Deliberately does NOT require the context or
+# the env file: `ps` against the wrong host shows nothing and `logs` without a
+# .env still tails fine, and refusing to SHOW you the state of things is a poor
+# trade for a mistake you cannot make by looking. Both facts are warned about
+# and both appear in the banner.
+dc_ro() {
+  local envargs=()
+  if [[ -f "$ENV_FILE" ]]; then
+    envargs=(--env-file "$ENV_FILE")
+  else
+    warn "$ENV_FILE not found — reading without it; docker-compose.yml's \${VAR:-default} values apply" >&2
+  fi
+  if [[ "$CURRENT_CONTEXT" != "$EXPECTED_CONTEXT" ]]; then
+    warn "docker context is '$CURRENT_CONTEXT', not '$EXPECTED_CONTEXT' — this reads THAT host" >&2
+  fi
+  ENV_FILE="$ENV_FILE" docker compose -p "$STACK" ${envargs[@]+"${envargs[@]}"} "$@"
 }
 
 banner() { printf "[cracktunes] stack=%s env=%s context=%s — %s\n" "$STACK" "$ENV_FILE" "$CURRENT_CONTEXT" "$*"; }
@@ -249,8 +316,8 @@ cmd_restart() {
 
 cmd_stop() { banner "stop"; dc stop; }
 cmd_down() { banner "down (volumes preserved)"; dc down; }
-cmd_ps()   { dc ps; }
-cmd_logs() { dc logs -f --tail=50 "$@"; }
+cmd_ps()   { dc_ro ps; }
+cmd_logs() { dc_ro logs -f --tail=50 "$@"; }
 
 cmd_destroy() {
   echo "[cracktunes] 'compose down -v' DROPS the postgres volume: guild settings,"
@@ -296,14 +363,14 @@ cmd_migrate() {
 
 cmd_status() {
   hdr "stack — $STACK on context $CURRENT_CONTEXT"
-  dc ps || true
+  dc_ro ps || true
   hdr "images"
-  dc config --images 2>/dev/null || true
+  dc_ro config --images 2>/dev/null || true
   hdr "bot version"
   # The container has no shell-free version flag; read the label off the image
   # it is actually running, which is what matters after a deploy.
   local cid
-  cid="$(dc ps -q cracktunes 2>/dev/null | head -1)"
+  cid="$(dc_ro ps -q cracktunes 2>/dev/null | head -1)"
   if [[ -n "$cid" ]]; then
     docker inspect --format '{{.Config.Image}}  (started {{.State.StartedAt}})' "$cid" 2>/dev/null || true
   else

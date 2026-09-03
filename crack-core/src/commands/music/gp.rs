@@ -2984,6 +2984,16 @@ mod test {
         let registered = crate::commands::commands_to_register();
         for list in [&all, &registered] {
             assert!(list.iter().any(|c| c.name == "gp"), "gp not registered");
+            // `gp` is registered on its own, not by chaining `game_commands()`:
+            // coinflip and rolldice are deliberately still unregistered, and
+            // pulling them in as a side effect of shipping `gp` is the mistake
+            // this guards against.
+            for unregistered in ["coinflip", "rolldice"] {
+                assert!(
+                    !list.iter().any(|c| c.name == unregistered),
+                    "{unregistered} must stay unregistered"
+                );
+            }
         }
 
         let cmd = gp();

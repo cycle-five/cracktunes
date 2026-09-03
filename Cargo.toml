@@ -4,6 +4,7 @@ members = [
   "crack-core",
   "crack-osint",
   "crack-gpt",
+  "crack-sleevenote",
   "crack-bf",
   "crack-voting",
   "crack-testing",

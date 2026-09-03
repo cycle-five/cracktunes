@@ -1,11 +1,11 @@
 [package]
-name = "crack-gpt"
+name = "crack-sleevenote"
 version = "0.5.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
-description = "GPT module for Cracktunes. v0.2.0."
+description = "Typed async client for the sleevenote Spotify metadata service. Wire contract v0.1.0."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
@@ -15,7 +15,13 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [dependencies]
-async-openai = { version = "0.41", features = ["chat-completion"] }
-ttl_cache = "0.5"
-const_format = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0.69"
+url = "2.5"
+
+reqwest = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
 tokio = { workspace = true }

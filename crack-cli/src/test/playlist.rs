@@ -16,6 +16,10 @@ mod test {
 
     //#[tokio::test]
     #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn test_delete_playlist_by_id(pool: PgPool) {
         // Setup
         let user_id = 1; // or fetch a user id for the test

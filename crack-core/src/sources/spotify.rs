@@ -76,6 +76,18 @@ pub struct ParsedSpotifyUrl {
     media_id: String,
 }
 
+impl ParsedSpotifyUrl {
+    /// Which kind of entity the URL pointed at.
+    pub fn media_type(&self) -> MediaType {
+        self.media_type
+    }
+
+    /// The bare Spotify id, with no `?si=` tracking suffix.
+    pub fn media_id(&self) -> &str {
+        &self.media_id
+    }
+}
+
 type SpotifyCreds = Credentials;
 
 // #[derive(Debug, Clone)]
