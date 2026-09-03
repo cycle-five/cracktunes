@@ -10,6 +10,36 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## Unreleased
+
+### Added
+
+- **`/gp` — "What's your song?" party game** (alias `/guiltypleasure`, category Games).
+  The host runs `/gp start <category> [rounds] [timer]` in a voice channel, picking one of
+  seventeen prompt categories (🥹 Nostalgia, 🔥 Slightly More Dangerous, 🎶 The Really Good
+  Game Prompts, 🚗 Car / Driving, 🌿 Altered-State / Chill, 😭 Emotional, 🤢 Bad Music,
+  🎧 Hyper-Specific, 🖤 Weirdly Revealing, 😂 Game Chaos, ⚡ One-Worders, 🎤 Social / Go-To,
+  😈 Guilty Pleasures / Secret Taste, 💋 Sex / Romance / Attraction, 🥀 Emotional Damage,
+  🕺 Chaotic / Funny, 🧠 Personality Reveals) or 🎲 Mixed.
+  Each round the bot posts a prompt ("What song do you cry to?") with a live countdown;
+  everyone in the voice channel secretly submits one song with the ephemeral, slash-only
+  `/gp submit <song>` (resubmitting replaces it). The window closes on the timer (default
+  3 minutes, 30-second warning), as soon as every non-bot member of the voice channel has
+  submitted, or when the host runs `/gp close`. The round's songs then play back-to-back
+  with the requester hidden ("(auto)" in the now-playing/queue embeds); under each song a
+  dropdown asks who submitted it and a 👍 button lets people like it. When the song ends
+  the message is edited with the reveal, likes and scores. `/gp skip` (host) ends a song
+  early, `/gp status` shows the prompt, who has submitted/guessed, likes and scores,
+  `/gp end` (host or Manage Server) aborts. Scoring: +100 per correct guess, +100 to the
+  submitter if nobody guessed them, +10 per 👍. A one-song round is likes-only; an empty
+  round is skipped. Scores are in memory for the game only. While a game runs,
+  queue-mutating music commands (`play`, `skip`, `stop`, `leave`, ...) are refused with a
+  pointer to `/gp skip` / `/gp close` / `/gp end`, autoplay and autopause are suspended,
+  and the game is discarded if the bot is disconnected from voice. Prompts are compiled
+  in from `crack-core/src/commands/music/gp_prompts.json`.
+- `game_commands()` is now registered, which also makes the previously written but
+  unregistered `coinflip` and `rolldice` live.
+
 ## v0.4.1 (2026/08/23)
 
 ### Security
