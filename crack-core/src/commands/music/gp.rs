@@ -1,41 +1,10 @@
 //! "What's your song?" party game (`/gp`).
 //!
-//! The host picks a category (see [`gp_prompts`]) and a round count. Each
-//! round the bot posts a prompt ("What song do you cry to?") and opens a timed
-//! submission window: everyone in the voice channel secretly submits one song
-//! with the ephemeral `/gp submit` (resubmitting replaces it). The window
-//! closes on the timer, as soon as every non-bot member of the voice channel
-//! has submitted, or when the host runs `/gp close`. The round's songs are
-//! then shuffled and played back-to-back; while a song plays everyone picks,
-//! from a dropdown of that round's submitters, who they think submitted it,
-//! and can 👍 the song. When the track ends (naturally, or via `/gp skip`) the
-//! submitter is revealed, points are awarded and the next song -- or the next
-//! prompt -- follows. Scores live in memory for the game only.
-//!
-//! # Locking rule
-//!
-//! Game state lives in `Data::gp_games`, a `DashMap` keyed by guild. Every
-//! `impl Data` helper in this file is **synchronous**: it takes the map entry,
-//! mutates it, clones out whatever the caller needs, and releases the entry
-//! before returning. Never hold a `DashMap` ref across an `.await` -- the round
-//! end handler runs on songbird's event task and then takes the call lock, so a
-//! held entry there is a deadlock waiting to happen.
-//!
-//! # Stale timers and double fires
-//!
-//! Every phase transition bumps `GpGame::generation`. The window timer captures
-//! the generation it was spawned for and asks `gp_close_window_if` /
-//! `gp_warning_if`, which are no-ops once it has moved (the host closed the
-//! window, everyone submitted, the game ended). Track-end handlers likewise only
-//! act on the *current* round/track, so `End` and `Error` firing for one track
-//! is harmless.
-//!
-//! # Hiding the requester
-//!
-//! The game's tracks are enqueued **without** `.with_user_id(submitter)`, so the
-//! track data carries the default `UserId::new(1)` sentinel which the now-playing
-//! and queue embeds render as "(auto)". The real submitter exists only in the
-//! game state.
+//! Each round the bot posts a prompt from [`gp_prompts`] and opens a timed
+//! window for everyone in the voice channel to secretly submit a song. The
+//! round's songs then play back-to-back: guess the submitter from a dropdown,
+//! 👍 the ones you like, and the submitter is revealed when the song ends.
+//! Scores live in memory for the duration of the game.
 
 use crate::{
     commands::cmd_check_music,
@@ -224,7 +193,9 @@ pub struct GpGame {
     pub current_round: usize,
     pub current_track: usize,
     pub timer_secs: u64,
-    /// Bumped on every transition; see the module docs.
+    /// Bumped on every phase transition. Timers capture the generation they
+    /// were spawned for and do nothing once it has moved on, so a window that
+    /// closed early (host, or everyone submitted) leaves no stale fire behind.
     pub generation: u64,
     /// Everyone who has submitted, guessed or liked, with the display name we saw.
     pub players: HashMap<UserId, String>,
@@ -524,9 +495,14 @@ pub enum GpStatus {
 }
 
 // ------------------------------------------------------------------
-// State helpers on Data (all synchronous, see module docs)
+// State helpers on Data
 // ------------------------------------------------------------------
 
+// Every helper below is synchronous: it takes the `gp_games` entry, mutates
+// it, clones out what the caller needs and releases it before returning.
+// Never hold a `DashMap` ref across an await -- the track end handler runs on
+// songbird's event task and then takes the call lock, so an entry held there
+// is a deadlock waiting to happen.
 impl Data {
     /// Create the game and open round 0's window.
     #[allow(clippy::too_many_arguments)]
@@ -779,7 +755,7 @@ impl Data {
     }
 
     /// Score the song that just ended and advance. Returns `None` unless the
-    /// game is playing **and** this is the current song, which makes it safe to
+    /// game is playing and this is the current song, which makes it safe to
     /// call twice (End and Error can both fire for one track).
     pub fn gp_reveal_and_advance(
         &self,
@@ -1437,7 +1413,9 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
         return Ok(());
     }
     // `build_track` is lazy; the stream is fetched when songbird starts it.
-    // Note: no `.with_user_id` -- see the module docs.
+    // Deliberately no `.with_user_id(submitter)`: the track keeps the default
+    // sentinel, which the now-playing and queue embeds render as "(auto)", so
+    // playback cannot leak the submitter before the reveal.
     let songbird_track = build_track(&start.track, &pb.data.http_client)?;
     let handle = {
         let mut handler = pb.call.lock().await;
