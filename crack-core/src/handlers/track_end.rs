@@ -122,7 +122,7 @@ impl EventHandler for TrackEndHandler {
         // A guilty pleasure game owns playback: its per-track handler advances
         // the rounds, so no autopause, no autoplay filler and no duplicate
         // now-playing embed while it runs.
-        if self.data.gp_is_playing(self.guild_id) {
+        if self.data.gp_is_active(self.guild_id) {
             return None;
         }
 

@@ -238,6 +238,12 @@ pub enum CrackedMessage {
     GpWindowClosed {
         count: usize,
     },
+    GpVoteSkipCounted {
+        votes: usize,
+        needed: usize,
+    },
+    GpVoteSkipPassed,
+    GpVoteSkipOwnSong,
 }
 
 impl CrackedMessage {
@@ -471,10 +477,13 @@ impl Display for CrackedMessage {
                 if *of > 0 {
                     f.write_str(&format!(
                         "{} **{}** ({} {} {} {})",
-                        lead, title, submitted, GP_SUBMITTED_OF, of, "in the voice channel"
+                        lead, title, submitted, GP_SUBMITTED_OF, of, GP_SUBMITTED_IN_VC
                     ))
                 } else {
-                    f.write_str(&format!("{} **{}** ({} in)", lead, title, submitted))
+                    f.write_str(&format!(
+                        "{} **{}** ({} {})",
+                        lead, title, submitted, GP_SUBMITTED_OF
+                    ))
                 }
             },
             Self::GpStarted {
@@ -502,6 +511,12 @@ impl Display for CrackedMessage {
                 "{} {} {}",
                 GP_CLOSED_BY_HOST, count, GP_WINDOW_CLOSED_SONGS
             )),
+            Self::GpVoteSkipCounted { votes, needed } => f.write_str(&format!(
+                "{} {} {} {} {}",
+                GP_VOTESKIP_COUNTED, votes, GP_VOTESKIP_SO_FAR, needed, GP_VOTESKIP_NEEDED
+            )),
+            Self::GpVoteSkipPassed => f.write_str(GP_VOTESKIP_PASSED),
+            Self::GpVoteSkipOwnSong => f.write_str(GP_VOTESKIP_OWN),
         }
     }
 }

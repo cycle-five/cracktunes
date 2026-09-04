@@ -16,7 +16,7 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     // corrupt the round order. Matched on the qualified name so the game's own
     // `gp skip` is not caught by the top-level `skip`.
     if let Some(guild_id) = ctx.guild_id() {
-        if ctx.data().gp_is_playing(guild_id)
+        if ctx.data().gp_is_active(guild_id)
             && GP_BLOCKED_COMMANDS.contains(&&*ctx.command().qualified_name)
         {
             return Err(CrackedError::GameInProgress.into());

@@ -220,7 +220,7 @@ pub const INVITE_URL: &str = "https://discord.com/oauth2/authorize?client_id=111
 pub const GP_TITLE: &str = "🎭 What's Your Song?";
 pub const GP_RULES_TEXT: &str = "The host picks a category. Each round the bot posts a prompt and everyone in the voice channel secretly submits a song for it. The songs then play one by one: guess whose is whose, and 👍 the ones you like. The submitter is revealed when each song ends.";
 pub const GP_HOW_TO_TITLE: &str = "How to play";
-pub const GP_HOW_TO: &str = "• `/gp start <category> [rounds] [timer]` — start in your voice channel (default 5 rounds, 3 minutes to submit)\n• `/gp submit <song>` — your song for the current prompt; only you see the reply; submitting again replaces it\n• The window closes on the timer, as soon as everyone in the voice channel is in, or when the host runs `/gp close`\n• While a song plays: pick who submitted it from the dropdown (you can change your pick until it ends) and tap 👍 if you like it\n• `/gp skip` — host ends the current song · `/gp status` — where things stand · `/gp end` — abort\n\n**Scoring:** +100 for a correct guess · +100 if nobody guesses you · +10 for every 👍 your song gets. Up to 25 people per round.";
+pub const GP_HOW_TO: &str = "• `/gp start <category> [rounds] [timer]` — start in your voice channel (default 5 rounds, 3 minutes to submit)\n• `/gp submit <song>` — your song for the current prompt; only you see the reply; submitting again replaces it\n• The window closes on the timer, as soon as everyone in the voice channel is in, or when the host runs `/gp close`\n• While a song plays: pick who submitted it from the dropdown (you can change your pick until it ends) and tap 👍 if you like it\n• `/gp skip` — host ends the current song · `/gp voteskip` — a majority ends it, or pulls it outright if it is your own · `/gp status` — where things stand · `/gp end` — abort\n• You need to be in the game's voice channel, and to have submitted a song, to guess, 👍 or vote\n\n**Scoring:** +100 for a correct guess · +100 if nobody guesses you · +10 for every 👍 your song gets. Up to 25 people per round.";
 pub const GP_STARTED: &str = "🎭 Game on!";
 pub const GP_STARTED_ROUNDS: &str = "rounds of";
 pub const GP_STARTED_TIMER: &str = "to submit each round.";
@@ -272,6 +272,14 @@ pub const GP_STATUS_GUESSED: &str = "Guessed this song";
 pub const GP_STATUS_LIKES: &str = "👍 Likes";
 pub const GP_STATUS_SCORES: &str = "Scores";
 pub const GP_NOBODY_YET: &str = "nobody yet";
+pub const GP_SUBMITTED_IN_VC: &str = "in the voice channel";
+pub const GP_VOTESKIP_COUNTED: &str = "🗳️ Vote counted —";
+pub const GP_VOTESKIP_SO_FAR: &str = "so far,";
+pub const GP_VOTESKIP_NEEDED: &str = "more to skip this song.";
+pub const GP_VOTESKIP_PASSED: &str = "🗳️ The room voted to skip this one.";
+pub const GP_VOTESKIP_OWN: &str = "🙈 Your song, your call — pulled it.";
+pub const GP_ABORTED: &str =
+    "🎭 The game could not post to this channel, so it was ended. `/gp start` to try again.";
 
 pub const FAIL_GP_ALREADY_RUNNING: &str =
     "🎭 A game is already running here. `/gp status` to see it, `/gp end` to abort.";
@@ -288,3 +296,6 @@ pub const FAIL_GP_WINDOW_CLOSED: &str =
 pub const FAIL_GP_OWN_SONG: &str = "🎭 Nice try — you can't 👍 your own song.";
 pub const FAIL_GP_NOT_GUESSABLE: &str =
     "🎭 Only one song this round, so there's nothing to guess — you can still 👍 it.";
+pub const FAIL_GP_ALREADY_VOTED: &str = "🎭 You've already voted to skip this song.";
+pub const FAIL_GP_NOT_A_GAME_PLAYER: &str =
+    "🎭 You're not in this game — `/gp submit <song>` on the next prompt to join in.";

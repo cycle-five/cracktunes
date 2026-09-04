@@ -25,10 +25,19 @@ use songbird::error::JoinError;
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        let manager = &self.serenity_ctx.data::<crate::Data>().songbird;
+        let data = self.serenity_ctx.data::<crate::Data>();
+        let manager = &data.songbird;
         let EventContext::Track(track_list) = ctx else {
             return None;
         };
+
+        // A `/gp` game is silent on purpose between songs: a submission window can
+        // run for ten minutes with nothing playing, which otherwise reads as an
+        // idle bot and disconnects mid-round, taking the game with it.
+        if data.gp_is_active(self.guild_id) {
+            self.count.store(0, Ordering::Relaxed);
+            return None;
+        }
 
         // tracing::warn!("IdleHandler: {:?}", len(track_list));
         // tracing::warn!("Guild ID: {:?}", self.guild_id);

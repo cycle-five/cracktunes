@@ -33,12 +33,45 @@
   `/gp end` (host or Manage Server) aborts. Scoring: +100 per correct guess, +100 to the
   submitter if nobody guessed them, +10 per 👍. A one-song round is likes-only; an empty
   round is skipped. Scores are in memory for the game only. While a game runs,
-  queue-mutating music commands (`play`, `skip`, `stop`, `leave`, ...) are refused with a
-  pointer to `/gp skip` / `/gp close` / `/gp end`, autoplay and autopause are suspended,
-  and the game is discarded if the bot is disconnected from voice. Prompts are compiled
-  in from `crack-core/src/commands/music/gp_prompts.json`.
-- `game_commands()` is now registered, which also makes the previously written but
-  unregistered `coinflip` and `rolldice` live.
+  music commands that would take playback out of the game's hands (`play`, `skip`,
+  `voteskip`, `stop`, `pause`, `seek`, `repeat`, `leave`, `summon`, ...) are refused with
+  a pointer to `/gp skip` / `/gp close` / `/gp end`, autoplay and autopause are
+  suspended, and the game is discarded if the bot is disconnected from voice. `/resume`
+  is deliberately left open as an escape hatch. Prompts are compiled in from
+  `crack-core/src/commands/music/gp_prompts.json`.
+- `/gp voteskip` ends the current song once a strict majority has voted, so a song can be
+  moved past without the host. The song's own submitter does not vote on it: running the
+  command on your own song pulls it outright, and the submitter is left out of the pool
+  the majority is measured against, so a two-person channel still only needs the one
+  eligible voter. Votes belong to the song and are cleared with it.
+- The game is closed to spectators: acting on a running game requires being in its voice
+  channel *and* having submitted a song. Submitting is how you join, and it sticks for the
+  rest of the game, so sitting a round out does not put you back outside it. This applies
+  to the guess dropdown and 👍 as well as to the subcommands, so someone who never submits
+  can no longer guess their way to winning a game. `/gp end` is exempt from both checks so
+  an admin can always stop a game from outside it, and the host can read `/gp status`
+  before submitting.
+
+### Changed
+
+- `TrackEndHandler` now forgets skip votes before applying autopause, rather than after.
+  The two are independent, and the order changed only so the `/gp` early-return could sit
+  between them; guilds that never use `/gp` see no behaviour change.
+- `IdleHandler` no longer counts a guild as idle while a `/gp` game is running. A
+  submission window is silent by design, and at the default ten-minute idle timeout a long
+  window would disconnect the bot mid-round and take the game with it.
+
+### Fixed
+
+- Ending a game no longer starts autoplay. `/gp end` removed the game before stopping
+  playback, so the resulting `TrackEvent::End` reached the global handler with no game to
+  find and was treated as an ordinary track ending -- in an autoplay guild, dropping an
+  unrelated recommended track in on top of the game ending.
+- A song whose stream dies part-way through is scored normally again. Any `Errored` state
+  counted as "never played", so a stream that failed two minutes in discarded everyone's
+  guesses and 👍 and told the room it never played. Only a track that errored without
+  mixing a frame (`play_time` still zero) skips scoring, which is what the check was
+  always documented to mean.
 
 ## v0.4.1 (2026/08/23)
 
