@@ -145,7 +145,7 @@ impl<'a> CrackTrackQueue<'a> {
     /// Shuffle the queue.
     pub async fn shuffle(&self) {
         let mut queue = self.inner.lock().await.clone();
-        queue.make_contiguous().shuffle(&mut rand::thread_rng());
+        queue.make_contiguous().shuffle(&mut rand::rng());
         *self.inner.lock().await = queue;
     }
 
