@@ -7,7 +7,10 @@
 
 use once_cell::sync::Lazy;
 use poise::ChoiceParameter;
-use rand::{seq::SliceRandom, Rng};
+use rand::{
+    seq::{IndexedRandom, SliceRandom},
+    Rng,
+};
 use serde::Deserialize;
 
 /// The category the host picks when starting a game. The first `#[name]` is
@@ -136,10 +139,7 @@ pub static GP_PROMPTS: Lazy<Vec<GpPromptCategory>> = Lazy::new(|| {
 pub fn draw_prompts(category: GpCategory, n: usize, rng: &mut impl Rng) -> Vec<String> {
     let pool = category.pool();
     let n = n.min(pool.len());
-    let mut picked: Vec<String> = pool
-        .choose_multiple(rng, n)
-        .map(|s| s.to_string())
-        .collect();
+    let mut picked: Vec<String> = pool.sample(rng, n).map(|s| s.to_string()).collect();
     picked.shuffle(rng);
     picked
 }
