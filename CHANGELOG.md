@@ -10,6 +10,37 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## v0.6.1 (2026/09/05)
+
+### Fixed
+
+- **Nothing played.** Every track failed with songbird reporting `Preparing -> Errored`
+  and `play_time: 0ns`, which `/gp` faithfully reported as "never played" and which the
+  music commands reported as nothing at all. Three separate faults, all in the path
+  between a resolved track and audio:
+  - `rusty_ytdl` was pinned to a fork last pushed 2025-02-01, which asks YouTube's
+    `youtubei/v1/player` with the WEB client context. That now returns HTTP 400. Repinned
+    to upstream `bfd7fed` ("use android_sdkless player by default"), which gets past it.
+  - Past the 400, the googlevideo URL `rusty_ytdl` hands back is fetched as `c=ANDROID`
+    and returns HTTP 403. songbird then has an empty stream and symphonia reports
+    `probe reach EOF at 0 bytes` followed by `no suitable format reader found` -- which
+    reads like a codec fault and is a fetch fault. Playback now goes through songbird's
+    `YoutubeDl` (yt-dlp), whose URL serves 206.
+  - yt-dlp could never have run anyway: the image installed `yt-dlp_linux`, the glibc
+    build, onto an Alpine (musl) base, so the binary was present and unexecutable. It is
+    `yt-dlp_musllinux` now, and the build asserts `yt-dlp --version` so choosing the wrong
+    build fails the build rather than the bot.
+- `deno` is in the image. YouTube extraction without a JavaScript runtime is deprecated
+  upstream and silently drops formats. Alpine's build is musl-native, unlike deno's own
+  releases.
+
+### Changed
+
+- Every playback path now builds its songbird `Track` through `build_track`.
+  `queue_resolved_track_back` and `resolve_query_to_tracks` each constructed their own
+  source inline, so changing the source in `build_track` fixed `/gp` and left `/play`
+  silent. One construction site now, and the duplicated `TrackData` assembly is gone.
+
 ## v0.6.0 (2026/09/05)
 
 ### Added
