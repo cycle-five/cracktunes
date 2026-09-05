@@ -75,6 +75,16 @@ pub const GP_MAX_ROUNDS: u32 = 20;
 pub const GP_MIN_TIMER_SECS: u64 = 30;
 pub const GP_MAX_TIMER_SECS: u64 = 600;
 pub const GP_WARNING_SECS: u64 = 30;
+/// How long `/gp end` waits for the `End` that `stop()` queued before removing the
+/// parked game itself. Only a backstop: the global track-end handler normally
+/// collects it within milliseconds.
+pub const GP_PARK_GRACE_SECS: u64 = 10;
+/// How much of a song has to have played before a failure counts as a song the
+/// room actually heard, and so as something to score. Below this an `Errored`
+/// track is treated as a dead link: nobody could have guessed it, so nobody is
+/// paid for it -- including the submitter, who would otherwise collect the
+/// fooled-everyone bonus for a song that never really played.
+pub const GP_MIN_PLAYED: Duration = Duration::from_secs(30);
 /// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// Music commands refused while a game owns playback, because each would leave
@@ -115,9 +125,10 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
 pub const GP_STALLING_COMMANDS: &[&str] = &["pause", "repeat", "seek"];
 
 /// Votes needed to end a song early: a strict majority of the *eligible* voters,
-/// which is everyone in the game's voice channel except the song's own submitter
-/// -- they do not vote on their own song, they simply pull it. Never fewer than
-/// one, so an uncached or empty voice channel cannot make zero votes enough.
+/// which is the players in the game's voice channel other than the song's own
+/// submitter -- they do not vote on their own song, they simply pull it. Counting
+/// anyone who cannot vote would put the bar out of reach of those who can. Never
+/// fewer than one, so an uncached or empty voice channel cannot make zero enough.
 pub fn gp_votes_required(eligible_voters: usize) -> usize {
     (eligible_voters / 2 + 1).max(1)
 }
@@ -212,6 +223,13 @@ pub struct GpGame {
     /// were spawned for and do nothing once it has moved on, so a window that
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
     pub generation: u64,
+    /// Set by `/gp end`. The game is finished but deliberately still in the map:
+    /// `stop()` has queued an `End` the global [`TrackEndHandler`] must see a game
+    /// for, or it treats it as an ordinary track ending and starts autoplay.
+    /// Whoever handles that `End` removes the game.
+    ///
+    /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
+    pub parked_for_end: bool,
     /// Everyone who has submitted, guessed or liked, with the display name we saw.
     pub players: HashMap<UserId, String>,
     pub scores: HashMap<UserId, u32>,
@@ -237,6 +255,7 @@ impl GpGame {
             current_track: 0,
             timer_secs,
             generation: 0,
+            parked_for_end: false,
             players: HashMap::new(),
             scores: HashMap::new(),
         }
@@ -807,25 +826,32 @@ impl Data {
             return Err(CrackedError::NotAGamePlayer);
         }
         let (round_idx, track_idx) = (game.current_round, game.current_track);
-        let t = game
+        let submitter = game
             .rounds
-            .get_mut(round_idx)
-            .and_then(|r| r.tracks.get_mut(track_idx))
-            .ok_or(CrackedError::StaleRound)?;
-        let submitter = t.submitter;
-        // The submitter is not a voter on their own song: it is theirs to pull,
-        // and they are left out of the pool the majority is measured against so
-        // that excluding their vote cannot make a song unskippable.
+            .get(round_idx)
+            .and_then(|r| r.tracks.get(track_idx))
+            .ok_or(CrackedError::StaleRound)?
+            .submitter;
+        // The submitter is not a voter on their own song: it is theirs to pull.
         if voter == submitter {
             return Ok(GpVoteSkipOutcome::OwnSong);
         }
+        // The denominator has to match the numerator. Only players may vote, so
+        // counting the whole voice channel would set a bar that the people allowed
+        // to vote cannot clear -- with one lurker in a channel of three, the single
+        // eligible voter needs a second that nobody can cast, and the song becomes
+        // unskippable. Which is the mixed channel the submitters-only rule creates.
+        let eligible = vc_members
+            .iter()
+            .filter(|u| **u != submitter && game.has_submitted(**u))
+            .count();
+        let required = gp_votes_required(eligible);
+        let t = &mut game.rounds[round_idx].tracks[track_idx];
         if !t.skip_votes.insert(voter) {
             return Err(CrackedError::AlreadyVotedSkip);
         }
         let votes = t.skip_votes.len();
         game.players.entry(voter).or_insert(voter_name);
-        let eligible = vc_members.iter().filter(|u| **u != submitter).count();
-        let required = gp_votes_required(eligible);
         Ok(if votes >= required {
             GpVoteSkipOutcome::Passed
         } else {
@@ -935,13 +961,15 @@ impl Data {
     /// Park the game for teardown and hand back a snapshot for the scoreboard.
     /// Only the host (or someone who may manage the guild) may end a game.
     ///
-    /// The game is deliberately *left in the map*: the caller is about to call
-    /// `queue().stop()`, and the global [`TrackEndHandler`] decides whether to
-    /// autopause and queue autoplay filler by asking whether a game is running.
-    /// Removing first -- as this used to -- means that `End` arrives with no game
-    /// to find, so ending a game mid-song drops an unrelated recommended track
-    /// into the channel. Moving out of `Playing` and bumping the generation is
-    /// what stops the game's *own* handlers acting on the same event.
+    /// The game is deliberately *left in the map*, and it is not this caller's to
+    /// remove. `TrackHandle::stop()` only queues a message for the driver task, so
+    /// the `End` it causes arrives later; removing on the next line -- as this used
+    /// to -- wins that race every time, and the `End` still reaches the global
+    /// [`TrackEndHandler`] with no game to find, which is exactly the autoplay bug
+    /// this was meant to fix. Collection belongs to whoever handles that `End`;
+    /// [`Data::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
+    /// bumping the generation is what stops the game's *own* handlers and timers
+    /// acting on the same event.
     ///
     /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
     pub fn gp_park_for_end(
@@ -960,7 +988,23 @@ impl Data {
         let snapshot = game.clone();
         game.phase = GpPhase::Finished;
         game.generation += 1;
+        game.parked_for_end = true;
         Ok(snapshot)
+    }
+
+    /// Remove a game parked by `/gp end`, reporting whether there was one. Called
+    /// from the global track-end handler once the `End` that `stop()` queued has
+    /// actually arrived: autoplay has been kept away, so the game's work is done.
+    /// A game that is merely finished is left alone -- only `/gp end` parks.
+    pub fn gp_remove_if_parked(&self, guild_id: GuildId) -> bool {
+        let parked = self
+            .gp_games
+            .get(&guild_id)
+            .is_some_and(|g| g.parked_for_end);
+        if parked {
+            self.gp_games.remove(&guild_id);
+        }
+        parked
     }
 
     /// Remove the game unconditionally (game over, bot kicked from voice).
@@ -1359,13 +1403,17 @@ pub struct GpTrackEndHandler {
 
 /// Did this song reach nobody? songbird reports a stream it could never open as
 /// an `End` whose state is still `Errored`: it goes `Preparing` -> `Errored`
-/// without mixing a frame, so `play_time` never leaves zero. Both halves matter.
-/// Without the `Errored` check the game treats a dead link as a song everyone
-/// just listened to; without the `play_time` check it does the opposite to a
-/// stream that dies part-way through, throwing away the guesses and 👍 of a room
-/// that heard most of it and telling them it never played.
+/// without mixing a frame. Both halves matter. Without the `Errored` check the
+/// game treats a dead link as a song everyone just listened to; without the
+/// play-time check it does the opposite to a stream that dies part-way through,
+/// throwing away the guesses and 👍 of a room that heard most of it.
+///
+/// The line is [`GP_MIN_PLAYED`], not "any frame at all". A stream that dies a
+/// couple of hundred milliseconds in is a dead link as far as the room is
+/// concerned, and paying the submitter the fooled-everyone bonus for a song
+/// nobody could possibly have guessed is the bug 2ed923b set out to fix.
 fn never_played(state: &TrackState) -> bool {
-    matches!(state.playing, PlayMode::Errored(_)) && state.play_time.is_zero()
+    matches!(state.playing, PlayMode::Errored(_)) && state.play_time < GP_MIN_PLAYED
 }
 
 /// Did the song fail instead of finish? The handler is registered for both
@@ -2229,14 +2277,33 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .map(|p| p.manage_guild())
         .unwrap_or(false);
-    // Park, stop, then remove. The game has to still be in the map while `stop()`
-    // fires `End`, or the global handler treats it as an ordinary track ending and
-    // autoplay queues something unrelated over the top of the game ending.
+    // Park and stop, but do not remove: `stop()` only queues the `End`, so removing
+    // here would beat it to the map and hand the event to autoplay. The global
+    // track-end handler collects the parked game when the `End` actually lands.
     let game = data.gp_park_for_end(guild_id, ctx.author().id, is_admin)?;
-    if let Some(call) = data.songbird.get(guild_id) {
-        call.lock().await.queue().stop();
+    let was_playing = match data.songbird.get(guild_id) {
+        Some(call) => {
+            let handler = call.lock().await;
+            let playing = !handler.queue().is_empty();
+            handler.queue().stop();
+            playing
+        },
+        None => false,
+    };
+    if was_playing {
+        // If that `End` never reaches the handler, the parked game would outlive
+        // the command and keep the guild's music commands blocked.
+        let data = data.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS)).await;
+            if data.gp_remove_if_parked(guild_id) {
+                tracing::warn!("gp: parked game in {guild_id} was never collected, removing");
+            }
+        });
+    } else {
+        // Nothing was playing, so no `End` is coming to collect it.
+        data.gp_remove(guild_id);
     }
-    data.gp_remove(guild_id);
     let by = author_display_name(ctx).await;
     ctx.send_reply(CrackedMessage::GpEnded { by }, true).await?;
     let nothing_played = game.phase == GpPhase::Submitting && game.current_round == 0;
@@ -2749,10 +2816,39 @@ mod test {
         );
     }
 
+    /// `/gp end` leaves the game in the map on purpose: `stop()` only queues the
+    /// `End`, so removing it there would beat the event and hand it to autoplay.
+    /// Collection is the track-end handler's job, and only a *parked* game is its
+    /// to collect.
+    #[test]
+    fn parked_game_is_collected_by_the_track_end_and_not_before() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+
+        // A game that is merely running is not anyone's to collect.
+        assert!(!data.gp_remove_if_parked(G));
+        assert!(data.gp_is_active(G));
+
+        data.gp_park_for_end(G, A, false).unwrap();
+        // Still present, which is the whole point -- the global handler has to see
+        // a game when the End that stop() queued finally lands.
+        assert!(data.gp_is_active(G));
+        // ...and inert, so the game's own handlers do not reveal or advance on it.
+        assert!(data.gp_reveal_and_advance(G, 0, 0, NOW).is_none());
+
+        assert!(data.gp_remove_if_parked(G));
+        assert!(!data.gp_is_active(G));
+        // Idempotent: a second End, or the command's backstop, finds nothing.
+        assert!(!data.gp_remove_if_parked(G));
+    }
+
     /// A dead link and a stream that dies part-way through are not the same thing.
     /// Only the first reached nobody, and only the first should skip the scoring.
     #[test]
-    fn never_played_needs_both_errored_and_no_play_time() {
+    fn never_played_needs_errored_and_too_little_play_time() {
         use songbird::tracks::PlayMode;
         let errored = |play_time| TrackState {
             playing: PlayMode::Errored(songbird::tracks::PlayError::Create(Arc::new(
@@ -2763,6 +2859,15 @@ mod test {
         };
         // Preparing -> Errored without mixing a frame: nobody heard it.
         assert!(never_played(&errored(Duration::ZERO)));
+        // Died 200ms in: a dead link as far as the room is concerned. Scoring it
+        // would hand the submitter the fooled-everyone bonus for a song nobody
+        // could have guessed.
+        assert!(never_played(&errored(Duration::from_millis(200))));
+        // Either side of the line.
+        assert!(never_played(&errored(
+            GP_MIN_PLAYED - Duration::from_millis(1)
+        )));
+        assert!(!never_played(&errored(GP_MIN_PLAYED)));
         // Died two minutes in: the room heard it, so it scores like any other song.
         assert!(!never_played(&errored(Duration::from_secs(120))));
         // A song that simply finished is not a failure at any play time.
@@ -2772,6 +2877,34 @@ mod test {
             ..Default::default()
         }));
         assert!(!never_played(&TrackState::default()));
+    }
+
+    /// The pool the majority is measured against has to be the people who may
+    /// actually vote. Counting a lurker sets a bar the eligible voters cannot
+    /// clear, and the song becomes unskippable -- in exactly the mixed channel
+    /// that submitters-only voting creates.
+    #[test]
+    fn vote_skip_pool_counts_players_not_bystanders() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let other = if s0 == A { B } else { A };
+
+        // Three in the channel, two of them players, the song belongs to one of
+        // those two: D cannot vote, so the one eligible voter has to be enough.
+        assert_eq!(
+            data.gp_vote_skip(G, D, "dave".into(), &[A, B, D])
+                .unwrap_err(),
+            CrackedError::NotAGamePlayer
+        );
+        assert_eq!(
+            data.gp_vote_skip(G, other, "other".into(), &[A, B, D])
+                .unwrap(),
+            GpVoteSkipOutcome::Passed
+        );
     }
 
     /// Excluding the submitter from the pool is what keeps a song skippable: a

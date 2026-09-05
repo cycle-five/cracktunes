@@ -66,12 +66,21 @@
 - Ending a game no longer starts autoplay. `/gp end` removed the game before stopping
   playback, so the resulting `TrackEvent::End` reached the global handler with no game to
   find and was treated as an ordinary track ending -- in an autoplay guild, dropping an
-  unrelated recommended track in on top of the game ending.
+  unrelated recommended track in on top of the game ending. Because `TrackHandle::stop()`
+  only queues the `End` for the driver, the game now stays in the map until that event
+  actually lands and the global handler collects it; `/gp end` no longer removes it itself,
+  with a short backstop for the case where the event never arrives.
 - A song whose stream dies part-way through is scored normally again. Any `Errored` state
   counted as "never played", so a stream that failed two minutes in discarded everyone's
-  guesses and 👍 and told the room it never played. Only a track that errored without
-  mixing a frame (`play_time` still zero) skips scoring, which is what the check was
-  always documented to mean.
+  guesses and 👍 and told the room it never played. A failure now only skips scoring if
+  less than 30 seconds played -- long enough that "the room heard it" is true, rather than
+  paying the submitter the fooled-everyone bonus for a song that died in the first
+  fraction of a second and nobody could have guessed.
+- `/gp voteskip` could not reach a majority in a channel where anyone had not submitted.
+  Only players may vote, but the majority was measured against the whole voice channel, so
+  the bar counted people who could not help clear it: one non-submitter in a channel of
+  three made the song unskippable by vote. The pool is now the players in the channel other
+  than the song's submitter.
 
 ## v0.4.1 (2026/08/23)
 

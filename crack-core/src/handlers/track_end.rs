@@ -123,6 +123,13 @@ impl EventHandler for TrackEndHandler {
         // the rounds, so no autopause, no autoplay filler and no duplicate
         // now-playing embed while it runs.
         if self.data.gp_is_active(self.guild_id) {
+            // A game parked by `/gp end` stayed in the map for exactly this event:
+            // `stop()` queues the `End` rather than firing it, so the game has to
+            // outlive the command or this handler treats the result as an ordinary
+            // track ending and starts autoplay. That `End` is here, so collect it.
+            if self.data.gp_remove_if_parked(self.guild_id) {
+                tracing::trace!("gp: collected the parked game in {}", self.guild_id);
+            }
             return None;
         }
 
