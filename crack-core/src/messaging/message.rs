@@ -217,6 +217,33 @@ pub enum CrackedMessage {
         url: String,
     },
     WelcomeSettings(String),
+    // Guilty pleasure game (`commands::music::gp`). Appended last so the
+    // discriminants of the variants above are unchanged.
+    GpSubmitted {
+        title: String,
+        replaced: bool,
+        submitted: usize,
+        of: usize,
+    },
+    GpStarted {
+        category: &'static str,
+        rounds: usize,
+        timer_secs: u64,
+        cleared_queue: bool,
+    },
+    GpRoundSkipped,
+    GpEnded {
+        by: String,
+    },
+    GpWindowClosed {
+        count: usize,
+    },
+    GpVoteSkipCounted {
+        votes: usize,
+        needed: usize,
+    },
+    GpVoteSkipPassed,
+    GpVoteSkipOwnSong,
 }
 
 impl CrackedMessage {
@@ -436,6 +463,60 @@ impl Display for CrackedMessage {
             },
             Self::WaybackSnapshot { url } => f.write_str(&format!("{} {}", WAYBACK_SNAPSHOT, url)),
             Self::WelcomeSettings(settings) => f.write_str(settings),
+            Self::GpSubmitted {
+                title,
+                replaced,
+                submitted,
+                of,
+            } => {
+                let lead = if *replaced {
+                    GP_SUBMITTED_REPLACED
+                } else {
+                    GP_SUBMITTED
+                };
+                if *of > 0 {
+                    f.write_str(&format!(
+                        "{} **{}** ({} {} {} {})",
+                        lead, title, submitted, GP_SUBMITTED_OF, of, GP_SUBMITTED_IN_VC
+                    ))
+                } else {
+                    f.write_str(&format!(
+                        "{} **{}** ({} {})",
+                        lead, title, submitted, GP_SUBMITTED_OF
+                    ))
+                }
+            },
+            Self::GpStarted {
+                category,
+                rounds,
+                timer_secs,
+                cleared_queue,
+            } => f.write_str(&format!(
+                "{} {} {} {} — {} {}{}",
+                GP_STARTED,
+                rounds,
+                GP_STARTED_ROUNDS,
+                category,
+                crate::utils::duration_to_string(std::time::Duration::from_secs(*timer_secs)),
+                GP_STARTED_TIMER,
+                if *cleared_queue {
+                    format!(" {}", GP_QUEUE_CLEARED)
+                } else {
+                    String::new()
+                }
+            )),
+            Self::GpRoundSkipped => f.write_str(GP_ROUND_SKIPPED),
+            Self::GpEnded { by } => f.write_str(&format!("{} {}", GP_ENDED_BY, by)),
+            Self::GpWindowClosed { count } => f.write_str(&format!(
+                "{} {} {}",
+                GP_CLOSED_BY_HOST, count, GP_WINDOW_CLOSED_SONGS
+            )),
+            Self::GpVoteSkipCounted { votes, needed } => f.write_str(&format!(
+                "{} {} {} {} {}",
+                GP_VOTESKIP_COUNTED, votes, GP_VOTESKIP_SO_FAR, needed, GP_VOTESKIP_NEEDED
+            )),
+            Self::GpVoteSkipPassed => f.write_str(GP_VOTESKIP_PASSED),
+            Self::GpVoteSkipOwnSong => f.write_str(GP_VOTESKIP_OWN),
         }
     }
 }
@@ -568,6 +649,73 @@ mod test {
 
         let message = CrackedMessage::Clear;
         assert_eq!(message.discriminant(), 11);
+    }
+
+    #[test]
+    fn test_gp_messages_display() {
+        use crate::messaging::messages::{
+            GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_QUEUE_CLEARED, GP_ROUND_SKIPPED, GP_STARTED,
+            GP_SUBMITTED, GP_SUBMITTED_REPLACED, GP_WINDOW_CLOSED_SONGS,
+        };
+
+        let msg = CrackedMessage::GpSubmitted {
+            title: "Never Gonna Give You Up".to_string(),
+            replaced: false,
+            submitted: 2,
+            of: 4,
+        };
+        let s = msg.to_string();
+        assert!(s.starts_with(GP_SUBMITTED), "{s}");
+        assert!(s.contains("**Never Gonna Give You Up**"), "{s}");
+        assert!(s.contains("2 in 4"), "{s}");
+        let msg = CrackedMessage::GpSubmitted {
+            title: "x".to_string(),
+            replaced: true,
+            submitted: 1,
+            of: 0,
+        };
+        let s = msg.to_string();
+        assert!(s.starts_with(GP_SUBMITTED_REPLACED), "{s}");
+        assert!(s.ends_with("(1 in)"), "{s}");
+
+        let msg = CrackedMessage::GpStarted {
+            category: "🥹 Nostalgia",
+            rounds: 5,
+            timer_secs: 180,
+            cleared_queue: false,
+        };
+        let s = msg.to_string();
+        assert!(s.starts_with(&format!("{} 5", GP_STARTED)), "{s}");
+        assert!(s.contains("🥹 Nostalgia"), "{s}");
+        assert!(!s.contains(GP_QUEUE_CLEARED), "{s}");
+        let msg = CrackedMessage::GpStarted {
+            category: "🎲 Mixed",
+            rounds: 3,
+            timer_secs: 60,
+            cleared_queue: true,
+        };
+        assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
+
+        assert_eq!(
+            CrackedMessage::GpWindowClosed { count: 3 }.to_string(),
+            format!("{} 3 {}", GP_CLOSED_BY_HOST, GP_WINDOW_CLOSED_SONGS)
+        );
+
+        assert_eq!(CrackedMessage::GpRoundSkipped.to_string(), GP_ROUND_SKIPPED);
+        assert_eq!(
+            CrackedMessage::GpEnded {
+                by: "alice".to_string()
+            }
+            .to_string(),
+            format!("{} alice", GP_ENDED_BY)
+        );
+
+        // Appended after every existing variant, so the discriminants the
+        // `test_discriminant` test pins are untouched.
+        assert!(
+            CrackedMessage::GpRoundSkipped.discriminant()
+                > CrackedMessage::WelcomeSettings(String::new()).discriminant()
+        );
     }
 
     #[test]

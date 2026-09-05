@@ -6,6 +6,8 @@ pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
 pub mod get_metadata;
+pub mod gp;
+pub mod gp_prompts;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;
@@ -34,6 +36,7 @@ pub use collector::*;
 pub use doplay::*;
 pub use gambling::*;
 pub use get_metadata::*;
+pub use gp::*;
 pub use grab::*;
 pub use leave::*;
 pub use lyrics::*;
@@ -95,10 +98,21 @@ pub fn music_commands() -> Vec<crate::Command> {
     }
 }
 
-/// Get the game commands.
+/// Get the game commands. Not registered -- see [`crate::commands::all_commands`].
 pub fn game_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {
         vec![coinflip(), rolldice()]
+    } else {
+        vec![]
+    }
+}
+
+/// The guilty pleasure game. Kept out of [`game_commands`] so that registering
+/// it does not drag in `coinflip` and `rolldice`, which are deliberately not
+/// registered.
+pub fn gp_commands() -> Vec<crate::Command> {
+    if cfg!(feature = "crack-music") {
+        vec![gp()]
     } else {
         vec![]
     }

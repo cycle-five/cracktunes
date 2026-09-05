@@ -390,6 +390,8 @@ pub struct DataInner {
     pub id_cache_map: dashmap::DashMap<u64, guild::cache::GuildCache>,
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
+    /// Guilty pleasure games, one per guild. See `commands::music::gp`.
+    pub gp_games: dashmap::DashMap<GuildId, commands::music::gp::GpGame>,
     // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
@@ -593,6 +595,7 @@ impl Default for DataInner {
             id_cache_map: dashmap::DashMap::default(),
             guild_command_msg_queue: Default::default(),
             guild_cnt_map: Default::default(),
+            gp_games: Default::default(),
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,

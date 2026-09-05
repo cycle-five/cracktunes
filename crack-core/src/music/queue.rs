@@ -92,7 +92,7 @@ pub async fn queue_resolved_track_back_old(
 /// track reaches the front of the queue rather than when it is enqueued.
 ///
 /// [`Compose`]: songbird::input::Compose
-fn build_track(
+pub(crate) fn build_track(
     resolved: &ResolvedTrack<'static>,
     http_client: &reqwest::Client,
 ) -> Result<Track, CrackedError> {

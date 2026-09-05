@@ -1,0 +1,288 @@
+[
+  {
+    "key": "nostalgia",
+    "name": "🥹 Nostalgia",
+    "prompts": [
+      "What song immediately takes you back to being a kid?",
+      "What song reminds you of your first crush?",
+      "What song reminds you of high school?",
+      "What song reminds you of your first love?",
+      "What song reminds you of a specific summer?",
+      "What song reminds you of your hometown?",
+      "What song reminds you of your best friend?",
+      "What song makes you miss someone?",
+      "What song instantly transports you to another time?",
+      "What song did you absolutely destroy on repeat during one specific era of your life?"
+    ]
+  },
+  {
+    "key": "dangerous",
+    "name": "🔥 Slightly More Dangerous",
+    "prompts": [
+      "What song would you play while secretly hooking up with someone you shouldn't?",
+      "What song describes your \"we're definitely making a mistake\" relationship?",
+      "What song would you dedicate to your biggest crush but never actually send?",
+      "What song makes you want to make questionable decisions?",
+      "What song would your ex immediately know was about them?",
+      "What song would you play when you're trying to seduce someone?",
+      "What song screams \"this is a terrible idea, but I'm doing it anyway\"?",
+      "What song describes your toxic trait?",
+      "What song would you play after blocking someone?",
+      "What song would you play immediately after unblocking them? 😂"
+    ]
+  },
+  {
+    "key": "good_game",
+    "name": "🎶 The Really Good Game Prompts",
+    "prompts": [
+      "You're handed the aux. What are you playing?",
+      "Karaoke mic is in your hand. What are you singing?",
+      "What's your secret guilty-pleasure song?",
+      "What's your \"I need to feel hot\" song?",
+      "What's your sex playlist anthem?",
+      "What's your heartbreak song?",
+      "What's your drunk song?",
+      "What's your \"fuck it, we're partying\" song?",
+      "What's your toxic relationship anthem?",
+      "What's your \"I'm about to make a bad decision\" song?",
+      "What's your childhood nostalgia song?",
+      "What's your \"nobody can know I listen to this\" song?",
+      "What's your villain song?",
+      "What's your main-character song?",
+      "What's your \"I miss someone I shouldn't\" song?",
+      "What's the song that would expose you immediately?",
+      "What's a song you could listen to 100 times and not get sick of?",
+      "What's a song you think is objectively perfect?",
+      "What's a song you wish you could hear again for the first time?",
+      "What's the one song you would save if every other song disappeared?"
+    ]
+  },
+  {
+    "key": "car",
+    "name": "🚗 Car / Driving",
+    "prompts": [
+      "What song do you jam out to alone in the car?",
+      "What song makes you drive like you're in a music video?",
+      "What song do you blast with the windows down?",
+      "What song do you put on for a late-night drive?",
+      "What song do you play when you're driving somewhere you don't want to go?",
+      "What song makes you want to take the long way home?",
+      "What song do you scream-sing when nobody can hear you?"
+    ]
+  },
+  {
+    "key": "chill",
+    "name": "🌿 Altered-State / Chill",
+    "prompts": [
+      "What song would you smoke weed to?",
+      "What song sounds completely different when you're high?",
+      "What song would you put on while staring at the ceiling at 3 a.m.?",
+      "What song makes you feel like you're floating?",
+      "What song would you listen to while watching the sunset?",
+      "What song is perfect for lying outside and doing absolutely nothing?",
+      "What song would you put on for a lazy Sunday?"
+    ]
+  },
+  {
+    "key": "emotional",
+    "name": "😭 Emotional",
+    "prompts": [
+      "What song do you cry to?",
+      "What song makes you emotional every single time?",
+      "What song do you listen to when you're angry?",
+      "What song do you listen to when you need to wallow?",
+      "What song makes you think about someone you lost?",
+      "What song makes you feel nostalgic for a life you never actually lived?",
+      "What song do you listen to when you need a good cathartic cry?",
+      "What song hits completely differently depending on your mood?"
+    ]
+  },
+  {
+    "key": "bad_music",
+    "name": "🤢 Bad Music",
+    "prompts": [
+      "What is the worst song you've ever heard?",
+      "What song makes you immediately reach for the skip button?",
+      "What popular song do you genuinely hate?",
+      "What song do you think should have never been released?",
+      "What song makes you irrationally angry?",
+      "What's the most annoying song you've ever had stuck in your head?",
+      "What song does everyone love that you absolutely cannot stand?",
+      "What song would you delete from existence if you could?"
+    ]
+  },
+  {
+    "key": "hyper_specific",
+    "name": "🎧 Hyper-Specific",
+    "prompts": [
+      "What song do you listen to when you're getting ready?",
+      "What song do you put on while cleaning your house?",
+      "What song makes you want to dance even if you're alone?",
+      "What song would you listen to while cooking dinner?",
+      "What song belongs on your morning playlist?",
+      "What song belongs on your 3 a.m. playlist?",
+      "What song would you put on while getting drunk with your best friend?",
+      "What song would you listen to while looking through old photos?",
+      "What song would you play while packing for a spontaneous trip?",
+      "What song makes you want to get dressed up and go somewhere?",
+      "What song would you listen to while walking around a city you've never been to?",
+      "What song would you play while watching the rain?"
+    ]
+  },
+  {
+    "key": "revealing",
+    "name": "🖤 Weirdly Revealing",
+    "prompts": [
+      "What song do you wish you could erase from your memory so you could hear it fresh again?",
+      "What song did you discover completely by accident?",
+      "What song have you listened to so many times you could probably perform it from memory?",
+      "What song do you associate with a very specific place?",
+      "What song reminds you of a particular smell?",
+      "What song instantly puts you in a completely different headspace?",
+      "What song makes you feel 17 again?",
+      "What song do you associate with your most chaotic era?",
+      "What song makes you feel inexplicably happy?",
+      "What song do you listen to when you need to feel like everything is going to be okay?",
+      "What song would you play while watching your life flash before your eyes?",
+      "What song would be playing if someone secretly followed you around for a day?"
+    ]
+  },
+  {
+    "key": "chaos",
+    "name": "😂 Game Chaos",
+    "prompts": [
+      "What song would you play at your own funeral?",
+      "What song would you play if you were arrested?",
+      "What song would play during your entrance to a boxing match?",
+      "What song would play during your wedding if you had absolutely no regard for tradition?",
+      "What song would play when you finally snap?",
+      "What song would play while you quit your job dramatically?",
+      "What song would play during your first appearance on reality TV?",
+      "What song would play when you walk back into your ex's life looking better than ever?",
+      "What song would play during your inevitable downfall?",
+      "What song would play when you disappear for six months and come back with a completely different personality?"
+    ]
+  },
+  {
+    "key": "one_worders",
+    "name": "⚡ One-Worders",
+    "prompts": [
+      "High song.",
+      "Car song.",
+      "Cry song.",
+      "Dance song.",
+      "Rain song.",
+      "3 a.m. song.",
+      "Angry song.",
+      "Cleaning song.",
+      "Drunk song.",
+      "Sunset song.",
+      "Funeral song.",
+      "Worst song.",
+      "Skip song.",
+      "Nostalgia song.",
+      "Unhinged song.",
+      "Comfort song.",
+      "Party song.",
+      "Road-trip song.",
+      "Shower song.",
+      "\"I need to disappear\" song."
+    ]
+  },
+  {
+    "key": "social",
+    "name": "🎤 Social / Go-To",
+    "prompts": [
+      "What's your go-to karaoke song?",
+      "You get handed the aux for the homies—what are you playing?",
+      "What song gets you immediately out of your seat?",
+      "What song do you know every single word to?",
+      "What's your \"I'm feeling myself\" song?",
+      "What song would you play to get the party started?",
+      "What song makes you feel like the main character?",
+      "What's your road-trip anthem?",
+      "What song are you putting on at 2 a.m. with your closest friends?",
+      "What song would you play if you had exactly one song to represent you?"
+    ]
+  },
+  {
+    "key": "guilty",
+    "name": "😈 Guilty Pleasures / Secret Taste",
+    "prompts": [
+      "What's your most embarrassing guilty-pleasure song?",
+      "What song would you never voluntarily play around someone you're trying to impress?",
+      "What song do you secretly fuck with way harder than you should?",
+      "What artist would you be embarrassed to admit is in your rotation?",
+      "What song do you know is objectively terrible but you'll defend with your life?",
+      "What's your \"don't judge me\" song?",
+      "What song would expose your questionable taste immediately?",
+      "What song do you listen to when nobody else is around?",
+      "What song would your friends roast you for loving?",
+      "What's the most unserious song you genuinely enjoy?"
+    ]
+  },
+  {
+    "key": "romance",
+    "name": "💋 Sex / Romance / Attraction",
+    "prompts": [
+      "What song belongs on your sex playlist?",
+      "What song instantly puts you in a seductive mood?",
+      "What song makes someone hotter to you when they play it?",
+      "What song would you put on during a romantic night?",
+      "What song reminds you of someone you were attracted to?",
+      "What song has the strongest \"I should text my ex\" energy?",
+      "What song makes you feel dangerously attractive?",
+      "What song would you use to set the mood without saying a word?",
+      "What song reminds you of your best kiss?",
+      "What song would you want playing during the opening scene of your next relationship?"
+    ]
+  },
+  {
+    "key": "damage",
+    "name": "🥀 Emotional Damage",
+    "prompts": [
+      "What song could ruin your entire day if it came on unexpectedly?",
+      "What song reminds you of your worst breakup?",
+      "What song have you cried to?",
+      "What song perfectly describes your last relationship?",
+      "What song do you associate with someone you can't have?",
+      "What song makes you nostalgic for a version of yourself that doesn't exist anymore?",
+      "What song feels like your personal emotional support animal?",
+      "What song would you send to someone if you couldn't say how you feel?",
+      "What song reminds you of the person who hurt you the most?",
+      "What song did you completely misunderstand when you were younger?"
+    ]
+  },
+  {
+    "key": "funny",
+    "name": "🕺 Chaotic / Funny",
+    "prompts": [
+      "What song would play during your villain origin story?",
+      "What song would play while you make an absolutely terrible decision?",
+      "What song describes your dating life?",
+      "What song describes your financial situation?",
+      "What song would play during your walk of shame?",
+      "What song would play over the credits of your life?",
+      "What song would play while you dramatically leave a party?",
+      "What song would play while you're drunk texting someone?",
+      "What song describes your current mental state?",
+      "What song would make everyone in the room question what happened to you?"
+    ]
+  },
+  {
+    "key": "personality",
+    "name": "🧠 Personality Reveals",
+    "prompts": [
+      "What song do you think says the most about who you are?",
+      "What song represents your childhood?",
+      "What song represents your teenage years?",
+      "What song represents who you are now?",
+      "What song represents who you're becoming?",
+      "What song would you want people to associate with you?",
+      "What song makes you feel understood?",
+      "What song feels like it was written specifically about you?",
+      "What song captures your worldview?",
+      "What song would you put on your autobiography?"
+    ]
+  }
+]

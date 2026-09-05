@@ -1,5 +1,6 @@
 use crate::{
     // commands::queue_aux_metadata,
+    commands::music::gp::{handle_gp_component, GP_CUSTOM_ID_PREFIX},
     db::GuildEntity,
     errors::CrackedError,
     guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
@@ -20,7 +21,7 @@ use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, 
 use serenity::CacheHttp;
 use serenity::{
     async_trait,
-    model::{gateway::Ready, id::GuildId, prelude::VoiceState},
+    model::{application::Interaction, gateway::Ready, id::GuildId, prelude::VoiceState},
     GenericChannelId, {Context as SerenityContext, EventHandler, FullEvent},
 };
 use std::{
@@ -54,6 +55,15 @@ impl EventHandler for SerenityHandler {
             },
             FullEvent::CacheReady { guilds } => {
                 self.on_cache_ready(ctx.clone(), guilds.clone()).await;
+            },
+            // `/gp` dropdown picks and 👍s. Poise ignores component
+            // interactions, so they are routed here by custom-id prefix.
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(mci),
+            } if mci.data.custom_id.starts_with(GP_CUSTOM_ID_PREFIX) => {
+                if let Err(e) = handle_gp_component(&self.data, ctx, mci).await {
+                    tracing::warn!("gp component: {e}");
+                }
             },
             _ => {},
         }
@@ -266,6 +276,10 @@ impl SerenityHandler {
         // A:
         if manager.get(guild_id).is_some() {
             manager.remove(guild_id).await.ok();
+        }
+        // Kicked or disconnected mid-game: don't leave a zombie game behind.
+        if self.data.gp_remove(guild_id).is_some() {
+            tracing::warn!("gp: bot left voice in {guild_id}, game discarded");
         }
 
         // update_queue_messages(&ctx, &self.data, &[], guild_id).await;
