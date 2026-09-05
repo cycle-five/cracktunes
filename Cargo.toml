@@ -148,6 +148,6 @@ inherits = "release-with-performance"
 lto = "thin"
 
 [patch.crates-io]
-rusty_ytdl = { git = "https://github.com/cycle-five/rusty_ytdl", branch = "main" }
+rusty_ytdl = { git = "https://github.com/Mithronn/rusty_ytdl", rev = "bfd7fedb8" }
 poise = { git = "https://github.com/serenity-rs/poise", branch = "serenity-next" }
 serenity = { git = "https://github.com/serenity-rs/serenity", branch = "next" }

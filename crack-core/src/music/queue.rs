@@ -3,7 +3,6 @@ use crate::{
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
     music::NewQueryType,
-    sources::rusty_ytdl::RustyYoutubeSearch,
     utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
     Context as CrackContext, Error,
 };
@@ -14,7 +13,7 @@ use serenity::{
     small_fixed_array::FixedString,
 };
 use songbird::{
-    input::Input as SongbirdInput,
+    input::{Input as SongbirdInput, YoutubeDl},
     tracks::{Queued, Track, TrackHandle},
     Call,
 };
@@ -33,22 +32,11 @@ pub async fn queue_resolved_track_back(
     track_resolved: ResolvedTrack<'static>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    // Through `build_track`, not a second copy of it. This function used to
+    // construct its own `RustyYoutubeSearch` inline, which is why fixing the
+    // source in `build_track` fixed `/gp` and left `/play` still silent.
+    let track = build_track(&track_resolved, &http_client)?;
     let mut handler = call.lock().await;
-    //let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-    let query = QueryType::VideoLink(track_resolved.get_url());
-    let track2 = track_resolved.clone();
-    let ytdl = RustyYoutubeSearch::new_with_stuff(
-        http_client.clone(),
-        query,
-        track2.metadata,
-        track2.video,
-    )?;
-    let resolved_clone = &track_resolved.clone();
-    let track_data = Arc::new(TrackData {
-        user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
-        aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
-    });
-    let track = Track::new_with_data(ytdl.clone().into(), track_data);
     let _track_handle = handler.enqueue(track).await;
     // .enqueue_input(Into::<SongbirdInput>::into(track))
     let new_q = handler.queue().current_queue();
@@ -87,22 +75,29 @@ pub async fn queue_resolved_track_back_old(
 
 /// Build the songbird [`Track`] for an already-resolved track.
 ///
-/// This performs no I/O: [`RustyYoutubeSearch`] is a lazy [`Compose`], so the
-/// actual stream (and any metadata we don't already hold) is fetched when the
-/// track reaches the front of the queue rather than when it is enqueued.
+/// This performs no I/O: [`YoutubeDl`] is a lazy [`Compose`], so yt-dlp is not
+/// run and the stream is not opened until the track reaches the front of the
+/// queue.
+///
+/// Every playback path goes through here. Two of them used to build their own
+/// source inline instead, which is how `/play` stayed broken after `/gp` was
+/// fixed -- keep it that way.
 ///
 /// [`Compose`]: songbird::input::Compose
 pub(crate) fn build_track(
     resolved: &ResolvedTrack<'static>,
     http_client: &reqwest::Client,
 ) -> Result<Track, CrackedError> {
-    let query = QueryType::VideoLink(resolved.get_url());
-    let ytdl = RustyYoutubeSearch::new_with_stuff(
-        http_client.clone(),
-        query,
-        resolved.metadata.clone(),
-        resolved.video.clone(),
-    )?;
+    // yt-dlp, not rusty_ytdl. rusty_ytdl resolves fine but the googlevideo URL
+    // it hands back is rejected: `c=ANDROID` fetches 403, songbird gets an empty
+    // stream, and symphonia reports it as "no suitable format reader found",
+    // which reads like a codec problem and is not one. yt-dlp negotiates a
+    // client whose URL actually serves (`c=VISIONOS` at the time of writing) and
+    // keeps up with YouTube's changes, which is the whole reason it exists.
+    //
+    // Needs `yt-dlp` on PATH -- see the Dockerfile, and note it must be the musl
+    // build on this Alpine base.
+    let ytdl = YoutubeDl::new(http_client.clone(), resolved.get_url());
     let track_data = Arc::new(TrackData {
         user_id: Arc::new(RwLock::new(Some(resolved.user_id))),
         aux_metadata: Arc::new(RwLock::new(resolved.metadata.clone())),
@@ -462,7 +457,6 @@ pub async fn queue_vec_query_type(
 }
 
 use crate::http_utils;
-use crack_types::YoutubeDl;
 /// Queue a list of queries to be played with a given offset.
 /// N.B. The offset must be 0 < offset < queue.len() + 1
 #[cfg(not(tarpaulin_include))]

@@ -2,7 +2,7 @@ use crate::commands::{cmd_check_music, help};
 use crate::music::query::query_type_from_url;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
-use crate::utils::{edit_embed_response2, TrackData};
+use crate::utils::edit_embed_response2;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
@@ -34,7 +34,7 @@ use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -525,19 +525,8 @@ pub async fn resolve_query_to_tracks(
     //let tracks = client.resolve_track(query_type).await?;
     let mut track_handles = Vec::new();
     for track in tracks.iter() {
-        let ytdl = RustyYoutubeSearch::new_with_stuff(
-            client.req_client.clone(),
-            query_type.clone(),
-            track.metadata.clone(),
-            track.video.clone(),
-        )?;
-        let resolved_clone = &track.clone();
-        let track_data = Arc::new(TrackData {
-            user_id: Arc::new(RwLock::new(Some(resolved_clone.clone().user_id))),
-            aux_metadata: Arc::new(RwLock::new(resolved_clone.metadata.clone())),
-        });
-        let track2 = Track::new_with_data(ytdl.clone().into(), track_data);
-        track_handles.push(track2);
+        // Through `build_track`, not a third copy of it -- see the note there.
+        track_handles.push(crate::music::queue::build_track(track, &client.req_client)?);
     }
     Ok(track_handles)
 }
@@ -754,7 +743,7 @@ async fn build_queued_embed<'att>(
         .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
 }
 
-use crate::sources::rusty_ytdl::{RequestOptionsBuilder, RustyYoutubeSearch};
+use crate::sources::rusty_ytdl::RequestOptionsBuilder;
 use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
 #[cfg(not(tarpaulin_include))]
