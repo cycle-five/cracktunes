@@ -10,7 +10,7 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
-## Unreleased
+## v0.6.0 (2026/09/05)
 
 ### Added
 
