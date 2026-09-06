@@ -1787,9 +1787,9 @@ pub fn gp_spawn_window_timer(pb: GpPlayback, opened: &GpWindowOpened) {
         } else {
             tokio::time::sleep(Duration::from_secs(timer)).await;
         }
-        let closed =
-            pb.data
-                .gp_close_window_if(guild_id, generation, &mut rand::thread_rng(), now());
+        let closed = pb
+            .data
+            .gp_close_window_if(guild_id, generation, &mut rand::rng(), now());
         if let Some(closed) = closed {
             if let Err(e) = gp_after_close(pb, closed).await {
                 tracing::warn!("gp: closing window in {guild_id}: {e}");
@@ -2317,7 +2317,7 @@ pub async fn gp_start(
                 .clamp(GP_MIN_CLIP_LENGTH_SECS, GP_MAX_CLIP_LENGTH_SECS),
         ),
     });
-    let prompts = draw_prompts(category, rounds, &mut rand::thread_rng());
+    let prompts = draw_prompts(category, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
     // event that stopping an existing queue fires.
@@ -2409,12 +2409,9 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
     // strand the round with nothing ever enqueued to advance it.
     if outcome.everyone_in {
         if let Some(call) = data.songbird.get(guild_id) {
-            if let Some(closed) = data.gp_close_window_if(
-                guild_id,
-                outcome.generation,
-                &mut rand::thread_rng(),
-                now(),
-            ) {
+            if let Some(closed) =
+                data.gp_close_window_if(guild_id, outcome.generation, &mut rand::rng(), now())
+            {
                 let pb = gp_playback(ctx, call, guild_id);
                 // Off this task so the ephemeral confirmation isn't held up.
                 tokio::spawn(async move {
@@ -2454,7 +2451,7 @@ pub async fn gp_close(ctx: Context<'_>) -> Result<(), Error> {
         .songbird
         .get(guild_id)
         .ok_or(CrackedError::NotConnected)?;
-    let closed = data.gp_close_window(guild_id, ctx.author().id, &mut rand::thread_rng(), now())?;
+    let closed = data.gp_close_window(guild_id, ctx.author().id, &mut rand::rng(), now())?;
     if let Err(e) = ctx
         .send_reply(
             CrackedMessage::GpWindowClosed {
