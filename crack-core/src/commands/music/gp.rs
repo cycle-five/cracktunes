@@ -996,13 +996,15 @@ impl Data {
             .get(round_idx)
             .and_then(|r| r.tracks.get(track_idx))
             .ok_or(CrackedError::StaleRound)?;
-        if t.play_full {
-            return Ok(GpVoteFullOutcome::AlreadyFull);
-        }
         let submitter = t.submitter;
         // Voting to hear your own song in full is voting yourself the bonus.
+        // Checked before the already-carried case so a submitter always gets the
+        // same answer, the way `gp_vote_skip` orders it.
         if voter == submitter {
             return Err(CrackedError::CannotVoteOwnSongFull);
+        }
+        if t.play_full {
+            return Ok(GpVoteFullOutcome::AlreadyFull);
         }
         let eligible = vc_members
             .iter()
@@ -1919,22 +1921,12 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
         let mut handler = pb.call.lock().await;
         handler.enqueue(songbird_track).await
     };
-    if let Some(clip) = start.clip {
-        // Seek before the first frame is mixed. yt-dlp's source is an HttpRequest
-        // and so supports range requests; a seek that fails is not worth losing
-        // the song over, so fall back to playing it from the top.
-        if !clip.start.is_zero() {
-            if let Err(e) = handle.seek(clip.start).result_async().await {
-                tracing::warn!(
-                    "gp: seeking round {} song {} in {guild_id} to {:?}: {e}",
-                    start.round_idx,
-                    start.track_idx,
-                    clip.start
-                );
-            }
-        }
-        gp_spawn_clip_timer(pb.clone(), &start, clip, handle.clone());
-    }
+
+    // Arm every handler before awaiting anything. The seek below is the first
+    // await, and it is not a passive one: it forces songbird to create the
+    // stream, which is when `Playable` fires and, if creation fails, when the
+    // track is removed. Registering afterwards would race the first and find a
+    // dead command channel after the second.
     for event in [TrackEvent::End, TrackEvent::Error] {
         if let Err(e) = handle.add_event(
             Event::Track(event),
@@ -1955,6 +1947,55 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
             return Ok(());
         }
     }
+
+    if let Some(clip) = start.clip {
+        // The clip is timed from when the song becomes audible, not from here.
+        // `build_track` is lazy -- yt-dlp has not even spawned yet -- so timing it
+        // from the enqueue would spend an unpredictable slice of the clip on
+        // resolve latency, and would do it silently: the timer's `stop()` fires
+        // `End`, not `Errored`, so `never_played` cannot catch a clip the room
+        // barely heard.
+        //
+        // `TrackEvent::Playable`, not `Play`: `Play` explicitly does not fire when
+        // a track first starts, only on a later pause -> play.
+        if let Err(e) = handle.add_event(
+            Event::Track(TrackEvent::Playable),
+            GpClipStartHandler {
+                pb: pb.clone(),
+                handle: handle.clone(),
+                clip,
+                round_idx: start.round_idx,
+                track_idx: start.track_idx,
+                generation: start.generation,
+            },
+        ) {
+            gp_abort(
+                pb,
+                start.text_channel,
+                &format!("arming the clip timer failed: {e}"),
+            )
+            .await;
+            return Ok(());
+        }
+
+        if !clip.start.is_zero() {
+            if let Err(e) = handle.seek(clip.start).result_async().await {
+                // Not a fallback to playing from the top: songbird documents a
+                // failed seek as fatal and *removes the track*, so there is no
+                // song left and no `End` coming for it. Drive the same path a
+                // stream songbird cannot open takes, rather than letting the dead
+                // handle surface later as an abort of the whole game.
+                tracing::warn!(
+                    "gp: seeking round {} song {} in {guild_id} to {:?}: {e}",
+                    start.round_idx,
+                    start.track_idx,
+                    clip.start
+                );
+                gp_spawn_advance(pb.clone(), start.round_idx, start.track_idx, true);
+                return Ok(());
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1962,8 +2003,14 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
 /// started under, the same way the submission-window timer is, so a timer left
 /// over from an abandoned round cannot cut a later song short. Stands down if the
 /// room has voted the song up to its full length in the meantime.
-fn gp_spawn_clip_timer(pb: GpPlayback, start: &GpTrackStart, clip: GpClip, handle: TrackHandle) {
-    let (generation, round_idx, track_idx) = (start.generation, start.round_idx, start.track_idx);
+fn gp_spawn_clip_timer(
+    pb: GpPlayback,
+    handle: TrackHandle,
+    clip: GpClip,
+    round_idx: usize,
+    track_idx: usize,
+    generation: u64,
+) {
     tokio::spawn(async move {
         tokio::time::sleep(clip.length).await;
         let guild_id = pb.guild_id;
@@ -1982,6 +2029,32 @@ fn gp_spawn_clip_timer(pb: GpPlayback, start: &GpTrackStart, clip: GpClip, handl
             tracing::warn!("gp: ending the clip in {guild_id}: {e}");
         }
     });
+}
+
+/// Starts the clip timer the moment the song becomes audible. One-shot: it
+/// cancels itself once the timer is armed.
+pub struct GpClipStartHandler {
+    pub pb: GpPlayback,
+    pub handle: TrackHandle,
+    pub clip: GpClip,
+    pub round_idx: usize,
+    pub track_idx: usize,
+    pub generation: u64,
+}
+
+#[async_trait]
+impl EventHandler for GpClipStartHandler {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        gp_spawn_clip_timer(
+            self.pb.clone(),
+            self.handle.clone(),
+            self.clip,
+            self.round_idx,
+            self.track_idx,
+            self.generation,
+        );
+        Some(Event::Cancel)
+    }
 }
 
 /// Advance off the current task. Used by the track handlers and by a song that
@@ -3284,6 +3357,34 @@ mod test {
         // Out of range, and an absent game, are not evidence either.
         assert!(!data.gp_heard_by_vote(G, 0, 99));
         assert!(!data.gp_heard_by_vote(GuildId::new(9), 0, 0));
+    }
+
+    /// A submitter gets the same answer whether or not the song has already been
+    /// voted up: it is never theirs to vote on.
+    #[test]
+    fn vote_full_tells_the_submitter_the_same_thing_either_way() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let vc = [A, B, C];
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let voters: Vec<UserId> = vc.iter().copied().filter(|u| *u != s0).collect();
+
+        assert_eq!(
+            data.gp_vote_full(G, s0, "self".into(), &vc).unwrap_err(),
+            CrackedError::CannotVoteOwnSongFull
+        );
+        // Carry it, then ask again: still their own song, still the same answer.
+        data.gp_vote_full(G, voters[0], "v0".into(), &vc).unwrap();
+        data.gp_vote_full(G, voters[1], "v1".into(), &vc).unwrap();
+        assert!(data.gp_plays_full(G, 0, 0));
+        assert_eq!(
+            data.gp_vote_full(G, s0, "self".into(), &vc).unwrap_err(),
+            CrackedError::CannotVoteOwnSongFull
+        );
     }
 
     /// A clip has to fit the song. Seeking past the end comes back as an immediate
