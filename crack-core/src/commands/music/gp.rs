@@ -1060,6 +1060,27 @@ impl Data {
             .unwrap_or(false)
     }
 
+    /// Did anyone vote to hear more of this song? That is first-hand evidence the
+    /// room was listening to something, which beats any inference from play time:
+    /// a song someone asked to hear *more* of was audibly playing, whatever
+    /// songbird went on to report about the stream.
+    ///
+    /// Deliberately only the full-song votes. A skip vote proves nothing of the
+    /// sort -- silence from a dead link is exactly what makes people reach for
+    /// `/gp voteskip` -- and counting those would score the songs this check
+    /// exists to catch.
+    pub fn gp_heard_by_vote(&self, guild_id: GuildId, round_idx: usize, track_idx: usize) -> bool {
+        self.gp_games
+            .get(&guild_id)
+            .and_then(|g| {
+                g.rounds
+                    .get(round_idx)
+                    .and_then(|r| r.tracks.get(track_idx))
+                    .map(|t| !t.full_votes.is_empty())
+            })
+            .unwrap_or(false)
+    }
+
     /// Score the song that just ended and advance. Returns `None` unless the
     /// game is playing and this is the current song, which makes it safe to
     /// call twice (End and Error can both fire for one track).
@@ -1640,14 +1661,20 @@ fn track_errored(ctx: &EventContext<'_>, intended: Option<Duration>) -> bool {
 #[async_trait]
 impl EventHandler for GpTrackEndHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        // A vote to hear more of this song outranks the play-time bar: somebody
+        // asked for more of it, so it reached the room whatever the stream did
+        // afterwards. Without this a song that played, got voted up, and then
+        // dropped its stream would be revealed as one that never played, and
+        // everyone who guessed it would go unpaid.
+        let failed =
+            !self
+                .pb
+                .data
+                .gp_heard_by_vote(self.pb.guild_id, self.round_idx, self.track_idx)
+                && track_errored(ctx, self.intended);
         // Do the reveal off the driver's event task: it edits messages, sleeps,
         // and takes the call lock to enqueue the next song.
-        gp_spawn_advance(
-            self.pb.clone(),
-            self.round_idx,
-            self.track_idx,
-            track_errored(ctx, self.intended),
-        );
+        gp_spawn_advance(self.pb.clone(), self.round_idx, self.track_idx, failed);
         Some(Event::Cancel)
     }
 }
@@ -3218,6 +3245,48 @@ mod test {
             None
         ));
         assert!(!never_played(&TrackState::default(), None));
+    }
+
+    /// A vote to hear more of a song is first-hand evidence it was playing, and
+    /// outranks whatever the play time says afterwards. A skip vote is not: a dead
+    /// link is silent, and silence is what makes people reach for `/gp voteskip`.
+    #[test]
+    fn a_full_song_vote_beats_the_played_threshold() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let vc = [A, B, C];
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let voter = vc.iter().copied().find(|u| *u != s0).unwrap();
+
+        assert!(!data.gp_heard_by_vote(G, 0, 0));
+
+        // A skip vote is not evidence of anything being audible.
+        let skipper = vc
+            .iter()
+            .copied()
+            .find(|u| *u != s0 && *u != voter)
+            .unwrap();
+        data.gp_vote_skip(G, skipper, "s".into(), &vc).unwrap();
+        assert!(!data.gp_heard_by_vote(G, 0, 0));
+
+        // One vote for more of it is, even before the vote carries.
+        assert_eq!(
+            data.gp_vote_full(G, voter, "v".into(), &vc).unwrap(),
+            GpVoteFullOutcome::Counted {
+                votes: 1,
+                needed: 1
+            }
+        );
+        assert!(data.gp_heard_by_vote(G, 0, 0));
+        assert!(!data.gp_plays_full(G, 0, 0), "not carried yet");
+
+        // Out of range, and an absent game, are not evidence either.
+        assert!(!data.gp_heard_by_vote(G, 0, 99));
+        assert!(!data.gp_heard_by_vote(GuildId::new(9), 0, 0));
     }
 
     /// A clip has to fit the song. Seeking past the end comes back as an immediate
