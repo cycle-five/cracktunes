@@ -476,6 +476,17 @@ impl SerenityHandler {
     ) -> Result<(), SerenityError> {
         let prefix = self.data.bot_settings.get_prefix();
 
+        // Running without a database is supported: play history, track reactions
+        // and playlist storage stay off and everything else works. Say so once,
+        // because the consequence here -- settings that do not survive a restart
+        // -- is otherwise invisible until someone wonders why a prefix reverted.
+        if self.data.database_pool.is_none() {
+            tracing::warn!(
+                "No database pool: guild settings will not persist across restarts, \
+                 and every guild starts from defaults."
+            );
+        }
+
         let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
         for guild_id in guilds {
             let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
@@ -494,11 +505,30 @@ impl SerenityHandler {
             let guild_id_int = guild_id.get() as i64;
             let guild_name = guild_name.clone();
             let prefix = prefix.clone();
-            let pool = self.data.database_pool.clone().unwrap();
-            let (_guild, settings) =
-                GuildEntity::get_or_create(&pool, guild_id_int, guild_name, prefix)
-                    .await
-                    .unwrap();
+            // Defaults first, database over the top -- the shape `_load_guilds_settings`
+            // already used. Unwrapping the pool panicked this task on every boot without
+            // a `DATABASE_URL`, which left the guild with no settings at all rather than
+            // with default ones, and did it on a worker thread so the bot looked healthy.
+            let settings = match self.data.database_pool.as_ref() {
+                Some(pool) => match GuildEntity::get_or_create(
+                    pool,
+                    guild_id_int,
+                    guild_name.clone(),
+                    prefix.clone(),
+                )
+                .await
+                {
+                    Ok((_guild, settings)) => settings,
+                    Err(err) => {
+                        tracing::error!(
+                            "Failed to load settings for guild {guild_id} from the database, \
+                             falling back to defaults: {err}"
+                        );
+                        GuildSettings::new(*guild_id, Some(&prefix), Some(guild_name))
+                    },
+                },
+                None => GuildSettings::new(*guild_id, Some(&prefix), Some(guild_name)),
+            };
             let mut guild_settings_map = self.data.guild_settings_map.write().await;
 
             let _ = guild_settings_map.insert(*guild_id, settings);
