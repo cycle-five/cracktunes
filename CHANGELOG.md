@@ -10,6 +10,26 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## v0.6.2 (2026/09/06)
+
+### Fixed
+
+- **Guild settings never loaded when running without a database.** The ready
+  handler unwrapped `Data::database_pool`, which is `None` whenever
+  `DATABASE_URL` is unset -- a configuration the bot otherwise supports and the
+  one production runs in. The unwrap panicked once per guild, so no guild ever
+  got settings, and every one silently fell back to library defaults for its
+  prefix and everything else.
+
+  It panicked on a Tokio worker rather than the main thread, so the process
+  survived and the bot looked healthy. That is why this went unnoticed: the
+  symptom was indistinguishable from the graceful degradation that was intended.
+
+  Settings are now built from defaults and overlaid from the database when one
+  is configured, which is the shape the older `_load_guilds_settings` already
+  used. A database error falls back to defaults rather than taking the task
+  down, and a missing pool is reported once at startup instead of being silent.
+
 ## v0.6.1 (2026/09/05)
 
 ### Fixed
