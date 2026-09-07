@@ -25,9 +25,15 @@ Everything below is optional, and the bot degrades rather than failing without i
 | variable | what you lose without it |
 | --- | --- |
 | `DATABASE_URL` | play history, track reactions, playlist storage, and guild settings that survive a restart |
-| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Spotify link support |
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |
+
+Spotify needs no credentials. It is served by
+[sleevenote](https://github.com/cycle-five/sleevenote) rather than the Spotify
+Web API — which matters, because Spotify stopped accepting new Web API app
+registrations around December 2025, so `SPOTIFY_CLIENT_ID` and
+`SPOTIFY_CLIENT_SECRET` are not obtainable for a new self-hoster even if the old
+path were still wanted.
 
 `DATABASE_URL` is the only database variable the bot reads. If you run the
 bundled Postgres from `docker-compose-postgres.yml`, `POSTGRES_USER` and
