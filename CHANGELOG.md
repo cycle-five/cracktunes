@@ -34,6 +34,34 @@
 - [ ] Support discordbotlist.com (voting service).
 - [ ] Decide on whether to use ephemeral for admin messages.
 
+## v0.6.3 (2026/09/07)
+
+### Fixed
+
+- **Guild settings never loaded on a bot in more than a handful of guilds.**
+  Settings were loaded from `CacheReady`. serenity emits that event from inside
+  `GuildCreate` handling, and only when `cache.unavailable_guilds` has drained to
+  exactly zero -- every guild in the `Ready` payload having checked in. A single
+  guild that is down at startup, or one the bot was removed from while offline,
+  and it never fires at all for the life of the process. `GuildDelete` puts a
+  guild back into that set, so even a cache that completes once can lose the
+  condition permanently.
+
+  At thirteen guilds that barrier clears every time. At a hundred and fifty it
+  effectively never does -- measured on the deployed bot, where 155 `GuildCreate`
+  events arrived and `CacheReady` never fired once.
+
+  Settings now load per guild from `GuildCreate`, which is also correct for guilds
+  that recover from an outage or are joined while the bot is running. The camera
+  status loop moved to `Ready`, which always fires and already carries the guild
+  ids it needs.
+
+  Latent rather than active: with no `DATABASE_URL` there are no stored settings
+  to miss, and defaults are materialised lazily on first use. With a database
+  configured it would have been destructive -- settings never loaded, defaults
+  created lazily, and the shutdown handler writing those defaults back over the
+  stored rows on every restart.
+
 ## v0.6.2 (2026/09/06)
 
 ### Fixed
