@@ -24,11 +24,15 @@ Everything below is optional, and the bot degrades rather than failing without i
 
 | variable | what you lose without it |
 | --- | --- |
-| `DATABASE_URL`, `PG_USER`, `PG_PASSWORD` | play history, track reactions, playlist storage, and settings that persist across restarts |
+| `DATABASE_URL` | play history, track reactions, playlist storage, and guild settings that survive a restart |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Spotify link support |
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |
-| `DISCORD_APP_ID` | nothing — serenity derives it from the token |
+
+`DATABASE_URL` is the only database variable the bot reads. If you run the
+bundled Postgres from `docker-compose-postgres.yml`, `POSTGRES_USER` and
+`POSTGRES_PASSWORD` configure *that container* — the official Postgres image
+reads them, the bot does not.
 
 Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
 
