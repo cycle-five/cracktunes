@@ -229,6 +229,7 @@ pub enum CrackedMessage {
         category: &'static str,
         rounds: usize,
         timer_secs: u64,
+        clip: Option<crate::commands::music::gp::GpClip>,
         cleared_queue: bool,
     },
     GpRoundSkipped,
@@ -244,6 +245,12 @@ pub enum CrackedMessage {
     },
     GpVoteSkipPassed,
     GpVoteSkipOwnSong,
+    GpVoteFullCounted {
+        votes: usize,
+        needed: usize,
+    },
+    GpVoteFullPassed,
+    GpVoteFullAlready,
 }
 
 impl CrackedMessage {
@@ -490,15 +497,26 @@ impl Display for CrackedMessage {
                 category,
                 rounds,
                 timer_secs,
+                clip,
                 cleared_queue,
             } => f.write_str(&format!(
-                "{} {} {} {} — {} {}{}",
+                "{} {} {} {} — {} {}{}{}",
                 GP_STARTED,
                 rounds,
                 GP_STARTED_ROUNDS,
                 category,
                 crate::utils::duration_to_string(std::time::Duration::from_secs(*timer_secs)),
                 GP_STARTED_TIMER,
+                match clip {
+                    Some(c) => format!(
+                        " {} {} {} {}",
+                        GP_STARTED_CLIP,
+                        duration_to_string(c.length),
+                        GP_STARTED_CLIP_FROM,
+                        duration_to_string(c.start)
+                    ),
+                    None => String::new(),
+                },
                 if *cleared_queue {
                     format!(" {}", GP_QUEUE_CLEARED)
                 } else {
@@ -517,6 +535,12 @@ impl Display for CrackedMessage {
             )),
             Self::GpVoteSkipPassed => f.write_str(GP_VOTESKIP_PASSED),
             Self::GpVoteSkipOwnSong => f.write_str(GP_VOTESKIP_OWN),
+            Self::GpVoteFullCounted { votes, needed } => f.write_str(&format!(
+                "{} {} {} {} {}",
+                GP_VOTEFULL_COUNTED, votes, GP_VOTESKIP_SO_FAR, needed, GP_VOTEFULL_NEEDED
+            )),
+            Self::GpVoteFullPassed => f.write_str(GP_VOTEFULL_PASSED),
+            Self::GpVoteFullAlready => f.write_str(GP_VOTEFULL_ALREADY),
         }
     }
 }
@@ -682,6 +706,7 @@ mod test {
             category: "🥹 Nostalgia",
             rounds: 5,
             timer_secs: 180,
+            clip: None,
             cleared_queue: false,
         };
         let s = msg.to_string();
@@ -692,6 +717,7 @@ mod test {
             category: "🎲 Mixed",
             rounds: 3,
             timer_secs: 60,
+            clip: None,
             cleared_queue: true,
         };
         assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));

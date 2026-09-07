@@ -15,15 +15,16 @@ use crate::{
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     messaging::messages::{
-        GP_ABORTED, GP_FOOLED_EVERYONE, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_GUESS_CHANGED,
-        GP_GUESS_RECORDED, GP_HOW_TO, GP_HOW_TO_TITLE, GP_LIKED, GP_LIKES, GP_LIKE_HINT,
-        GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_EARLY,
-        GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_REVEAL, GP_ROUND_HINT,
-        GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
-        GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT,
-        GP_STATUS_SCORES, GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED,
-        GP_TRACK_FAILED_NOTE, GP_UNLIKED, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS,
-        GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
+        GP_ABORTED, GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_FULL_SONG_NOTE, GP_GAME_OVER,
+        GP_GUESSED_RIGHT, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_HOW_TO, GP_HOW_TO_TITLE,
+        GP_LIKED, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
+        GP_PROMPT_CLOSES_EARLY, GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE,
+        GP_REVEAL, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD,
+        GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
+        GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
+        GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_UNLIKED,
+        GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
+        GP_WINDOW_WARNING_IN,
     },
     music::queue::build_track,
     poise_ext::PoiseContextExt,
@@ -46,7 +47,7 @@ use crack_testing::ResolvedTrack;
 use crack_types::QueryType;
 use poise::serenity_prelude::Context as SerenityContext;
 use rand::{seq::SliceRandom, Rng};
-use songbird::tracks::{PlayMode, TrackState};
+use songbird::tracks::{PlayMode, TrackHandle, TrackState};
 use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
 use std::{
     borrow::Cow,
@@ -75,6 +76,20 @@ pub const GP_MAX_ROUNDS: u32 = 20;
 pub const GP_MIN_TIMER_SECS: u64 = 30;
 pub const GP_MAX_TIMER_SECS: u64 = 600;
 pub const GP_WARNING_SECS: u64 = 30;
+/// Points to the submitter when the room votes to hear their song in full.
+pub const GP_POINTS_FULL_SONG: u32 = 50;
+/// Clips are on unless the host says otherwise: playing whole songs is what makes
+/// a round drag, and the first thirty seconds are usually an intro that gives a
+/// guesser nothing, so the default skips it.
+pub const GP_DEFAULT_CLIPS: bool = true;
+pub const GP_DEFAULT_CLIP_START_SECS: u64 = 30;
+pub const GP_DEFAULT_CLIP_LENGTH_SECS: u64 = 45;
+/// Bounds for `clip_start` and `clip_length`, same hand-kept-in-sync deal as the
+/// bounds above. The length floor is deliberately well clear of "unguessable":
+/// clip length is also the guessing window, since the dropdown dies with the song.
+pub const GP_MAX_CLIP_START_SECS: u64 = 120;
+pub const GP_MIN_CLIP_LENGTH_SECS: u64 = 20;
+pub const GP_MAX_CLIP_LENGTH_SECS: u64 = 300;
 /// How long `/gp end` waits for the `End` that `stop()` queued before removing the
 /// parked game itself. Only a backstop: the global track-end handler normally
 /// collects it within milliseconds.
@@ -84,7 +99,29 @@ pub const GP_PARK_GRACE_SECS: u64 = 10;
 /// track is treated as a dead link: nobody could have guessed it, so nobody is
 /// paid for it -- including the submitter, who would otherwise collect the
 /// fooled-everyone bonus for a song that never really played.
+///
+/// This is the ceiling, not the whole rule -- see [`gp_min_played`]. Thirty
+/// seconds of a four-minute song is a fair "the room heard it", but it is the
+/// entire length of a thirty-second clip, and a clip that played to its end must
+/// not be scored as a dead link.
 pub const GP_MIN_PLAYED: Duration = Duration::from_secs(30);
+/// The share of the intended play length that has to be heard when that length is
+/// short enough for [`GP_MIN_PLAYED`] to be most or all of it.
+pub const GP_MIN_PLAYED_DIVISOR: u32 = 2;
+
+/// How much of `intended` has to play for the song to count as heard: half of it,
+/// capped at [`GP_MIN_PLAYED`]. A full song keeps the flat thirty seconds; a
+/// forty-five second clip needs twenty-two, not the whole thing minus fifteen.
+///
+/// The dead-link-versus-fooled-everyone split that #423 is about is a separate
+/// question and stays where it is; this only stops clips landing on the wrong side
+/// of the existing line.
+pub fn gp_min_played(intended: Option<Duration>) -> Duration {
+    match intended {
+        Some(d) => GP_MIN_PLAYED.min(d / GP_MIN_PLAYED_DIVISOR),
+        None => GP_MIN_PLAYED,
+    }
+}
 /// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// Music commands refused while a game owns playback, because each would leave
@@ -143,6 +180,36 @@ pub fn now() -> i64 {
 // State
 // ------------------------------------------------------------------
 
+/// How much of each song to play. `None` on a game means whole songs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpClip {
+    /// How far into the song to start, so the clip skips the intro.
+    pub start: Duration,
+    /// How long to play for. Also the guessing window, since the dropdown lives
+    /// on the song message and dies when the song does.
+    pub length: Duration,
+}
+
+impl GpClip {
+    /// The clip as it applies to a song of `duration`. A song shorter than the
+    /// offset is played from the top rather than seeked past its own end, which
+    /// would come back as an immediate `End` and read as a dead link.
+    pub fn for_duration(self, duration: Option<Duration>) -> Self {
+        let Some(d) = duration else {
+            return self;
+        };
+        if self.start + self.length <= d {
+            return self;
+        }
+        // Take the last `length` of the song where we can, otherwise all of it.
+        let start = d.saturating_sub(self.length);
+        Self {
+            start,
+            length: self.length.min(d.saturating_sub(start)),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpPhase {
     Submitting,
@@ -160,6 +227,11 @@ pub struct GpTrack {
     pub likes: HashSet<UserId>,
     /// Votes to end this song early, from `/gp voteskip`. Cleared with the track.
     pub skip_votes: HashSet<UserId>,
+    /// Votes to hear this song in full, from `/gp votefull`.
+    pub full_votes: HashSet<UserId>,
+    /// The room voted to hear it all: the clip timer stands down and the
+    /// submitter takes [`GP_POINTS_FULL_SONG`] at the reveal.
+    pub play_full: bool,
     /// The song message, so the reveal can edit it in place.
     pub message: Option<(GenericChannelId, MessageId)>,
 }
@@ -219,6 +291,8 @@ pub struct GpGame {
     pub current_round: usize,
     pub current_track: usize,
     pub timer_secs: u64,
+    /// `None` plays whole songs.
+    pub clip: Option<GpClip>,
     /// Bumped on every phase transition. Timers capture the generation they
     /// were spawned for and do nothing once it has moved on, so a window that
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
@@ -243,6 +317,7 @@ impl GpGame {
         category: GpCategory,
         prompts: Vec<String>,
         timer_secs: u64,
+        clip: Option<GpClip>,
     ) -> Self {
         Self {
             host,
@@ -254,6 +329,7 @@ impl GpGame {
             current_round: 0,
             current_track: 0,
             timer_secs,
+            clip,
             generation: 0,
             parked_for_end: false,
             players: HashMap::new(),
@@ -348,6 +424,8 @@ impl GpGame {
                 guesses: HashMap::new(),
                 likes: HashSet::new(),
                 skip_votes: HashSet::new(),
+                full_votes: HashSet::new(),
+                play_full: false,
                 message: None,
             })
             .collect();
@@ -396,6 +474,10 @@ impl GpGame {
             track: t.track.clone(),
             players: self.submitter_names(round),
             guessable: round.guessable(),
+            clip: self
+                .clip
+                .map(|c| c.for_duration(t.track.get_metadata().and_then(|m| m.duration))),
+            generation: self.generation,
             text_channel: self.text_channel,
         }
     }
@@ -423,6 +505,12 @@ pub struct GpTrackStart {
     /// Dropdown options: the round's submitters, sorted by name.
     pub players: Vec<(UserId, String)>,
     pub guessable: bool,
+    /// The clip to play, already fitted to this song's duration. `None` plays it
+    /// whole.
+    pub clip: Option<GpClip>,
+    /// The generation this song started under, so its clip timer can tell whether
+    /// the game has moved on since.
+    pub generation: u64,
     pub text_channel: GenericChannelId,
 }
 
@@ -485,6 +573,17 @@ pub enum GpVoteSkipOutcome {
     OwnSong,
 }
 
+/// What `gp_vote_full` did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpVoteFullOutcome {
+    /// Not there yet; `needed` more votes will let it run on.
+    Counted { votes: usize, needed: usize },
+    /// The room wants the whole thing: the clip timer stands down.
+    Passed,
+    /// Already carried, by an earlier vote on this same song.
+    AlreadyFull,
+}
+
 /// What `gp_toggle_like` did; the payload is the song's new like count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpLikeOutcome {
@@ -506,6 +605,8 @@ pub struct GpTrackResult {
     pub correct: Vec<UserId>,
     pub fooled_everyone: bool,
     pub likes: usize,
+    /// The room voted this one up to its full length.
+    pub played_full: bool,
     pub guessable: bool,
     /// Sorted descending.
     pub scores: Vec<(UserId, u32)>,
@@ -562,6 +663,7 @@ impl Data {
         category: GpCategory,
         prompts: Vec<String>,
         timer_secs: u64,
+        clip: Option<GpClip>,
         now: i64,
     ) -> CrackedResult<GpWindowOpened> {
         // `contains_key` then `insert` would let two `/gp start` race through and
@@ -579,6 +681,7 @@ impl Data {
             category,
             prompts,
             timer_secs,
+            clip,
         );
         game.players.insert(host, host_name);
         let opened = game.open_window(now);
@@ -862,6 +965,124 @@ impl Data {
         })
     }
 
+    /// Count a vote to hear the current song in full instead of as a clip. Same
+    /// shape as [`Self::gp_vote_skip`] and the same pool, with one difference: the
+    /// submitter is not merely excluded from voting, they have nothing to pull.
+    /// A song already carried stays carried.
+    pub fn gp_vote_full(
+        &self,
+        guild_id: GuildId,
+        voter: UserId,
+        voter_name: String,
+        vc_members: &[UserId],
+    ) -> CrackedResult<GpVoteFullOutcome> {
+        let mut entry = self
+            .gp_games
+            .get_mut(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        let game: &mut GpGame = &mut entry;
+        if game.phase != GpPhase::Playing {
+            return Err(CrackedError::GameNotPlaying);
+        }
+        if game.clip.is_none() {
+            return Err(CrackedError::NotPlayingClips);
+        }
+        if !game.has_submitted(voter) {
+            return Err(CrackedError::NotAGamePlayer);
+        }
+        let (round_idx, track_idx) = (game.current_round, game.current_track);
+        let t = game
+            .rounds
+            .get(round_idx)
+            .and_then(|r| r.tracks.get(track_idx))
+            .ok_or(CrackedError::StaleRound)?;
+        let submitter = t.submitter;
+        // Voting to hear your own song in full is voting yourself the bonus.
+        // Checked before the already-carried case so a submitter always gets the
+        // same answer, the way `gp_vote_skip` orders it.
+        if voter == submitter {
+            return Err(CrackedError::CannotVoteOwnSongFull);
+        }
+        if t.play_full {
+            return Ok(GpVoteFullOutcome::AlreadyFull);
+        }
+        let eligible = vc_members
+            .iter()
+            .filter(|u| **u != submitter && game.has_submitted(**u))
+            .count();
+        let required = gp_votes_required(eligible);
+        let t = &mut game.rounds[round_idx].tracks[track_idx];
+        if !t.full_votes.insert(voter) {
+            return Err(CrackedError::AlreadyVotedFull);
+        }
+        let votes = t.full_votes.len();
+        let carried = votes >= required;
+        if carried {
+            t.play_full = true;
+        }
+        game.players.entry(voter).or_insert(voter_name);
+        Ok(if carried {
+            GpVoteFullOutcome::Passed
+        } else {
+            GpVoteFullOutcome::Counted {
+                votes,
+                needed: required - votes,
+            }
+        })
+    }
+
+    /// Is the song a clip timer was spawned for still the one playing? Mirrors the
+    /// generation guard the window timer uses.
+    pub fn gp_clip_still_current(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        round_idx: usize,
+        track_idx: usize,
+    ) -> bool {
+        self.gp_games.get(&guild_id).is_some_and(|g| {
+            g.phase == GpPhase::Playing
+                && g.generation == generation
+                && g.current_round == round_idx
+                && g.current_track == track_idx
+        })
+    }
+
+    /// Has the room voted this song up to its full length? The clip timer asks
+    /// before stopping it, so a vote that lands mid-clip still counts.
+    pub fn gp_plays_full(&self, guild_id: GuildId, round_idx: usize, track_idx: usize) -> bool {
+        self.gp_games
+            .get(&guild_id)
+            .and_then(|g| {
+                g.rounds
+                    .get(round_idx)
+                    .and_then(|r| r.tracks.get(track_idx))
+                    .map(|t| t.play_full)
+            })
+            .unwrap_or(false)
+    }
+
+    /// Did anyone vote to hear more of this song? That is first-hand evidence the
+    /// room was listening to something, which beats any inference from play time:
+    /// a song someone asked to hear *more* of was audibly playing, whatever
+    /// songbird went on to report about the stream.
+    ///
+    /// Deliberately only the full-song votes. A skip vote proves nothing of the
+    /// sort -- silence from a dead link is exactly what makes people reach for
+    /// `/gp voteskip` -- and counting those would score the songs this check
+    /// exists to catch.
+    pub fn gp_heard_by_vote(&self, guild_id: GuildId, round_idx: usize, track_idx: usize) -> bool {
+        self.gp_games
+            .get(&guild_id)
+            .and_then(|g| {
+                g.rounds
+                    .get(round_idx)
+                    .and_then(|r| r.tracks.get(track_idx))
+                    .map(|t| !t.full_votes.is_empty())
+            })
+            .unwrap_or(false)
+    }
+
     /// Score the song that just ended and advance. Returns `None` unless the
     /// game is playing and this is the current song, which makes it safe to
     /// call twice (End and Error can both fire for one track).
@@ -909,6 +1130,7 @@ impl Data {
         let guessable = round.guessable();
         let t = &round.tracks[track_idx];
         let (submitter, likes, message) = (t.submitter, t.likes.len(), t.message);
+        let played_full = t.play_full;
         let (title, url) = (t.track.get_title(), t.track.get_url());
         let correct: Vec<UserId> = if guessable && !failed {
             t.guesses
@@ -928,6 +1150,9 @@ impl Data {
         }
         if likes > 0 && !failed {
             *game.scores.entry(submitter).or_insert(0) += likes as u32 * GP_POINTS_PER_LIKE;
+        }
+        if played_full && !failed {
+            *game.scores.entry(submitter).or_insert(0) += GP_POINTS_FULL_SONG;
         }
         game.generation += 1;
         game.current_track += 1;
@@ -949,6 +1174,7 @@ impl Data {
             correct,
             fooled_everyone,
             likes,
+            played_full,
             guessable,
             scores: game.sorted_scores(),
             message,
@@ -1321,6 +1547,9 @@ pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
             );
         }
     }
+    if res.played_full {
+        e = e.field(GP_FULL_SONG, GP_FULL_SONG_NOTE, false);
+    }
     e.field(GP_LIKES, res.likes.to_string(), true).field(
         GP_SCOREBOARD,
         scores_lines(&res.scores),
@@ -1399,6 +1628,10 @@ pub struct GpTrackEndHandler {
     pub pb: GpPlayback,
     pub round_idx: usize,
     pub track_idx: usize,
+    /// How much of the song was meant to play: the clip's length, or `None` for a
+    /// whole song. The dead-link bar scales with it, so a clip that ran to its end
+    /// is not mistaken for a stream that never opened.
+    pub intended: Option<Duration>,
 }
 
 /// Did this song reach nobody? songbird reports a stream it could never open as
@@ -1412,15 +1645,17 @@ pub struct GpTrackEndHandler {
 /// couple of hundred milliseconds in is a dead link as far as the room is
 /// concerned, and paying the submitter the fooled-everyone bonus for a song
 /// nobody could possibly have guessed is the bug 2ed923b set out to fix.
-fn never_played(state: &TrackState) -> bool {
-    matches!(state.playing, PlayMode::Errored(_)) && state.play_time < GP_MIN_PLAYED
+fn never_played(state: &TrackState, intended: Option<Duration>) -> bool {
+    matches!(state.playing, PlayMode::Errored(_)) && state.play_time < gp_min_played(intended)
 }
 
 /// Did the song fail instead of finish? The handler is registered for both
 /// `End` and `Error`, so this decides which of the two reveal paths runs.
-fn track_errored(ctx: &EventContext<'_>) -> bool {
+fn track_errored(ctx: &EventContext<'_>, intended: Option<Duration>) -> bool {
     match ctx {
-        EventContext::Track(states) => states.iter().any(|(state, _)| never_played(state)),
+        EventContext::Track(states) => states
+            .iter()
+            .any(|(state, _)| never_played(state, intended)),
         _ => false,
     }
 }
@@ -1428,14 +1663,20 @@ fn track_errored(ctx: &EventContext<'_>) -> bool {
 #[async_trait]
 impl EventHandler for GpTrackEndHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        // A vote to hear more of this song outranks the play-time bar: somebody
+        // asked for more of it, so it reached the room whatever the stream did
+        // afterwards. Without this a song that played, got voted up, and then
+        // dropped its stream would be revealed as one that never played, and
+        // everyone who guessed it would go unpaid.
+        let failed =
+            !self
+                .pb
+                .data
+                .gp_heard_by_vote(self.pb.guild_id, self.round_idx, self.track_idx)
+                && track_errored(ctx, self.intended);
         // Do the reveal off the driver's event task: it edits messages, sleeps,
         // and takes the call lock to enqueue the next song.
-        gp_spawn_advance(
-            self.pb.clone(),
-            self.round_idx,
-            self.track_idx,
-            track_errored(ctx),
-        );
+        gp_spawn_advance(self.pb.clone(), self.round_idx, self.track_idx, failed);
         Some(Event::Cancel)
     }
 }
@@ -1680,6 +1921,12 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
         let mut handler = pb.call.lock().await;
         handler.enqueue(songbird_track).await
     };
+
+    // Arm every handler before awaiting anything. The seek below is the first
+    // await, and it is not a passive one: it forces songbird to create the
+    // stream, which is when `Playable` fires and, if creation fails, when the
+    // track is removed. Registering afterwards would race the first and find a
+    // dead command channel after the second.
     for event in [TrackEvent::End, TrackEvent::Error] {
         if let Err(e) = handle.add_event(
             Event::Track(event),
@@ -1687,6 +1934,7 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
                 pb: pb.clone(),
                 round_idx: start.round_idx,
                 track_idx: start.track_idx,
+                intended: start.clip.map(|c| c.length),
             },
         ) {
             // Unarmed, this song would play out and the round would never advance.
@@ -1699,7 +1947,114 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
             return Ok(());
         }
     }
+
+    if let Some(clip) = start.clip {
+        // The clip is timed from when the song becomes audible, not from here.
+        // `build_track` is lazy -- yt-dlp has not even spawned yet -- so timing it
+        // from the enqueue would spend an unpredictable slice of the clip on
+        // resolve latency, and would do it silently: the timer's `stop()` fires
+        // `End`, not `Errored`, so `never_played` cannot catch a clip the room
+        // barely heard.
+        //
+        // `TrackEvent::Playable`, not `Play`: `Play` explicitly does not fire when
+        // a track first starts, only on a later pause -> play.
+        if let Err(e) = handle.add_event(
+            Event::Track(TrackEvent::Playable),
+            GpClipStartHandler {
+                pb: pb.clone(),
+                handle: handle.clone(),
+                clip,
+                round_idx: start.round_idx,
+                track_idx: start.track_idx,
+                generation: start.generation,
+            },
+        ) {
+            gp_abort(
+                pb,
+                start.text_channel,
+                &format!("arming the clip timer failed: {e}"),
+            )
+            .await;
+            return Ok(());
+        }
+
+        if !clip.start.is_zero() {
+            if let Err(e) = handle.seek(clip.start).result_async().await {
+                // Not a fallback to playing from the top: songbird documents a
+                // failed seek as fatal and *removes the track*, so there is no
+                // song left and no `End` coming for it. Drive the same path a
+                // stream songbird cannot open takes, rather than letting the dead
+                // handle surface later as an abort of the whole game.
+                tracing::warn!(
+                    "gp: seeking round {} song {} in {guild_id} to {:?}: {e}",
+                    start.round_idx,
+                    start.track_idx,
+                    clip.start
+                );
+                gp_spawn_advance(pb.clone(), start.round_idx, start.track_idx, true);
+                return Ok(());
+            }
+        }
+    }
     Ok(())
+}
+
+/// Stop the song once its clip has played. Keyed to the generation the song
+/// started under, the same way the submission-window timer is, so a timer left
+/// over from an abandoned round cannot cut a later song short. Stands down if the
+/// room has voted the song up to its full length in the meantime.
+fn gp_spawn_clip_timer(
+    pb: GpPlayback,
+    handle: TrackHandle,
+    clip: GpClip,
+    round_idx: usize,
+    track_idx: usize,
+    generation: u64,
+) {
+    tokio::spawn(async move {
+        tokio::time::sleep(clip.length).await;
+        let guild_id = pb.guild_id;
+        if !pb
+            .data
+            .gp_clip_still_current(guild_id, generation, round_idx, track_idx)
+        {
+            return;
+        }
+        if pb.data.gp_plays_full(guild_id, round_idx, track_idx) {
+            tracing::trace!("gp: {guild_id} voted round {round_idx} song {track_idx} up to full");
+            return;
+        }
+        // stop() fires TrackEvent::End, which is what runs the reveal.
+        if let Err(e) = handle.stop() {
+            tracing::warn!("gp: ending the clip in {guild_id}: {e}");
+        }
+    });
+}
+
+/// Starts the clip timer the moment the song becomes audible. One-shot: it
+/// cancels itself once the timer is armed.
+pub struct GpClipStartHandler {
+    pub pb: GpPlayback,
+    pub handle: TrackHandle,
+    pub clip: GpClip,
+    pub round_idx: usize,
+    pub track_idx: usize,
+    pub generation: u64,
+}
+
+#[async_trait]
+impl EventHandler for GpClipStartHandler {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        gp_spawn_clip_timer(
+            self.pb.clone(),
+            self.handle.clone(),
+            self.clip,
+            self.round_idx,
+            self.track_idx,
+            self.generation,
+        );
+        Some(Event::Cancel)
+    }
 }
 
 /// Advance off the current task. Used by the track handlers and by a song that
@@ -1950,6 +2305,7 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
         "gp_close",
         "gp_skip",
         "gp_voteskip",
+        "gp_votefull",
         "gp_status",
         "gp_end"
     )
@@ -1980,6 +2336,17 @@ pub async fn gp_start(
     #[min = 30]
     #[max = 600]
     timer: Option<u32>,
+    #[description = "Play a clip of each song instead of all of it (default yes)."] clips: Option<
+        bool,
+    >,
+    #[description = "Seconds into each song the clip starts (default 30, needs clips)."]
+    #[min = 0]
+    #[max = 120]
+    clip_start: Option<u32>,
+    #[description = "Seconds of each song to play (default 45, needs clips)."]
+    #[min = 20]
+    #[max = 300]
+    clip_length: Option<u32>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -2006,6 +2373,23 @@ pub async fn gp_start(
         .map(u64::from)
         .unwrap_or(GP_DEFAULT_TIMER_SECS)
         .clamp(GP_MIN_TIMER_SECS, GP_MAX_TIMER_SECS);
+    // The two dials only mean anything with clips on; off, they are ignored
+    // rather than quietly turning clips back on for a host who asked for whole
+    // songs.
+    let clip = clips.unwrap_or(GP_DEFAULT_CLIPS).then(|| GpClip {
+        start: Duration::from_secs(
+            clip_start
+                .map(u64::from)
+                .unwrap_or(GP_DEFAULT_CLIP_START_SECS)
+                .min(GP_MAX_CLIP_START_SECS),
+        ),
+        length: Duration::from_secs(
+            clip_length
+                .map(u64::from)
+                .unwrap_or(GP_DEFAULT_CLIP_LENGTH_SECS)
+                .clamp(GP_MIN_CLIP_LENGTH_SECS, GP_MAX_CLIP_LENGTH_SECS),
+        ),
+    });
     let prompts = draw_prompts(category, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
@@ -2019,6 +2403,7 @@ pub async fn gp_start(
         category,
         prompts,
         timer_secs,
+        clip,
         now(),
     )?;
     let cleared_queue = {
@@ -2035,6 +2420,7 @@ pub async fn gp_start(
             category: category.display(),
             rounds: opened.total_rounds,
             timer_secs,
+            clip,
             cleared_queue,
         },
         true,
@@ -2238,6 +2624,35 @@ pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Vote to hear the whole song instead of just the clip -- a majority lets it run.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    rename = "votefull",
+    category = "Games",
+    slash_command,
+    prefix_command,
+    guild_only,
+    check = "cmd_check_music"
+)]
+pub async fn gp_votefull(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let data = ctx.data();
+    let game_vc = gp_require_player(ctx, guild_id)?;
+    let vc_members = gp_vc_members(ctx, game_vc);
+    let name = author_display_name(ctx).await;
+    let msg = match data.gp_vote_full(guild_id, ctx.author().id, name, &vc_members)? {
+        GpVoteFullOutcome::Counted { votes, needed } => {
+            CrackedMessage::GpVoteFullCounted { votes, needed }
+        },
+        // Nothing to do to the track: the clip timer checks `play_full` before it
+        // stops anything, so letting it run on is simply not stopping it.
+        GpVoteFullOutcome::Passed => CrackedMessage::GpVoteFullPassed,
+        GpVoteFullOutcome::AlreadyFull => CrackedMessage::GpVoteFullAlready,
+    };
+    ctx.send_reply(msg, true).await?;
+    Ok(())
+}
+
 /// The prompt, who has submitted or guessed, likes, and the scores so far.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -2358,8 +2773,22 @@ mod test {
         names.iter().map(|s| s.to_string()).collect()
     }
 
+    /// A clip that never fires in the pure-state tests, but proves the setting is
+    /// carried from `/gp start` all the way to `GpTrackStart`.
+    fn clip() -> GpClip {
+        GpClip {
+            start: Duration::from_secs(GP_DEFAULT_CLIP_START_SECS),
+            length: Duration::from_secs(GP_DEFAULT_CLIP_LENGTH_SECS),
+        }
+    }
+
     /// A game hosted by alice with the given prompts; round 0's window is open.
     fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
+        game_with_clip(data, prompt_list, None)
+    }
+
+    /// As [`game_with`], with an explicit clip setting.
+    fn game_with_clip(data: &Data, prompt_list: &[&str], clip: Option<GpClip>) -> GpWindowOpened {
         data.gp_start(
             G,
             A,
@@ -2369,6 +2798,7 @@ mod test {
             GpCategory::Nostalgia,
             prompts(prompt_list),
             TIMER,
+            clip,
             NOW,
         )
         .unwrap()
@@ -2414,6 +2844,7 @@ mod test {
                 GpCategory::Mixed,
                 prompts(&["x"]),
                 TIMER,
+                None,
                 NOW
             )
             .unwrap_err(),
@@ -2429,6 +2860,7 @@ mod test {
                 GpCategory::Mixed,
                 vec![],
                 TIMER,
+                None,
                 NOW
             )
             .unwrap_err(),
@@ -2855,25 +3287,253 @@ mod test {
             ..Default::default()
         };
         // Preparing -> Errored without mixing a frame: nobody heard it.
-        assert!(never_played(&errored(Duration::ZERO)));
+        assert!(never_played(&errored(Duration::ZERO), None));
         // Died 200ms in: a dead link as far as the room is concerned. Scoring it
         // would hand the submitter the fooled-everyone bonus for a song nobody
         // could have guessed.
-        assert!(never_played(&errored(Duration::from_millis(200))));
+        assert!(never_played(&errored(Duration::from_millis(200)), None));
         // Either side of the line.
-        assert!(never_played(&errored(
-            GP_MIN_PLAYED - Duration::from_millis(1)
-        )));
-        assert!(!never_played(&errored(GP_MIN_PLAYED)));
+        assert!(never_played(
+            &errored(GP_MIN_PLAYED - Duration::from_millis(1)),
+            None
+        ));
+        assert!(!never_played(&errored(GP_MIN_PLAYED), None));
         // Died two minutes in: the room heard it, so it scores like any other song.
-        assert!(!never_played(&errored(Duration::from_secs(120))));
+        assert!(!never_played(&errored(Duration::from_secs(120)), None));
+        // A 45s clip is judged against its own length, not the flat thirty: it
+        // needs 22.5s, so 25s counts as heard where a whole song would not.
+        let clip45 = Some(Duration::from_secs(45));
+        assert!(!never_played(&errored(Duration::from_secs(25)), clip45));
+        assert!(never_played(&errored(Duration::from_secs(20)), clip45));
         // A song that simply finished is not a failure at any play time.
-        assert!(!never_played(&TrackState {
-            playing: PlayMode::End,
-            play_time: Duration::ZERO,
-            ..Default::default()
-        }));
-        assert!(!never_played(&TrackState::default()));
+        assert!(!never_played(
+            &TrackState {
+                playing: PlayMode::End,
+                play_time: Duration::ZERO,
+                ..Default::default()
+            },
+            None
+        ));
+        assert!(!never_played(&TrackState::default(), None));
+    }
+
+    /// A vote to hear more of a song is first-hand evidence it was playing, and
+    /// outranks whatever the play time says afterwards. A skip vote is not: a dead
+    /// link is silent, and silence is what makes people reach for `/gp voteskip`.
+    #[test]
+    fn a_full_song_vote_beats_the_played_threshold() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let vc = [A, B, C];
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let voter = vc.iter().copied().find(|u| *u != s0).unwrap();
+
+        assert!(!data.gp_heard_by_vote(G, 0, 0));
+
+        // A skip vote is not evidence of anything being audible.
+        let skipper = vc
+            .iter()
+            .copied()
+            .find(|u| *u != s0 && *u != voter)
+            .unwrap();
+        data.gp_vote_skip(G, skipper, "s".into(), &vc).unwrap();
+        assert!(!data.gp_heard_by_vote(G, 0, 0));
+
+        // One vote for more of it is, even before the vote carries.
+        assert_eq!(
+            data.gp_vote_full(G, voter, "v".into(), &vc).unwrap(),
+            GpVoteFullOutcome::Counted {
+                votes: 1,
+                needed: 1
+            }
+        );
+        assert!(data.gp_heard_by_vote(G, 0, 0));
+        assert!(!data.gp_plays_full(G, 0, 0), "not carried yet");
+
+        // Out of range, and an absent game, are not evidence either.
+        assert!(!data.gp_heard_by_vote(G, 0, 99));
+        assert!(!data.gp_heard_by_vote(GuildId::new(9), 0, 0));
+    }
+
+    /// A submitter gets the same answer whether or not the song has already been
+    /// voted up: it is never theirs to vote on.
+    #[test]
+    fn vote_full_tells_the_submitter_the_same_thing_either_way() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let vc = [A, B, C];
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let voters: Vec<UserId> = vc.iter().copied().filter(|u| *u != s0).collect();
+
+        assert_eq!(
+            data.gp_vote_full(G, s0, "self".into(), &vc).unwrap_err(),
+            CrackedError::CannotVoteOwnSongFull
+        );
+        // Carry it, then ask again: still their own song, still the same answer.
+        data.gp_vote_full(G, voters[0], "v0".into(), &vc).unwrap();
+        data.gp_vote_full(G, voters[1], "v1".into(), &vc).unwrap();
+        assert!(data.gp_plays_full(G, 0, 0));
+        assert_eq!(
+            data.gp_vote_full(G, s0, "self".into(), &vc).unwrap_err(),
+            CrackedError::CannotVoteOwnSongFull
+        );
+    }
+
+    /// A clip has to fit the song. Seeking past the end comes back as an immediate
+    /// `End`, which the game would read as a dead link and score nobody for.
+    #[test]
+    fn clip_fits_itself_to_the_song() {
+        let c = GpClip {
+            start: Duration::from_secs(30),
+            length: Duration::from_secs(45),
+        };
+        let secs = |s| Some(Duration::from_secs(s));
+
+        // Comfortably long enough: untouched.
+        assert_eq!(c.for_duration(secs(240)), c);
+        // Exactly long enough: still untouched.
+        assert_eq!(c.for_duration(secs(75)), c);
+        // Unknown duration: trust the offset, nothing better to go on.
+        assert_eq!(c.for_duration(None), c);
+
+        // Too short for start+length: take the last `length` instead of seeking
+        // past the end.
+        assert_eq!(
+            c.for_duration(secs(60)),
+            GpClip {
+                start: Duration::from_secs(15),
+                length: Duration::from_secs(45)
+            }
+        );
+        // Shorter than the clip itself: play all of it, from the top.
+        assert_eq!(
+            c.for_duration(secs(20)),
+            GpClip {
+                start: Duration::ZERO,
+                length: Duration::from_secs(20)
+            }
+        );
+    }
+
+    /// The "did the room hear it" bar has to scale with what was meant to play, or
+    /// a clip that ran to its end is scored as a dead link.
+    #[test]
+    fn min_played_scales_with_the_intended_length() {
+        // A whole song keeps the flat thirty seconds.
+        assert_eq!(gp_min_played(Some(Duration::from_secs(240))), GP_MIN_PLAYED);
+        assert_eq!(gp_min_played(None), GP_MIN_PLAYED);
+        // A 45s clip needs 22.5s, not 30 -- which would be most of the clip.
+        assert_eq!(
+            gp_min_played(Some(Duration::from_secs(45))),
+            Duration::from_millis(22_500)
+        );
+        // A 20s clip needs 10s. Under the old absolute rule it could never clear
+        // the bar at all, so every short clip scored nobody.
+        assert_eq!(
+            gp_min_played(Some(Duration::from_secs(20))),
+            Duration::from_secs(10)
+        );
+    }
+
+    /// Voting a song up to full length: same pool as voteskip, but the submitter
+    /// is barred outright rather than given a pull -- it is their own bonus.
+    #[test]
+    fn vote_full_carries_on_a_majority() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let vc = [A, B, C];
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let voters: Vec<UserId> = vc.iter().copied().filter(|u| *u != s0).collect();
+
+        assert!(!data.gp_plays_full(G, 0, 0));
+        // Not a player, and not the submitter's to vote for.
+        assert_eq!(
+            data.gp_vote_full(G, D, "dave".into(), &vc).unwrap_err(),
+            CrackedError::NotAGamePlayer
+        );
+        assert_eq!(
+            data.gp_vote_full(G, s0, "self".into(), &vc).unwrap_err(),
+            CrackedError::CannotVoteOwnSongFull
+        );
+
+        assert_eq!(
+            data.gp_vote_full(G, voters[0], "v0".into(), &vc).unwrap(),
+            GpVoteFullOutcome::Counted {
+                votes: 1,
+                needed: 1
+            }
+        );
+        assert_eq!(
+            data.gp_vote_full(G, voters[0], "v0".into(), &vc)
+                .unwrap_err(),
+            CrackedError::AlreadyVotedFull
+        );
+        assert!(!data.gp_plays_full(G, 0, 0));
+
+        assert_eq!(
+            data.gp_vote_full(G, voters[1], "v1".into(), &vc).unwrap(),
+            GpVoteFullOutcome::Passed
+        );
+        // The clip timer asks this before it stops anything.
+        assert!(data.gp_plays_full(G, 0, 0));
+        assert_eq!(
+            data.gp_vote_full(G, voters[0], "v0".into(), &vc).unwrap(),
+            GpVoteFullOutcome::AlreadyFull
+        );
+
+        // The submitter is paid for it at the reveal.
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(res.played_full);
+        let scored = game(&data).scores.get(&s0).copied().unwrap_or(0);
+        assert!(
+            scored >= GP_POINTS_FULL_SONG,
+            "submitter should have the full-song bonus, got {scored}"
+        );
+    }
+
+    /// A game already playing whole songs has nothing to vote up.
+    #[test]
+    fn vote_full_needs_a_game_playing_clips() {
+        let data = data();
+        game_with(&data, &["p1"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert_eq!(
+            data.gp_vote_full(G, A, "alice".into(), &[A, B])
+                .unwrap_err(),
+            CrackedError::NotPlayingClips
+        );
+    }
+
+    /// The clip setting has to survive from `/gp start` to the song that plays.
+    #[test]
+    fn clip_setting_reaches_the_track() {
+        let data = data();
+        game_with_clip(&data, &["p1"], Some(clip()));
+        submit(&data, A, "alice", "a");
+        let closed = data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let GpNext::Track(start) = &closed.next else {
+            unreachable!()
+        };
+        assert_eq!(start.clip, Some(clip()));
+        // The timer keys off this, the same way the window timer does.
+        assert_eq!(start.generation, game(&data).generation);
+        assert!(data.gp_clip_still_current(G, start.generation, 0, 0));
+        assert!(!data.gp_clip_still_current(G, start.generation + 1, 0, 0));
+        assert!(!data.gp_clip_still_current(G, start.generation, 0, 1));
     }
 
     /// The pool the majority is measured against has to be the people who may
@@ -3432,6 +4092,8 @@ mod test {
             track: track("secret"),
             players: vec![],
             guessable: true,
+            clip: None,
+            generation: 1,
             text_channel: TC,
         };
         let v = serde_json::to_value(gp_track_embed(&start)).unwrap();
@@ -3472,6 +4134,7 @@ mod test {
             correct: vec![B, C],
             fooled_everyone: false,
             likes: 3,
+            played_full: false,
             guessable: true,
             scores: vec![(B, 100), (C, 100), (A, 30)],
             message: None,
@@ -3641,7 +4304,7 @@ mod test {
         names.sort_unstable();
         assert_eq!(
             names,
-            vec!["close", "end", "skip", "start", "status", "submit", "voteskip"]
+            vec!["close", "end", "skip", "start", "status", "submit", "votefull", "voteskip"]
         );
         for sub in &cmd.subcommands {
             assert!(sub.guild_only, "{} must be guild_only", sub.name);
@@ -3670,14 +4333,25 @@ mod test {
             }
             if sub.name == "start" {
                 let params: Vec<&str> = sub.parameters.iter().map(|p| p.name.as_ref()).collect();
-                assert_eq!(params, vec!["category", "rounds", "timer"]);
+                assert_eq!(
+                    params,
+                    vec![
+                        "category",
+                        "rounds",
+                        "timer",
+                        "clips",
+                        "clip_start",
+                        "clip_length"
+                    ]
+                );
                 assert!(sub.parameters[0].required);
                 assert_eq!(
                     sub.parameters[0].choices.len(),
                     crate::commands::music::gp_prompts::GP_PROMPTS.len() + 1,
                     "every category + Mixed"
                 );
-                assert!(!sub.parameters[1].required && !sub.parameters[2].required);
+                // Only the category is required; everything else has a default.
+                assert!(sub.parameters[1..].iter().all(|p| !p.required));
             }
         }
     }

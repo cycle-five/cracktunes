@@ -1,5 +1,29 @@
 # Change Log
 
+## Unreleased
+
+### Added
+
+- **`/gp` plays a clip of each song** rather than the whole thing: 45 seconds starting 30
+  seconds in, by default. The first half-minute of a song is usually an intro that gives a
+  guesser nothing, so skipping it makes the clip *more* guessable, not less, and a round
+  moves at the pace of a party game. `/gp start ... clips:false` plays songs whole;
+  `clip_start` and `clip_length` tune the clip and are ignored when `clips` is off. A song
+  shorter than the offset is played from as late as it can be rather than seeked past its
+  own end, which would come back as an immediate `End` and read as a dead link.
+- **`/gp votefull`** — a majority of the voice channel votes to hear the current song in
+  full instead of just its clip, and the submitter takes +50 for it. Same pool as
+  `/gp voteskip`; the submitter cannot vote for their own song, since that is voting
+  themselves the bonus.
+
+### Changed
+
+- The "did the room actually hear it" bar is now relative to how much of the song was meant
+  to play -- half of it, capped at the previous flat 30 seconds. A 45-second clip needs 22,
+  where the absolute rule would have wanted two thirds of the clip and a 20-second clip
+  could never have cleared it at all. The dead-link versus fooled-everyone split in #423 is
+  a separate question and is untouched.
+
 ## TODO:
 
 - [ ] /changenicks command. Renames all users in the guild
