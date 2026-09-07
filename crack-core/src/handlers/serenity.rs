@@ -28,7 +28,6 @@ use std::{
     sync::{atomic::Ordering, Arc},
     time::SystemTime,
 };
-use tokio::time::Duration;
 
 pub struct SerenityHandler {
     pub data: Data,
@@ -44,6 +43,9 @@ impl EventHandler for SerenityHandler {
         match event {
             FullEvent::Ready { data_about_bot } => {
                 self.on_ready(ctx.clone(), data_about_bot.clone()).await;
+            },
+            FullEvent::GuildCreate { guild, .. } => {
+                self.on_guild_create(ctx.clone(), guild.clone()).await;
             },
             FullEvent::GuildMemberAddition { new_member } => {
                 self.on_guild_member_addition(ctx.clone(), new_member.clone())
@@ -159,6 +161,26 @@ impl SerenityHandler {
         //         });
         //     x
         // };
+
+        // Process-level background work, moved off `CacheReady`.
+        //
+        // It needs no guild set beyond the ids, which `Ready` already carries, and
+        // `CacheReady` is not guaranteed to arrive at all -- see `on_guild_create`.
+        // `Ready` re-fires on reconnect, so this keeps the existing `is_loop_running`
+        // guard to stay once-per-process.
+        if !self.is_loop_running.load(Ordering::Relaxed) {
+            let interval = self.data.bot_settings.get_video_status_poll_interval();
+            if interval > 0 {
+                let guild_ids: Vec<GuildId> = ready.guilds.iter().map(|g| g.id).collect();
+                cam_status_loop(
+                    Arc::new(ctx.clone()),
+                    Arc::new(self.data.bot_settings.clone()),
+                    guild_ids,
+                )
+                .await;
+            }
+            self.is_loop_running.swap(true, Ordering::Relaxed);
+        }
 
         // tracing::warn!("num_saved: {}", num_saved);
     }
@@ -285,6 +307,54 @@ impl SerenityHandler {
         // update_queue_messages(&ctx, &self.data, &[], guild_id).await;
     }
 
+    /// Load this guild's settings as the guild arrives.
+    ///
+    /// Deliberately **not** `CacheReady`. serenity emits that event from inside
+    /// `GuildCreate` handling, and only when `cache.unavailable_guilds` has drained
+    /// to exactly zero -- every guild in the `Ready` payload having checked in. One
+    /// guild that is down at startup, or one the bot was removed from while offline,
+    /// and it never fires at all for the life of the process. `GuildDelete` puts a
+    /// guild back into that set, so even a cache that completes once can lose the
+    /// condition permanently.
+    ///
+    /// At thirteen guilds that barrier clears every time; at a hundred and fifty it
+    /// effectively never does. That is why loading settings here worked in testing
+    /// and silently did nothing in production.
+    ///
+    /// Per-guild work belongs on the per-guild event, where it is also correct for
+    /// guilds that recover from an outage or are joined while running.
+    async fn on_guild_create(&self, _ctx: SerenityContext, guild: serenity::Guild) {
+        let prefix = self.data.bot_settings.get_prefix();
+        let name = guild.name.clone();
+        let settings = match self.data.database_pool.as_ref() {
+            Some(pool) => match GuildEntity::get_or_create(
+                pool,
+                guild.id.get() as i64,
+                name.clone(),
+                prefix.clone(),
+            )
+            .await
+            {
+                Ok((_guild, settings)) => settings,
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to load settings for guild {} from the database, \
+                         falling back to defaults: {err}",
+                        guild.id
+                    );
+                    GuildSettings::new(guild.id, Some(&prefix), Some(name))
+                },
+            },
+            None => GuildSettings::new(guild.id, Some(&prefix), Some(name)),
+        };
+        self.data
+            .guild_settings_map
+            .write()
+            .await
+            .insert(guild.id, settings);
+        tracing::info!("Loaded settings for guild {} ({})", guild.id, guild.name);
+    }
+
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
     async fn on_cache_ready(&self, ctx: SerenityContext, guilds: Vec<GuildId>) {
@@ -304,18 +374,9 @@ impl SerenityHandler {
         }
         tracing::info!("Guilds from cache:\n{}", guilds_from_cache.purple());
 
-        let config = self.data.bot_settings.clone();
-        let video_status_poll_interval = config.get_video_status_poll_interval();
-        // it's safe to clone Context, but Arc is cheaper for this use case.
-        // Untested claim, just theoretically. :P
-        let arc_ctx = Arc::new(ctx.clone());
-        let arc_config = Arc::new(config.clone());
-
-        // loads serialized guild settings
-        tracing::warn!("Loading guilds' settings");
-        let _ = self
-            .load_guilds_settings_cache_ready(&arc_ctx.clone(), &guilds)
-            .await;
+        // Settings are loaded per guild in `on_guild_create`, not here. This event
+        // only fires once every guild has checked in, which for a bot in more than a
+        // handful of guilds may never happen -- see `on_guild_create` for why.
 
         // let num_inserted = {
         //     let ctx1 = arc_ctx.clone();
@@ -333,63 +394,6 @@ impl SerenityHandler {
         // };
 
         // tracing::warn!("num_inserted: {}", num_inserted);
-
-        // We need to check that the loop is not already running when this event triggers,
-        // as this event triggers every time the bot enters or leaves a guild, along every time the
-        // ready shard event triggers.
-        //
-        // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
-        // we don't have one due to self being an immutable reference.
-        if !self.is_loop_running.load(Ordering::Relaxed) {
-            // We have to clone the Arc, as it gets moved into the new thread.
-            // tokio::spawn creates a new green thread that can run in parallel with the rest of
-            // the application.
-            if false {
-                let ctx2 = arc_ctx.clone();
-                let config2 = arc_config.clone();
-                let _res = tokio::spawn(async move {
-                    loop {
-                        // We clone Context again here, because Arc is owned, so it moves to the
-                        // new function.
-                        log_system_load(ctx2.clone(), config2.clone()).await;
-                        tokio::time::sleep(Duration::from_secs(video_status_poll_interval)).await;
-                    }
-                })
-                .await;
-            }
-
-            // let _data = self.data.clone();
-            // let _res: JoinHandle<()> = tokio::spawn(async move {
-            //     let ctx3 = arc_ctx.clone();
-            //     loop {
-            //         let ctx4 = ctx3.clone();
-            //         // We clone Context again here, because Arc is owned, so it moves to the
-            //         tokio::time::sleep(Duration::from_secs(60)).await;
-            //         let _guilds = get_guilds(ctx4.clone()).await;
-            //         tracing::warn!("*Not* checking for old messages");
-            //         // let _ = check_delete_old_messages(
-            //         //     ctx2.clone(),
-            //         //     &data,
-            //         //     guilds,
-            //         //     chrono::Duration::from_std(Duration::from_secs(10 * 60)).unwrap(),
-            //         // )
-            //         // .await;
-            //     }
-            // });
-
-            let ctx3 = arc_ctx.clone();
-            let config3 = arc_config.clone();
-            if video_status_poll_interval > 0 {
-                cam_status_loop(ctx3.clone(), config3.clone(), guilds.clone()).await;
-            };
-
-            //let pool = self.data.database_pool.clone().unwrap();
-            //let tx = setup_workers(pool).await;
-            //self.data.set_db_channel(tx);
-
-            // Now that the loop is running, we set the bool to true
-            self.is_loop_running.swap(true, Ordering::Relaxed);
-        }
     }
 }
 
@@ -467,94 +471,6 @@ impl SerenityHandler {
         }
     }
 
-    /// Loads the stored guild settings from the DB. This is a major and important
-    /// function that allows the bot to persist settings across restarts.
-    async fn load_guilds_settings_cache_ready(
-        &self,
-        ctx: &SerenityContext,
-        guilds: &Vec<GuildId>,
-    ) -> Result<(), SerenityError> {
-        let prefix = self.data.bot_settings.get_prefix();
-
-        // Running without a database is supported: play history, track reactions
-        // and playlist storage stay off and everything else works. Say so once,
-        // because the consequence here -- settings that do not survive a restart
-        // -- is otherwise invisible until someone wonders why a prefix reverted.
-        if self.data.database_pool.is_none() {
-            tracing::warn!(
-                "No database pool: guild settings will not persist across restarts, \
-                 and every guild starts from defaults."
-            );
-        }
-
-        let mut guild_settings_list: Vec<GuildSettings> = Vec::new();
-        for guild_id in guilds {
-            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match.name.clone(),
-                None => {
-                    tracing::error!("Guild not found in cache");
-                    continue;
-                },
-            };
-            tracing::info!(
-                "Loading guild settings for {}, {}",
-                guild_id,
-                guild_name.clone()
-            );
-
-            let guild_id_int = guild_id.get() as i64;
-            let guild_name = guild_name.clone();
-            let prefix = prefix.clone();
-            // Defaults first, database over the top -- the shape `_load_guilds_settings`
-            // already used. Unwrapping the pool panicked this task on every boot without
-            // a `DATABASE_URL`, which left the guild with no settings at all rather than
-            // with default ones, and did it on a worker thread so the bot looked healthy.
-            let settings = match self.data.database_pool.as_ref() {
-                Some(pool) => match GuildEntity::get_or_create(
-                    pool,
-                    guild_id_int,
-                    guild_name.clone(),
-                    prefix.clone(),
-                )
-                .await
-                {
-                    Ok((_guild, settings)) => settings,
-                    Err(err) => {
-                        tracing::error!(
-                            "Failed to load settings for guild {guild_id} from the database, \
-                             falling back to defaults: {err}"
-                        );
-                        GuildSettings::new(*guild_id, Some(&prefix), Some(guild_name))
-                    },
-                },
-                None => GuildSettings::new(*guild_id, Some(&prefix), Some(guild_name)),
-            };
-            let mut guild_settings_map = self.data.guild_settings_map.write().await;
-
-            let _ = guild_settings_map.insert(*guild_id, settings);
-
-            let guild_settings_opt = guild_settings_map.get_mut(guild_id);
-
-            match guild_settings_opt {
-                Some(&mut ref guild_settings) => {
-                    tracing::trace!("loaded guild from db {}...", guild_settings);
-                    guild_settings_list.push(guild_settings.clone());
-                },
-                None => {
-                    tracing::error!("Guild not found in settings map");
-                },
-            }
-        }
-
-        // TODO: Why was this here?
-        // let pool = self.data.database_pool.clone().unwrap();
-        // for guild in guild_settings_list.clone() {
-        //     guild.save(&pool).await.expect("Guild saves correctly");
-        // }
-
-        Ok(())
-    }
-
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
         if self.data.bot_settings.self_deafen.is_some() {
             return;
@@ -603,6 +519,11 @@ impl SerenityHandler {
 //     }
 // }
 
+// Parked, not abandoned. Its only caller sat behind a literal `if false` in
+// `on_cache_ready`, so it has not run for as long as that has been there; removing
+// the surrounding block to move `cam_status_loop` off `CacheReady` is what made the
+// deadness visible to the compiler. Kept so re-enabling it stays a one-line change.
+#[allow(dead_code)]
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
