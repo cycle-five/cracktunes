@@ -16,13 +16,49 @@ Thanks to the guys over at [alwaysdata](https://www.alwaysdata.com/) for hosting
 
 ### Usage
 
-- Create a bot account
-- Copy the **token** and **application id** to a `.env` with the `DISCORD_TOKEN` and `DISCORD_APP_ID` environment variables respectively.
-- Define `DATABASE_URL`, `PG_USER`, `PG_PASSWORD` for the Postgres database.
-- _Optional_ define `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` for Spotify support.
-- _Optional_ define `OPENAI_API_KEY` for chatgpt support.
-- _Optional_ define `VIRUSTOTAL_API_KEY` for osint URL checking.
-- Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
+- Create a bot account.
+- Put its **token** in a `.env` as `DISCORD_TOKEN`. **That is the only required
+  variable** — the bot starts and plays music with nothing else set.
+
+Everything below is optional, and the bot degrades rather than failing without it:
+
+| variable | what you lose without it |
+| --- | --- |
+| `DATABASE_URL` | play history, track reactions, playlist storage, and guild settings that survive a restart |
+| `OPENAI_API_KEY` | ChatGPT commands |
+| `VIRUSTOTAL_API_KEY` | OSINT URL checking |
+
+Spotify needs no credentials. It is served by
+[sleevenote](https://github.com/cycle-five/sleevenote) rather than the Spotify
+Web API — which matters, because Spotify stopped accepting new Web API app
+registrations around December 2025, so `SPOTIFY_CLIENT_ID` and
+`SPOTIFY_CLIENT_SECRET` are not obtainable for a new self-hoster even if the old
+path were still wanted.
+
+`DATABASE_URL` is the only database variable the bot reads. If you run the
+bundled Postgres from `docker-compose-postgres.yml`, `POSTGRES_USER` and
+`POSTGRES_PASSWORD` configure *that container* — the official Postgres image
+reads them, the bot does not.
+
+Use [.env.example](https://github.com/cycle-five/cracktunes/blob/master/.env.example) as a starting point.
+
+### Prebuilt binaries
+
+No Docker, no Rust toolchain. Each release publishes a static
+`x86_64-unknown-linux-gnu` build with an installer script and a `.sha256`
+alongside it:
+
+```shell
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/cycle-five/cracktunes/releases/latest/download/cracktunes-installer.sh | sh
+```
+
+Or take the tarball directly from the
+[latest release](https://github.com/cycle-five/cracktunes/releases/latest) if you
+would rather read the script first, or check the `.sha256` before running anything.
+`crack-testing` and `crack-voting` ship the same way.
+
+You still need a `.env` with `DISCORD_TOKEN`, and `yt-dlp` on `PATH` for playback.
 
 ### Docker
 
