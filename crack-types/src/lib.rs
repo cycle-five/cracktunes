@@ -240,6 +240,7 @@ impl SpotifyTrackTrait for SpotifyTrack {
 //           -> PlaylistLink   -> Vec<ResolvedTrack>
 //           -> KeywordList    -> Vec<ResolvedTrack>
 //           -> YoutubeSearch  -> Vec<ResolvedTrack>
+//           -> SpotifyLink    -> KeywordList          (resolved out-of-crate)
 // The `NewYoutubeDl` variant is ~560 bytes against ~250 for the next largest.
 // Boxing it is worth doing, but it touches every construction and match site
 // across three crates, so it belongs in its own change rather than here.
@@ -251,17 +252,56 @@ pub enum QueryType {
     VideoLink(String),
     SpotifyTracks(Vec<SpotifyTrack>),
     PlaylistLink(String),
+    /// A Spotify track / album / playlist link, not yet resolved.
+    ///
+    /// Resolution needs an HTTP call to the sleevenote service, which this
+    /// crate deliberately does not depend on -- so this variant is a promise
+    /// that an entry point higher up will turn it into something playable
+    /// (in practice a [`QueryType::KeywordList`]) before the query reaches
+    /// any code that plays it. Nothing below that entry point should ever
+    /// observe this variant.
+    SpotifyLink(String),
     File(Attachment),
     NewYoutubeDl((YoutubeDl<'static>, AuxMetadata)),
     YoutubeSearch(String),
     None,
 }
 
+/// The hosts that serve Spotify entity links.
+///
+/// `spotify.link` is Spotify's own shortener and carries no entity id until it
+/// is followed, so it is recognised here and resolved later.
+const SPOTIFY_HOSTS: [&str; 3] = ["open.spotify.com", "play.spotify.com", "spotify.link"];
+
+/// Whether `s` addresses a Spotify entity, as a URL or as a `spotify:` URI.
+///
+/// Matched on the host rather than by searching the string for "spotify": a
+/// YouTube video titled "spotify rip" is not a Spotify link, and treating it
+/// as one would send it to a resolver that can only fail.
+#[must_use]
+pub fn is_spotify_url(s: &str) -> bool {
+    // `spotify:track:<id>` and friends -- the desktop client's URI form.
+    if s.starts_with("spotify:") {
+        return true;
+    }
+    url::Url::parse(s)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(|host| SPOTIFY_HOSTS.contains(&host)))
+        .unwrap_or(false)
+}
+
 impl std::str::FromStr for QueryType {
     type Err = TrackResolveError;
     /// Get the query type from a string.
+    ///
+    /// Spotify is checked before the generic URL case: every URL used to
+    /// become a [`QueryType::VideoLink`], which means yt-dlp, which cannot
+    /// fetch Spotify audio -- so a perfectly good Spotify link failed with a
+    /// yt-dlp error about a URL it was never going to be able to play.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("https://") || s.starts_with("http://") {
+        if is_spotify_url(s) {
+            Ok(QueryType::SpotifyLink(s.to_string()))
+        } else if s.starts_with("https://") || s.starts_with("http://") {
             Ok(QueryType::VideoLink(s.to_string()))
         } else {
             Ok(QueryType::Keywords(s.to_string()))
@@ -291,6 +331,7 @@ impl QueryType {
                     .join(" "),
             ),
             QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::SpotifyLink(url) => Some(url.clone()),
             QueryType::File(file) => Some(file.url.to_string()),
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
@@ -475,8 +516,54 @@ pub fn to_fixed<T: ValidLength>(s: impl Into<String>) -> FixedString<T> {
 #[cfg(test)]
 mod tests {
     use serenity::small_fixed_array::FixedString;
+    use std::str::FromStr;
 
     use super::*;
+
+    #[test]
+    fn spotify_urls_are_recognised() {
+        for url in [
+            "https://open.spotify.com/track/3Vr5jdQHibI2q0A0KW4RWk",
+            "https://open.spotify.com/album/1XkGORuUX2QGOEIL4EbJKm?si=abc",
+            "https://open.spotify.com/intl-de/playlist/37i9dQZF1DXcBWIGoYBM5M",
+            "https://play.spotify.com/track/3Vr5jdQHibI2q0A0KW4RWk",
+            "https://spotify.link/abc123",
+            "spotify:track:3Vr5jdQHibI2q0A0KW4RWk",
+        ] {
+            assert!(is_spotify_url(url), "should be a Spotify link: {url}");
+            assert!(
+                matches!(QueryType::from_str(url), Ok(QueryType::SpotifyLink(_))),
+                "should parse to SpotifyLink: {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_spotify_urls_are_not_claimed() {
+        // The middle two are the reason this matches on the host: a substring
+        // test for "spotify" would swallow both and hand them to a resolver
+        // that can only fail on them.
+        for url in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/watch?v=abc&title=spotify-rip",
+            "https://not-spotify.com/track/123",
+            "https://open.spotify.com.evil.example/track/123",
+        ] {
+            assert!(!is_spotify_url(url), "should not be a Spotify link: {url}");
+        }
+        assert!(matches!(
+            QueryType::from_str("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            Ok(QueryType::VideoLink(_))
+        ));
+    }
+
+    #[test]
+    fn bare_words_are_still_keywords() {
+        assert!(matches!(
+            QueryType::from_str("spotify greatest hits"),
+            Ok(QueryType::Keywords(_))
+        ));
+    }
 
     #[test]
     fn test_get_human_readable_timestamp() {

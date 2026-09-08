@@ -1,26 +1,12 @@
 use crate::commands::help;
-use crate::sources::spotify::{MediaType, Spotify};
+use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
-use crack_sleevenote::{Album, Client as Sleevenote, Error as SleevenoteError, Playlist, Track};
+use crack_sleevenote::{Album, Error as SleevenoteError, Playlist, Track};
 use poise::CreateReply;
 use serenity::all::{Color, CreateEmbed};
-use std::sync::OnceLock;
 
 /// How many tracks of a collection to list before saying "and N more".
 const PREVIEW_TRACKS: usize = 10;
-
-/// One client for the process. `from_env` builds a reqwest client, and reqwest
-/// pools connections internally -- building one per invocation would discard
-/// the pool every time. The init is fallible (a bad SLEEVENOTE_URL), so the
-/// result is what gets cached; retrying it per call would just re-fail.
-static CLIENT: OnceLock<Result<Sleevenote, String>> = OnceLock::new();
-
-fn client() -> Result<&'static Sleevenote, String> {
-    CLIENT
-        .get_or_init(|| Sleevenote::from_env().map_err(|e| e.to_string()))
-        .as_ref()
-        .map_err(Clone::clone)
-}
 
 /// Look up a Spotify track, album or playlist.
 #[cfg(not(tarpaulin_include))]
@@ -49,18 +35,15 @@ pub async fn spotify_internal(ctx: Context<'_>, url: Option<String>) -> Result<(
         return reply(ctx, fail("Give me a Spotify track, album or playlist URL.")).await;
     };
 
-    let parsed = match Spotify::parse_spotify_url(&url).await {
-        Ok(parsed) => parsed,
-        Err(_) => {
-            return reply(
-                ctx,
-                fail("That is not a Spotify track, album or playlist URL."),
-            )
-            .await
-        },
+    let Some(parsed) = sleevenote::parse_link(&url).await else {
+        return reply(
+            ctx,
+            fail("That is not a Spotify track, album or playlist URL."),
+        )
+        .await;
     };
 
-    let client = match client() {
+    let client = match sleevenote::client() {
         Ok(client) => client,
         Err(why) => {
             tracing::error!("sleevenote client unavailable: {why}");
@@ -80,28 +63,12 @@ pub async fn spotify_internal(ctx: Context<'_>, url: Option<String>) -> Result<(
     reply(ctx, embed.unwrap_or_else(|e| error_embed(&e))).await
 }
 
-/// Each arm is a different diagnosis, and saying so is the entire reason the
-/// client keeps these variants apart. Collapsing them here would throw the
-/// distinction away at the last possible moment: "this does not exist" and
-/// "our scraper broke" call for opposite reactions from whoever reads it.
+/// Each sleevenote failure keeps its own message, which is the entire reason
+/// the client keeps those variants apart. The mapping itself lives with the
+/// resolver so that a lookup and a play report the same failure the same way
+/// -- they used to word the same diagnosis differently.
 fn error_embed(err: &SleevenoteError) -> CreateEmbed<'static> {
-    match err {
-        SleevenoteError::NotFound(_) => fail("Spotify has nothing at that link."),
-        SleevenoteError::InvalidId(_) => fail("That link does not contain a usable Spotify id."),
-        SleevenoteError::Timeout(_) => {
-            fail("Spotify took too long to answer. Try again in a moment.")
-        },
-        // Not the caller's fault and not retryable by them: the lookup service
-        // stopped matching Spotify's page. Say so plainly rather than offering
-        // a retry that cannot work.
-        SleevenoteError::ExtractionEmpty(_) | SleevenoteError::ExtractionIncomplete(_) => {
-            fail("Spotify lookup is broken right now -- this has been logged.")
-        },
-        other => {
-            tracing::error!("sleevenote lookup failed: {other}");
-            fail("Spotify lookup failed.")
-        },
-    }
+    fail(sleevenote::user_message(err))
 }
 
 fn track_embed(track: Track) -> CreateEmbed<'static> {

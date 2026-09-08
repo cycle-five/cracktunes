@@ -1,17 +1,13 @@
 use crate::{
     commands::cmd_check_music,
     db::{aux_metadata_to_db_structures, playlist::Playlist, Metadata},
-    errors::verify,
-    http_utils,
     messaging::message::CrackedMessage,
-    sources::spotify::{Spotify, SPOTIFY},
+    sources::sleevenote,
     utils::send_reply,
     Context, CrackedError, Error,
 };
 use crack_types::NewAuxMetadata;
-use crack_types::SpotifyTrack;
 use songbird::input::AuxMetadata;
-use url::Url;
 
 /// Get the database pool or return an error.
 #[macro_export]
@@ -24,18 +20,23 @@ macro_rules! get_db_or_err {
     };
 }
 
-/// Get a Spotify playlist.
-pub async fn get_spotify_playlist(url: &str) -> Result<Vec<SpotifyTrack>, CrackedError> {
-    let url_clean = Url::parse(url)?;
-
-    let final_url = http_utils::resolve_final_url(url_clean.as_ref())
-        .await
-        .unwrap_or_else(|_| url_clean.to_string());
-    tracing::warn!("spotify: {} -> {}", url_clean, final_url);
-    let spotify = SPOTIFY.lock().await;
-    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
-    tracing::warn!("Getting playlist tracks...");
-    Spotify::extract_tracks(spotify, &final_url).await
+/// Get the tracks of a Spotify playlist, album, or single track, as metadata.
+///
+/// Any Spotify entity is accepted, not only a playlist: loading one album into
+/// a named playlist is a reasonable thing to want, and refusing it bought
+/// nothing. Resolution goes through sleevenote like every other Spotify path
+/// in the bot -- the rspotify client this used to call has been unable to
+/// authenticate since Spotify stopped issuing Web API credentials.
+pub async fn get_spotify_playlist(url: &str) -> Result<Vec<NewAuxMetadata>, CrackedError> {
+    let resolution = sleevenote::resolve_spotify(url).await?;
+    tracing::info!(
+        "spotify {}: {} -> {} track(s), {} unresolved",
+        resolution.media_type.noun(),
+        resolution.name,
+        resolution.len(),
+        resolution.unresolved,
+    );
+    Ok(resolution.metadata())
 }
 
 /// Load a Spotify playlist into the bot
@@ -50,14 +51,12 @@ pub async fn loadspotify_(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
-    let playlist_tracks = get_spotify_playlist(&spotifyurl).await?;
+    // Resolving a Spotify collection takes ten seconds or more on a cold
+    // cache, and every track is then written to the database. Both happen well
+    // past Discord's three-second interaction deadline, so defer before either.
+    ctx.defer().await?;
 
-    tracing::info!("Got playlist tracks: {:?}", playlist_tracks);
-
-    let metadata = playlist_tracks
-        .iter()
-        .map(Into::<NewAuxMetadata>::into)
-        .collect::<Vec<_>>();
+    let metadata = get_spotify_playlist(&spotifyurl).await?;
 
     let db_pool = get_db_or_err!(ctx);
 
