@@ -122,12 +122,33 @@ impl SerenityHandler {
             }
         }
 
+        // Whether a Spotify LINK will resolve. This is the question an operator
+        // actually has at boot, and it is no longer the same question as the
+        // credentials check below: links go through sleevenote and need no
+        // credentials, while the credentials gate only autoplay. Reporting one
+        // and not the other is how "Spotify is broken" came to mean two
+        // unrelated things.
+        if crate::sources::sleevenote::is_configured() {
+            tracing::info!(
+                "{} {}",
+                crate::messaging::messages::SLEEVENOTE_CONFIGURED_LOG,
+                std::env::var(crack_sleevenote::BASE_URL_ENV).unwrap_or_default(),
+            );
+        } else {
+            tracing::warn!(
+                "{}",
+                crate::messaging::messages::SLEEVENOTE_UNCONFIGURED_LOG
+            );
+        }
+
         // Attempt to authenticate to Spotify, and SAY SO EITHER WAY.
         //
         // This result used to be stored and never read, so a bot booting with no
         // Spotify credentials looked identical to one booting with working ones.
         // The first anybody learned of it was a user pasting a Spotify link and
         // getting an error -- or, worse, autoplay quietly switching itself off.
+        //
+        // Credentials now gate AUTOPLAY ONLY; see SPOTIFY_DISABLED_LOG.
         let spotify_auth = Spotify::auth(None).await;
         match &spotify_auth {
             Ok(_) => tracing::info!("{}", crate::messaging::messages::SPOTIFY_ENABLED_LOG),
