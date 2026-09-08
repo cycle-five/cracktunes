@@ -167,14 +167,29 @@ pub const SKIPPED: &str = "⏭️ Skipped!";
 // operator without credentials often CANNOT obtain them, and sending them to the
 // dashboard wastes their time. Tell the person in the channel what they can
 // actually do instead; the operator gets the real diagnosis in the logs.
-pub const SPOTIFY_AUTH_FAILED: &str = "⚠️ **Spotify links aren't available right now.**\nI can't look this up, but I can still play it — try searching for the track or artist by name.";
+// Reachable only through autoplay now: link resolution moved to sleevenote and
+// raises its own errors. `track_end` maps this onto AUTOPLAY_DISABLED_SPOTIFY
+// before a user ever sees it, but the Display impl is what shows if
+// CrackedError::SpotifyAuth ever surfaces anywhere else -- so it must not claim
+// links are broken, because they are not.
+pub const SPOTIFY_AUTH_FAILED: &str = "⚠️ **I can't pick a next track right now.**\nThat needs Spotify recommendations, which aren't available. Queue something up and I'll keep playing.";
 pub const AUTOPLAY_DISABLED_SPOTIFY: &str = "🤖 **Autoplay is off.**\nPicking the next track needs Spotify, which isn't available right now. Queue something up and I'll keep playing.";
 pub const AUTOPLAY_DISABLED_ERROR: &str =
     "🤖 **Autoplay is off.**\nI couldn't work out what to play next.";
 // Operator-facing. Never sent to a channel -- this is the detail a person
 // running the bot needs, and the detail a Discord user cannot act on.
-pub const SPOTIFY_DISABLED_LOG: &str = "spotify: DISABLED -- Spotify links and autoplay will not work. Note that Spotify has blocked new Web API app creation since ~2025-12, so this may not be fixable simply by supplying credentials.";
-pub const SPOTIFY_ENABLED_LOG: &str = "spotify: enabled -- client credentials accepted";
+// ⚠️ These describe AUTOPLAY ONLY. Spotify *links* no longer need credentials
+// -- they resolve through sleevenote (`sources::sleevenote`). This message used
+// to say "Spotify links and autoplay will not work", which stopped being true
+// the moment link resolution moved, and sent an operator hunting for
+// credentials that cannot be obtained and would not have fixed links anyway.
+pub const SPOTIFY_DISABLED_LOG: &str = "spotify: autoplay DISABLED -- no client credentials, so recommendations are unavailable. Spotify LINKS are unaffected and resolve through sleevenote. Spotify has blocked new Web API app creation since ~2025-12, so this is probably not fixable by supplying credentials.";
+pub const SPOTIFY_ENABLED_LOG: &str = "spotify: autoplay enabled -- client credentials accepted";
+// The question an operator actually needs answered at boot: can this bot
+// resolve a Spotify link? That is now about sleevenote, not about credentials.
+pub const SLEEVENOTE_CONFIGURED_LOG: &str =
+    "sleevenote: configured -- Spotify links resolve through";
+pub const SLEEVENOTE_UNCONFIGURED_LOG: &str = "sleevenote: SLEEVENOTE_BASE_URL is not set, so Spotify links will be tried against the default and will fail unless sleevenote runs beside this bot. Set it to your sleevenote deployment.";
 pub const SPOTIFY_INVALID_QUERY: &str =
     "⚠️ **Could not find any tracks with that link!**\nAre you sure that is a valid Spotify URL?";
 // Spotify resolution through sleevenote (`sources::sleevenote`). These stay

@@ -1,0 +1,30 @@
+[0;1;32m●[0m psd.service - Profile-sync-daemon
+     Loaded: loaded (]8;;file://method/usr/lib/systemd/user/psd.service\/usr/lib/systemd/user/psd.service]8;;\; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (exited)[0m since Sun 2026-09-06 12:18:50 EDT; 1 day 12h ago
+ Invocation: 1dba64e08c2b479bbf3712a5670524bb
+       Docs: ]8;;man:psd(1)\man:psd(1)]8;;\
+             ]8;;man:profile-sync-daemon(1)\man:profile-sync-daemon(1)]8;;\
+             ]8;;https://wiki.archlinux.org/index.php/Profile-sync-daemon\https://wiki.archlinux.org/index.php/Profile-sync-daemon]8;;\
+   Main PID: 904 (code=exited, status=0/SUCCESS)
+      Tasks: 7[0;38:5:245m (limit: 38133)[0m
+     Memory: 42.2M (peak: 519.5M, swap: 225.2M, swap peak: 237.6M)
+        CPU: 1min 11.987s
+     CGroup: /user.slice/user-1000.slice/user@1000.service/background.slice/psd.service
+             ├─[0;38:5:245m1379 fuse-overlayfs -o lowerdir=/home/lothrop/.config/chromium-backup,upperdir=/run/user/1000/psd/lothrop-chromium-rw,workdir=/run/user/1000/psd/.lothrop-chromium /run/user/1000/psd/lothrop-chromium[0m
+             ├─[0;38:5:245m1423 fuse-overlayfs -o "lowerdir=/home/lothrop/.mozilla/firefox/RcOAmF9U.Profile 1-backup,upperdir=/run/user/1000/psd/lothrop-firefox-RcOAmF9U.Profile 1-rw,workdir=/run/user/1000/psd/.lothrop-firefox-RcOAmF9U.Profile 1" "/run/user/1000/psd/lothrop-firefox-RcOAmF9U.Profile 1"[0m
+             ├─[0;38:5:245m1450 fuse-overlayfs -o "lowerdir=/home/lothrop/.mozilla/firefox/rMSFwrXw.Profile 1-backup,upperdir=/run/user/1000/psd/lothrop-firefox-rMSFwrXw.Profile 1-rw,workdir=/run/user/1000/psd/.lothrop-firefox-rMSFwrXw.Profile 1" "/run/user/1000/psd/lothrop-firefox-rMSFwrXw.Profile 1"[0m
+             ├─[0;38:5:245m1467 fuse-overlayfs -o lowerdir=/home/lothrop/.config/google-chrome-backup,upperdir=/run/user/1000/psd/lothrop-google-chrome-rw,workdir=/run/user/1000/psd/.lothrop-google-chrome /run/user/1000/psd/lothrop-google-chrome[0m
+             ├─[0;38:5:245m1490 fuse-overlayfs -o lowerdir=/home/lothrop/.config/opera-backup,upperdir=/run/user/1000/psd/lothrop-opera-rw,workdir=/run/user/1000/psd/.lothrop-opera /run/user/1000/psd/lothrop-opera[0m
+             ├─[0;38:5:245m1513 fuse-overlayfs -o lowerdir=/home/lothrop/.local/share/qutebrowser-backup,upperdir=/run/user/1000/psd/lothrop-qutebrowser-rw,workdir=/run/user/1000/psd/.lothrop-qutebrowser /run/user/1000/psd/lothrop-qutebrowser[0m
+             └─[0;38:5:245m1532 fuse-overlayfs -o lowerdir=/home/lothrop/.config/vivaldi-backup,upperdir=/run/user/1000/psd/lothrop-vivaldi-rw,workdir=/run/user/1000/psd/.lothrop-vivaldi /run/user/1000/psd/lothrop-vivaldi[0m
+
+Sep 06 12:18:50 method systemd[868]: Starting Profile-sync-daemon...
+Sep 06 12:18:50 method profile-sync-daemon[904]: psd startup check successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: chromium sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: firefox sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: firefox sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: google-chrome sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: opera sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: qutebrowser sync successful
+Sep 06 12:18:50 method profile-sync-daemon[1154]: vivaldi sync successful
+Sep 06 12:18:50 method systemd[868]: Finished Profile-sync-daemon.
