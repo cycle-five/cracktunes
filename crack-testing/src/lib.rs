@@ -670,6 +670,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_cli() {
         let cli = Cli::parse_from(vec!["crack_testing", "suggest", "molly nilsson"]);
@@ -679,6 +680,7 @@ mod tests {
         }
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_cli2() {
         let cli = Cli::parse_from(vec![
@@ -689,6 +691,7 @@ mod tests {
         match_cli(cli).await.expect("asdf");
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_cli3() {
         let cli = Cli::parse_from(vec!["crack_testing", "suggest-new", "molly nilsson"]);
@@ -698,6 +701,7 @@ mod tests {
         }
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_cli4() {
         let cli = Cli::parse_from(vec!["crack_testing", "query", "molly nilsson"]);
