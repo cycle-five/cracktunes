@@ -24,7 +24,8 @@ use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::messaging::messages::{
     SPOTIFY_INVALID_QUERY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED, SPOTIFY_NOTHING_PLAYABLE,
-    SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
+    SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING, SPOTIFY_TIMEOUT,
+    SPOTIFY_UNREACHABLE,
 };
 use crack_sleevenote::{Client as Sleevenote, Error as SleevenoteError, Track, BASE_URL_ENV};
 use crack_types::NewAuxMetadata;
@@ -382,9 +383,16 @@ pub fn user_message(err: &SleevenoteError) -> &'static str {
         SleevenoteError::Timeout(_) => SPOTIFY_TIMEOUT,
         // Not the caller's fault and not retryable by them: the service
         // stopped matching Spotify's page. Offering a retry would be a lie.
-        SleevenoteError::ExtractionEmpty(_) | SleevenoteError::ExtractionIncomplete(_) => {
-            tracing::error!("sleevenote extraction failed: {err}");
+        SleevenoteError::ExtractionEmpty(_) => {
+            tracing::error!("sleevenote extraction returned nothing: {err}");
             SPOTIFY_LOOKUP_BROKEN
+        },
+        // Something was recovered, just not all of it -- a different fact, and
+        // in practice a routine one for large editorial playlists rather than
+        // a sign anything is broken.
+        SleevenoteError::ExtractionIncomplete(_) => {
+            tracing::warn!("sleevenote extraction incomplete: {err}");
+            SPOTIFY_PARTIAL_LISTING
         },
         // The service is unreachable, which is different again from the
         // service answering with a failure -- and "never configured" is

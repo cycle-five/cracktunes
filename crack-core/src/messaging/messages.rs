@@ -190,6 +190,12 @@ pub const SPOTIFY_TIMEOUT: &str = "⏳ **Spotify took too long to answer.**\nTry
 // Deliberately offers no retry: the lookup service stopped matching Spotify's
 // page, so retrying the same link fails identically until it is fixed.
 pub const SPOTIFY_LOOKUP_BROKEN: &str = "⚠️ **Spotify lookup is broken right now.**\nThis has been logged. Search for the track by name and I'll play it.";
+// Distinct from the above, and the distinction is the whole reason sleevenote
+// keeps these two apart: something *was* recovered, just not all of it. The
+// service returns the shortfall rather than a partial listing, so there is
+// nothing to queue -- but "broken" overstates it, and the reader has a real
+// alternative rather than nothing to try.
+pub const SPOTIFY_PARTIAL_LISTING: &str = "⚠️ **Spotify only gave me part of that list.**\nI won't queue half a playlist, so nothing was added. Albums and individual tracks resolve reliably; large editorial playlists often don't.";
 pub const SPOTIFY_LOOKUP_FAILED: &str =
     "⚠️ **Spotify lookup failed.**\nSearch for the track by name and I'll play it.";
 // The wire call succeeded and the answer was empty -- a podcast-only playlist,
