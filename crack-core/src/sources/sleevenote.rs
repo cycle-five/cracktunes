@@ -475,6 +475,76 @@ mod tests {
         }
     }
 
+    /// The captured responses the client crate models its contract against.
+    /// Deriving queries and metadata from real service output, rather than
+    /// from JSON written to match the code, is what makes these tests say
+    /// anything about the wire.
+    const TRACK_JSON: &str = include_str!("../../../crack-sleevenote/tests/fixtures/track.json");
+    const ALBUM_JSON: &str = include_str!("../../../crack-sleevenote/tests/fixtures/album.json");
+    const PLAYLIST_JSON: &str =
+        include_str!("../../../crack-sleevenote/tests/fixtures/playlist.json");
+
+    #[test]
+    fn builds_a_search_query_from_a_real_track() {
+        let track: Track = serde_json::from_str(TRACK_JSON).expect("fixture deserializes");
+        // Title first, then artists -- the ordering the rspotify path used and
+        // that the YouTube search results were tuned against.
+        assert_eq!(track_query(&track), "King Creole Elvis Presley");
+    }
+
+    #[test]
+    fn carries_a_real_track_into_metadata() {
+        let track: Track = serde_json::from_str(TRACK_JSON).expect("fixture deserializes");
+        let metadata = track_metadata(&track);
+        let aux = metadata.metadata();
+        assert_eq!(aux.title.as_deref(), Some("King Creole"));
+        assert_eq!(aux.artist.as_deref(), Some("Elvis Presley"));
+        assert_eq!(aux.album.as_deref(), Some("60 Original Hits"));
+        assert_eq!(aux.duration, Some(Duration::from_millis(129_880)));
+        // A Spotify URL is not something this bot can play from, so an entry
+        // stored from one must not look playable.
+        assert_eq!(aux.source_url, None);
+        // Cover art, not the track title, which is what the rspotify path put
+        // in this field.
+        let thumbnail = aux.thumbnail.as_deref().expect("album art");
+        assert!(thumbnail.starts_with("http"), "thumbnail: {thumbnail}");
+    }
+
+    #[test]
+    fn every_album_track_becomes_a_query() {
+        let album: crack_sleevenote::Album =
+            serde_json::from_str(ALBUM_JSON).expect("fixture deserializes");
+        assert_eq!(album.unresolved_items, 0);
+        let (songs, episodes) = songs_only(album.tracks);
+        assert_eq!(songs.len(), 60);
+        assert_eq!(episodes, 0);
+        assert!(songs.iter().map(track_query).all(|q| !q.trim().is_empty()));
+    }
+
+    #[test]
+    fn a_playlist_drops_episodes_and_keeps_the_count() {
+        // This fixture is literally named "Song, Podcast, Local file": two
+        // items resolved (one of them a podcast episode) and two the service
+        // could not recover at all.
+        let playlist: crack_sleevenote::Playlist =
+            serde_json::from_str(PLAYLIST_JSON).expect("fixture deserializes");
+        assert_eq!(playlist.tracks.len(), 2);
+        assert_eq!(playlist.unresolved_items, 2);
+
+        let (songs, episodes) = songs_only(playlist.tracks);
+        // The episode is dropped rather than searched for on YouTube, where a
+        // title search would return something that is not the episode.
+        assert_eq!(episodes, 1);
+        assert_eq!(songs.len(), 1);
+        assert_eq!(track_query(&songs[0]), "Oh Shit I'm Feeling It DjCorny");
+        // Four items in, one song out: the counts are what keep that legible
+        // instead of looking like a one-song playlist.
+        assert_eq!(
+            songs.len() + episodes + playlist.unresolved_items as usize,
+            4
+        );
+    }
+
     #[test]
     fn media_type_nouns_read_in_a_sentence() {
         assert_eq!(MediaType::Track.noun(), "track");
