@@ -906,10 +906,14 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
 
 /// Resolve a Spotify link into the keyword searches that will play it.
 ///
-/// Every Spotify entity collapses to a [`QueryType::KeywordList`], one entry
-/// per song, in listing order -- a single track is simply a list of one. The
-/// counts that come back are logged rather than dropped: a playlist that
-/// resolved 3 of 40 items is not the same event as one that has 3 songs.
+/// One song becomes [`QueryType::Keywords`] and several become a
+/// [`QueryType::KeywordList`], which the queueing path already resolves
+/// concurrently. The distinction is not cosmetic: the reply is built from the
+/// query type, so a single track sent as a one-element list would be announced
+/// as "added playlist to queue" instead of showing the track that was queued.
+///
+/// The counts are logged rather than dropped: a playlist that resolved 3 of 40
+/// items is not the same event as one that simply has 3 songs.
 async fn spotify_query(url: &str) -> Result<QueryType, CrackedError> {
     let resolution = sleevenote::resolve_spotify(url).await?;
     tracing::info!(
@@ -921,7 +925,13 @@ async fn spotify_query(url: &str) -> Result<QueryType, CrackedError> {
         resolution.unresolved,
         resolution.episodes_skipped,
     );
-    Ok(QueryType::KeywordList(resolution.queries()))
+    let mut queries = resolution.queries();
+    if queries.len() == 1 {
+        // `swap_remove` over `into_iter().next()` so the `Vec` is not rebuilt
+        // for the common case of a single-track link.
+        return Ok(QueryType::Keywords(queries.swap_remove(0)));
+    }
+    Ok(QueryType::KeywordList(queries))
 }
 
 // This should not be permenant, but just to get it working
