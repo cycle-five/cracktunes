@@ -100,6 +100,38 @@ impl GpCategory {
         })
     }
 
+    /// Every category, for [`Self::from_slug`].
+    pub const ALL: [GpCategory; 18] = [
+        Self::Nostalgia,
+        Self::Dangerous,
+        Self::GoodGame,
+        Self::Car,
+        Self::Chill,
+        Self::Emotional,
+        Self::BadMusic,
+        Self::HyperSpecific,
+        Self::Revealing,
+        Self::Chaos,
+        Self::OneWorders,
+        Self::Social,
+        Self::Guilty,
+        Self::Romance,
+        Self::Damage,
+        Self::Funny,
+        Self::Personality,
+        Self::Mixed,
+    ];
+
+    /// A stable name for storage: the prompt-file key, and `mixed` for Mixed.
+    /// Not [`Self::display`], whose emoji and wording are free to change.
+    pub fn slug(self) -> &'static str {
+        self.key().unwrap_or("mixed")
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.slug() == slug)
+    }
+
     /// The display name (with emoji), as Discord shows it.
     pub fn display(self) -> &'static str {
         self.name()
@@ -149,6 +181,15 @@ mod test {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::collections::HashSet;
+
+    #[test]
+    fn every_category_round_trips_through_its_slug() {
+        for c in GpCategory::ALL {
+            assert_eq!(GpCategory::from_slug(c.slug()), Some(c), "{c:?}");
+        }
+        assert_eq!(GpCategory::from_slug("mixed"), Some(GpCategory::Mixed));
+        assert_eq!(GpCategory::from_slug("🎲 Mixed"), None);
+    }
 
     #[test]
     fn prompt_data_is_valid() {

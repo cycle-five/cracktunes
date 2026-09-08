@@ -4,9 +4,9 @@ use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
 use crate::poise_ext::PoiseContextExt;
 use crate::CrackedError;
-use crate::{Context, Error};
+use crate::{Context, Data, Error};
 // use crack_testing::ReplyHandleWrapper;
-use poise::serenity_prelude::Mentionable;
+use poise::serenity_prelude::{Context as SerenityContext, Mentionable};
 use serenity::all::{ChannelId, GenericChannelId, GuildId};
 use songbird::{Call, Event, TrackEvent};
 use std::{
@@ -23,7 +23,26 @@ pub async fn set_global_handlers(
     guild_id: GuildId,
     channel_id: GenericChannelId,
 ) {
-    let data = ctx.data();
+    set_global_handlers_with(
+        ctx.serenity_context(),
+        ctx.data(),
+        call,
+        guild_id,
+        channel_id,
+    )
+    .await
+}
+
+/// The same, from outside a command -- a `/gp` game being resumed after a
+/// restart joins voice from the guild-create handler, where there is no poise
+/// context to hand over.
+pub async fn set_global_handlers_with(
+    serenity_ctx: &SerenityContext,
+    data: Arc<Data>,
+    call: Arc<Mutex<Call>>,
+    guild_id: GuildId,
+    channel_id: GenericChannelId,
+) {
     let mut handler = call.lock().await;
 
     handler.remove_all_global_events();
@@ -38,7 +57,7 @@ pub async fn set_global_handlers(
         handler.add_global_event(
             Event::Periodic(Duration::from_secs(60), None),
             IdleHandler {
-                serenity_ctx: Arc::new(ctx.serenity_context().clone()),
+                serenity_ctx: Arc::new(serenity_ctx.clone()),
                 guild_id,
                 channel_id,
                 limit: timeout as usize,
@@ -52,10 +71,10 @@ pub async fn set_global_handlers(
         Event::Track(TrackEvent::End),
         TrackEndHandler {
             guild_id,
-            cache: ctx.serenity_context().cache.clone(),
-            http: ctx.serenity_context().http.clone(),
+            cache: serenity_ctx.cache.clone(),
+            http: serenity_ctx.http.clone(),
             call: call.clone(),
-            data: ctx.data().clone(),
+            data,
         },
     );
 

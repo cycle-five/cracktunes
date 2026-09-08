@@ -24,7 +24,7 @@ Everything below is optional, and the bot degrades rather than failing without i
 
 | variable | what you lose without it |
 | --- | --- |
-| `DATABASE_URL` | play history, track reactions, playlist storage, and guild settings that survive a restart |
+| `DATABASE_URL` | play history, track reactions, playlist storage, guild settings that survive a restart, and `/gp` games that survive one too |
 | `SLEEVENOTE_BASE_URL` | Spotify links in `/play`, `/gp submit`, `/spotify` and `/playlist loadspotify` |
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |

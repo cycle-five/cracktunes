@@ -7,6 +7,8 @@ pub mod metadata;
 pub use metadata::*;
 pub mod reply_handle;
 pub use reply_handle::*;
+pub mod saved_track;
+pub use saved_track::*;
 
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;

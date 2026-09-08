@@ -392,6 +392,10 @@ pub struct DataInner {
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     /// Guilty pleasure games, one per guild. See `commands::music::gp`.
     pub gp_games: dashmap::DashMap<GuildId, commands::music::gp::GpGame>,
+    /// Where `gp_games` are written down, when there is a database. `None` runs
+    /// the game in memory only. See `commands::music::gp_persist`.
+    pub gp_persist:
+        Option<tokio::sync::mpsc::UnboundedSender<commands::music::gp_persist::GpPersist>>,
     // Option inside?
     #[cfg(feature = "crack-gpt")]
     pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
@@ -596,6 +600,7 @@ impl Default for DataInner {
             guild_command_msg_queue: Default::default(),
             guild_cnt_map: Default::default(),
             gp_games: Default::default(),
+            gp_persist: None,
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,

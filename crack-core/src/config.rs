@@ -263,6 +263,12 @@ pub async fn poise_framework(
         songbird::Config::default().decode_mode(DecodeMode::Decode(Default::default()));
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
 
+    // `/gp` games are written to the database as they run, so a restart does not
+    // end them. Without a database the game runs in memory, as it always has.
+    let gp_persist = database_pool
+        .clone()
+        .map(crate::commands::music::gp_persist::spawn_gp_writer);
+
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::default(),
@@ -272,8 +278,10 @@ pub async fn poise_framework(
         event_log_async,
         database_pool,
         db_channel,
+        gp_persist,
         ..Default::default()
     }));
+    crate::commands::music::gp_persist::spawn_gp_heartbeat(data.clone());
 
     // No MESSAGE_CONTENT. The bot is Discord-verified without it, and it is not
     // coming back for an application in 100+ guilds without a review. Message
@@ -367,6 +375,10 @@ pub async fn poise_framework(
         }
 
         tracing::warn!("Received Ctrl-C, shutting down...");
+        // Whatever a `/gp` game has queued for the database goes first: the pool
+        // is closed below, and a game written down is one a redeploy does not
+        // end. Bounded, because Docker's stop grace is ten seconds in total.
+        data2.gp_flush(Duration::from_secs(5)).await;
         let guilds = data2.guild_settings_map.read().await.clone();
         let pool = data2.clone().database_pool.clone();
         let mut saved_guilds = Vec::with_capacity(guilds.len());
