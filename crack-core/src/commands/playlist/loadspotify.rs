@@ -51,6 +51,11 @@ pub async fn loadspotify_(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let channel_id = ctx.channel_id();
 
+    // Resolving a Spotify collection takes ten seconds or more on a cold
+    // cache, and every track is then written to the database. Both happen well
+    // past Discord's three-second interaction deadline, so defer before either.
+    ctx.defer().await?;
+
     let metadata = get_spotify_playlist(&spotifyurl).await?;
 
     let db_pool = get_db_or_err!(ctx);

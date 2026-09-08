@@ -2486,7 +2486,16 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
         return Err(CrackedError::NoQuery);
     }
     let query_type = match QueryType::from_str(query).map_err(CrackedError::TrackResolveError)? {
-        QueryType::SpotifyLink(url) => gp_spotify_query(&url).await?,
+        QueryType::SpotifyLink(url) => {
+            // Resolving a Spotify link is an HTTP round trip that takes ten
+            // seconds or more on a cold cache, well past Discord's
+            // three-second interaction deadline -- so defer before doing any
+            // of it, or the command fails before the answer exists. Only this
+            // path defers: a search or a YouTube link answers fast enough that
+            // a "thinking" state would be a downgrade.
+            ctx.defer_ephemeral().await?;
+            gp_spotify_query(&url).await?
+        },
         other => other,
     };
     let track = data
