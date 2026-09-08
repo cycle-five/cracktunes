@@ -25,6 +25,7 @@ Everything below is optional, and the bot degrades rather than failing without i
 | variable | what you lose without it |
 | --- | --- |
 | `DATABASE_URL` | play history, track reactions, playlist storage, and guild settings that survive a restart |
+| `SLEEVENOTE_BASE_URL` | Spotify links in `/play`, `/gp submit`, `/spotify` and `/playlist loadspotify` |
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |
 
@@ -34,6 +35,18 @@ Web API — which matters, because Spotify stopped accepting new Web API app
 registrations around December 2025, so `SPOTIFY_CLIENT_ID` and
 `SPOTIFY_CLIENT_SECRET` are not obtainable for a new self-hoster even if the old
 path were still wanted.
+
+What it does need is somewhere to reach sleevenote. `SLEEVENOTE_BASE_URL`
+defaults to `http://127.0.0.1:3000`, which is right if you run the service
+beside the bot and wrong everywhere else — in Docker Compose, for instance, the
+bot's own localhost is not the sleevenote container. Without it a Spotify link
+says Spotify support is not set up, and the rest of the bot is unaffected:
+searches and YouTube links play as normal.
+
+Spotify is never the audio source, with or without it. sleevenote supplies the
+title and artists; the track itself is found on YouTube, so a Spotify link
+plays whatever YouTube has. Local files in a playlist cannot be resolved at
+all, and podcast episodes are skipped rather than guessed at.
 
 `DATABASE_URL` is the only database variable the bot reads. If you run the
 bundled Postgres from `docker-compose-postgres.yml`, `POSTGRES_USER` and

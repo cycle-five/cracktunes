@@ -24,10 +24,11 @@ use crate::{
         GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
         GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_UNLIKED,
         GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
-        GP_WINDOW_WARNING_IN,
+        GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
     },
     music::queue::build_track,
     poise_ext::PoiseContextExt,
+    sources::sleevenote,
     Context, CrackedResult, Data, Error,
 };
 use ::serenity::{
@@ -2456,6 +2457,24 @@ pub async fn gp_submit(
     Ok(())
 }
 
+/// Resolve a Spotify link for `/gp submit`, which takes exactly one song.
+///
+/// An album or playlist is refused rather than quietly reduced to its first
+/// track: *which* song a player submits is the whole game, so choosing one for
+/// them would replace their move with ours and they would never know.
+async fn gp_spotify_query(url: &str) -> CrackedResult<QueryType> {
+    let resolution = sleevenote::resolve_spotify(url).await?;
+    if resolution.media_type.is_collection() {
+        return Err(CrackedError::Other(SPOTIFY_GP_ONE_SONG));
+    }
+    let query = resolution
+        .queries()
+        .into_iter()
+        .next()
+        .ok_or(CrackedError::Other(SPOTIFY_NOTHING_PLAYABLE))?;
+    Ok(QueryType::Keywords(query))
+}
+
 #[cfg(not(tarpaulin_include))]
 pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResult<CrackedMessage> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -2466,7 +2485,10 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
     if query.is_empty() {
         return Err(CrackedError::NoQuery);
     }
-    let query_type = QueryType::from_str(query).map_err(CrackedError::TrackResolveError)?;
+    let query_type = match QueryType::from_str(query).map_err(CrackedError::TrackResolveError)? {
+        QueryType::SpotifyLink(url) => gp_spotify_query(&url).await?,
+        other => other,
+    };
     let track = data
         .ct_client
         .resolve_track(query_type)

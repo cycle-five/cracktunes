@@ -4,6 +4,58 @@
 
 ### Added
 
+- **Spotify links play.** Pasting a Spotify track, album or playlist link into
+  `/play` or `/gp submit` now resolves it instead of failing. Resolution goes
+  through [sleevenote](https://github.com/cycle-five/sleevenote), which needs no
+  Spotify credentials; the songs themselves are still found on YouTube, exactly
+  as the old path did. `/spotify` and `/playlist loadspotify` were moved onto the
+  same resolver, so all four commands now agree about what a link means and
+  report a failure the same way.
+- A Spotify failure now says which failure it was: not configured, unreachable,
+  no such link, lookup broken, or timed out. Previously a Spotify link in
+  `/gp submit` produced a **yt-dlp** error about a URL yt-dlp was never going to
+  be able to fetch, and one in `/play` produced a Spotify *auth* error.
+  Podcast episodes inside a playlist are skipped rather than guessed at, and a
+  link that resolves to nothing playable says so.
+- `SLEEVENOTE_BASE_URL` is documented, including what its localhost default
+  means in Docker Compose, where the bot's own localhost is not the sleevenote
+  container.
+
+### Changed
+
+- `/gp submit` refuses an album or playlist link rather than silently submitting
+  its first track. Which song a player submits is the whole game, so choosing one
+  for them would replace their move with ours and they would never know.
+- The rspotify Spotify path is retired. It could not authenticate -- Spotify
+  stopped issuing Web API credentials around December 2025 -- and every
+  resolution path now goes through sleevenote, so ~240 lines of unreachable
+  extraction code are gone. What remains of rspotify is autoplay's
+  recommendations, which sleevenote has no endpoint for and which already
+  degrades with a message saying so.
+
+### Fixed
+
+- Locale-prefixed Spotify links -- `/intl-de/track/<id>`, which is what
+  Spotify's own web player hands out to much of the world -- were rejected as
+  invalid. The old regex read `intl-de/track` as the entity kind.
+- `spotify:album:<id>` and `spotify:playlist:<id>` URIs were rewritten into
+  `/track/<id>` URLs and looked up as tracks, which found nothing. The kind is
+  now read from the URI.
+
+## TODO:
+
+- [ ] /changenicks command. Renames all users in the guild
+      to a random nick name from a themed list of names. Use your
+      own custom list, or choose from one of the many I've
+      pre-curated and use in my own server.
+- [ ] Codebase architecture documentation.
+- [ ] Support discordbotlist.com (voting service).
+- [ ] Decide on whether to use ephemeral for admin messages.
+
+## v0.6.3 (2026/09/07)
+
+### Added
+
 - **`/gp` plays a clip of each song** rather than the whole thing: 45 seconds starting 30
   seconds in, by default. The first half-minute of a song is usually an intro that gives a
   guesser nothing, so skipping it makes the clip *more* guessable, not less, and a round
@@ -23,18 +75,6 @@
   where the absolute rule would have wanted two thirds of the clip and a 20-second clip
   could never have cleared it at all. The dead-link versus fooled-everyone split in #423 is
   a separate question and is untouched.
-
-## TODO:
-
-- [ ] /changenicks command. Renames all users in the guild
-      to a random nick name from a themed list of names. Use your
-      own custom list, or choose from one of the many I've
-      pre-curated and use in my own server.
-- [ ] Codebase architecture documentation.
-- [ ] Support discordbotlist.com (voting service).
-- [ ] Decide on whether to use ephemeral for admin messages.
-
-## v0.6.3 (2026/09/07)
 
 ### Fixed
 

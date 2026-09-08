@@ -6,14 +6,15 @@ use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
-    errors::{verify, CrackedError},
+    errors::CrackedError,
     http_utils,
     http_utils::check_banned_domains,
     messaging::{
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
+        messages::SPOTIFY_LOOKUP_FAILED,
     },
-    sources::spotify::{Spotify, SPOTIFY},
+    sources::sleevenote,
     utils::{edit_response_poise, yt_search_select},
     Context, CrackedResult, Error,
 };
@@ -84,6 +85,7 @@ impl From<NewQueryType> for crack_types::QueryType {
             QueryType::VideoLink(url) => crack_types::QueryType::VideoLink(url),
             QueryType::SpotifyTracks(tracks) => crack_types::QueryType::SpotifyTracks(tracks),
             QueryType::PlaylistLink(url) => crack_types::QueryType::PlaylistLink(url),
+            QueryType::SpotifyLink(url) => crack_types::QueryType::SpotifyLink(url),
             QueryType::File(file) => crack_types::QueryType::File(file),
             QueryType::NewYoutubeDl((src, metadata)) => {
                 crack_types::QueryType::NewYoutubeDl((src, metadata))
@@ -92,6 +94,19 @@ impl From<NewQueryType> for crack_types::QueryType {
             QueryType::None => crack_types::QueryType::None,
         }
     }
+}
+
+/// A [`QueryType::SpotifyLink`] that reached playback without being resolved.
+///
+/// Resolution happens at the entry points -- [`query_type_from_url`] for
+/// `/play`, `gp_submit` for the game -- because it needs an HTTP call to
+/// sleevenote and a message written for the user, neither of which belongs
+/// this far down. Holding one here means an entry point was added without
+/// resolving, so it is logged as our bug rather than played as a URL that
+/// cannot be played.
+fn unresolved_spotify_link(url: &str) -> CrackedError {
+    tracing::error!("spotify link reached playback unresolved: {url}");
+    CrackedError::Other(SPOTIFY_LOOKUP_FAILED)
 }
 
 pub struct Queries {
@@ -179,6 +194,7 @@ impl NewQueryType {
                     .join(" "),
             ),
             QueryType::PlaylistLink(url) => Some(url.to_string()),
+            QueryType::SpotifyLink(url) => Some(url.clone()),
             QueryType::File(file) => Some(file.url.to_string()),
             QueryType::NewYoutubeDl((_src, metadata)) => metadata.source_url.clone(),
             QueryType::YoutubeSearch(query) => Some(query.clone()),
@@ -207,6 +223,9 @@ impl NewQueryType {
         match qt {
             QueryType::YoutubeSearch(_) => Err(Box::new(CrackedError::Other(
                 "Download not valid with search results.",
+            ))),
+            QueryType::SpotifyLink(_) => Err(Box::new(CrackedError::Other(
+                "Download not valid with Spotify links.",
             ))),
             QueryType::VideoLink(url) => {
                 tracing::warn!("Mode::Download, QueryType::VideoLink");
@@ -390,6 +409,7 @@ impl NewQueryType {
         let search_msg = &mut search_reply.into_message().await?;
         let NewQueryType(qt) = self;
         match qt {
+            QueryType::SpotifyLink(url) => return Err(unresolved_spotify_link(url)),
             QueryType::Keywords(_)
             | QueryType::VideoLink(_)
             | QueryType::File(_)
@@ -471,6 +491,7 @@ impl NewQueryType {
         let search_msg = &mut search_reply.clone().into_message().await?;
         let NewQueryType(qt) = self;
         match qt {
+            QueryType::SpotifyLink(url) => Err(unresolved_spotify_link(url)),
             QueryType::YoutubeSearch(query) => {
                 tracing::trace!("Mode::End, QueryType::YoutubeSearch");
 
@@ -597,6 +618,7 @@ impl NewQueryType {
     ) -> CrackedResult<Vec<NewAuxMetadata>> {
         let NewQueryType(qt) = self;
         match qt {
+            QueryType::SpotifyLink(url) => Err(unresolved_spotify_link(url)),
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let search_options = SearchOptions {
@@ -686,6 +708,7 @@ impl NewQueryType {
     ) -> CrackedResult<songbird::input::Input> {
         let NewQueryType(qt) = self;
         match qt {
+            QueryType::SpotifyLink(url) => Err(unresolved_spotify_link(url)),
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let ytdl = YoutubeDl::new_search(client_old, query.clone());
@@ -720,6 +743,7 @@ impl NewQueryType {
         tracing::warn!("{}", format!("query_type: {:?}", self).red());
         let NewQueryType(qt) = self;
         match qt {
+            QueryType::SpotifyLink(url) => Err(unresolved_spotify_link(url)),
             QueryType::YoutubeSearch(query) => {
                 tracing::error!("In YoutubeSearch");
                 let mut ytdl = YoutubeDl::new_search(client_old, query.clone());
@@ -880,6 +904,26 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
     Ok((output, metadata))
 }
 
+/// Resolve a Spotify link into the keyword searches that will play it.
+///
+/// Every Spotify entity collapses to a [`QueryType::KeywordList`], one entry
+/// per song, in listing order -- a single track is simply a list of one. The
+/// counts that come back are logged rather than dropped: a playlist that
+/// resolved 3 of 40 items is not the same event as one that has 3 songs.
+async fn spotify_query(url: &str) -> Result<QueryType, CrackedError> {
+    let resolution = sleevenote::resolve_spotify(url).await?;
+    tracing::info!(
+        "{}: {} {} -> {} playable, {} unresolved, {} episode(s) skipped",
+        "spotify".blue(),
+        resolution.media_type.noun(),
+        resolution.name.underline().bright_blue(),
+        resolution.len(),
+        resolution.unresolved,
+        resolution.episodes_skipped,
+    );
+    Ok(QueryType::KeywordList(resolution.queries()))
+}
+
 // This should not be permenant, but just to get it working
 // with the port before re-enabling all the other modules.
 #[allow(dead_code)]
@@ -894,19 +938,13 @@ pub async fn query_type_from_url(
 
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
-            Some("open.spotify.com") | Some("spotify.link") => {
-                // We don't want to give up as long as we have a url.
-                let final_url = http_utils::resolve_final_url(url)
-                    .await
-                    .unwrap_or(url.to_string());
-                tracing::info!(
-                    "spotify: {} -> {}",
-                    url.underline().blue(),
-                    final_url.underline().bright_blue()
-                );
-                let spotify = SPOTIFY.lock().await;
-                let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
-                Some(Spotify::extract(spotify, &final_url).await?)
+            Some("open.spotify.com") | Some("play.spotify.com") | Some("spotify.link") => {
+                // Spotify is resolved to *searches*, never to audio: sleevenote
+                // gives us titles and artists, and the tracks themselves are
+                // found on YouTube exactly as the old rspotify path did. A
+                // collection becomes a `KeywordList`, which the queueing path
+                // already resolves concurrently.
+                Some(spotify_query(url).await?)
             },
             Some("cdn.discordapp.com") => {
                 tracing::info!("{}: {}", "attachement file".blue(), url.underline().blue());
@@ -961,13 +999,11 @@ pub async fn query_type_from_url(
                 // handle spotify:track:3Vr5jdQHibI2q0A0KW4RWk format?
                 // TODO: Why is this a thing?
                 if url.starts_with("spotify:") {
-                    let parts = url.split(':').collect::<Vec<_>>();
-                    let final_url =
-                        format!("https://open.spotify.com/track/{}", parts.last().unwrap());
-                    tracing::warn!("spotify: {} -> {}", url, final_url);
-                    let spotify = SPOTIFY.lock().await;
-                    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
-                    Some(Spotify::extract(spotify, &final_url).await?)
+                    // `spotify:album:<id>` is as valid as `spotify:track:<id>`,
+                    // so the kind is read from the URI rather than assumed to
+                    // be a track, which is what the old path did -- it built a
+                    // /track/ URL out of an album id and looked up nothing.
+                    Some(spotify_query(url).await?)
                 } else {
                     Some(QueryType::Keywords(url.to_string()))
                 }
